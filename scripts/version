@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+if [ -z "$VERSION" ]; then VERSION="dev-${COMMIT}"; fi
+echo "$VERSION"

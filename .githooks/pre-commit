@@ -1,0 +1,3 @@
+#!/bin/bash
+# Enforce the per-commit validation gate (gofmt + vet + lint + race tests).
+exec make validate

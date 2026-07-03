@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")/.."
+
+# gofmt: fail on any unformatted file.
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "gofmt required for:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+
+go vet ./...
+
+# golangci-lint if available; otherwise warn (go vet already ran).
+if command -v golangci-lint >/dev/null 2>&1; then
+  golangci-lint run
+else
+  echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
+fi
+
+go test -race ./...
