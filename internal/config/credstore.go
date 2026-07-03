@@ -48,14 +48,11 @@ func (f *fileStore) read() (map[string]string, error) {
 }
 
 func (f *fileStore) write(m map[string]string) error {
-	if err := os.MkdirAll(filepath.Dir(f.path), 0700); err != nil {
-		return err
-	}
 	b, err := yaml.Marshal(m)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(f.path, b, 0600)
+	return atomicWriteFile(f.path, b, 0600)
 }
 
 func (f *fileStore) GetToken(server string) (string, error) {

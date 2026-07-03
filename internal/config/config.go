@@ -69,14 +69,11 @@ func (c *Config) Write() error {
 	if c.path == "" {
 		return fmt.Errorf("config path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0700); err != nil {
-		return err
-	}
 	b, err := yaml.Marshal(c)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(c.path, b, 0600)
+	return atomicWriteFile(c.path, b, 0600)
 }
 
 // Path returns the file path this config was loaded from / writes to.
