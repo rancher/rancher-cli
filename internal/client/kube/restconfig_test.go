@@ -37,4 +37,20 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex/k8s/clusters/local", rc.Host)
 	})
+	t.Run("no CA uses system roots (secure by default)", func(t *testing.T) {
+		rc, err := RESTConfig(config.Effective{
+			URL: "https://r.ex", Token: "id:secret", Cluster: "c-9",
+		})
+		require.NoError(t, err)
+		assert.False(t, rc.Insecure)
+		assert.Nil(t, rc.CAData)
+	})
+	t.Run("empty URL returns error", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{Token: "t", CA: "PEM"})
+		assert.ErrorContains(t, err, "server URL is empty")
+	})
+	t.Run("empty token returns error", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"})
+		assert.ErrorContains(t, err, "no token")
+	})
 }

@@ -44,8 +44,6 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	}
 	if eff.CA != "" {
 		rc.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(eff.CA)}
-	} else {
-		rc.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
 	}
 	return rc, nil
 }
