@@ -1,11 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -15,21 +18,34 @@ var ErrNoToken = errors.New("no stored token")
 
 const keyringService = "rancher-cli"
 
-// CredStore persists per-server Rancher tokens.
+// CredStore persists per-server Rancher tokens and cached exec credentials.
 type CredStore interface {
 	GetToken(server string) (string, error)
 	SetToken(server, token string) error
 	DeleteToken(server string) error
+	GetCachedCred(key string) (token string, expiry time.Time, err error)
+	SetCachedCred(key, token string, expiry time.Time) error
+	DeleteCachedCred(key string) error
+	DeleteAllCachedCreds() error
+}
+
+type cachedCred struct {
+	Token  string    `json:"token"`
+	Expiry time.Time `json:"expiry"`
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.
 type fileStore struct {
-	path string
-	mu   sync.Mutex
+	path      string
+	cachePath string
+	mu        sync.Mutex
 }
 
 func NewFileStore(dir string) CredStore {
-	return &fileStore{path: filepath.Join(dir, "credentials.yaml")}
+	return &fileStore{
+		path:      filepath.Join(dir, "credentials.yaml"),
+		cachePath: filepath.Join(dir, "token-cache.yaml"),
+	}
 }
 
 func (f *fileStore) read() (map[string]string, error) {
@@ -91,6 +107,80 @@ func (f *fileStore) DeleteToken(server string) error {
 	return f.write(m)
 }
 
+func (f *fileStore) readCache() (map[string]cachedCred, error) {
+	m := map[string]cachedCred{}
+	b, err := os.ReadFile(f.cachePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return m, nil
+		}
+		return nil, err
+	}
+	if err := yaml.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (f *fileStore) writeCache(m map[string]cachedCred) error {
+	b, err := yaml.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(f.cachePath, b, 0600)
+}
+
+func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, err := f.readCache()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	cred, ok := m[key]
+	if !ok {
+		return "", time.Time{}, ErrNoToken
+	}
+	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
+		delete(m, key)
+		_ = f.writeCache(m)
+		return "", time.Time{}, ErrNoToken
+	}
+	return cred.Token, cred.Expiry, nil
+}
+
+func (f *fileStore) SetCachedCred(key, token string, expiry time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, err := f.readCache()
+	if err != nil {
+		return err
+	}
+	m[key] = cachedCred{Token: token, Expiry: expiry}
+	return f.writeCache(m)
+}
+
+func (f *fileStore) DeleteCachedCred(key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, err := f.readCache()
+	if err != nil {
+		return err
+	}
+	delete(m, key)
+	return f.writeCache(m)
+}
+
+func (f *fileStore) DeleteAllCachedCreds() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	err := os.Remove(f.cachePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // keyringStore uses the OS keychain via go-keyring.
 type keyringStore struct{}
 
@@ -114,6 +204,47 @@ func (keyringStore) DeleteToken(server string) error {
 		return nil
 	}
 	return err
+}
+
+func (keyringStore) GetCachedCred(key string) (string, time.Time, error) {
+	data, err := keyring.Get(keyringService, "cred/"+key)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return "", time.Time{}, ErrNoToken
+	}
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	var cred cachedCred
+	if err := json.Unmarshal([]byte(data), &cred); err != nil {
+		return "", time.Time{}, err
+	}
+	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
+		_ = keyring.Delete(keyringService, "cred/"+key)
+		return "", time.Time{}, ErrNoToken
+	}
+	return cred.Token, cred.Expiry, nil
+}
+
+func (keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
+	cred := cachedCred{Token: token, Expiry: expiry}
+	data, err := json.Marshal(cred)
+	if err != nil {
+		return err
+	}
+	return keyring.Set(keyringService, "cred/"+key, string(data))
+}
+
+func (keyringStore) DeleteCachedCred(key string) error {
+	err := keyring.Delete(keyringService, "cred/"+key)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+func (keyringStore) DeleteAllCachedCreds() error {
+	logrus.Warn("keyring credential cache cannot be bulk-flushed; delete specific keys instead")
+	return nil
 }
 
 // OpenStore selects a store by policy (keychain|file|auto), honoring

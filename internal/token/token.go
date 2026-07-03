@@ -1,0 +1,632 @@
+package token
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	apiv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	managementClient "github.com/rancher/rancher/pkg/client/generated/management/v3"
+	"github.com/tidwall/gjson"
+	"golang.org/x/term"
+)
+
+const (
+	loginURL          = "%s/v1-public/login"
+	authProviderURL   = "%s/v1-public/authproviders"
+	authTokenURL      = "%s/v1-public/authtokens/%s"
+	loginURLv3        = "%s/v3-public/%ss/%s?action=login"
+	authProviderURLv3 = "%s/v3-public/authProviders"
+	authTokenURLv3    = "%s/v3-public/authTokens/%s"
+)
+
+const (
+	deviceAuthFlow = "devicecode"
+	authCodeFlow   = "authcode"
+)
+
+var samlProviders = map[string]bool{
+	"pingProvider":       true,
+	"adfsProvider":       true,
+	"keyCloakProvider":   true,
+	"oktaProvider":       true,
+	"shibbolethProvider": true,
+}
+
+var oauthProviders = map[string]bool{
+	"azureADProvider": true,
+}
+
+var supportedAuthProviders = map[string]bool{
+	"localProvider":           true,
+	"freeIpaProvider":         true,
+	"openLdapProvider":        true,
+	"activeDirectoryProvider": true,
+	"pingProvider":            true,
+	"adfsProvider":            true,
+	"keyCloakProvider":        true,
+	"oktaProvider":            true,
+	"shibbolethProvider":      true,
+	"azureADProvider":         true,
+}
+
+type loginInput struct {
+	server       string
+	userID       string
+	clusterID    string
+	authProvider string
+	caCerts      string
+	skipVerify   bool
+	authFlow     string
+}
+
+type typedProvider interface {
+	GetType() string
+}
+
+type tokenCmd struct {
+	dir   string
+	store config.CredStore
+}
+
+func NewTokenCommand(dir string, store config.CredStore) runtime.Command {
+	return &tokenCmd{dir: dir, store: store}
+}
+
+func (tokenCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:        "token",
+		Usage:       "Authenticate and emit a kubeconfig ExecCredential",
+		CommandType: runtime.Local,
+		Flags: []runtime.ArgSpec{
+			{Name: "server", Type: "string"},
+			{Name: "user", Type: "string"},
+			{Name: "cluster", Type: "string"},
+			{Name: "auth-provider", Type: "string"},
+			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}},
+			{Name: "cacerts", Type: "string"},
+			{Name: "skip-verify", Type: "bool"},
+		},
+	}
+}
+
+func (tokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
+	return safety.Effect{}, nil
+}
+
+func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+	if args := in.Args(); len(args) > 0 && args[0] == "delete" {
+		return t.runDelete(in, args[1:])
+	}
+	return t.run(ctx, in)
+}
+
+func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, error) {
+	server := in.String("server")
+	if server == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server is required")
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	if serverURL.Scheme == "" {
+		server = fmt.Sprintf("https://%s", server)
+	}
+
+	userID := in.String("user")
+	if userID == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--user is required")
+	}
+	clusterID := in.String("cluster")
+
+	cachedCredName := fmt.Sprintf("%s/%s/%s", server, userID, clusterID)
+	token, expiry, err := t.store.GetCachedCred(cachedCredName)
+	if err == nil {
+		return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(token, expiry)}, nil
+	}
+	if !errors.Is(err, config.ErrNoToken) {
+		customPrint(fmt.Errorf("LoadToken: %v", err))
+	}
+
+	input := &loginInput{
+		server:       server,
+		userID:       userID,
+		clusterID:    clusterID,
+		authProvider: in.String("auth-provider"),
+		caCerts:      in.String("cacerts"),
+		skipVerify:   in.Bool("skip-verify"),
+		authFlow:     in.String("auth-flow"),
+	}
+
+	tlsConfig, err := getTLSConfig(input.skipVerify, input.caCerts)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+
+	rancherToken, err := loginAndGenerateCred(client, input)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
+	var tokenExpiry time.Time
+	if rancherToken.ExpiresAt != "" {
+		tokenExpiry, err = time.Parse(time.RFC3339, rancherToken.ExpiresAt)
+		if err != nil {
+			customPrint(fmt.Sprintf("\nerror parsing time %s %v", rancherToken.ExpiresAt, err))
+			return runtime.Result{}, err
+		}
+	}
+
+	if cacheErr := t.store.SetCachedCred(cachedCredName, rancherToken.Token, tokenExpiry); cacheErr != nil {
+		customPrint(fmt.Errorf("CacheToken: %v", cacheErr))
+	}
+
+	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
+}
+
+func (t tokenCmd) runDelete(in runtime.Input, keys []string) (runtime.Result, error) {
+	if len(keys) == 0 {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "specify credential key(s) or 'all'")
+	}
+
+	if keys[0] == "all" {
+		if err := t.store.DeleteAllCachedCreds(); err != nil {
+			return runtime.Result{}, err
+		}
+		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
+	}
+
+	server := in.String("server")
+	if server == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server is required to delete a specific cached credential").WithHint("or: rancher token delete all")
+	}
+
+	for _, key := range keys {
+		if err := t.store.DeleteCachedCred(server + "/" + key); err != nil {
+			return runtime.Result{}, err
+		}
+	}
+
+	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
+}
+
+func loginAndGenerateCred(client *http.Client, input *loginInput) (managementClient.Token, error) {
+	authProviders, useV1Public, err := getAuthProviders(client, input.server, true)
+	if err != nil {
+		return managementClient.Token{}, err
+	}
+
+	selectedProvider, err := selectAuthProvider(authProviders, input.authProvider)
+	if err != nil {
+		return managementClient.Token{}, err
+	}
+	input.authProvider = selectedProvider.GetType()
+
+	var token managementClient.Token
+	if samlProviders[input.authProvider] {
+		token, err = samlAuth(client, input, useV1Public)
+		if err != nil {
+			return managementClient.Token{}, err
+		}
+	} else if oauthProviders[input.authProvider] {
+		tokenPtr, err := oauthAuth(client, input, selectedProvider, useV1Public)
+		if err != nil {
+			return managementClient.Token{}, err
+		}
+		token = *tokenPtr
+	} else {
+		customPrint(fmt.Sprintf("Enter credentials for %s \n", input.authProvider))
+		token, err = basicAuth(client, input, useV1Public)
+		if err != nil {
+			return managementClient.Token{}, err
+		}
+	}
+
+	return token, nil
+}
+
+func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (managementClient.Token, error) {
+	prompt := "Enter username"
+	if input.userID != "" {
+		prompt += " [" + input.userID + "]"
+	}
+	username, err := customPrompt(prompt+": ", true)
+	if err != nil {
+		return managementClient.Token{}, err
+	}
+
+	if username == "" && input.userID != "" {
+		username = input.userID
+	}
+
+	password, err := customPrompt("Enter password: ", false)
+	if err != nil {
+		return managementClient.Token{}, err
+	}
+
+	responseType := "kubeconfig"
+	if input.clusterID != "" {
+		responseType = fmt.Sprintf("%s_%s", responseType, input.clusterID)
+	}
+
+	reqBody, err := json.Marshal(map[string]any{
+		"type":         input.authProvider,
+		"responseType": responseType,
+		"username":     username,
+		"password":     password,
+	})
+	if err != nil {
+		return managementClient.Token{}, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	reqURL := fmt.Sprintf(loginURL, input.server)
+	if !useV1Public {
+		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
+		reqURL = fmt.Sprintf(loginURLv3, input.server, input.authProvider, providerName)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return managementClient.Token{}, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, respBody, err := doRequest(client, req)
+	if err == nil && resp.StatusCode != http.StatusCreated {
+		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+	if err != nil {
+		return managementClient.Token{}, fmt.Errorf("error logging user in: %w", err)
+	}
+
+	var token managementClient.Token
+	err = json.Unmarshal(respBody, &token)
+	if err != nil {
+		return managementClient.Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
+	}
+
+	return token, nil
+}
+
+func samlAuth(client *http.Client, input *loginInput, useV1Public bool) (managementClient.Token, error) {
+	token := managementClient.Token{}
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return token, fmt.Errorf("error generating key: %w", err)
+	}
+
+	publicKey := privateKey.PublicKey
+	marshalKey, err := json.Marshal(publicKey)
+	if err != nil {
+		return token, fmt.Errorf("error marshaling public key: %w", err)
+	}
+	encodedKey := base64.StdEncoding.EncodeToString(marshalKey)
+
+	id, err := generateKey()
+	if err != nil {
+		return token, fmt.Errorf("error generating request id: %w", err)
+	}
+
+	responseType := "kubeconfig"
+	if input.clusterID != "" {
+		responseType = fmt.Sprintf("%s_%s", responseType, input.clusterID)
+	}
+
+	tokenURL := fmt.Sprintf(authTokenURL, input.server, id)
+	if !useV1Public {
+		tokenURL = fmt.Sprintf(authTokenURLv3, input.server, id)
+	}
+
+	getReq, err := http.NewRequest(http.MethodGet, tokenURL, bytes.NewBuffer(nil))
+	if err != nil {
+		return token, fmt.Errorf("error creating get token request: %w", err)
+	}
+	getReq.Header.Set("content-type", "application/json")
+	getReq.Header.Set("accept", "application/json")
+
+	deleteReq, err := http.NewRequest(http.MethodDelete, tokenURL, bytes.NewBuffer(nil))
+	if err != nil {
+		return token, fmt.Errorf("error creating delete token request: %w", err)
+	}
+	deleteReq.Header.Set("content-type", "application/json")
+	deleteReq.Header.Set("accept", "application/json")
+
+	loginURL, err := url.Parse(input.server + "/dashboard/auth/login")
+	if err != nil {
+		return token, fmt.Errorf("error parsing login url: %w", err)
+	}
+
+	q := url.Values{}
+	q.Set("cli", "true")
+	q.Set("requestId", id)
+	q.Set("publicKey", encodedKey)
+	q.Set("responseType", responseType)
+	loginURL.RawQuery = q.Encode()
+
+	customPrint(fmt.Sprintf("\nLogin Request Id: %s\n", id))
+	customPrint(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	defer signal.Stop(interrupt)
+
+	timeout := time.NewTimer(15 * time.Minute)
+	defer timeout.Stop()
+	poll := time.NewTicker(10 * time.Second)
+	defer poll.Stop()
+
+loop:
+	for {
+		select {
+		case <-poll.C:
+			resp, respBody, err := doRequest(client, getReq)
+			if err != nil {
+				return token, fmt.Errorf("error fetching auth token: %w", err)
+			}
+			switch resp.StatusCode {
+			case http.StatusOK:
+			case http.StatusNotFound:
+				continue
+			default:
+				return token, fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+			}
+
+			err = json.Unmarshal(respBody, &token)
+			if err != nil {
+				return token, fmt.Errorf("error unmarshaling auth token response: %w", err)
+			}
+			if token.Token == "" {
+				continue
+			}
+			decoded, err := base64.StdEncoding.DecodeString(token.Token)
+			if err != nil {
+				return token, fmt.Errorf("error decoding auth token: %w", err)
+			}
+			decryptedBytes, err := privateKey.Decrypt(nil, decoded, &rsa.OAEPOptions{Hash: crypto.SHA256})
+			if err != nil {
+				return token, fmt.Errorf("error decrypting auth token: %w", err)
+			}
+			token.Token = string(decryptedBytes)
+
+			resp, _, err = doRequest(client, deleteReq)
+			if err == nil {
+				switch resp.StatusCode {
+				case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
+				default:
+					err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+				}
+			}
+			if err != nil {
+				customPrint(fmt.Errorf("error deleting auth token: %s", err))
+			}
+
+			return token, nil
+
+		case <-timeout.C:
+			customPrint("timed out waiting for the auth token")
+			break loop
+
+		case <-interrupt:
+			customPrint("interrupted waiting for the auth token")
+			break loop
+		}
+	}
+
+	return token, nil
+}
+
+func getAuthProviders(client *http.Client, server string, useV1Public bool) ([]typedProvider, bool, error) {
+	authProvidersURL := fmt.Sprintf(authProviderURL, server)
+	if !useV1Public {
+		authProvidersURL = fmt.Sprintf(authProviderURLv3, server)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, authProvidersURL, nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, respBody, err := doRequest(client, req)
+	if err == nil {
+		switch resp.StatusCode {
+		case http.StatusOK:
+		case http.StatusNotFound:
+			if useV1Public {
+				return getAuthProviders(client, server, !useV1Public)
+			}
+			fallthrough
+		default:
+			err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		}
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("error listing auth providers: %w", err)
+	}
+
+	if !gjson.ValidBytes(respBody) {
+		return nil, false, errors.New("invalid JSON response")
+	}
+	data := gjson.GetBytes(respBody, "data").Array()
+
+	var supportedProviders []typedProvider
+	for _, provider := range data {
+		providerType := provider.Get("type").String()
+
+		if providerType != "" && supportedAuthProviders[providerType] {
+			var tp typedProvider
+
+			switch providerType {
+			case "azureADProvider":
+				tp = &apiv3.AzureADProvider{}
+			case "localProvider":
+				tp = &apiv3.LocalProvider{}
+			default:
+				tp = &apiv3.AuthProvider{}
+			}
+
+			err = json.Unmarshal([]byte(provider.Raw), tp)
+			if err != nil {
+				return nil, false, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
+			}
+
+			if tp.GetType() == "localProvider" {
+				supportedProviders = append([]typedProvider{tp}, supportedProviders...)
+			} else {
+				supportedProviders = append(supportedProviders, tp)
+			}
+		}
+	}
+
+	return supportedProviders, useV1Public, err
+}
+
+func selectAuthProvider(authProviders []typedProvider, providerType string) (typedProvider, error) {
+	if len(authProviders) == 0 {
+		return nil, errors.New("no auth provider configured")
+	}
+
+	if providerType != "" {
+		for _, p := range authProviders {
+			if p.GetType() == providerType {
+				return p, nil
+			}
+		}
+		return nil, fmt.Errorf("provider %s not found", providerType)
+	}
+
+	if len(authProviders) == 1 {
+		return authProviders[0], nil
+	}
+
+	var providers []string
+	for i, val := range authProviders {
+		providers = append(providers, fmt.Sprintf("%d - %s", i, val.GetType()))
+	}
+
+	for range 3 {
+		customPrint(fmt.Sprintf("Auth providers:\n%v", strings.Join(providers, "\n")))
+		providerIndexStr, err := customPrompt("Select auth provider: ", true)
+		if err != nil {
+			continue
+		}
+
+		providerIndex, err := strconv.Atoi(providerIndexStr)
+		if err != nil || (providerIndex < 0 || providerIndex > len(providers)-1) {
+			customPrint("Pick a valid auth provider")
+			continue
+		}
+
+		return authProviders[providerIndex], nil
+	}
+
+	return nil, errors.New("invalid auth provider")
+}
+
+func generateKey() (string, error) {
+	characters := "abcdfghjklmnpqrstvwxz12456789"
+	tokenLength := 32
+	token := make([]byte, tokenLength)
+	for i := range token {
+		r, err := rand.Int(rand.Reader, big.NewInt(int64(len(characters))))
+		if err != nil {
+			return "", err
+		}
+		token[i] = characters[r.Int64()]
+	}
+
+	return string(token), nil
+}
+
+func getTLSConfig(skipVerify bool, caCerts string) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: skipVerify,
+	}
+
+	if caCerts == "" {
+		return tlsConfig, nil
+	}
+
+	cert, err := loadAndVerifyCert(caCerts)
+	if err != nil {
+		return nil, err
+	}
+
+	roots := x509.NewCertPool()
+	ok := roots.AppendCertsFromPEM([]byte(cert))
+	if !ok {
+		return nil, errors.New("failed to append CA certs")
+	}
+	tlsConfig.RootCAs = roots
+
+	return tlsConfig, nil
+}
+
+func loadAndVerifyCert(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return resp, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp, nil, err
+	}
+
+	return resp, body, nil
+}
+
+func customPrint(data any) {
+	fmt.Fprintf(os.Stderr, "%v \n", data)
+}
+
+func customPrompt(msg string, show bool) (result string, err error) {
+	fmt.Fprint(os.Stderr, msg)
+	if show {
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			result = scanner.Text()
+		}
+		err = scanner.Err()
+	} else {
+		var data []byte
+		data, err = term.ReadPassword(int(os.Stdin.Fd()))
+		result = string(data)
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+	return result, err
+}
