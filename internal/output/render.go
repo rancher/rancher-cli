@@ -17,7 +17,7 @@ type Tabular interface {
 }
 
 // Render writes env to w in the requested format.
-// format: "" or "table" (human), "json", "yaml", "quiet" (ids), else a Go template.
+// format: "" or "table" (human), "json", "yaml", "name" (ids), else a Go template.
 func Render(w io.Writer, format string, env *Envelope) error {
 	switch format {
 	case "", "table":
@@ -33,8 +33,8 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		}
 		_, err = w.Write(b)
 		return err
-	case "quiet":
-		return renderQuiet(w, env)
+	case "name":
+		return renderName(w, env)
 	default:
 		tmpl, err := template.New("out").Parse(format)
 		if err != nil {
@@ -77,24 +77,25 @@ func renderTable(w io.Writer, env *Envelope) error {
 	return tw.Flush()
 }
 
-func renderQuiet(w io.Writer, env *Envelope) error {
+// renderName emits one identifier per line (the NAME column) for `-o name`.
+func renderName(w io.Writer, env *Envelope) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
 		return nil
 	}
-	idIdx := -1
+	nameIdx := -1
 	for i, c := range t.Columns() {
-		if c == "ID" {
-			idIdx = i
+		if c == "NAME" {
+			nameIdx = i
 			break
 		}
 	}
-	if idIdx < 0 {
+	if nameIdx < 0 {
 		return nil
 	}
 	for _, row := range t.Rows() {
-		if idIdx < len(row) {
-			_, _ = fmt.Fprintln(w, row[idIdx])
+		if nameIdx < len(row) {
+			_, _ = fmt.Fprintln(w, row[nameIdx])
 		}
 	}
 	return nil

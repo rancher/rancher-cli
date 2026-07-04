@@ -23,8 +23,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive Effect"},
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "permit a deprecated-tier write"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
-		&ucli.StringFlag{Name: "format", Aliases: []string{"o"}, Usage: "table|json|yaml|template"},
-		&ucli.BoolFlag{Name: "quiet", Aliases: []string{"q"}, Usage: "ids only"},
+		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
 	}
 }
 
@@ -62,14 +61,10 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 
 // buildIO reads the resolved global flags/streams for a run.
 func buildIO(c *ucli.Command) runtime.IO {
-	format := c.String("format")
-	if c.Bool("quiet") {
-		format = "quiet"
-	}
 	return runtime.IO{
 		Out:             c.Root().Writer,
 		Err:             c.Root().ErrWriter,
-		Format:          format,
+		Format:          c.String("output"),
 		DryRun:          c.Bool("dry-run"),
 		Apply:           c.Bool("apply"),
 		Yes:             c.Bool("yes"),

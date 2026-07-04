@@ -25,9 +25,8 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
 		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-tier write"},
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity -> error"},
-		{Name: "-o/--format", Type: "enum", Enum: []string{"table", "json", "yaml", "template"}, AppliesTo: "all"},
-		{Name: "-q/--quiet", Type: "bool", AppliesTo: "all", Desc: "ids only"},
-		{Name: "--config", Type: "string", AppliesTo: "all", Desc: "config dir override"},
+		{Name: "-o/--output", Type: "enum", Enum: []string{"table", "json", "yaml", "name", "template"}, AppliesTo: "all", Desc: "'name' = ids only"},
+		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "config dir override"},
 		{Name: "--debug", Type: "bool", AppliesTo: "all"},
 	}
 }
