@@ -15,11 +15,12 @@ import (
 
 type tin struct {
 	s map[string]string
+	b map[string]bool
 	a []string
 }
 
 func (t tin) String(k string) string { return t.s[k] }
-func (t tin) Bool(string) bool       { return false }
+func (t tin) Bool(k string) bool     { return t.b[k] }
 func (t tin) Args() []string         { return t.a }
 
 func TestExecCredentialJSONShape(t *testing.T) {
@@ -35,28 +36,29 @@ func TestExecCredentialJSONShape(t *testing.T) {
 	assert.Equal(t, "kubeconfig-u-abc:xyz", status["token"])
 }
 
-func TestTokenDeleteContracts(t *testing.T) {
+func TestDeleteTokenCommand(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	cmd := NewTokenCommand(dir, store)
+	cmd := NewDeleteTokenCommand(dir, store)
 
-	t.Run("no keys is validation error", func(t *testing.T) {
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"delete"}}, safety.Effect{})
+	t.Run("no name and no --all is validation error", func(t *testing.T) {
+		_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
 
-	t.Run("keyed delete requires --server", func(t *testing.T) {
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"delete", "mykey"}}, safety.Effect{})
-		var ce *clierr.Error
-		require.ErrorAs(t, err, &ce)
-		assert.Equal(t, clierr.CodeValidation, ce.Code)
-	})
-
-	t.Run("delete all works without --server and flushes cache", func(t *testing.T) {
+	t.Run("--all flushes the cache", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"delete", "all"}}, safety.Effect{})
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, safety.Effect{})
+		require.NoError(t, err)
+		_, _, gerr := store.GetCachedCred("acme/u/c")
+		assert.ErrorIs(t, gerr, config.ErrNoToken)
+	})
+
+	t.Run("named delete uses the full compound key", func(t *testing.T) {
+		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
+		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, safety.Effect{})
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)

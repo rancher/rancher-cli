@@ -25,6 +25,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	authCheckF := func(dir string, s config.CredStore) runtime.Command { return commands.NewAuthCheck(dir, s) }
 	purgeF := func(_ string, _ config.CredStore) runtime.Command { return commands.NewConfigPurgeLegacy() }
 	tokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewTokenCommand(dir, s) }
+	delTokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewDeleteTokenCommand(dir, s) }
 	ctxCurF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextCurrent(dir) }
 	ctxSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextSwitch(dir) }
 	ctxUseF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextUse(dir) }
@@ -36,7 +37,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// Register ONE instance of every command into the single registry for the
 	// schema manifest (Describe() only; dir/store irrelevant).
 	for _, f := range []func(string, config.CredStore) runtime.Command{
-		loginF, tokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
+		loginF, tokenF, delTokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
 	} {
 		reg.Register(f("", nil))
 	}
@@ -58,15 +59,18 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			return ctx, nil
 		},
 		Commands: []*ucli.Command{
-			AdaptFactory(loginF),
-			AdaptFactory(tokenF),
 			Adapt(schemaCmd),
 			{Name: "context", Usage: "Context operations",
 				Commands: []*ucli.Command{AdaptFactory(ctxSwF), AdaptFactory(ctxCurF), AdaptFactory(ctxUseF)}},
 			{Name: "server", Usage: "Server operations",
 				Commands: []*ucli.Command{AdaptFactory(srvLsF), AdaptFactory(srvSwF)}},
 			{Name: "auth", Usage: "Auth operations",
-				Commands: []*ucli.Command{AdaptFactory(authCheckF)}},
+				Commands: []*ucli.Command{
+					AdaptFactory(loginF),     // auth login
+					AdaptFactory(authCheckF), // auth check
+					AdaptFactory(tokenF),     // auth get-token
+					AdaptFactory(delTokenF),  // auth delete-token
+				}},
 			{Name: "config", Usage: "Config operations",
 				Commands: []*ucli.Command{AdaptFactory(purgeF)}},
 		},

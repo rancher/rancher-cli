@@ -94,7 +94,7 @@ func NewTokenCommand(dir string, store config.CredStore) runtime.Command {
 
 func (tokenCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "token",
+		Name:        "auth get-token",
 		Usage:       "Authenticate and emit a kubeconfig ExecCredential",
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
@@ -114,9 +114,6 @@ func (tokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 }
 
 func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
-	if args := in.Args(); len(args) > 0 && args[0] == "delete" {
-		return t.runDelete(in, args[1:])
-	}
 	return t.run(ctx, in)
 }
 
@@ -197,29 +194,51 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
 }
 
-func (t tokenCmd) runDelete(in runtime.Input, keys []string) (runtime.Result, error) {
+type deleteTokenCmd struct{ store config.CredStore }
+
+// NewDeleteTokenCommand builds `auth delete-token` (local): clear cached
+// exec-credential token(s). A positional name is the full compound cache key
+// "<server>/<user>/<cluster>"; --all clears every cached credential.
+func NewDeleteTokenCommand(_ string, store config.CredStore) runtime.Command {
+	return &deleteTokenCmd{store: store}
+}
+
+func (deleteTokenCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:        "auth delete-token",
+		Usage:       "Delete cached exec-credential token(s)",
+		CommandType: runtime.Local,
+		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool"}},
+		Examples: []string{
+			"rancher auth delete-token --all",
+			"rancher auth delete-token https://r.ex/u-abc/c-1",
+		},
+	}
+}
+
+func (deleteTokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
+	return safety.Effect{}, nil
+}
+
+func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+	if in.Bool("all") {
+		if err := d.store.DeleteAllCachedCreds(); err != nil {
+			return runtime.Result{}, err
+		}
+		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": "all"}}, nil
+	}
+	keys := in.Args()
 	if len(keys) == 0 {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "specify credential key(s) or 'all'")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"provide a cached-credential name or --all").
+			WithHint("name is <server>/<user>/<cluster>; or: rancher auth delete-token --all")
 	}
-
-	if keys[0] == "all" {
-		if err := t.store.DeleteAllCachedCreds(); err != nil {
-			return runtime.Result{}, err
-		}
-		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
-	}
-
-	server := in.String("server")
-	if server == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server is required to delete a specific cached credential").WithHint("or: rancher token delete all")
-	}
-
 	for _, key := range keys {
-		if err := t.store.DeleteCachedCred(server + "/" + key); err != nil {
+		if err := d.store.DeleteCachedCred(key); err != nil {
 			return runtime.Result{}, err
 		}
 	}
-
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
 }
 

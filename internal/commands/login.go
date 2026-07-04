@@ -23,7 +23,7 @@ func NewLogin(dir string, store config.CredStore) runtime.Command {
 
 func (loginCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "login",
+		Name:        "auth login",
 		Usage:       "Login to a Rancher server",
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "serverurl", Type: "string", Required: true}},
@@ -33,7 +33,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string"},
 			{Name: "context", Type: "string"},
 		},
-		Examples: []string{"rancher login https://rancher.ex --token id:secret --name prod --context c-1:p-1"},
+		Examples: []string{"rancher auth login https://rancher.ex --token id:secret --name prod --context c-1:p-1"},
 	}
 }
 

@@ -39,7 +39,7 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 	root.Writer = &out
 
 	require.NoError(t, root.Run(context.Background(), []string{
-		"rancher", "--config", dir, "login", "https://r.ex",
+		"rancher", "--config", dir, "auth", "login", "https://r.ex",
 		"--token", "id:secret", "--name", "acme", "--context", "c-1:p-1", "-o", "json",
 	}))
 
