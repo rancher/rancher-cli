@@ -63,6 +63,17 @@ func TestDeleteTokenCommand(t *testing.T) {
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
+
+	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
+		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour)))
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, safety.Effect{})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		// the cache must be untouched — nothing deleted
+		_, _, gerr := store.GetCachedCred("keep/u/c")
+		require.NoError(t, gerr)
+	})
 }
 
 func TestBasicAuthRespectsContextCancellation(t *testing.T) {

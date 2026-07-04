@@ -178,7 +178,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 		return runtime.Result{}, err
 	}
 
-	if rancherToken.Token == "" {
+	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"authentication returned an empty token").
 			WithHint("check the auth provider and credentials")
@@ -228,24 +228,36 @@ func (deleteTokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error
 }
 
 func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
-	if in.Bool("all") {
+	all := in.Bool("all")
+	keys := in.Args()
+	if all && len(keys) > 0 {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"specify either credential name(s) or --all, not both").
+			WithHint("rancher auth delete-token <name>  OR  rancher auth delete-token --all")
+	}
+	if all {
 		if err := d.store.DeleteAllCachedCreds(); err != nil {
 			return runtime.Result{}, err
 		}
 		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": "all"}}, nil
 	}
-	keys := in.Args()
 	if len(keys) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"provide a cached-credential name or --all").
 			WithHint("name is <server>/<user>/<cluster>; or: rancher auth delete-token --all")
 	}
+	// Delete each key; on failure report which keys were already removed so the
+	// caller isn't left guessing the partial state.
+	deleted := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if err := d.store.DeleteCachedCred(key); err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("failed to delete %q: %v", key, err)).
+				WithHint(fmt.Sprintf("already deleted: %v", deleted))
 		}
+		deleted = append(deleted, key)
 	}
-	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
+	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
 }
 
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput) (Token, error) {
