@@ -45,6 +45,11 @@ type contextSetCmd struct{ dir string }
 func NewContextSet(dir string) runtime.Command { return &contextSetCmd{dir: dir} }
 
 func (contextSetCmd) Describe() runtime.Descriptor {
+	// `--current` is optional: Phase 1 only targets the current context, so the flag
+	// is accepted for kubectl parity and reserved for the future named-context
+	// variant. It is NOT marked Required — a required bool cannot be enforced by
+	// validateInput (it checks a flag's String() value, always "" for a bool). The
+	// meaningful requirement is that at least one scope flag is set (below).
 	return runtime.Descriptor{
 		Name:        "config set-context",
 		Usage:       "Set the current context's cluster/project scope",
@@ -61,8 +66,14 @@ func (contextSetCmd) Plan(context.Context, runtime.Input) (safety.Effect, error)
 	return safety.Effect{}, nil
 }
 func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
-	if !in.Bool("current") {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--current is required").
+	cluster, project := in.String("cluster"), in.String("project")
+	// Require at least one scope flag so a bare `set-context [--current]` is a
+	// clear error, not a silent no-op that rewrites the config unchanged.
+	// (Clearing a field back to empty is not supported in Phase 1 — it needs
+	// Input.IsSet to tell "flag omitted" from "flag set to empty".)
+	if cluster == "" && project == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"provide --cluster and/or --project").
 			WithHint("run: rancher config set-context --current --cluster <c> [--project <p>]")
 	}
 	cfg, err := config.Load(config.FilePath(c.dir))
@@ -78,11 +89,11 @@ func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Eff
 		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "current context \""+cfg.CurrentContext+"\" not found").
 			WithHint("run: rancher config use-context <name> or rancher auth login")
 	}
-	if cl := in.String("cluster"); cl != "" {
-		ctx.Cluster = cl
+	if cluster != "" {
+		ctx.Cluster = cluster
 	}
-	if pr := in.String("project"); pr != "" {
-		ctx.Project = pr
+	if project != "" {
+		ctx.Project = project
 	}
 	cfg.Contexts[cfg.CurrentContext] = ctx
 	if err := cfg.Write(); err != nil {

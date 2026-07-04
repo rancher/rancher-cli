@@ -45,14 +45,28 @@ func TestConfigSetContextSetsBoth(t *testing.T) {
 	assert.Equal(t, "p-2", cfg.Contexts["acme"].Project)
 }
 
-func TestConfigSetContextRequiresCurrent(t *testing.T) {
+func TestConfigSetContextRequiresScopeFlag(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
+	// No --cluster/--project → validation error, not a silent no-op write.
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
+		args{b: map[string]bool{"current": true}}, safety.Effect{})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestConfigSetContextCurrentIsOptional(t *testing.T) {
+	dir := t.TempDir()
+	writeCtxConfig(t, dir)
+	// --current is optional (Phase 1 targets the current context); a scope flag
+	// alone succeeds. This keeps the Descriptor honest: --current is not required.
+	_, err := NewContextSet(dir).Execute(context.Background(),
+		args{s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
+	require.NoError(t, err)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "c-2", cfg.Contexts["acme"].Cluster)
 }
 
 func TestContextUseActivatesNamedContext(t *testing.T) {
