@@ -30,16 +30,20 @@ type Resolver struct {
 }
 
 // NewResolver returns the Phase-0/1 op map. Promotions are edits here only.
+// Keys are the canonical-singular Descriptor.Name (grammar rule: nouns are
+// canonical singular; plural/short forms are accepted aliases that resolve to the
+// singular). Phase-1 read/write commands MUST register with singular names so the
+// schema merge finds their tier/stability here.
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]Binding{
 		// public tier (RK-API), stable
 		"create project": {TierPublic, Stable},
-		"get projects":   {TierPublic, Stable},
+		"get project":    {TierPublic, Stable},
 		"delete project": {TierPublic, Stable},
 		// crd tier, beta reads (Phase 1)
-		"get clusters":   {TierCRD, Beta},
-		"get nodes":      {TierCRD, Beta},
-		"get namespaces": {TierCRD, Beta},
+		"get cluster":   {TierCRD, Beta},
+		"get node":      {TierCRD, Beta},
+		"get namespace": {TierCRD, Beta},
 	}}
 }
 

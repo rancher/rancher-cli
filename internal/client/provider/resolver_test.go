@@ -14,8 +14,8 @@ func TestResolveKnownOps(t *testing.T) {
 		assert.Equal(t, TierPublic, b.Tier)
 		assert.Equal(t, Stable, b.Stability)
 	})
-	t.Run("get clusters is crd/beta", func(t *testing.T) {
-		b, ok := r.Resolve("get clusters")
+	t.Run("get cluster is crd/beta", func(t *testing.T) {
+		b, ok := r.Resolve("get cluster")
 		assert.True(t, ok)
 		assert.Equal(t, TierCRD, b.Tier)
 	})
