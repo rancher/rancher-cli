@@ -16,7 +16,7 @@ type loginCmd struct {
 	store config.CredStore
 }
 
-// NewLogin builds the `login` command (local).
+// NewLogin builds the `auth login` command (local).
 func NewLogin(dir string, store config.CredStore) runtime.Command {
 	return &loginCmd{dir: dir, store: store}
 }
