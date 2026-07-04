@@ -276,7 +276,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	token, err := rancherLogin(ctx, client, input, oauthToken, useV1Public)
 	if err != nil {
-		return nil, fmt.Errorf("error during rancher login: %w", err)
+		return nil, fmt.Errorf("error during auth login: %w", err)
 	}
 
 	return token, nil

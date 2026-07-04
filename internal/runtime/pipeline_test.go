@@ -134,12 +134,12 @@ func TestValidateInput(t *testing.T) {
 
 func TestQuietErrorStillRendersJSON(t *testing.T) {
 	var out, errBuf bytes.Buffer
-	cerr := Run(context.Background(), flaggedCmd{}, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "quiet"})
+	cerr := Run(context.Background(), flaggedCmd{}, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"})
 	require.NotNil(t, cerr)
 	assert.Equal(t, clierr.CodeValidation, cerr.Code)
-	assert.NotEmpty(t, errBuf.String(), "error must not be silent under --quiet")
+	assert.NotEmpty(t, errBuf.String(), "error must not be silent under -o name")
 	var env map[string]any
-	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env), "error envelope must be valid JSON under --quiet")
+	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env), "error envelope must be valid JSON under -o name")
 	assert.Equal(t, "Error", env["kind"])
 	data := env["data"].(map[string]any)
 	assert.NotEmpty(t, data["error"], "error envelope must contain error details")
