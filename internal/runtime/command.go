@@ -45,7 +45,7 @@ type Input interface {
 
 // Result is a command's success payload, rendered into the output envelope.
 // Raw=true tells the pipeline to emit Data as bare JSON with NO envelope — used
-// only by the `token` exec-credential plugin, whose stdout kubectl parses as a
+// only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
 // single ExecCredential object.
 type Result struct {
 	Kind     string
