@@ -21,7 +21,7 @@ func (s serverListData) Rows() [][]string  { return s.rows }
 
 type serverLsCmd struct{ dir string }
 
-// NewServerLs builds `server ls` (local).
+// NewServerLs builds `config get-servers` (local).
 func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
 
 func (serverLsCmd) Describe() runtime.Descriptor {
@@ -57,7 +57,7 @@ func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect
 
 type serverSwitchCmd struct{ dir string }
 
-// NewServerSwitch builds `server switch <name>` (local).
+// NewServerSwitch builds `config use-server <name>` (local).
 func NewServerSwitch(dir string) runtime.Command { return &serverSwitchCmd{dir: dir} }
 
 func (serverSwitchCmd) Describe() runtime.Descriptor {
@@ -117,7 +117,7 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ safety.E
 	}
 	// When several contexts target this server, the choice is not obvious — surface
 	// it instead of silently emitting a switch-looking success. (Selecting a
-	// specific context among them is a config edit / `context switch` in Phase 0.)
+	// specific context among them is a config edit / `config set-context`.)
 	var warnings []string
 	if len(matches) > 1 {
 		warnings = append(warnings, fmt.Sprintf(

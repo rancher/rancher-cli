@@ -11,7 +11,7 @@ import (
 
 type contextCurrentCmd struct{ dir string }
 
-// NewContextCurrent builds `context current` (local).
+// NewContextCurrent builds `config current-context` (local).
 func NewContextCurrent(dir string) runtime.Command { return &contextCurrentCmd{dir: dir} }
 
 func (contextCurrentCmd) Describe() runtime.Descriptor {
@@ -95,9 +95,9 @@ func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Eff
 
 type contextUseCmd struct{ dir string }
 
-// NewContextUse builds `context use <name>` (local): activate a named context.
+// NewContextUse builds `config use-context <name>` (local): activate a named context.
 // This is the primitive that lets a user pick among contexts targeting the same
-// server (which `context switch` — scope only — cannot do).
+// server (which `config set-context` — scope only — cannot do).
 func NewContextUse(dir string) runtime.Command { return &contextUseCmd{dir: dir} }
 
 func (contextUseCmd) Describe() runtime.Descriptor {
