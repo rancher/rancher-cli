@@ -63,3 +63,18 @@ func TestDeleteAllCachedCredsFlushesFileStore(t *testing.T) {
 	_, _, err = s.GetCachedCred("acme/u/c2")
 	assert.ErrorIs(t, err, ErrNoToken)
 }
+
+func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
+	dir := t.TempDir()
+	s := NewFileStore(dir).(*fileStore)
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute)))
+
+	tok, _, err := s.GetCachedCred("acme/u/c")
+	assert.ErrorIs(t, err, ErrNoToken)
+	assert.Empty(t, tok)
+
+	m, err := s.readCache()
+	require.NoError(t, err)
+	_, exists := m["acme/u/c"]
+	assert.False(t, exists, "expired entry should have been removed on successful purge")
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/signal"
+	"syscall"
 
 	surfacecli "github.com/rancher/rancher-cli/surface/cli"
 	"github.com/sirupsen/logrus"
@@ -18,7 +20,9 @@ func main() {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	if err := root.Run(context.Background(), os.Args); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := root.Run(ctx, os.Args); err != nil {
 		// The adapter returns cli.Exit("", code); honor that exact exit code.
 		var ec ucli.ExitCoder
 		if errors.As(err, &ec) {

@@ -62,3 +62,16 @@ func TestTokenDeleteContracts(t *testing.T) {
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 }
+
+func TestBasicAuthRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	input := &loginInput{
+		server:       "https://test.example.com",
+		authProvider: "localProvider",
+	}
+
+	_, err := basicAuth(ctx, nil, input, true)
+	assert.Error(t, err, "basicAuth should fail when given a cancelled context")
+}

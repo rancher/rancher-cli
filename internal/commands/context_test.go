@@ -76,3 +76,42 @@ func TestContextUseActivatesNamedContext(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
+
+func TestContextCurrentMissingContextKey(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "acme",
+		Contexts:       map[string]config.Context{},
+		Servers:        map[string]config.Server{"acme": {URL: "https://r.ex"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	_, err := NewContextCurrent(dir).Execute(context.Background(), args{}, safety.Effect{})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Contains(t, ce.Error(), "current context \"acme\" not found")
+}
+
+func TestContextSwitchMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "acme",
+		Contexts:       map[string]config.Context{},
+		Servers:        map[string]config.Server{"acme": {URL: "https://r.ex"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	_, err := NewContextSwitch(dir).Execute(context.Background(),
+		args{a: []string{"c-2:p-2"}}, safety.Effect{})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Contains(t, ce.Error(), "current context \"acme\" not found")
+
+	cfgAfter, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Empty(t, cfgAfter.Contexts, "config should not be corrupted with zero Context{}")
+}

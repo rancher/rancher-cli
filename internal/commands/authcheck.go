@@ -56,6 +56,9 @@ func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effec
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "cannot reach server: "+err.Error()).
 			WithHint("check the server URL, token, and CA")
 	}
+	if ver == nil {
+		return runtime.Result{}, clierr.New(clierr.CodeAuth, "server returned no version info")
+	}
 	return runtime.Result{Kind: "AuthCheck", Data: map[string]any{
 		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver.GitVersion,
 	}}, nil

@@ -30,7 +30,11 @@ func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ safety.
 		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "no current context").
 			WithHint("run: rancher login <SERVERURL>")
 	}
-	ctx := cfg.Contexts[cfg.CurrentContext]
+	ctx, ok := cfg.Contexts[cfg.CurrentContext]
+	if !ok {
+		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "current context \""+cfg.CurrentContext+"\" not found").
+			WithHint("run: rancher context use <name> or rancher login")
+	}
 	return runtime.Result{Kind: "Context", Data: map[string]string{
 		"name": cfg.CurrentContext, "server": ctx.Server, "cluster": ctx.Cluster, "project": ctx.Project,
 	}}, nil
@@ -71,10 +75,14 @@ func (c contextSwitchCmd) Execute(_ context.Context, in runtime.Input, _ safety.
 	}
 	// Match Effective()'s RANCHER_CONTEXT semantics: "c-1:p-1" sets both; a
 	// colon-less "c-1" sets only the cluster and LEAVES the project unchanged.
-	cluster, project, ok := strings.Cut(in.Args()[0], ":")
-	ctx := cfg.Contexts[cfg.CurrentContext]
+	cluster, project, hasProject := strings.Cut(in.Args()[0], ":")
+	ctx, ok := cfg.Contexts[cfg.CurrentContext]
+	if !ok {
+		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "current context \""+cfg.CurrentContext+"\" not found").
+			WithHint("run: rancher context use <name> or rancher login")
+	}
 	ctx.Cluster = cluster
-	if ok {
+	if hasProject {
 		ctx.Project = project
 	}
 	cfg.Contexts[cfg.CurrentContext] = ctx

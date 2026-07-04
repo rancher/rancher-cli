@@ -38,7 +38,7 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
 	if input.authFlow == "" {
 		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
 	}
@@ -46,9 +46,9 @@ func oauthAuth(client *http.Client, input *loginInput, provider typedProvider, u
 
 	switch input.authFlow {
 	case authCodeFlow:
-		return oauthAuthCodeAuth(client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser)
+		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser)
 	case deviceAuthFlow, "":
-		return oauthDeviceCodeAuth(client, input, provider, useV1Public)
+		return oauthDeviceCodeAuth(ctx, client, input, provider, useV1Public)
 	default:
 		return nil, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
 	}
@@ -75,6 +75,7 @@ func getCallbackPort() (int, error) {
 }
 
 func oauthAuthCodeAuth(
+	ctx context.Context,
 	client *http.Client,
 	input *loginInput,
 	provider typedProvider,
@@ -151,7 +152,7 @@ func oauthAuthCodeAuth(
 			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", err)
 		}
 
-		return rancherLogin(client, input, oauthToken, useV1Public)
+		return rancherLogin(ctx, client, input, oauthToken, useV1Public)
 	case <-timeout.C:
 		return nil, errors.New("timed out waiting for browser authentication")
 	case <-interrupt:
@@ -249,15 +250,15 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
+func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
 	}
 
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
+	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, client)
 
-	deviceAuthResp, err := oauthConfig.DeviceAuth(ctx)
+	deviceAuthResp, err := oauthConfig.DeviceAuth(ctxWithClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initiate device authorization: %w", err)
 	}
@@ -268,12 +269,12 @@ func oauthDeviceCodeAuth(client *http.Client, input *loginInput, provider typedP
 		deviceAuthResp.UserCode,
 	))
 
-	oauthToken, err := oauthConfig.DeviceAccessToken(ctx, deviceAuthResp)
+	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve access token: %w", err)
 	}
 
-	token, err := rancherLogin(client, input, oauthToken, useV1Public)
+	token, err := rancherLogin(ctx, client, input, oauthToken, useV1Public)
 	if err != nil {
 		return nil, fmt.Errorf("error during rancher login: %w", err)
 	}
@@ -302,7 +303,7 @@ func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
 	}, nil
 }
 
-func rancherLogin(client *http.Client, input *loginInput, oauthToken *oauth2.Token, useV1Public bool) (*Token, error) {
+func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token, useV1Public bool) (*Token, error) {
 	reqURL := fmt.Sprintf(loginURL, input.server)
 	if !useV1Public {
 		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
@@ -323,7 +324,7 @@ func rancherLogin(client *http.Client, input *loginInput, oauthToken *oauth2.Tok
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}

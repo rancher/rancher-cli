@@ -176,7 +176,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 		return runtime.Result{}, err
 	}
 
-	rancherToken, err := loginAndGenerateCred(client, input)
+	rancherToken, err := loginAndGenerateCred(ctx, client, input)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -223,8 +223,8 @@ func (t tokenCmd) runDelete(in runtime.Input, keys []string) (runtime.Result, er
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
 }
 
-func loginAndGenerateCred(client *http.Client, input *loginInput) (Token, error) {
-	authProviders, useV1Public, err := getAuthProviders(client, input.server, true)
+func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput) (Token, error) {
+	authProviders, useV1Public, err := getAuthProviders(ctx, client, input.server, true)
 	if err != nil {
 		return Token{}, err
 	}
@@ -237,19 +237,19 @@ func loginAndGenerateCred(client *http.Client, input *loginInput) (Token, error)
 
 	var token Token
 	if samlProviders[input.authProvider] {
-		token, err = samlAuth(client, input, useV1Public)
+		token, err = samlAuth(ctx, client, input, useV1Public)
 		if err != nil {
 			return Token{}, err
 		}
 	} else if oauthProviders[input.authProvider] {
-		tokenPtr, err := oauthAuth(client, input, selectedProvider, useV1Public)
+		tokenPtr, err := oauthAuth(ctx, client, input, selectedProvider, useV1Public)
 		if err != nil {
 			return Token{}, err
 		}
 		token = *tokenPtr
 	} else {
 		customPrint(fmt.Sprintf("Enter credentials for %s \n", input.authProvider))
-		token, err = basicAuth(client, input, useV1Public)
+		token, err = basicAuth(ctx, client, input, useV1Public)
 		if err != nil {
 			return Token{}, err
 		}
@@ -258,7 +258,7 @@ func loginAndGenerateCred(client *http.Client, input *loginInput) (Token, error)
 	return token, nil
 }
 
-func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
+func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
 	prompt := "Enter username"
 	if input.userID != "" {
 		prompt += " [" + input.userID + "]"
@@ -298,7 +298,7 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (Token,
 		reqURL = fmt.Sprintf(loginURLv3, input.server, input.authProvider, providerName)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return Token{}, fmt.Errorf("error creating request: %w", err)
 	}
@@ -320,7 +320,7 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (Token,
 	return token, nil
 }
 
-func samlAuth(client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
+func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
 	token := Token{}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -350,14 +350,14 @@ func samlAuth(client *http.Client, input *loginInput, useV1Public bool) (Token, 
 		tokenURL = fmt.Sprintf(authTokenURLv3, input.server, id)
 	}
 
-	getReq, err := http.NewRequest(http.MethodGet, tokenURL, bytes.NewBuffer(nil))
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, bytes.NewBuffer(nil))
 	if err != nil {
 		return token, fmt.Errorf("error creating get token request: %w", err)
 	}
 	getReq.Header.Set("content-type", "application/json")
 	getReq.Header.Set("accept", "application/json")
 
-	deleteReq, err := http.NewRequest(http.MethodDelete, tokenURL, bytes.NewBuffer(nil))
+	deleteReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, tokenURL, bytes.NewBuffer(nil))
 	if err != nil {
 		return token, fmt.Errorf("error creating delete token request: %w", err)
 	}
@@ -448,13 +448,13 @@ loop:
 	return token, nil
 }
 
-func getAuthProviders(client *http.Client, server string, useV1Public bool) ([]typedProvider, bool, error) {
+func getAuthProviders(ctx context.Context, client *http.Client, server string, useV1Public bool) ([]typedProvider, bool, error) {
 	authProvidersURL := fmt.Sprintf(authProviderURL, server)
 	if !useV1Public {
 		authProvidersURL = fmt.Sprintf(authProviderURLv3, server)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, authProvidersURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authProvidersURL, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("error creating request: %w", err)
 	}
@@ -465,7 +465,7 @@ func getAuthProviders(client *http.Client, server string, useV1Public bool) ([]t
 		case http.StatusOK:
 		case http.StatusNotFound:
 			if useV1Public {
-				return getAuthProviders(client, server, !useV1Public)
+				return getAuthProviders(ctx, client, server, !useV1Public)
 			}
 			fallthrough
 		default:

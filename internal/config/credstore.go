@@ -144,7 +144,9 @@ func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	}
 	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
 		delete(m, key)
-		_ = f.writeCache(m)
+		if werr := f.writeCache(m); werr != nil {
+			return "", time.Time{}, werr
+		}
 		return "", time.Time{}, ErrNoToken
 	}
 	return cred.Token, cred.Expiry, nil
@@ -229,7 +231,9 @@ func (keyringStore) GetCachedCred(key string) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-		_ = keyring.Delete(keyringService, "cred/"+key)
+		if derr := keyring.Delete(keyringService, "cred/"+key); derr != nil && !errors.Is(derr, keyring.ErrNotFound) {
+			return "", time.Time{}, derr
+		}
 		return "", time.Time{}, ErrNoToken
 	}
 	return cred.Token, cred.Expiry, nil
