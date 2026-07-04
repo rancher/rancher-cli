@@ -77,3 +77,16 @@ func TestBasicAuthRespectsContextCancellation(t *testing.T) {
 	_, err := basicAuth(ctx, nil, input, true)
 	assert.Error(t, err, "basicAuth should fail when given a cancelled context")
 }
+
+func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
+	// Embedding (not a json:",inline" tag) is what promotes kind/apiVersion.
+	cred := newExecCredential("", time.Time{})
+	b, err := json.Marshal(cred)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	assert.Equal(t, "ExecCredential", got["kind"])
+	status := got["status"].(map[string]any)
+	_, hasTok := status["token"]
+	assert.False(t, hasTok, "empty token must be omitted, not emitted as empty string")
+}

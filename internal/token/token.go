@@ -158,7 +158,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 
 	var certPEM string
 	if input.caCerts != "" {
-		certPEM, err = loadAndVerifyCert(input.caCerts)
+		certPEM, err = loadCertPEM(input.caCerts)
 		if err != nil {
 			return runtime.Result{}, err
 		}
@@ -176,6 +176,12 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 	rancherToken, err := loginAndGenerateCred(ctx, client, input)
 	if err != nil {
 		return runtime.Result{}, err
+	}
+
+	if rancherToken.Token == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"authentication returned an empty token").
+			WithHint("check the auth provider and credentials")
 	}
 
 	var tokenExpiry time.Time
@@ -589,7 +595,8 @@ func generateKey() (string, error) {
 	return string(token), nil
 }
 
-func loadAndVerifyCert(path string) (string, error) {
+// loadCertPEM reads a PEM cert file to a string (httpx validates the PEM).
+func loadCertPEM(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err

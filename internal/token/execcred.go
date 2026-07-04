@@ -13,8 +13,8 @@ type execCredentialStatus struct {
 }
 
 type execCredential struct {
-	typeMeta `json:",inline"`
-	Status   *execCredentialStatus `json:"status,omitempty"`
+	typeMeta
+	Status *execCredentialStatus `json:"status,omitempty"`
 }
 
 func newExecCredential(token string, expiry time.Time) *execCredential {
