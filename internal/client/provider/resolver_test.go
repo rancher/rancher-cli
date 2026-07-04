@@ -8,14 +8,14 @@ import (
 
 func TestResolveKnownOps(t *testing.T) {
 	r := NewResolver()
-	t.Run("projects create is public/stable", func(t *testing.T) {
-		b, ok := r.Resolve("projects create")
+	t.Run("create project is public/stable", func(t *testing.T) {
+		b, ok := r.Resolve("create project")
 		assert.True(t, ok)
 		assert.Equal(t, TierPublic, b.Tier)
 		assert.Equal(t, Stable, b.Stability)
 	})
-	t.Run("clusters ls is crd/beta", func(t *testing.T) {
-		b, ok := r.Resolve("clusters ls")
+	t.Run("get clusters is crd/beta", func(t *testing.T) {
+		b, ok := r.Resolve("get clusters")
 		assert.True(t, ok)
 		assert.Equal(t, TierCRD, b.Tier)
 	})

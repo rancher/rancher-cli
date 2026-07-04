@@ -33,13 +33,13 @@ type Resolver struct {
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]Binding{
 		// public tier (RK-API), stable
-		"projects create": {TierPublic, Stable},
-		"projects ls":     {TierPublic, Stable},
-		"projects delete": {TierPublic, Stable},
+		"create project": {TierPublic, Stable},
+		"get projects":   {TierPublic, Stable},
+		"delete project": {TierPublic, Stable},
 		// crd tier, beta reads (Phase 1)
-		"clusters ls":   {TierCRD, Beta},
-		"nodes ls":      {TierCRD, Beta},
-		"namespaces ls": {TierCRD, Beta},
+		"get clusters":   {TierCRD, Beta},
+		"get nodes":      {TierCRD, Beta},
+		"get namespaces": {TierCRD, Beta},
 	}}
 }
 

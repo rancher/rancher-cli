@@ -23,8 +23,8 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 	for _, c := range m.Commands {
 		byName[c.Name] = c
 	}
-	require.Contains(t, byName, "clusters ls")
-	assert.Equal(t, "crd", byName["clusters ls"].Tier) // merged from resolver
+	require.Contains(t, byName, "get clusters")
+	assert.Equal(t, "crd", byName["get clusters"].Tier) // merged from resolver
 
 	// Per-command Flags must reach the manifest (agent discoverability).
 	require.Contains(t, byName, "widgets set")
@@ -36,7 +36,7 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 type clustersLsStub struct{ fakeCmd }
 
 func (clustersLsStub) Describe() Descriptor {
-	return Descriptor{Name: "clusters ls", CommandType: ReadOnly}
+	return Descriptor{Name: "get clusters", CommandType: ReadOnly}
 }
 
 type flaggedStub struct{ fakeCmd }
