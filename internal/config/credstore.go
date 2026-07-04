@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -191,11 +192,17 @@ func (keyringStore) GetToken(server string) (string, error) {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNoToken
 	}
-	return tok, err
+	if err != nil {
+		return "", fmt.Errorf("keyring get %q: %w", server, err)
+	}
+	return tok, nil
 }
 
 func (keyringStore) SetToken(server, token string) error {
-	return keyring.Set(keyringService, server, token)
+	if err := keyring.Set(keyringService, server, token); err != nil {
+		return fmt.Errorf("keyring set %q: %w", server, err)
+	}
+	return nil
 }
 
 func (keyringStore) DeleteToken(server string) error {
@@ -203,7 +210,10 @@ func (keyringStore) DeleteToken(server string) error {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("keyring delete %q: %w", server, err)
+	}
+	return nil
 }
 
 func (keyringStore) GetCachedCred(key string) (string, time.Time, error) {

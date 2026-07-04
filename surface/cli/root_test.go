@@ -13,6 +13,7 @@ import (
 )
 
 func TestSchemaCommandEndToEnd(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -30,6 +31,7 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 }
 
 func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)

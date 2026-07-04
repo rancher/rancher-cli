@@ -163,7 +163,11 @@ func renderEffect(io IO, eff safety.Effect) *clierr.Error {
 }
 
 func renderErr(io IO, ce *clierr.Error) *clierr.Error {
-	_ = output.Render(io.Err, io.Format, output.ErrorEnvelope(ce))
+	errFmt := io.Format
+	if errFmt == "quiet" || errFmt == "" {
+		errFmt = "json"
+	}
+	_ = output.Render(io.Err, errFmt, output.ErrorEnvelope(ce))
 	return ce
 }
 
