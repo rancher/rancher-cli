@@ -25,7 +25,7 @@ type serverLsCmd struct{ dir string }
 func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
 
 func (serverLsCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "server ls", Usage: "List configured servers", CommandType: runtime.Local}
+	return runtime.Descriptor{Name: "config get-servers", Usage: "List configured servers", CommandType: runtime.Local}
 }
 func (serverLsCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
@@ -62,7 +62,7 @@ func NewServerSwitch(dir string) runtime.Command { return &serverSwitchCmd{dir: 
 
 func (serverSwitchCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "server switch",
+		Name:        "config use-server",
 		Usage:       "Switch the current server",
 		CommandType: runtime.Local,
 		// Required:false — a missing name is handled here with an AMBIGUOUS_SELECTION
@@ -84,7 +84,7 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ safety.E
 			cands = append(cands, clierr.Candidate{ID: n, Name: n})
 		}
 		return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection, "server name required").
-			WithCandidates(cands).WithHint("rancher server switch <name>")
+			WithCandidates(cands).WithHint("rancher config use-server <name>")
 	}
 	name := in.Args()[0]
 	if _, ok := cfg.Servers[name]; !ok {
@@ -121,7 +121,7 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ safety.E
 	var warnings []string
 	if len(matches) > 1 {
 		warnings = append(warnings, fmt.Sprintf(
-			"multiple contexts target server %q (%s); activated %q — run `rancher context use <name>` to pick a different one",
+			"multiple contexts target server %q (%s); activated %q — run `rancher config use-context <name>` to pick a different one",
 			name, strings.Join(matches, ", "), ctxName))
 	}
 	cfg.CurrentContext = ctxName

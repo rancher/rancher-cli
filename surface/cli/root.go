@@ -27,7 +27,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	tokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewTokenCommand(dir, s) }
 	delTokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewDeleteTokenCommand(dir, s) }
 	ctxCurF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextCurrent(dir) }
-	ctxSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextSwitch(dir) }
+	ctxSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextSet(dir) }
 	ctxUseF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextUse(dir) }
 	srvLsF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerLs(dir) }
 	srvSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(dir) }
@@ -60,10 +60,6 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		},
 		Commands: []*ucli.Command{
 			Adapt(schemaCmd),
-			{Name: "context", Usage: "Context operations",
-				Commands: []*ucli.Command{AdaptFactory(ctxSwF), AdaptFactory(ctxCurF), AdaptFactory(ctxUseF)}},
-			{Name: "server", Usage: "Server operations",
-				Commands: []*ucli.Command{AdaptFactory(srvLsF), AdaptFactory(srvSwF)}},
 			{Name: "auth", Usage: "Auth operations",
 				Commands: []*ucli.Command{
 					AdaptFactory(loginF),     // auth login
@@ -72,7 +68,14 @@ func BuildRoot(version string) (*ucli.Command, error) {
 					AdaptFactory(delTokenF),  // auth delete-token
 				}},
 			{Name: "config", Usage: "Config operations",
-				Commands: []*ucli.Command{AdaptFactory(purgeF)}},
+				Commands: []*ucli.Command{
+					AdaptFactory(ctxCurF), // config current-context
+					AdaptFactory(ctxSwF),  // config set-context
+					AdaptFactory(ctxUseF), // config use-context
+					AdaptFactory(srvLsF),  // config get-servers
+					AdaptFactory(srvSwF),  // config use-server
+					AdaptFactory(purgeF),  // config purge-legacy
+				}},
 		},
 	}
 	return root, nil

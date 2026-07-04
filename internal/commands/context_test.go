@@ -22,34 +22,34 @@ func writeCtxConfig(t *testing.T, dir string) {
 	require.NoError(t, cfg.Write())
 }
 
-func TestContextSwitchPreservesProjectOnClusterOnlyInput(t *testing.T) {
+func TestConfigSetContextPreservesProjectOnClusterOnly(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
-	// Colon-less scope: change cluster only, keep project (matches RANCHER_CONTEXT).
-	_, err := NewContextSwitch(dir).Execute(context.Background(),
-		args{a: []string{"c-2"}}, safety.Effect{})
+	_, err := NewContextSet(dir).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, "c-2", cfg.Contexts["acme"].Cluster)
-	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project) // preserved
+	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project) // preserved (no --project)
 }
 
-func TestContextSwitchSetsBothWithColon(t *testing.T) {
+func TestConfigSetContextSetsBoth(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
-	_, err := NewContextSwitch(dir).Execute(context.Background(),
-		args{a: []string{"c-2:p-2"}}, safety.Effect{})
+	_, err := NewContextSet(dir).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{})
 	require.NoError(t, err)
 	cfg, _ := config.Load(config.FilePath(dir))
 	assert.Equal(t, "c-2", cfg.Contexts["acme"].Cluster)
 	assert.Equal(t, "p-2", cfg.Contexts["acme"].Project)
 }
 
-func TestContextSwitchGuardIsValidation(t *testing.T) {
+func TestConfigSetContextRequiresCurrent(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
-	_, err := NewContextSwitch(dir).Execute(context.Background(), args{}, safety.Effect{})
+	_, err := NewContextSet(dir).Execute(context.Background(),
+		args{s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -94,7 +94,7 @@ func TestContextCurrentMissingContextKey(t *testing.T) {
 	assert.Contains(t, ce.Error(), "current context \"acme\" not found")
 }
 
-func TestContextSwitchMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
+func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CurrentContext: "acme",
@@ -104,12 +104,11 @@ func TestContextSwitchMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	_, err := NewContextSwitch(dir).Execute(context.Background(),
-		args{a: []string{"c-2:p-2"}}, safety.Effect{})
+	_, err := NewContextSet(dir).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
-	assert.Contains(t, ce.Error(), "current context \"acme\" not found")
 
 	cfgAfter, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

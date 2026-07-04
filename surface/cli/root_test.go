@@ -51,7 +51,7 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 
 	out.Reset()
 	require.NoError(t, root.Run(context.Background(), []string{
-		"rancher", "--config", dir, "context", "current", "-o", "json",
+		"rancher", "--config", dir, "config", "current-context", "-o", "json",
 	}))
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
