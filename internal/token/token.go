@@ -7,8 +7,6 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -160,12 +159,22 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 		authFlow:     in.String("auth-flow"),
 	}
 
-	tlsConfig, err := getTLSConfig(input.skipVerify, input.caCerts)
+	var certPEM string
+	if input.caCerts != "" {
+		certPEM, err = loadAndVerifyCert(input.caCerts)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+	}
+
+	client, err := httpx.New(httpx.Options{
+		CACert:   certPEM,
+		Insecure: input.skipVerify,
+		Timeout:  0,
+	})
 	if err != nil {
 		return runtime.Result{}, err
 	}
-
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 
 	rancherToken, err := loginAndGenerateCred(client, input)
 	if err != nil {
@@ -559,30 +568,6 @@ func generateKey() (string, error) {
 	}
 
 	return string(token), nil
-}
-
-func getTLSConfig(skipVerify bool, caCerts string) (*tls.Config, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: skipVerify,
-	}
-
-	if caCerts == "" {
-		return tlsConfig, nil
-	}
-
-	cert, err := loadAndVerifyCert(caCerts)
-	if err != nil {
-		return nil, err
-	}
-
-	roots := x509.NewCertPool()
-	ok := roots.AppendCertsFromPEM([]byte(cert))
-	if !ok {
-		return nil, errors.New("failed to append CA certs")
-	}
-	tlsConfig.RootCAs = roots
-
-	return tlsConfig, nil
 }
 
 func loadAndVerifyCert(path string) (string, error) {
