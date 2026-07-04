@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,6 +40,12 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 		"rancher", "--config", dir, "login", "https://r.ex",
 		"--token", "id:secret", "--name", "acme", "--context", "c-1:p-1", "-o", "json",
 	}))
+
+	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))
+	require.NoError(t, statErr, "login must write config.yaml under --config dir")
+
+	_, statErr2 := os.Stat(filepath.Join(dir, "cli2.json"))
+	require.True(t, os.IsNotExist(statErr2), "must not write cli2.json")
 
 	out.Reset()
 	require.NoError(t, root.Run(context.Background(), []string{
