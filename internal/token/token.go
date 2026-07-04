@@ -27,8 +27,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	apiv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	managementClient "github.com/rancher/rancher/pkg/client/generated/management/v3"
 	"github.com/tidwall/gjson"
 	"golang.org/x/term"
 )
@@ -216,49 +214,49 @@ func (t tokenCmd) runDelete(in runtime.Input, keys []string) (runtime.Result, er
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": keys}}, nil
 }
 
-func loginAndGenerateCred(client *http.Client, input *loginInput) (managementClient.Token, error) {
+func loginAndGenerateCred(client *http.Client, input *loginInput) (Token, error) {
 	authProviders, useV1Public, err := getAuthProviders(client, input.server, true)
 	if err != nil {
-		return managementClient.Token{}, err
+		return Token{}, err
 	}
 
 	selectedProvider, err := selectAuthProvider(authProviders, input.authProvider)
 	if err != nil {
-		return managementClient.Token{}, err
+		return Token{}, err
 	}
 	input.authProvider = selectedProvider.GetType()
 
-	var token managementClient.Token
+	var token Token
 	if samlProviders[input.authProvider] {
 		token, err = samlAuth(client, input, useV1Public)
 		if err != nil {
-			return managementClient.Token{}, err
+			return Token{}, err
 		}
 	} else if oauthProviders[input.authProvider] {
 		tokenPtr, err := oauthAuth(client, input, selectedProvider, useV1Public)
 		if err != nil {
-			return managementClient.Token{}, err
+			return Token{}, err
 		}
 		token = *tokenPtr
 	} else {
 		customPrint(fmt.Sprintf("Enter credentials for %s \n", input.authProvider))
 		token, err = basicAuth(client, input, useV1Public)
 		if err != nil {
-			return managementClient.Token{}, err
+			return Token{}, err
 		}
 	}
 
 	return token, nil
 }
 
-func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (managementClient.Token, error) {
+func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
 	prompt := "Enter username"
 	if input.userID != "" {
 		prompt += " [" + input.userID + "]"
 	}
 	username, err := customPrompt(prompt+": ", true)
 	if err != nil {
-		return managementClient.Token{}, err
+		return Token{}, err
 	}
 
 	if username == "" && input.userID != "" {
@@ -267,7 +265,7 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (manage
 
 	password, err := customPrompt("Enter password: ", false)
 	if err != nil {
-		return managementClient.Token{}, err
+		return Token{}, err
 	}
 
 	responseType := "kubeconfig"
@@ -282,7 +280,7 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (manage
 		"password":     password,
 	})
 	if err != nil {
-		return managementClient.Token{}, fmt.Errorf("failed to marshal request body: %w", err)
+		return Token{}, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	reqURL := fmt.Sprintf(loginURL, input.server)
@@ -293,7 +291,7 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (manage
 
 	req, err := http.NewRequest(http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return managementClient.Token{}, fmt.Errorf("error creating request: %w", err)
+		return Token{}, fmt.Errorf("error creating request: %w", err)
 	}
 
 	resp, respBody, err := doRequest(client, req)
@@ -301,20 +299,20 @@ func basicAuth(client *http.Client, input *loginInput, useV1Public bool) (manage
 		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	if err != nil {
-		return managementClient.Token{}, fmt.Errorf("error logging user in: %w", err)
+		return Token{}, fmt.Errorf("error logging user in: %w", err)
 	}
 
-	var token managementClient.Token
+	var token Token
 	err = json.Unmarshal(respBody, &token)
 	if err != nil {
-		return managementClient.Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
+		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
 	}
 
 	return token, nil
 }
 
-func samlAuth(client *http.Client, input *loginInput, useV1Public bool) (managementClient.Token, error) {
-	token := managementClient.Token{}
+func samlAuth(client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
+	token := Token{}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -483,11 +481,11 @@ func getAuthProviders(client *http.Client, server string, useV1Public bool) ([]t
 
 			switch providerType {
 			case "azureADProvider":
-				tp = &apiv3.AzureADProvider{}
+				tp = &AzureADProvider{}
 			case "localProvider":
-				tp = &apiv3.LocalProvider{}
+				tp = &LocalProvider{}
 			default:
-				tp = &apiv3.AuthProvider{}
+				tp = &AuthProvider{}
 			}
 
 			err = json.Unmarshal([]byte(provider.Raw), tp)

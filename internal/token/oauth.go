@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	apiv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	managementClient "github.com/rancher/rancher/pkg/client/generated/management/v3"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
@@ -40,7 +38,7 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*managementClient.Token, error) {
+func oauthAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
 	if input.authFlow == "" {
 		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
 	}
@@ -83,7 +81,7 @@ func oauthAuthCodeAuth(
 	timeoutAfter time.Duration,
 	useV1Public bool,
 	openBrowser openBrowserFunc,
-) (*managementClient.Token, error) {
+) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
@@ -251,7 +249,7 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*managementClient.Token, error) {
+func oauthDeviceCodeAuth(client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
@@ -284,10 +282,10 @@ func oauthDeviceCodeAuth(client *http.Client, input *loginInput, provider typedP
 }
 
 func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
-	var oauthProvider apiv3.OAuthProvider
+	var oauthProvider OAuthProvider
 
 	switch p := provider.(type) {
-	case *apiv3.AzureADProvider:
+	case *AzureADProvider:
 		oauthProvider = p.OAuthProvider
 	default:
 		return nil, fmt.Errorf("provider %s is not a supported OAuth provider", provider.GetType())
@@ -304,7 +302,7 @@ func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
 	}, nil
 }
 
-func rancherLogin(client *http.Client, input *loginInput, oauthToken *oauth2.Token, useV1Public bool) (*managementClient.Token, error) {
+func rancherLogin(client *http.Client, input *loginInput, oauthToken *oauth2.Token, useV1Public bool) (*Token, error) {
 	reqURL := fmt.Sprintf(loginURL, input.server)
 	if !useV1Public {
 		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
@@ -339,7 +337,7 @@ func rancherLogin(client *http.Client, input *loginInput, oauthToken *oauth2.Tok
 		return nil, err
 	}
 
-	token := &managementClient.Token{}
+	token := &Token{}
 	err = json.Unmarshal(respBody, token)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling login response: %w", err)
