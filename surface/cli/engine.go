@@ -14,8 +14,16 @@ import (
 
 // newRepoFactory returns a factory that builds a creds-bound Repo for a cluster
 // proxy id at CALL time (network deferred). "local" targets the management cluster.
+// Results are memoized per cluster id for the lifetime of the returned factory
+// (one command invocation), so a command's Plan and Execute reuse a single Repo
+// built from a single config + credential read — one identity, no re-read, and no
+// window for a concurrent `login` to swap credentials between the two phases.
 func newRepoFactory(dir string, store config.CredStore) engine.RepoFactory {
+	cache := map[string]engine.Repo{}
 	return func(clusterID string) (engine.Repo, error) {
+		if r, ok := cache[clusterID]; ok {
+			return r, nil
+		}
 		cfg, err := config.Load(config.FilePath(dir))
 		if err != nil {
 			return nil, err
@@ -31,7 +39,12 @@ func newRepoFactory(dir string, store config.CredStore) engine.RepoFactory {
 		if err != nil {
 			return nil, err
 		}
-		return provider.NewRepo(rc)
+		r, err := provider.NewRepo(rc)
+		if err != nil {
+			return nil, err
+		}
+		cache[clusterID] = r
+		return r, nil
 	}
 }
 
@@ -40,7 +53,11 @@ func newRepoFactory(dir string, store config.CredStore) engine.RepoFactory {
 // tier/stability, and runs the command through the pipeline.
 func AdaptEngine(name string, reg *runtime.Registry, make func(newRepo engine.RepoFactory, tier, stability string) runtime.Command) *ucli.Command {
 	tier, stability := reg.Binding(name)
-	probe := make(nil, tier, stability) // Describe is dir/store/repo-independent
+	// Probe with a nil RepoFactory: engine constructors MUST NOT touch newRepo in
+	// Describe() (Describe is dir/store/repo-independent). A command whose Describe
+	// needs the Repo (e.g. a dynamic flag enum) would panic here — split its
+	// construction instead of dereferencing newRepo in Describe.
+	probe := make(nil, tier, stability)
 	d := probe.Describe()
 	return &ucli.Command{
 		Name:  leafName(d.Name),
