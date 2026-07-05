@@ -6,6 +6,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/clusters"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/sirupsen/logrus"
@@ -32,6 +34,11 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	srvLsF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerLs(dir) }
 	srvSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(dir) }
 
+	// Engine command factories (repo bound at run time by AdaptEngine).
+	getClusterF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
+		return clusters.NewGet(newRepo, tier, stability)
+	}
+
 	schemaCmd := runtime.NewSchemaCommand(reg, version)
 
 	// Register ONE instance of every command into the single registry for the
@@ -41,6 +48,8 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	} {
 		reg.Register(f("", nil))
 	}
+	tc, sc := reg.Binding("get cluster")
+	reg.Register(getClusterF(nil, tc, sc))
 	reg.Register(schemaCmd)
 
 	root := &ucli.Command{
@@ -76,6 +85,9 @@ func BuildRoot(version string) (*ucli.Command, error) {
 					AdaptFactory(srvSwF),  // config use-server
 					AdaptFactory(purgeF),  // config purge-legacy
 				}},
+			{Name: "get", Usage: "Read resources", Commands: []*ucli.Command{
+				AdaptEngine("get cluster", reg, getClusterF),
+			}},
 		},
 	}
 	return root, nil
