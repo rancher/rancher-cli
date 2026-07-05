@@ -11,14 +11,16 @@ Users get the same commands with readable table output.
 ## Status
 
 **Phase 0 (foundation) — implemented.** Auth, configuration, context/server
-management, the `kubectl` token plugin, and the self-description surface
+management, the exec-credential token plugin, and the self-description surface
 (`schema`). Kube-native: talks to Rancher's Kubernetes API, no Norman
-dependency.
+dependency. The command surface is verb-first (kubectl-style): `auth …`,
+`config …`, `get …`, `create …`.
 
-**Phase 1 (not yet) —** cluster/node/namespace reads and project/RBAC/token
-writes. The safety pipeline (dry-run → apply, confirmation gating, tiered
-stability) is wired and the global flags exist, but no server-mutating command
-ships yet, so those flags currently have nothing to act on.
+**Phase 1 Wave 1 — implemented.** The engine/provider layer plus the first
+read (`get cluster`, crd tier) and first write (`create project`, public tier),
+running through the full plan/apply pipeline (dry-run → apply, confirmation
+gating, tiered stability). Broader reads (nodes, namespaces), more writes (RBAC,
+kubeconfig, tokens), and settings land in later Phase-1 waves.
 
 ## Install
 
@@ -31,11 +33,18 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 ## Quickstart
 
     # Log in (token is the Rancher UI "id:secret" API key)
-    rancher login https://rancher.example.com --token <id:secret> --name prod
+    rancher auth login https://rancher.example.com --token <id:secret> --name prod
 
-    # Scope the current context to a cluster[:project]
-    rancher context switch c-m-abc123:p-xyz789
-    rancher context current -o json
+    # Scope the current context to a cluster/project
+    rancher config set-context --current --cluster c-m-abc123 --project p-xyz789
+    rancher config current-context -o json
+
+    # Read clusters (crd tier, read-only)
+    rancher get clusters -o json
+
+    # Create a project: preview the effect, then apply
+    rancher create project web --cluster c-m-abc123 --dry-run
+    rancher create project web --cluster c-m-abc123 --apply
 
     # Discover the full command surface as JSON (for agents)
     rancher schema -o json
@@ -43,20 +52,27 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
     # Verify connectivity + credentials
     rancher auth check -o json
 
-## Commands (Phase 0)
+## Commands
 
 | Command | Purpose |
 |---|---|
-| `login <SERVERURL> --token <id:secret> [--name --cacert --context]` | Store a server + token; set current context |
-| `context current` | Show the active context |
-| `context switch <cluster[:project]>` | Set the current context's scope (colon-less keeps the project) |
-| `context use <name>` | Activate a different named context |
-| `server ls` | List configured servers |
-| `server switch [name]` | Switch the active server |
+| `auth login <SERVERURL> --token <id:secret> [--name --cacert --context]` | Store a server + token; set current context |
 | `auth check` | Connectivity + credential preflight (calls the cluster's k8s API) |
+| `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
+| `auth delete-token [<name>] [--all]` | Clear cached exec-credential token(s) |
+| `config current-context` | Show the active context |
+| `config set-context --current --cluster <c> [--project <p>]` | Set the current context's scope |
+| `config use-context <name>` | Activate a different named context |
+| `config get-servers` | List configured servers |
+| `config use-server [name]` | Switch the active server |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
-| `token …` | kubectl exec-credential plugin (invoked by kubeconfigs, not by hand) |
+| `get cluster [name]` | List clusters (or show one) — crd tier, read-only |
+| `create project <name> --cluster <id> [--description]` | Create a project — public tier; dry-run/apply |
 | `schema [command]` | Machine-readable capability manifest |
+
+Nouns accept singular, plural, and short aliases (`get cluster` = `get clusters`
+= `get c`). Deferred to later Phase-1 waves: `auth logout`, more `config`
+subcommands, `version`, and broader `get`/`create`/`delete`.
 
 ## Output & the agent contract
 
@@ -72,14 +88,14 @@ Every command emits one JSON document per invocation under `-o json` — an
 }
 ```
 
-- **Formats:** `-o table` (default, for users) · `json` · `yaml` · `-q/--quiet`
-  (ids only) · any other `-o` value is a Go template over `data`.
-- **Errors** are structured, on stderr, always emitted (even under `-q`):
+- **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
+  `name` (`.metadata.name`/ids only) · any other value is a Go template over `data`.
+- **Errors** are structured, on stderr, always emitted (even under `-o name`):
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
     "error": { "code": "CONTEXT_NOT_SET", "message": "...",
-               "hint": "run: rancher login <SERVERURL>", "retryable": false } }
+               "hint": "run: rancher auth login <SERVERURL>", "retryable": false } }
   ```
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·
@@ -89,7 +105,7 @@ Every command emits one JSON document per invocation under `-o json` — an
   its args, flags, `commandType`, and (for server ops) `tier`/`stability`.
   `rancher schema <command>` filters to one.
 
-## Safety model (pipeline wired; exercised in Phase 1)
+## Safety model (exercised by `create project`; more in later waves)
 
 Server-mutating commands run through one path: `--dry-run` previews a
 server-computed `Effect` (no change); without it, a mutation is refused unless
@@ -132,12 +148,13 @@ surfaced in output so an agent knows the contract before acting.
 
 ## kubectl integration
 
-`rancher token` is a `client.authentication.k8s.io/v1beta1` exec-credential
-plugin. Rancher-generated kubeconfigs invoke it (`rancher token --server …
---user … --cluster …`) to mint short-lived Kubernetes credentials; you don't
-run it directly. It caches credentials in the configured store and supports the
-SAML, OAuth (device-code / auth-code), and basic auth flows. Long-poll flows
-are interrupt-cancellable.
+`rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
+exec-credential plugin. Rancher-generated kubeconfigs invoke it
+(`rancher auth get-token --server … --user … --cluster …`) to mint short-lived
+Kubernetes credentials; you don't run it directly. It caches credentials in the
+configured store and supports the SAML, OAuth (device-code / auth-code), and
+basic auth flows. Long-poll flows are interrupt-cancellable. Clear cached
+credentials with `rancher auth delete-token`.
 
 ## TLS & proxy
 
@@ -165,11 +182,12 @@ A committed `.githooks/pre-commit` runs `make validate` on every commit
       config/               XDG config, credential store, migration, atomic writes
       client/kube/          rest.Config for the Rancher k8s proxy
       client/httpx/         HTTP client (TLS / proxy / timeouts)
-      client/provider/      operation -> tier/stability resolver
+      client/provider/      op tier/stability resolver + dynamic Repo (adapter)
       runtime/              Command contract, middleware pipeline, schema
-      commands/             login, context, server, auth, config
-      token/                kubectl exec-credential plugin
-    surface/cli/            urfave/cli v3 adapter + root wiring
+      engine/               domain ops (clusters, projects) + Repo port + Effect builder
+      commands/             auth login/check, config context/server ops, purge-legacy
+      token/                exec-credential plugin (auth get-token / delete-token)
+    surface/cli/            urfave/cli v3 adapter + root wiring + engine DI
 
 **Conventions:** direct `t.Run` subtests where mocks/per-case setup are
 involved, table-driven for pure functions; tests are hermetic (never touch the
