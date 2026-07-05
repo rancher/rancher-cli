@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -126,7 +127,7 @@ func missingFlags(io IO, eff safety.Effect) []string {
 	if eff.Destructive && !io.Yes {
 		missing = append(missing, "--yes")
 	}
-	if eff.Stability == "deprecated" && !io.AllowDeprecated {
+	if eff.Stability == string(provider.Deprecated) && !io.AllowDeprecated {
 		missing = append(missing, "--allow-deprecated")
 	}
 	return missing
@@ -154,7 +155,7 @@ func renderResult(io IO, res Result) *clierr.Error {
 func renderEffect(io IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
 	env.Tier, env.Stability = eff.Tier, eff.Stability
-	if !eff.ConflictDetection && eff.Tier == "norman" {
+	if !eff.ConflictDetection && eff.Tier == string(provider.TierNorman) {
 		env.Warnings = append(env.Warnings, "served via norman tier: no conflict detection")
 	}
 	if err := output.Render(io.Out, io.Format, env); err != nil {
