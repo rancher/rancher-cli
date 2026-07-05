@@ -25,6 +25,9 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
+		// This JSON is a CLI/agent contract read raw, not embedded in HTML — keep
+		// `<`, `>`, `&` literal instead of < / > / &.
+		enc.SetEscapeHTML(false)
 		return enc.Encode(env)
 	case "yaml":
 		b, err := yaml.Marshal(env)

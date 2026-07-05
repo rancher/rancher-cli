@@ -28,6 +28,16 @@ func TestRenderYAML(t *testing.T) {
 	assert.Contains(t, buf.String(), "apiVersion: cli.rancher.io/v1")
 }
 
+func TestRenderJSONNoHTMLEscape(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "json", NewEnvelope("Hint", map[string]string{"hint": "--cluster <c> a&b"})))
+	out := buf.String()
+	assert.Contains(t, out, "<c>", "`<`/`>` must stay literal")
+	assert.Contains(t, out, "a&b", "`&` must stay literal")
+	assert.NotContains(t, out, "\\u003c", "must not HTML-escape the < character")
+	assert.NotContains(t, out, "\\u0026", "must not HTML-escape the & character")
+}
+
 type namedRows struct{ rows [][]string }
 
 func (n namedRows) Columns() []string { return []string{"NAME", "URL"} }
