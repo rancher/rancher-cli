@@ -12,12 +12,29 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
-type serverListData struct {
-	rows [][]string
+// serverEntry is one server in the ServerList payload. Fields are exported so the
+// -o json / -o yaml envelope carries real data; the slice also implements
+// output.Tabular for -o table / -o name.
+type serverEntry struct {
+	Current bool   `json:"current"`
+	Name    string `json:"name"`
+	URL     string `json:"url"`
 }
 
-func (s serverListData) Columns() []string { return []string{"CURRENT", "NAME", "URL"} }
-func (s serverListData) Rows() [][]string  { return s.rows }
+type serverList []serverEntry
+
+func (serverList) Columns() []string { return []string{"CURRENT", "NAME", "URL"} }
+func (s serverList) Rows() [][]string {
+	rows := make([][]string, 0, len(s))
+	for _, e := range s {
+		mark := ""
+		if e.Current {
+			mark = "*"
+		}
+		rows = append(rows, []string{mark, e.Name, e.URL})
+	}
+	return rows
+}
 
 type serverLsCmd struct{ dir string }
 
@@ -40,19 +57,15 @@ func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	var rows [][]string
 	current := ""
 	if c, ok := cfg.Contexts[cfg.CurrentContext]; ok {
 		current = c.Server
 	}
+	list := make(serverList, 0, len(names))
 	for _, n := range names {
-		mark := ""
-		if n == current {
-			mark = "*"
-		}
-		rows = append(rows, []string{mark, n, cfg.Servers[n].URL})
+		list = append(list, serverEntry{Current: n == current, Name: n, URL: cfg.Servers[n].URL})
 	}
-	return runtime.Result{Kind: "ServerList", Data: serverListData{rows: rows}}, nil
+	return runtime.Result{Kind: "ServerList", Data: list}, nil
 }
 
 type serverSwitchCmd struct{ dir string }
