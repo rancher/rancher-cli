@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/clusters"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/sirupsen/logrus"
@@ -38,6 +39,9 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	getClusterF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
 		return clusters.NewGet(newRepo, tier, stability)
 	}
+	createProjectF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
+		return projects.NewCreate(newRepo, tier, stability)
+	}
 
 	schemaCmd := runtime.NewSchemaCommand(reg, version)
 
@@ -50,6 +54,8 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	}
 	tc, sc := reg.Binding("get cluster")
 	reg.Register(getClusterF(nil, tc, sc))
+	tcp, scp := reg.Binding("create project")
+	reg.Register(createProjectF(nil, tcp, scp))
 	reg.Register(schemaCmd)
 
 	root := &ucli.Command{
@@ -85,6 +91,9 @@ func BuildRoot(version string) (*ucli.Command, error) {
 					AdaptFactory(srvSwF),  // config use-server
 					AdaptFactory(purgeF),  // config purge-legacy
 				}},
+			{Name: "create", Usage: "Create resources", Commands: []*ucli.Command{
+				AdaptEngine("create project", reg, createProjectF),
+			}},
 			{Name: "get", Usage: "Read resources", Commands: []*ucli.Command{
 				AdaptEngine("get cluster", reg, getClusterF),
 			}},
