@@ -48,10 +48,12 @@ type Input interface {
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
 // single ExecCredential object.
 type Result struct {
-	Kind     string
-	Data     any
-	Warnings []string
-	Raw      bool
+	Kind      string
+	Data      any
+	Warnings  []string
+	Raw       bool
+	Tier      string
+	Stability string
 }
 
 // Command is the A+B contract every command implements.

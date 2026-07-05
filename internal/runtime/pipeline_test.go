@@ -144,3 +144,20 @@ func TestQuietErrorStillRendersJSON(t *testing.T) {
 	data := env["data"].(map[string]any)
 	assert.NotEmpty(t, data["error"], "error envelope must contain error details")
 }
+
+func TestResultTierStabilityReachEnvelope(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := resultCmd{res: Result{Kind: "ClusterList", Data: map[string]string{"a": "b"}, Tier: "crd", Stability: "beta"}}
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"})
+	require.Nil(t, ce)
+	var env map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	assert.Equal(t, "crd", env["tier"])
+	assert.Equal(t, "beta", env["stability"])
+}
+
+type resultCmd struct{ res Result }
+
+func (resultCmd) Describe() Descriptor                                            { return Descriptor{Name: "get thing", CommandType: ReadOnly} }
+func (resultCmd) Plan(context.Context, Input) (safety.Effect, error)              { return safety.Effect{}, nil }
+func (c resultCmd) Execute(context.Context, Input, safety.Effect) (Result, error) { return c.res, nil }

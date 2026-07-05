@@ -144,6 +144,7 @@ func renderResult(io IO, res Result) *clierr.Error {
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
+	env.Tier, env.Stability = res.Tier, res.Stability
 	if err := output.Render(io.Out, io.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
