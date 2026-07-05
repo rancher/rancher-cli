@@ -64,6 +64,14 @@ func (reg *Registry) Register(c Command) { reg.cmds = append(reg.cmds, c) }
 
 func (reg *Registry) Commands() []Command { return reg.cmds }
 
+// Binding returns the tier/stability for an op name (empty strings if unknown).
+func (reg *Registry) Binding(op string) (tier, stability string) {
+	if b, ok := reg.resolver.Resolve(op); ok {
+		return string(b.Tier), string(b.Stability)
+	}
+	return "", ""
+}
+
 // Schema assembles the manifest, merging each Descriptor with the resolver tier.
 func (reg *Registry) Schema(cliVersion string) Manifest {
 	m := Manifest{
