@@ -78,3 +78,12 @@ func (i input) Args() []string       { return i.args }
 func TestGetClusterDescribeNilFactory(t *testing.T) {
 	assert.Equal(t, "get cluster", NewGet(nil, "crd", "beta").Describe().Name)
 }
+
+// An empty positional (`rancher get cluster ""`) must list, not Get("") — a real
+// API server rejects an empty name with an opaque error.
+func TestGetClusterEmptyArgLists(t *testing.T) {
+	repo := &memRepo{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
+	res, err := NewGet(factory(repo), "crd", "beta").Execute(context.Background(), input{args: []string{""}}, safety.Effect{})
+	require.NoError(t, err)
+	assert.Equal(t, "ClusterList", res.Kind)
+}

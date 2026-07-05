@@ -44,7 +44,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect) 
 	}
 	var items []unstructured.Unstructured
 	kind := "ClusterList"
-	if args := in.Args(); len(args) > 0 {
+	if args := in.Args(); len(args) > 0 && args[0] != "" {
 		one, gerr := repo.Get(ctx, gvr, "", args[0])
 		if gerr != nil {
 			return runtime.Result{}, gerr
