@@ -1,0 +1,77 @@
+package ui
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestCanPrompt(t *testing.T) {
+	t.Parallel()
+	assert.True(t, New(nil, nil, nil, false, true).CanPrompt())
+	assert.False(t, New(nil, nil, nil, true, true).CanPrompt(), "NoInput disables")
+	assert.False(t, New(nil, nil, nil, false, false).CanPrompt(), "no TTY disables")
+}
+
+func TestPromptReadsLineToErr(t *testing.T) {
+	t.Parallel()
+	var out, errw bytes.Buffer
+	p := New(&out, &errw, strings.NewReader("alice\n"), false, true)
+	got, err := p.Prompt(context.Background(), "user: ")
+	require.NoError(t, err)
+	assert.Equal(t, "alice", got)
+	assert.Equal(t, "user: ", errw.String(), "label goes to Err")
+	assert.Empty(t, out.String(), "Out must stay untouched")
+}
+
+func TestPromptRefusesWhenDisabled(t *testing.T) {
+	t.Parallel()
+	p := New(&bytes.Buffer{}, &bytes.Buffer{}, strings.NewReader("x\n"), true, true)
+	_, err := p.Prompt(context.Background(), "user: ")
+	assert.ErrorIs(t, err, ErrNoInput)
+	_, err = p.PromptSecret(context.Background(), "pw: ")
+	assert.ErrorIs(t, err, ErrNoInput)
+}
+
+func TestPromptSecretReadsLineFromBuffer(t *testing.T) {
+	t.Parallel()
+	var errw bytes.Buffer
+	p := New(&bytes.Buffer{}, &errw, strings.NewReader("s3cret\n"), false, true)
+	got, err := p.PromptSecret(context.Background(), "pw: ")
+	require.NoError(t, err)
+	assert.Equal(t, "s3cret", got)
+}
+
+func TestPromptHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// A reader that would block forever if read synchronously.
+	p := New(&bytes.Buffer{}, &bytes.Buffer{}, blockingReader{}, false, true)
+	_, err := p.Prompt(ctx, "user: ")
+	assert.True(t, errors.Is(err, context.Canceled), "cancelled ctx aborts the read")
+}
+
+func TestNoticeWritesToErr(t *testing.T) {
+	t.Parallel()
+	var out, errw bytes.Buffer
+	New(&out, &errw, nil, false, false).Notice("heads up")
+	assert.Equal(t, "heads up\n", errw.String())
+	assert.Empty(t, out.String())
+}
+
+func TestDiscardRefuses(t *testing.T) {
+	t.Parallel()
+	_, err := Discard().Prompt(context.Background(), "x")
+	assert.ErrorIs(t, err, ErrNoInput)
+}
+
+// blockingReader blocks on Read until the test goroutine is torn down.
+type blockingReader struct{}
+
+func (blockingReader) Read([]byte) (int, error) { select {} }
