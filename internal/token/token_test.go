@@ -3,8 +3,11 @@ package token
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,17 +82,13 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 }
 
-func TestBasicAuthRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	input := &loginInput{
-		server:       "https://test.example.com",
-		authProvider: "localProvider",
-	}
-
-	_, err := basicAuth(ctx, nil, input, true)
-	assert.Error(t, err, "basicAuth should fail when given a cancelled context")
+func TestBasicAuthNonInteractiveIsAuthError(t *testing.T) {
+	t.Parallel()
+	input := &loginInput{server: "https://test.example.com", authProvider: "localProvider"}
+	_, err := basicAuth(context.Background(), nil, input, true, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
 }
 
 func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
@@ -146,4 +145,71 @@ func TestGetTokenCacheHit(t *testing.T) {
 	assert.True(t, res.Raw)
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "cached-tok", cred.Status.Token)
+}
+
+func TestSelectAuthProviderExplicitMatch(t *testing.T) {
+	t.Parallel()
+	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider"}}, &AuthProvider{Type: "pingProvider"}}
+	got, err := selectAuthProvider(context.Background(), ps, "pingProvider", ui.Discard())
+	require.NoError(t, err)
+	assert.Equal(t, "pingProvider", got.GetType())
+}
+
+func TestSelectAuthProviderNotFound(t *testing.T) {
+	t.Parallel()
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
+	_, err := selectAuthProvider(context.Background(), ps, "nope", ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, candidateIDs(ce.Candidates), "pingProvider")
+}
+
+func TestSelectAuthProviderSingle(t *testing.T) {
+	t.Parallel()
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
+	got, err := selectAuthProvider(context.Background(), ps, "", ui.Discard())
+	require.NoError(t, err)
+	assert.Equal(t, "pingProvider", got.GetType())
+}
+
+func TestSelectAuthProviderAmbiguousNoInput(t *testing.T) {
+	t.Parallel()
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
+	_, err := selectAuthProvider(context.Background(), ps, "", ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.ElementsMatch(t, []string{"pingProvider", "oktaProvider"}, candidateIDs(ce.Candidates))
+}
+
+func candidateIDs(cs []clierr.Candidate) []string {
+	out := make([]string, len(cs))
+	for i, c := range cs {
+		out[i] = c.ID
+	}
+	return out
+}
+
+func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
+	// A SAML provider under a non-interactive prompter must fast-fail AUTH(3),
+	// not open a browser and poll for 15 minutes.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		safety.Effect{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
 }

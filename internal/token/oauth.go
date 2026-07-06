@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
@@ -38,7 +40,7 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p *ui.Prompter) (*Token, error) {
 	if input.authFlow == "" {
 		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
 	}
@@ -46,9 +48,9 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 
 	switch input.authFlow {
 	case authCodeFlow:
-		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser)
+		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser, p)
 	case deviceAuthFlow, "":
-		return oauthDeviceCodeAuth(ctx, client, input, provider, useV1Public)
+		return oauthDeviceCodeAuth(ctx, client, input, provider, useV1Public, p)
 	default:
 		return nil, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
 	}
@@ -82,6 +84,7 @@ func oauthAuthCodeAuth(
 	timeoutAfter time.Duration,
 	useV1Public bool,
 	openBrowser openBrowserFunc,
+	p *ui.Prompter,
 ) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
@@ -124,10 +127,10 @@ func oauthAuthCodeAuth(
 		}
 	}()
 
-	customPrint("\nOpening browser for authentication...\n")
+	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
 		logrus.Debugf("Failed to open browser: %v", err)
-		customPrint(fmt.Sprintf("Failed to open browser automatically. Please open the following URL manually:\n%s\n", authURL))
+		p.Notice(fmt.Sprintf("Failed to open browser automatically. Please open the following URL manually:\n%s\n", authURL))
 	}
 
 	interrupt := make(chan os.Signal, 1)
@@ -154,9 +157,9 @@ func oauthAuthCodeAuth(
 
 		return rancherLogin(ctx, client, input, oauthToken, useV1Public)
 	case <-timeout.C:
-		return nil, errors.New("timed out waiting for browser authentication")
+		return nil, clierr.New(clierr.CodeAuth, "timed out waiting for browser authentication").WithRetryable(true)
 	case <-interrupt:
-		return nil, errors.New("authentication interrupted by user")
+		return nil, clierr.New(clierr.CodeGeneric, "authentication interrupted by user")
 	}
 }
 
@@ -250,7 +253,7 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool) (*Token, error) {
+func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p *ui.Prompter) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
@@ -263,7 +266,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 		return nil, fmt.Errorf("failed to initiate device authorization: %w", err)
 	}
 
-	customPrint(fmt.Sprintf(
+	p.Notice(fmt.Sprintf(
 		"\nTo sign in, use a web browser to open the page %s and enter the code %s to authenticate.\n",
 		deviceAuthResp.VerificationURI,
 		deviceAuthResp.UserCode,

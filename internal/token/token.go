@@ -1,7 +1,6 @@
 package token
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto"
@@ -28,7 +27,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/tidwall/gjson"
-	"golang.org/x/term"
 )
 
 const (
@@ -72,7 +70,6 @@ var supportedAuthProviders = map[string]bool{
 
 type loginInput struct {
 	server       string
-	userID       string
 	clusterID    string
 	authProvider string
 	skipVerify   bool
@@ -241,24 +238,27 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	if err != nil {
 		return Token{}, err
 	}
-	selectedProvider, err := selectAuthProvider(authProviders, input.authProvider)
+	selectedProvider, err := selectAuthProvider(ctx, authProviders, input.authProvider, p)
 	if err != nil {
 		return Token{}, err
 	}
 	input.authProvider = selectedProvider.GetType()
+	if !p.CanPrompt() {
+		return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
+			WithHint("run in a terminal, or use a cached --name")
+	}
 
 	var token Token
 	if samlProviders[input.authProvider] {
-		token, err = samlAuth(ctx, client, input, useV1Public)
+		token, err = samlAuth(ctx, client, input, useV1Public, p)
 	} else if oauthProviders[input.authProvider] {
 		var tokenPtr *Token
-		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, useV1Public)
+		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, useV1Public, p)
 		if err == nil {
 			token = *tokenPtr
 		}
 	} else {
-		p.Notice("Enter credentials for " + input.authProvider)
-		token, err = basicAuth(ctx, client, input, useV1Public)
+		token, err = basicAuth(ctx, client, input, useV1Public, p)
 	}
 	if err != nil {
 		return Token{}, err
@@ -266,35 +266,31 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	return token, nil
 }
 
-func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
-	prompt := "Enter username"
-	if input.userID != "" {
-		prompt += " [" + input.userID + "]"
-	}
-	username, err := customPrompt(prompt+": ", true)
+func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p *ui.Prompter) (Token, error) {
+	username, err := p.Prompt(ctx, "Enter username: ")
 	if err != nil {
+		if errors.Is(err, ui.ErrNoInput) {
+			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
+				WithHint("run in a terminal, or use a cached --name")
+		}
 		return Token{}, err
 	}
-
-	if username == "" && input.userID != "" {
-		username = input.userID
-	}
-
-	password, err := customPrompt("Enter password: ", false)
+	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
+		if errors.Is(err, ui.ErrNoInput) {
+			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
+				WithHint("run in a terminal, or use a cached --name")
+		}
 		return Token{}, err
 	}
 
 	responseType := "kubeconfig"
 	if input.clusterID != "" {
-		responseType = fmt.Sprintf("%s_%s", responseType, input.clusterID)
+		responseType = "kubeconfig_" + input.clusterID
 	}
-
 	reqBody, err := json.Marshal(map[string]any{
-		"type":         input.authProvider,
-		"responseType": responseType,
-		"username":     username,
-		"password":     password,
+		"type": input.authProvider, "responseType": responseType,
+		"username": username, "password": password,
 	})
 	if err != nil {
 		return Token{}, fmt.Errorf("failed to marshal request body: %w", err)
@@ -305,30 +301,28 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV
 		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
 		reqURL = fmt.Sprintf(loginURLv3, input.server, input.authProvider, providerName)
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return Token{}, fmt.Errorf("error creating request: %w", err)
 	}
-
 	resp, respBody, err := doRequest(client, req)
-	if err == nil && resp.StatusCode != http.StatusCreated {
-		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
 	if err != nil {
 		return Token{}, fmt.Errorf("error logging user in: %w", err)
 	}
-
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return Token{}, clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return Token{}, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
 	var token Token
-	err = json.Unmarshal(respBody, &token)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &token); err != nil {
 		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
 	}
-
 	return token, nil
 }
 
-func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool) (Token, error) {
+func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p *ui.Prompter) (Token, error) {
 	token := Token{}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -384,8 +378,8 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1
 	q.Set("responseType", responseType)
 	loginURL.RawQuery = q.Encode()
 
-	customPrint(fmt.Sprintf("\nLogin Request Id: %s\n", id))
-	customPrint(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
+	p.Notice(fmt.Sprintf("\nLogin Request Id: %s\n", id))
+	p.Notice(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -396,7 +390,6 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1
 	poll := time.NewTicker(10 * time.Second)
 	defer poll.Stop()
 
-loop:
 	for {
 		select {
 		case <-poll.C:
@@ -438,22 +431,17 @@ loop:
 				}
 			}
 			if err != nil {
-				customPrint(fmt.Errorf("error deleting auth token: %s", err))
+				p.Notice("error deleting auth token: " + err.Error())
 			}
 
 			return token, nil
 
 		case <-timeout.C:
-			customPrint("timed out waiting for the auth token")
-			break loop
-
+			return token, clierr.New(clierr.CodeAuth, "timed out waiting for the auth token").WithRetryable(true)
 		case <-interrupt:
-			customPrint("interrupted waiting for the auth token")
-			break loop
+			return token, clierr.New(clierr.CodeGeneric, "interrupted waiting for the auth token")
 		}
 	}
-
-	return token, nil
 }
 
 func getAuthProviders(ctx context.Context, client *http.Client, server string, useV1Public bool) ([]typedProvider, bool, error) {
@@ -521,46 +509,50 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string, u
 	return supportedProviders, useV1Public, err
 }
 
-func selectAuthProvider(authProviders []typedProvider, providerType string) (typedProvider, error) {
-	if len(authProviders) == 0 {
-		return nil, errors.New("no auth provider configured")
+func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p *ui.Prompter) (typedProvider, error) {
+	if len(providers) == 0 {
+		return nil, clierr.New(clierr.CodeGeneric, "no auth provider configured")
 	}
 
-	if providerType != "" {
-		for _, p := range authProviders {
-			if p.GetType() == providerType {
-				return p, nil
+	cands := func() []clierr.Candidate {
+		cs := make([]clierr.Candidate, 0, len(providers))
+		for _, p := range providers {
+			cs = append(cs, clierr.Candidate{ID: p.GetType(), Name: p.GetType()})
+		}
+		return cs
+	}
+
+	if want != "" {
+		for _, prov := range providers {
+			if prov.GetType() == want {
+				return prov, nil
 			}
 		}
-		return nil, fmt.Errorf("provider %s not found", providerType)
+		return nil, clierr.New(clierr.CodeNotFound, "auth provider not found: "+want).
+			WithCandidates(cands()).WithHint("pass --auth-provider <id>")
 	}
 
-	if len(authProviders) == 1 {
-		return authProviders[0], nil
+	if len(providers) == 1 {
+		return providers[0], nil
 	}
 
-	var providers []string
-	for i, val := range authProviders {
-		providers = append(providers, fmt.Sprintf("%d - %s", i, val.GetType()))
-	}
-
-	for range 3 {
-		customPrint(fmt.Sprintf("Auth providers:\n%v", strings.Join(providers, "\n")))
-		providerIndexStr, err := customPrompt("Select auth provider: ", true)
-		if err != nil {
-			continue
+	if p.CanPrompt() {
+		var b strings.Builder
+		for i, prov := range providers {
+			fmt.Fprintf(&b, "%d - %s\n", i, prov.GetType())
 		}
-
-		providerIndex, err := strconv.Atoi(providerIndexStr)
-		if err != nil || (providerIndex < 0 || providerIndex > len(providers)-1) {
-			customPrint("Pick a valid auth provider")
-			continue
+		p.Notice("Auth providers:\n" + b.String())
+		sel, err := p.Prompt(ctx, "Select auth provider: ")
+		if err == nil {
+			if idx, aerr := strconv.Atoi(strings.TrimSpace(sel)); aerr == nil && idx >= 0 && idx < len(providers) {
+				return providers[idx], nil
+			}
 		}
-
-		return authProviders[providerIndex], nil
+		// invalid pick falls through to the non-interactive error
 	}
 
-	return nil, errors.New("invalid auth provider")
+	return nil, clierr.New(clierr.CodeAmbiguousSelection, "multiple auth providers; select one").
+		WithCandidates(cands()).WithHint("pass --auth-provider <id>")
 }
 
 func generateKey() (string, error) {
@@ -648,25 +640,4 @@ func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, 
 	}
 
 	return resp, body, nil
-}
-
-func customPrint(data any) {
-	fmt.Fprintf(os.Stderr, "%v \n", data)
-}
-
-func customPrompt(msg string, show bool) (result string, err error) {
-	fmt.Fprint(os.Stderr, msg)
-	if show {
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			result = scanner.Text()
-		}
-		err = scanner.Err()
-	} else {
-		var data []byte
-		data, err = term.ReadPassword(int(os.Stdin.Fd()))
-		result = string(data)
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-	return result, err
 }
