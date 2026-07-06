@@ -58,7 +58,8 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 |---|---|
 | `auth login <SERVERURL> --token <id:secret> [--name --cacert --context]` | Store a server + token; set current context |
 | `auth check` | Connectivity + credential preflight (calls the cluster's k8s API) |
-| `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
+| `auth get-token [--server --cluster --name --cacert --auth-provider --auth-flow --skip-verify]` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
+| `auth list-tokens` | List cached exec-credential entries (name, expiry) |
 | `auth delete-token [<name>] [--all]` | Clear cached exec-credential token(s) |
 | `config current-context` | Show the active context |
 | `config set-context --current --cluster <c> [--project <p>]` | Set the current context's scope |
@@ -149,12 +150,14 @@ surfaced in output so an agent knows the contract before acting.
 ## kubectl integration
 
 `rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
-exec-credential plugin. Rancher-generated kubeconfigs invoke it
-(`rancher auth get-token --server … --user … --cluster …`) to mint short-lived
-Kubernetes credentials; you don't run it directly. It caches credentials in the
-configured store and supports the SAML, OAuth (device-code / auth-code), and
-basic auth flows. Long-poll flows are interrupt-cancellable. Clear cached
-credentials with `rancher auth delete-token`.
+exec-credential plugin. Rancher-generated kubeconfigs invoke it to mint
+short-lived Kubernetes credentials; you don't run it directly. Flags: `--server`,
+`--cluster`, `--name` (cache slot; omitted = no caching), `--cacert`,
+`--auth-provider`, `--auth-flow`, `--skip-verify`. When flags are omitted,
+server/CA/cluster fall back to the active config context. It supports SAML,
+OAuth (device-code / auth-code), and basic auth flows. Long-poll flows are
+interrupt-cancellable. List cached credentials with `rancher auth list-tokens`.
+Clear them with `rancher auth delete-token [<name>]`.
 
 ## TLS & proxy
 
