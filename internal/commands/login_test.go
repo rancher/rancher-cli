@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +31,7 @@ func TestLoginWritesConfigAndToken(t *testing.T) {
 		s: map[string]string{"token": "id-1:secret-1", "name": "acme", "context": "c-1:p-1"},
 		a: []string{"https://rancher.example.com"},
 	}
-	res, err := cmd.Execute(context.Background(), in, safety.Effect{})
+	res, err := cmd.Execute(context.Background(), in, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -47,7 +48,7 @@ func TestLoginWritesConfigAndToken(t *testing.T) {
 
 func TestLoginRequiresServerURL(t *testing.T) {
 	cmd := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir()))
-	_, err := cmd.Execute(context.Background(), args{s: map[string]string{"token": "a:b"}}, safety.Effect{})
+	_, err := cmd.Execute(context.Background(), args{s: map[string]string{"token": "a:b"}}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code) // must be exit-2, not CodeGeneric
@@ -55,7 +56,7 @@ func TestLoginRequiresServerURL(t *testing.T) {
 
 func TestLoginRequiresToken(t *testing.T) {
 	cmd := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir()))
-	_, err := cmd.Execute(context.Background(), args{a: []string{"https://r.ex"}}, safety.Effect{})
+	_, err := cmd.Execute(context.Background(), args{a: []string{"https://r.ex"}}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -66,7 +67,7 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 	store := config.NewFileStore(dir)
 	_, err := NewLogin(dir, store).Execute(context.Background(),
 		args{s: map[string]string{"token": "id:sec", "name": "acme"},
-			a: []string{"https://admin:pw@rancher.ex/v3?debug=1#frag"}}, safety.Effect{})
+			a: []string{"https://admin:pw@rancher.ex/v3?debug=1#frag"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

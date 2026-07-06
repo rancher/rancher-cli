@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	cmd := NewDeleteTokenCommand(dir, store)
 
 	t.Run("no name and no --all is validation error", func(t *testing.T) {
-		_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{})
+		_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -50,7 +51,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, safety.Effect{})
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -58,7 +59,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("named delete uses the full compound key", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, safety.Effect{})
+		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, safety.Effect{}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -66,7 +67,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, safety.Effect{})
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, safety.Effect{}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)

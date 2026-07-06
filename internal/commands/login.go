@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type loginCmd struct {
@@ -41,7 +42,7 @@ func (loginCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
 
-func (l loginCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (l loginCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	// Defense-in-depth: the pipeline's validateInput normally rejects missing
 	// serverurl/--token first, but Execute must be safe when called directly
 	// (tests, future callers) — never index in.Args() unguarded.

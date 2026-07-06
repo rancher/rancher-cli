@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -56,7 +57,7 @@ func TestGetClusterList(t *testing.T) {
 	assert.Equal(t, "get cluster", d.Name)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
 
-	res, err := cmd.Execute(context.Background(), input{}, safety.Effect{})
+	res, err := cmd.Execute(context.Background(), input{}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "crd", res.Tier)
 	assert.Equal(t, "beta", res.Stability)
@@ -83,7 +84,7 @@ func TestGetClusterDescribeNilFactory(t *testing.T) {
 // API server rejects an empty name with an opaque error.
 func TestGetClusterEmptyArgLists(t *testing.T) {
 	repo := &memRepo{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
-	res, err := NewGet(factory(repo), "crd", "beta").Execute(context.Background(), input{args: []string{""}}, safety.Effect{})
+	res, err := NewGet(factory(repo), "crd", "beta").Execute(context.Background(), input{args: []string{""}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ClusterList", res.Kind)
 }

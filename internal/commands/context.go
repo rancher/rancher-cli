@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type contextCurrentCmd struct{ dir string }
@@ -20,7 +21,7 @@ func (contextCurrentCmd) Describe() runtime.Descriptor {
 func (contextCurrentCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
-func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(c.dir))
 	if err != nil {
 		return runtime.Result{}, err
@@ -65,7 +66,7 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 func (contextSetCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
-func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	cluster, project := in.String("cluster"), in.String("project")
 	// Require at least one scope flag so a bare `set-context [--current]` is a
 	// clear error, not a silent no-op that rewrites the config unchanged.
@@ -123,7 +124,7 @@ func (contextUseCmd) Describe() runtime.Descriptor {
 func (contextUseCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
-func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	if len(in.Args()) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "argument <name> is required").
 			WithHint("provide <name>")

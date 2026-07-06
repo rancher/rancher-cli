@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -76,7 +77,7 @@ func TestCreateProjectExecuteWrites(t *testing.T) {
 	repo := &recRepo{}
 	cmd := projectCmdFor(t, repo)
 	res, err := cmd.Execute(context.Background(),
-		in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}}, safety.Effect{})
+		in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "Project", res.Kind)
 	assert.Equal(t, "public", res.Tier)

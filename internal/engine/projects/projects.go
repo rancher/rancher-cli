@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -75,7 +76,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, e
 	return engine.PlanCreate(ctx, repo, gvr, ns, obj, c.tier, c.stability)
 }
 
-func (c createCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (c createCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	obj, ns, err := c.build(in)
 	if err != nil {
 		return runtime.Result{}, err

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	res, err := NewAuthCheck(dir, store).Execute(context.Background(), args{}, safety.Effect{})
+	res, err := NewAuthCheck(dir, store).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "AuthCheck", res.Kind)
 }

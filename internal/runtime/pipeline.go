@@ -12,18 +12,21 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // IO carries the resolved global flags and output streams into the pipeline.
 type IO struct {
 	Out             io.Writer
 	Err             io.Writer
+	In              io.Reader
 	Format          string
 	DryRun          bool
 	Apply           bool
 	Yes             bool
 	AllowDeprecated bool
 	NoInput         bool
+	IsTTY           bool
 }
 
 // Run executes one command through the single middleware path.
@@ -44,9 +47,11 @@ func Run(ctx context.Context, cmd Command, in Input, io IO) *clierr.Error {
 		return renderErr(io, ce)
 	}
 
+	p := ui.New(io.Out, io.Err, io.In, io.NoInput, io.IsTTY)
+
 	switch d.CommandType {
 	case ReadOnly, Local:
-		res, err := cmd.Execute(ctx, in, safety.Effect{})
+		res, err := cmd.Execute(ctx, in, safety.Effect{}, p)
 		if err != nil {
 			return renderErr(io, toClierr(err))
 		}
@@ -67,7 +72,7 @@ func Run(ctx context.Context, cmd Command, in Input, io IO) *clierr.Error {
 				WithHint("re-run with: "+strings.Join(missing, " ")).
 				WithTier(eff.Tier))
 		}
-		res, err := cmd.Execute(ctx, in, eff)
+		res, err := cmd.Execute(ctx, in, eff, p)
 		if err != nil {
 			return renderErr(io, toClierr(err).WithPhase("execute"))
 		}

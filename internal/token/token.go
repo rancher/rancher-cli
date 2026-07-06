@@ -26,6 +26,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/tidwall/gjson"
 	"golang.org/x/term"
 )
@@ -113,7 +114,7 @@ func (tokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
 
-func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	return t.run(ctx, in)
 }
 
@@ -227,7 +228,7 @@ func (deleteTokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error
 	return safety.Effect{}, nil
 }
 
-func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect) (runtime.Result, error) {
+func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
 	all := in.Bool("all")
 	keys := in.Args()
 	if all && len(keys) > 0 {

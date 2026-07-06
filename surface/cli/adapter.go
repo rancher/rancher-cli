@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 // GlobalFlags returns the confirmation/output flags shared by all commands.
@@ -64,12 +65,14 @@ func buildIO(c *ucli.Command) runtime.IO {
 	return runtime.IO{
 		Out:             c.Root().Writer,
 		Err:             c.Root().ErrWriter,
+		In:              os.Stdin,
 		Format:          c.String("output"),
 		DryRun:          c.Bool("dry-run"),
 		Apply:           c.Bool("apply"),
 		Yes:             c.Bool("yes"),
 		AllowDeprecated: c.Bool("allow-deprecated"),
 		NoInput:         c.Bool("no-input"),
+		IsTTY:           term.IsTerminal(int(os.Stdin.Fd())),
 	}
 }
 

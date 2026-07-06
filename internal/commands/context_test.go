@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func TestConfigSetContextPreservesProjectOnClusterOnly(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -38,7 +39,7 @@ func TestConfigSetContextSetsBoth(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{})
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	cfg, _ := config.Load(config.FilePath(dir))
 	assert.Equal(t, "c-2", cfg.Contexts["acme"].Cluster)
@@ -50,7 +51,7 @@ func TestConfigSetContextRequiresScopeFlag(t *testing.T) {
 	writeCtxConfig(t, dir)
 	// No --cluster/--project → validation error, not a silent no-op write.
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{b: map[string]bool{"current": true}}, safety.Effect{})
+		args{b: map[string]bool{"current": true}}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -62,7 +63,7 @@ func TestConfigSetContextCurrentIsOptional(t *testing.T) {
 	// --current is optional (Phase 1 targets the current context); a scope flag
 	// alone succeeds. This keeps the Descriptor honest: --current is not required.
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{s: map[string]string{"cluster": "c-2"}}, safety.Effect{})
+		args{s: map[string]string{"cluster": "c-2"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -80,12 +81,12 @@ func TestContextUseActivatesNamedContext(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	_, err := NewContextUse(dir).Execute(context.Background(), args{a: []string{"beta"}}, safety.Effect{})
+	_, err := NewContextUse(dir).Execute(context.Background(), args{a: []string{"beta"}}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	got, _ := config.Load(config.FilePath(dir))
 	assert.Equal(t, "beta", got.CurrentContext)
 
-	_, err = NewContextUse(dir).Execute(context.Background(), args{a: []string{"nope"}}, safety.Effect{})
+	_, err = NewContextUse(dir).Execute(context.Background(), args{a: []string{"nope"}}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -101,7 +102,7 @@ func TestContextCurrentMissingContextKey(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	_, err := NewContextCurrent(dir).Execute(context.Background(), args{}, safety.Effect{})
+	_, err := NewContextCurrent(dir).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -119,7 +120,7 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	_, err := NewContextSet(dir).Execute(context.Background(),
-		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{})
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2", "project": "p-2"}}, safety.Effect{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)

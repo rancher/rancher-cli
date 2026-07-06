@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +30,7 @@ func TestGetServersJSONCarriesData(t *testing.T) {
 	dir := t.TempDir()
 	writeServersConfig(t, dir)
 
-	res, err := NewServerLs(dir).Execute(context.Background(), args{}, safety.Effect{})
+	res, err := NewServerLs(dir).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ServerList", res.Kind)
 
@@ -50,7 +51,7 @@ func TestGetServersTabular(t *testing.T) {
 	dir := t.TempDir()
 	writeServersConfig(t, dir)
 
-	res, err := NewServerLs(dir).Execute(context.Background(), args{}, safety.Effect{})
+	res, err := NewServerLs(dir).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
 	require.NoError(t, err)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)

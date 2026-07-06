@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // schemaCmd emits the capability manifest. It is readOnly (produces no server
@@ -31,6 +32,6 @@ func (s *schemaCmd) Plan(context.Context, Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
 
-func (s *schemaCmd) Execute(context.Context, Input, safety.Effect) (Result, error) {
+func (s *schemaCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
 	return Result{Kind: "Schema", Data: s.reg.Schema(s.cliVersion)}, nil
 }

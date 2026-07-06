@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ type localCmd struct{ executed *bool }
 
 func (localCmd) Describe() Descriptor                               { return Descriptor{Name: "login", CommandType: Local} }
 func (localCmd) Plan(context.Context, Input) (safety.Effect, error) { return safety.Effect{}, nil }
-func (l localCmd) Execute(context.Context, Input, safety.Effect) (Result, error) {
+func (l localCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
 	*l.executed = true
 	return Result{Kind: "LoginResult", Data: map[string]string{"ok": "true"}}, nil
 }
@@ -59,7 +60,7 @@ type mutCmd struct {
 
 func (mutCmd) Describe() Descriptor                                 { return Descriptor{Name: "clusters scale", CommandType: Mutating} }
 func (m mutCmd) Plan(context.Context, Input) (safety.Effect, error) { return m.effect, nil }
-func (m mutCmd) Execute(context.Context, Input, safety.Effect) (Result, error) {
+func (m mutCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
 	*m.executed = true
 	return Result{Kind: "ScaleResult"}, nil
 }
@@ -89,7 +90,7 @@ type rawCmd struct{}
 
 func (rawCmd) Describe() Descriptor                               { return Descriptor{Name: "token", CommandType: Local} }
 func (rawCmd) Plan(context.Context, Input) (safety.Effect, error) { return safety.Effect{}, nil }
-func (rawCmd) Execute(context.Context, Input, safety.Effect) (Result, error) {
+func (rawCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
 	return Result{Raw: true, Kind: "ExecCredential",
 		Data: map[string]any{"apiVersion": "client.authentication.k8s.io/v1beta1", "kind": "ExecCredential"}}, nil
 }
@@ -113,7 +114,7 @@ func (flaggedCmd) Describe() Descriptor {
 	}}
 }
 func (flaggedCmd) Plan(context.Context, Input) (safety.Effect, error) { return safety.Effect{}, nil }
-func (flaggedCmd) Execute(context.Context, Input, safety.Effect) (Result, error) {
+func (flaggedCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
 	return Result{Kind: "OK"}, nil
 }
 
@@ -158,6 +159,8 @@ func TestResultTierStabilityReachEnvelope(t *testing.T) {
 
 type resultCmd struct{ res Result }
 
-func (resultCmd) Describe() Descriptor                                            { return Descriptor{Name: "get thing", CommandType: ReadOnly} }
-func (resultCmd) Plan(context.Context, Input) (safety.Effect, error)              { return safety.Effect{}, nil }
-func (c resultCmd) Execute(context.Context, Input, safety.Effect) (Result, error) { return c.res, nil }
+func (resultCmd) Describe() Descriptor                               { return Descriptor{Name: "get thing", CommandType: ReadOnly} }
+func (resultCmd) Plan(context.Context, Input) (safety.Effect, error) { return safety.Effect{}, nil }
+func (c resultCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
+	return c.res, nil
+}

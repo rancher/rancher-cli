@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // CommandType selects the pipeline path. Exactly one per command.
@@ -60,5 +61,5 @@ type Result struct {
 type Command interface {
 	Describe() Descriptor
 	Plan(ctx context.Context, in Input) (safety.Effect, error)
-	Execute(ctx context.Context, in Input, eff safety.Effect) (Result, error)
+	Execute(ctx context.Context, in Input, eff safety.Effect, p *ui.Prompter) (Result, error)
 }
