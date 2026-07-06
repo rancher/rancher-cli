@@ -29,6 +29,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	purgeF := func(_ string, _ config.CredStore) runtime.Command { return commands.NewConfigPurgeLegacy() }
 	tokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewTokenCommand(dir, s) }
 	delTokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewDeleteTokenCommand(dir, s) }
+	listTokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewListTokensCommand(dir, s) }
 	ctxCurF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextCurrent(dir) }
 	ctxSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextSet(dir) }
 	ctxUseF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewContextUse(dir) }
@@ -48,7 +49,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// Register ONE instance of every command into the single registry for the
 	// schema manifest (Describe() only; dir/store irrelevant).
 	for _, f := range []func(string, config.CredStore) runtime.Command{
-		loginF, tokenF, delTokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
+		loginF, tokenF, delTokenF, listTokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
 	} {
 		reg.Register(f("", nil))
 	}
@@ -80,6 +81,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 					AdaptFactory(loginF),     // auth login
 					AdaptFactory(authCheckF), // auth check
 					AdaptFactory(tokenF),     // auth get-token
+					AdaptFactory(listTokenF), // auth list-tokens
 					AdaptFactory(delTokenF),  // auth delete-token
 				}},
 			{Name: "config", Usage: "Config operations",

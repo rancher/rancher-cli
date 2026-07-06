@@ -62,7 +62,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 
-	t.Run("named delete uses the full compound key", func(t *testing.T) {
+	t.Run("named delete removes the entry", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
 		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, safety.Effect{}, ui.Discard())
 		require.NoError(t, err)

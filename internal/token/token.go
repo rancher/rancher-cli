@@ -176,8 +176,8 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p *ui.Prompter) (ru
 type deleteTokenCmd struct{ store config.CredStore }
 
 // NewDeleteTokenCommand builds `auth delete-token` (local): clear cached
-// exec-credential token(s). A positional name is the full compound cache key
-// "<server>/<user>/<cluster>"; --all clears every cached credential.
+// exec-credential token(s). A positional name is the cache entry name; --all
+// clears every cached credential.
 func NewDeleteTokenCommand(_ string, store config.CredStore) runtime.Command {
 	return &deleteTokenCmd{store: store}
 }
@@ -191,7 +191,7 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool"}},
 		Examples: []string{
 			"rancher auth delete-token --all",
-			"rancher auth delete-token https://r.ex/u-abc/c-1",
+			"rancher auth delete-token prod",
 		},
 	}
 }
@@ -206,7 +206,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Ef
 	if all && len(keys) > 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"specify either credential name(s) or --all, not both").
-			WithHint("rancher auth delete-token <name>  OR  rancher auth delete-token --all")
+			WithHint("rancher auth delete-token prod  OR  rancher auth delete-token --all")
 	}
 	if all {
 		if err := d.store.DeleteAllCachedCreds(); err != nil {
@@ -217,7 +217,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Ef
 	if len(keys) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"provide a cached-credential name or --all").
-			WithHint("name is <server>/<user>/<cluster>; or: rancher auth delete-token --all")
+			WithHint("name is the cached entry name; or: rancher auth delete-token --all")
 	}
 	// Delete each key; on failure report which keys were already removed so the
 	// caller isn't left guessing the partial state.
