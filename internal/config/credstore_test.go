@@ -78,3 +78,34 @@ func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 	_, exists := m["acme/u/c"]
 	assert.False(t, exists, "expired entry should have been removed on successful purge")
 }
+
+func TestFileStoreListCachedCreds(t *testing.T) {
+	s := NewFileStore(t.TempDir())
+	require.NoError(t, s.SetCachedCred("bravo", "t2", time.Now().Add(time.Hour)))
+	require.NoError(t, s.SetCachedCred("alpha", "t1", time.Now().Add(time.Hour)))
+	require.NoError(t, s.SetCachedCred("gone", "t3", time.Now().Add(-time.Minute))) // expired
+
+	list, err := s.ListCachedCreds()
+	require.NoError(t, err)
+	require.Len(t, list, 2, "expired entry is pruned")
+	assert.Equal(t, "alpha", list[0].Name, "sorted by name")
+	assert.Equal(t, "bravo", list[1].Name)
+}
+
+func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
+	// No keyring.MockInit needed: the exec-cred cache methods forward to the file
+	// store and never touch the OS keychain backend (only GetToken/SetToken do).
+	dir := t.TempDir()
+	s := NewKeyringStore(dir)
+	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour)))
+
+	list, err := s.ListCachedCreds()
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, "x", list[0].Name)
+
+	require.NoError(t, s.DeleteAllCachedCreds()) // must actually flush (was a no-op)
+	list, err = s.ListCachedCreds()
+	require.NoError(t, err)
+	assert.Empty(t, list)
+}

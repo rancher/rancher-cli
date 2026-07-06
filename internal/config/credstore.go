@@ -1,15 +1,14 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -28,11 +27,18 @@ type CredStore interface {
 	SetCachedCred(key, token string, expiry time.Time) error
 	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
+	ListCachedCreds() ([]CachedCredInfo, error)
 }
 
 type cachedCred struct {
 	Token  string    `json:"token"`
 	Expiry time.Time `json:"expiry"`
+}
+
+// CachedCredInfo describes one cached exec-credential entry for listing.
+type CachedCredInfo struct {
+	Name   string    `json:"name"`
+	Expiry time.Time `json:"expiry,omitempty"`
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.
@@ -184,10 +190,38 @@ func (f *fileStore) DeleteAllCachedCreds() error {
 	return err
 }
 
-// keyringStore uses the OS keychain via go-keyring.
-type keyringStore struct{}
+func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, err := f.readCache()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CachedCredInfo, 0, len(m))
+	pruned := false
+	for name, cred := range m {
+		if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
+			delete(m, name)
+			pruned = true
+			continue
+		}
+		out = append(out, CachedCredInfo{Name: name, Expiry: cred.Expiry})
+	}
+	if pruned {
+		if werr := f.writeCache(m); werr != nil {
+			return nil, werr
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
 
-func NewKeyringStore() CredStore { return &keyringStore{} }
+// keyringStore keeps long-lived login tokens in the OS keychain, but forwards
+// the ephemeral exec-cred cache to a file store — the keychain has no list API,
+// and a single file is an enumerable single source of truth.
+type keyringStore struct{ cache CredStore }
+
+func NewKeyringStore(dir string) CredStore { return &keyringStore{cache: NewFileStore(dir)} }
 
 func (keyringStore) GetToken(server string) (string, error) {
 	tok, err := keyring.Get(keyringService, server)
@@ -218,48 +252,15 @@ func (keyringStore) DeleteToken(server string) error {
 	return nil
 }
 
-func (keyringStore) GetCachedCred(key string) (string, time.Time, error) {
-	data, err := keyring.Get(keyringService, "cred/"+key)
-	if errors.Is(err, keyring.ErrNotFound) {
-		return "", time.Time{}, ErrNoToken
-	}
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	var cred cachedCred
-	if err := json.Unmarshal([]byte(data), &cred); err != nil {
-		return "", time.Time{}, err
-	}
-	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-		if derr := keyring.Delete(keyringService, "cred/"+key); derr != nil && !errors.Is(derr, keyring.ErrNotFound) {
-			return "", time.Time{}, derr
-		}
-		return "", time.Time{}, ErrNoToken
-	}
-	return cred.Token, cred.Expiry, nil
+func (k keyringStore) GetCachedCred(key string) (string, time.Time, error) {
+	return k.cache.GetCachedCred(key)
 }
-
-func (keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
-	cred := cachedCred{Token: token, Expiry: expiry}
-	data, err := json.Marshal(cred)
-	if err != nil {
-		return err
-	}
-	return keyring.Set(keyringService, "cred/"+key, string(data))
+func (k keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
+	return k.cache.SetCachedCred(key, token, expiry)
 }
-
-func (keyringStore) DeleteCachedCred(key string) error {
-	err := keyring.Delete(keyringService, "cred/"+key)
-	if errors.Is(err, keyring.ErrNotFound) {
-		return nil
-	}
-	return err
-}
-
-func (keyringStore) DeleteAllCachedCreds() error {
-	logrus.Warn("keyring credential cache cannot be bulk-flushed; delete specific keys instead")
-	return nil
-}
+func (k keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
+func (k keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
+func (k keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
 // OpenStore selects a store by policy (keychain|file|auto), honoring
 // RANCHER_CREDENTIAL_STORE, falling back file-ward when the keyring is unusable.
@@ -271,10 +272,10 @@ func OpenStore(policy, dir string) CredStore {
 	case "file":
 		return NewFileStore(dir)
 	case "keychain":
-		return NewKeyringStore()
+		return NewKeyringStore(dir)
 	default: // "" or "auto"
 		if keyringUsable() {
-			return NewKeyringStore()
+			return NewKeyringStore(dir)
 		}
 		return NewFileStore(dir)
 	}
