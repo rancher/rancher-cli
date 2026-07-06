@@ -47,7 +47,7 @@ func Run(ctx context.Context, cmd Command, in Input, io IO) *clierr.Error {
 		return renderErr(io, ce)
 	}
 
-	p := ui.New(io.Out, io.Err, io.In, io.NoInput, io.IsTTY)
+	p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
 
 	switch d.CommandType {
 	case ReadOnly, Local:

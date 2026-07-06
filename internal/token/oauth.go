@@ -56,7 +56,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	}
 }
 
-func getCallbackPort() (int, error) {
+func getCallbackPort(p *ui.Prompter) (int, error) {
 	env := os.Getenv("CATTLE_OAUTH_CALLBACK_PORT")
 	if env == "" {
 		return 0, nil
@@ -70,7 +70,7 @@ func getCallbackPort() (int, error) {
 		return 0, errors.New("callback port value must be between 0 and 65535")
 	}
 	if port > 0 && port < 1024 {
-		logrus.Warnf("Using privileged port %d may require elevated permissions", port)
+		p.Notice(fmt.Sprintf("Using privileged port %d may require elevated permissions", port))
 	}
 
 	return port, nil
@@ -91,7 +91,7 @@ func oauthAuthCodeAuth(
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
 	}
 
-	callbackPort, err := getCallbackPort()
+	callbackPort, err := getCallbackPort(p)
 	if err != nil {
 		return nil, err
 	}

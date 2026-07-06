@@ -1,7 +1,7 @@
 // Package ui provides the single injected prompter/notifier for interactive
-// commands. Prompts and notices always go to Err; Out is reserved for machine
-// output (e.g. the exec-credential JSON). Prompting is refused unless attached
-// to a TTY and not running under --no-input.
+// commands. Prompts and notices go to Err. Stdout is owned by the pipeline for
+// machine output (e.g. the exec-credential JSON). Prompting is refused unless
+// attached to a TTY and not running under --no-input.
 package ui
 
 import (
@@ -22,21 +22,21 @@ var ErrNoInput = errors.New("input required but interaction is disabled")
 
 // Prompter carries the resolved streams and interactivity flags.
 type Prompter struct {
-	out, err io.Writer
-	in       io.Reader
-	noInput  bool
-	isTTY    bool
+	err     io.Writer
+	in      io.Reader
+	noInput bool
+	isTTY   bool
 }
 
 // New builds a Prompter from resolved streams and flags.
-func New(out, errw io.Writer, in io.Reader, noInput, isTTY bool) *Prompter {
-	return &Prompter{out: out, err: errw, in: in, noInput: noInput, isTTY: isTTY}
+func New(errw io.Writer, in io.Reader, noInput, isTTY bool) *Prompter {
+	return &Prompter{err: errw, in: in, noInput: noInput, isTTY: isTTY}
 }
 
 // Discard is a non-interactive Prompter for tests and non-interactive callers:
 // output is dropped and any prompt returns ErrNoInput.
 func Discard() *Prompter {
-	return &Prompter{out: io.Discard, err: io.Discard, in: strings.NewReader(""), noInput: true}
+	return &Prompter{err: io.Discard, in: strings.NewReader(""), noInput: true}
 }
 
 // CanPrompt is the single source of truth for whether prompting is allowed.
@@ -74,6 +74,8 @@ func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, erro
 
 // readLine reads a single line in a goroutine and aborts on ctx cancellation.
 // A cancelled read abandons the goroutine (the process is exiting).
+// Creating a fresh Scanner per call is safe only because prompting is TTY-gated
+// (CanPrompt); piped multi-line stdin would drop buffered read-ahead between calls.
 func (p *Prompter) readLine(ctx context.Context) (string, error) {
 	type res struct {
 		line string

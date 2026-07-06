@@ -3,6 +3,7 @@ package token
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -191,6 +192,27 @@ func candidateIDs(cs []clierr.Candidate) []string {
 	return out
 }
 
+// lineReader yields one line at a time without buffering, so multiple readLine
+// calls (each creating a fresh Scanner) don't lose data to Scanner's internal buffer.
+type lineReader struct {
+	lines []string
+	pos   int
+}
+
+func newLineReader(lines ...string) *lineReader {
+	return &lineReader{lines: lines}
+}
+
+func (r *lineReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.lines) {
+		return 0, io.EOF
+	}
+	line := r.lines[r.pos] + "\n"
+	r.pos++
+	n := copy(p, line)
+	return n, nil
+}
+
 func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
 	// A SAML provider under a non-interactive prompter must fast-fail AUTH(3),
 	// not open a browser and poll for 15 minutes.
@@ -212,4 +234,87 @@ func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
+}
+
+func TestResolveConnConfigFallback(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	caPEM := "-----BEGIN CERTIFICATE-----\nMIICertData\n-----END CERTIFICATE-----\n"
+	cfg := &config.Config{
+		CurrentContext: "acme",
+		Contexts:       map[string]config.Context{"acme": {Server: "acme", Cluster: "local"}},
+		Servers:        map[string]config.Server{"acme": {URL: "https://config.example", CA: caPEM}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := tokenCmd{dir: dir, store: store}
+
+	t.Run("no flags sources from config", func(t *testing.T) {
+		server, ca, cluster, err := cmd.resolveConn(tin{})
+		require.NoError(t, err)
+		assert.Equal(t, "https://config.example", server)
+		assert.Equal(t, "local", cluster)
+		assert.Equal(t, caPEM, ca, "inline PEM passes through resolveCA")
+	})
+
+	t.Run("flag override while config fills remaining", func(t *testing.T) {
+		server, ca, cluster, err := cmd.resolveConn(tin{s: map[string]string{"server": "https://flag.example"}})
+		require.NoError(t, err)
+		assert.Equal(t, "https://flag.example", server)
+		assert.Equal(t, "local", cluster, "cluster still from config")
+		assert.Equal(t, caPEM, ca, "CA still from config")
+	})
+}
+
+func TestGetTokenNoNameWritesCachingDisabledNotice(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, strings.NewReader(""), false, false)
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(), tin{s: map[string]string{"server": srv.URL}}, safety.Effect{}, p)
+	require.Error(t, err, "non-interactive local auth should fail")
+	assert.Contains(t, errBuf.String(), "caching disabled", "notice must appear in Err")
+}
+
+func TestBasicAuth401IsAuthError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+			return
+		}
+		if r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		safety.Effect{}, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code, "401 from login POST must map to CodeAuth")
 }
