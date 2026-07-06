@@ -75,7 +75,6 @@ type loginInput struct {
 	userID       string
 	clusterID    string
 	authProvider string
-	caCerts      string
 	skipVerify   bool
 	authFlow     string
 }
@@ -100,11 +99,11 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string"},
-			{Name: "user", Type: "string"},
 			{Name: "cluster", Type: "string"},
+			{Name: "name", Type: "string"},
 			{Name: "auth-provider", Type: "string"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}},
-			{Name: "cacerts", Type: "string"},
+			{Name: "cacert", Type: "string"},
 			{Name: "skip-verify", Type: "bool"},
 		},
 	}
@@ -114,74 +113,49 @@ func (tokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
 	return safety.Effect{}, nil
 }
 
-func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
-	return t.run(ctx, in)
+func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, p *ui.Prompter) (runtime.Result, error) {
+	return t.run(ctx, in, p)
 }
 
-func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, error) {
-	server := in.String("server")
-	if server == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server is required")
+func (t tokenCmd) run(ctx context.Context, in runtime.Input, p *ui.Prompter) (runtime.Result, error) {
+	name := in.String("name")
+	if name != "" {
+		token, expiry, cerr := t.store.GetCachedCred(name)
+		if cerr == nil {
+			return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(token, expiry)}, nil
+		}
+		if !errors.Is(cerr, config.ErrNoToken) {
+			p.Notice("cache read failed: " + cerr.Error())
+		}
+	} else {
+		p.Notice("caching disabled: no --name; each call re-authenticates")
 	}
 
-	serverURL, err := url.Parse(server)
+	// Cache miss (or no --name): only now resolve the connection (config + CA disk I/O).
+	server, caPEM, clusterID, err := t.resolveConn(in)
 	if err != nil {
 		return runtime.Result{}, err
-	}
-	if serverURL.Scheme == "" {
-		server = fmt.Sprintf("https://%s", server)
-	}
-
-	userID := in.String("user")
-	if userID == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--user is required")
-	}
-	clusterID := in.String("cluster")
-
-	cachedCredName := fmt.Sprintf("%s/%s/%s", server, userID, clusterID)
-	token, expiry, err := t.store.GetCachedCred(cachedCredName)
-	if err == nil {
-		return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(token, expiry)}, nil
-	}
-	if !errors.Is(err, config.ErrNoToken) {
-		customPrint(fmt.Errorf("LoadToken: %v", err))
 	}
 
 	input := &loginInput{
 		server:       server,
-		userID:       userID,
 		clusterID:    clusterID,
 		authProvider: in.String("auth-provider"),
-		caCerts:      in.String("cacerts"),
 		skipVerify:   in.Bool("skip-verify"),
 		authFlow:     in.String("auth-flow"),
 	}
 
-	var certPEM string
-	if input.caCerts != "" {
-		certPEM, err = loadCertPEM(input.caCerts)
-		if err != nil {
-			return runtime.Result{}, err
-		}
-	}
-
-	client, err := httpx.New(httpx.Options{
-		CACert:   certPEM,
-		Insecure: input.skipVerify,
-		Timeout:  0,
-	})
+	client, err := httpx.New(httpx.Options{CACert: caPEM, Insecure: input.skipVerify})
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
-	rancherToken, err := loginAndGenerateCred(ctx, client, input)
+	rancherToken, err := loginAndGenerateCred(ctx, client, input, p)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-
 	if strings.TrimSpace(rancherToken.Token) == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"authentication returned an empty token").
+		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token").
 			WithHint("check the auth provider and credentials")
 	}
 
@@ -189,13 +163,14 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input) (runtime.Result, er
 	if rancherToken.ExpiresAt != "" {
 		tokenExpiry, err = time.Parse(time.RFC3339, rancherToken.ExpiresAt)
 		if err != nil {
-			customPrint(fmt.Sprintf("\nerror parsing time %s %v", rancherToken.ExpiresAt, err))
-			return runtime.Result{}, err
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric, "parsing token expiry: "+err.Error())
 		}
 	}
 
-	if cacheErr := t.store.SetCachedCred(cachedCredName, rancherToken.Token, tokenExpiry); cacheErr != nil {
-		customPrint(fmt.Errorf("CacheToken: %v", cacheErr))
+	if name != "" {
+		if cacheErr := t.store.SetCachedCred(name, rancherToken.Token, tokenExpiry); cacheErr != nil {
+			p.Notice("cache write failed: " + cacheErr.Error())
+		}
 	}
 
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
@@ -261,12 +236,11 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Ef
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
 }
 
-func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput) (Token, error) {
+func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p *ui.Prompter) (Token, error) {
 	authProviders, useV1Public, err := getAuthProviders(ctx, client, input.server, true)
 	if err != nil {
 		return Token{}, err
 	}
-
 	selectedProvider, err := selectAuthProvider(authProviders, input.authProvider)
 	if err != nil {
 		return Token{}, err
@@ -276,23 +250,19 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	var token Token
 	if samlProviders[input.authProvider] {
 		token, err = samlAuth(ctx, client, input, useV1Public)
-		if err != nil {
-			return Token{}, err
-		}
 	} else if oauthProviders[input.authProvider] {
-		tokenPtr, err := oauthAuth(ctx, client, input, selectedProvider, useV1Public)
-		if err != nil {
-			return Token{}, err
+		var tokenPtr *Token
+		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, useV1Public)
+		if err == nil {
+			token = *tokenPtr
 		}
-		token = *tokenPtr
 	} else {
-		customPrint(fmt.Sprintf("Enter credentials for %s \n", input.authProvider))
+		p.Notice("Enter credentials for " + input.authProvider)
 		token, err = basicAuth(ctx, client, input, useV1Public)
-		if err != nil {
-			return Token{}, err
-		}
 	}
-
+	if err != nil {
+		return Token{}, err
+	}
 	return token, nil
 }
 
@@ -608,13 +578,61 @@ func generateKey() (string, error) {
 	return string(token), nil
 }
 
-// loadCertPEM reads a PEM cert file to a string (httpx validates the PEM).
-func loadCertPEM(path string) (string, error) {
-	data, err := os.ReadFile(path)
+// resolveCA turns a --cacert value or config CA (pem-or-path) into a PEM string.
+// An inline PEM (has a BEGIN header) passes through; anything else is a file path.
+func resolveCA(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	if strings.Contains(s, "-----BEGIN") {
+		return s, nil
+	}
+	data, err := os.ReadFile(s)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("reading CA file %q: %w", s, err)
 	}
 	return string(data), nil
+}
+
+// resolveConn fills server/CA/cluster from flags, falling back to the CLI config
+// (which already merges env over the file). Flags win over config.
+func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, err error) {
+	server = in.String("server")
+	cluster = in.String("cluster")
+	caIn := in.String("cacert")
+
+	if server == "" || cluster == "" || caIn == "" {
+		cfg, cerr := config.Load(config.FilePath(t.dir))
+		if cerr != nil {
+			return "", "", "", cerr
+		}
+		eff, cerr := cfg.Effective(t.store)
+		if cerr != nil {
+			return "", "", "", cerr
+		}
+		if server == "" {
+			server = eff.URL
+		}
+		if cluster == "" {
+			cluster = eff.Cluster
+		}
+		if caIn == "" {
+			caIn = eff.CA
+		}
+	}
+
+	if server == "" {
+		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
+			WithHint("pass --server or set a current context")
+	}
+	if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
+		server = "https://" + server
+	}
+	caPEM, err = resolveCA(caIn)
+	if err != nil {
+		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
+	}
+	return server, caPEM, cluster, nil
 }
 
 func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, error) {

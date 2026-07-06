@@ -3,6 +3,8 @@ package token
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -101,4 +103,47 @@ func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
 	status := got["status"].(map[string]any)
 	_, hasTok := status["token"]
 	assert.False(t, hasTok, "empty token must be omitted, not emitted as empty string")
+}
+
+func TestResolveCA(t *testing.T) {
+	t.Parallel()
+	pem := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+	got, err := resolveCA(pem)
+	require.NoError(t, err)
+	assert.Equal(t, pem, got, "inline PEM passes through")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ca.pem")
+	require.NoError(t, os.WriteFile(path, []byte(pem), 0600))
+	got, err = resolveCA(path)
+	require.NoError(t, err)
+	assert.Equal(t, pem, got, "path is read to PEM")
+
+	got, err = resolveCA("")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestGetTokenServerRequired(t *testing.T) {
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestGetTokenCacheHit(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred("prod", "cached-tok", time.Now().Add(time.Hour)))
+	cmd := NewTokenCommand(dir, store)
+
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r.ex", "name": "prod"}},
+		safety.Effect{}, ui.Discard())
+	require.NoError(t, err)
+	assert.True(t, res.Raw)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "cached-tok", cred.Status.Token)
 }
