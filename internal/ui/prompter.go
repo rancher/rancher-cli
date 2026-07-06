@@ -42,6 +42,12 @@ func Discard() *Prompter {
 // CanPrompt is the single source of truth for whether prompting is allowed.
 func (p *Prompter) CanPrompt() bool { return p.isTTY && !p.noInput }
 
+// NoInput reports whether interaction is disabled entirely (the --no-input flag).
+// Distinct from CanPrompt: a print-and-poll flow (SAML, OAuth device-code) needs a
+// human to act out-of-band (!NoInput) but no terminal, whereas reading stdin needs
+// a TTY (CanPrompt).
+func (p *Prompter) NoInput() bool { return p.noInput }
+
 // Notice writes an informational/warning line to Err (never Out).
 func (p *Prompter) Notice(msg string) { _, _ = fmt.Fprintln(p.err, msg) }
 

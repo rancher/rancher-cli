@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -108,4 +109,20 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	list, err = s.ListCachedCreds()
 	require.NoError(t, err)
 	assert.Empty(t, list)
+}
+
+func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	require.NoError(t, s.SetCachedCred("live", "tok1", time.Now().Add(time.Hour)))
+	require.NoError(t, s.SetCachedCred("expired", "tok2", time.Now().Add(-time.Minute)))
+
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	list, err := s.ListCachedCreds()
+	require.NoError(t, err, "list must succeed even when prune write-back fails")
+	require.Len(t, list, 1)
+	assert.Equal(t, "live", list[0].Name, "live entry must be returned")
 }

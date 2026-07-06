@@ -18,6 +18,13 @@ func TestCanPrompt(t *testing.T) {
 	assert.False(t, New(nil, nil, false, false).CanPrompt(), "no TTY disables")
 }
 
+func TestNoInput(t *testing.T) {
+	t.Parallel()
+	assert.True(t, New(nil, nil, true, true).NoInput())
+	assert.False(t, New(nil, nil, false, true).NoInput())
+	assert.True(t, Discard().NoInput())
+}
+
 func TestPromptReadsLineToErr(t *testing.T) {
 	t.Parallel()
 	var errw bytes.Buffer

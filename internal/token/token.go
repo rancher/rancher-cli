@@ -243,13 +243,13 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 		return Token{}, err
 	}
 	input.authProvider = selectedProvider.GetType()
-	if !p.CanPrompt() {
-		return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
-			WithHint("run in a terminal, or use a cached --name")
-	}
 
 	var token Token
 	if samlProviders[input.authProvider] {
+		if p.NoInput() {
+			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
+				WithHint("run without --no-input, or use a cached --name")
+		}
 		token, err = samlAuth(ctx, client, input, useV1Public, p)
 	} else if oauthProviders[input.authProvider] {
 		var tokenPtr *Token
@@ -543,12 +543,13 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 		}
 		p.Notice("Auth providers:\n" + b.String())
 		sel, err := p.Prompt(ctx, "Select auth provider: ")
-		if err == nil {
-			if idx, aerr := strconv.Atoi(strings.TrimSpace(sel)); aerr == nil && idx >= 0 && idx < len(providers) {
-				return providers[idx], nil
-			}
+		if err != nil {
+			return nil, err
 		}
-		// invalid pick falls through to the non-interactive error
+		if idx, aerr := strconv.Atoi(strings.TrimSpace(sel)); aerr == nil && idx >= 0 && idx < len(providers) {
+			return providers[idx], nil
+		}
+		// invalid (non-numeric / out-of-range) pick → fall through to AMBIGUOUS_SELECTION
 	}
 
 	return nil, clierr.New(clierr.CodeAmbiguousSelection, "multiple auth providers; select one").

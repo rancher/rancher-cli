@@ -208,9 +208,9 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 		out = append(out, CachedCredInfo{Name: name, Expiry: cred.Expiry})
 	}
 	if pruned {
-		if werr := f.writeCache(m); werr != nil {
-			return nil, werr
-		}
+		// Best-effort prune: expired entries are already excluded from out; a failed
+		// write-back just leaves them on disk for a later pass. Never fail a list for it.
+		_ = f.writeCache(m)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

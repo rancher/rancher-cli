@@ -3,6 +3,7 @@ package token
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -317,4 +318,61 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code, "401 from login POST must map to CodeAuth")
+}
+
+func TestOAuthDeviceCodeFlowNoInputIsAuthError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
+		safety.Effect{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code, "device-code flow with NoInput must fast-fail AUTH before network")
+}
+
+func TestOAuthDeviceCodeFlowNonTTYAllowed(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, strings.NewReader(""), false, false)
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
+		safety.Effect{}, p)
+	require.Error(t, err, "device-code will fail on OAuth config/network, but not on the gate")
+	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate, fail later")
+}
+
+func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, strings.NewReader(""), false, true)
+	providers := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
+	_, err := selectAuthProvider(ctx, providers, "", p)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled), "cancelled context must return context.Canceled, not AMBIGUOUS_SELECTION")
 }
