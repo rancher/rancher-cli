@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -87,22 +88,36 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect,
 		targets = []string{cur}
 	}
 
+	done := make([]string, 0, len(targets))
 	for _, s := range targets {
 		if derr := l.store.DeleteToken(s); derr != nil {
-			return runtime.Result{}, derr
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("failed to log out %q: %v", s, derr)).
+				WithHint(fmt.Sprintf("already logged out: %v", done))
 		}
+		done = append(done, s)
 	}
 
-	// Unset current-context if it referenced a logged-out server; keep the entries.
-	if cfg.CurrentContext != "" {
-		if cur, ok := cfg.Contexts[cfg.CurrentContext]; ok {
-			for _, s := range targets {
-				if cur.Server == s {
-					cfg.CurrentContext = ""
-					if werr := cfg.Write(); werr != nil {
-						return runtime.Result{}, werr
+	// Unset the current context if it no longer resolves to a logged-in server.
+	switch {
+	case all:
+		if cfg.CurrentContext != "" {
+			cfg.CurrentContext = ""
+			if werr := cfg.Write(); werr != nil {
+				return runtime.Result{}, werr
+			}
+		}
+	default:
+		if cfg.CurrentContext != "" {
+			if cur, ok := cfg.Contexts[cfg.CurrentContext]; ok {
+				for _, s := range targets {
+					if cur.Server == s {
+						cfg.CurrentContext = ""
+						if werr := cfg.Write(); werr != nil {
+							return runtime.Result{}, werr
+						}
+						break
 					}
-					break
 				}
 			}
 		}

@@ -67,6 +67,10 @@ func buildIO(c *ucli.Command) runtime.IO {
 	if in == nil {
 		in = os.Stdin
 	}
+	isTTY := false
+	if fp, ok := in.(*os.File); ok {
+		isTTY = term.IsTerminal(int(fp.Fd()))
+	}
 	return runtime.IO{
 		Out:             r.Writer,
 		Err:             r.ErrWriter,
@@ -77,7 +81,7 @@ func buildIO(c *ucli.Command) runtime.IO {
 		Yes:             c.Bool("yes"),
 		AllowDeprecated: c.Bool("allow-deprecated"),
 		NoInput:         c.Bool("no-input"),
-		IsTTY:           term.IsTerminal(int(os.Stdin.Fd())),
+		IsTTY:           isTTY,
 	}
 }
 

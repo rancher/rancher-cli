@@ -138,3 +138,24 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
 }
+
+func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
+	t.Parallel()
+	// CurrentContext points at a context key that doesn't exist.
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	cfg := &config.Config{
+		CurrentContext: "ghost",
+		Servers:        map[string]config.Server{"acme": {URL: "https://acme.ex"}},
+		Contexts:       map[string]config.Context{"acme": {Server: "acme"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	require.NoError(t, store.SetToken("acme", "id:sec"))
+
+	_, err := NewLogout(dir, store).Execute(context.Background(), args{b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
+	require.NoError(t, err)
+	cfgAfter, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Equal(t, "", cfgAfter.CurrentContext)
+}
