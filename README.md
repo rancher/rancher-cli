@@ -33,7 +33,8 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 ## Quickstart
 
     # Log in (token is the Rancher UI "id:secret" API key)
-    rancher auth login https://rancher.example.com --token <id:secret> --name prod
+    rancher auth login --server https://rancher.example.com --name prod
+    # (prompts for token, or pass via --token-stdin)
 
     # Scope the current context to a cluster/project
     rancher config set-context --current --cluster c-m-abc123 --project p-xyz789
@@ -56,7 +57,8 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 
 | Command | Purpose |
 |---|---|
-| `auth login <SERVERURL> --token <id:secret> [--name --cacert --context]` | Store a server + token; set current context |
+| `auth login --server <url> [--name --cacert --context]` | Store a server + token; set current context. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
+| `auth logout [<name>] [--all]` | Clear the stored login token for the current server (or `<name>`, or every server with `--all`); keeps server config; does not touch the exec-credential cache |
 | `auth check` | Connectivity + credential preflight (calls the cluster's k8s API) |
 | `auth get-token [--server --cluster --name --cacert --auth-provider --auth-flow --skip-verify]` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
 | `auth list-tokens` | List cached exec-credential entries (name, expiry) |
@@ -72,7 +74,7 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 | `schema [command]` | Machine-readable capability manifest |
 
 Nouns accept singular, plural, and short aliases (`get cluster` = `get clusters`
-= `get c`). Deferred to later Phase-1 waves: `auth logout`, more `config`
+= `get c`). Deferred to later Phase-1 waves: more `config`
 subcommands, `version`, and broader `get`/`create`/`delete`.
 
 ## Output & the agent contract
