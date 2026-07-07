@@ -149,3 +149,15 @@ func TestLoginDefaultName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://r.ex", cfg.Servers["rancherDefault"].URL)
 }
+
+func TestLoginEmptyPromptToken(t *testing.T) {
+	t.Parallel()
+	// TTY prompt returns a blank line -> "no token", not an id:secret shape error.
+	p := ui.New(&bytes.Buffer{}, strings.NewReader("\n"), false, true)
+	in := args{s: map[string]string{"server": "https://r.ex"}}
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), in, safety.Effect{}, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}

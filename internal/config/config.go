@@ -11,6 +11,9 @@ import (
 
 const fileName = "config.yaml"
 
+// LoginHint is the canonical remediation hint pointing users at auth login.
+const LoginHint = "run: rancher auth login --server <url>"
+
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
 type Server struct {
 	URL string `json:"url"`
@@ -86,7 +89,7 @@ func (c *Config) SetPath(p string) { c.path = p }
 func (c *Config) CurrentServer() (string, Server, error) {
 	if c.CurrentContext == "" {
 		return "", Server{}, clierr.New(clierr.CodeContextNotSet,
-			"no current context set").WithHint("run: rancher auth login --server <url>")
+			"no current context set").WithHint(LoginHint)
 	}
 	ctx, ok := c.Contexts[c.CurrentContext]
 	if !ok {

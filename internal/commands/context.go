@@ -28,7 +28,7 @@ func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ safety.
 	}
 	if cfg.CurrentContext == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "no current context").
-			WithHint("run: rancher auth login --server <url>")
+			WithHint(config.LoginHint)
 	}
 	ctx, ok := cfg.Contexts[cfg.CurrentContext]
 	if !ok {
@@ -83,7 +83,7 @@ func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Eff
 	}
 	if cfg.CurrentContext == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "no current context").
-			WithHint("run: rancher auth login --server <url>")
+			WithHint(config.LoginHint)
 	}
 	ctx, ok := cfg.Contexts[cfg.CurrentContext]
 	if !ok {

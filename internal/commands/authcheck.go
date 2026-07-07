@@ -46,7 +46,7 @@ func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effec
 	rc, err := kube.RESTConfig(eff)
 	if err != nil {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, err.Error()).
-			WithHint("run: rancher auth login --server <url>")
+			WithHint(config.LoginHint)
 	}
 	disc, err := kube.Discovery(rc)
 	if err != nil {

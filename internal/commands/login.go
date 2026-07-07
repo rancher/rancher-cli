@@ -104,38 +104,31 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect
 	}}, nil
 }
 
-// resolveLoginToken obtains the token securely: from stdin (--token-stdin), else an
-// interactive no-echo prompt, else a structured error. Never from a CLI flag (which
-// would leak via the process list and shell history). Empty/EOF is bad input
-// (VALIDATION); a failed read is GENERIC.
 func resolveLoginToken(ctx context.Context, in runtime.Input, p *ui.Prompter) (string, error) {
-	if in.Bool("token-stdin") {
-		tok, err := p.ReadLine(ctx)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return "", clierr.New(clierr.CodeValidation, "no token on stdin").
-					WithHint("pipe the token: rancher auth login --server <url> --token-stdin < tokenfile")
-			}
-			// A failed read is not bad input. Return a *clierr.Error directly so a
-			// direct Execute caller (tests) and the pipeline both see GENERIC.
-			return "", clierr.New(clierr.CodeGeneric, "reading token from stdin: "+err.Error())
-		}
-		tok = strings.TrimSpace(tok)
-		if tok == "" {
-			return "", clierr.New(clierr.CodeValidation, "no token on stdin")
-		}
-		return tok, nil
+	var (
+		tok string
+		err error
+	)
+	switch {
+	case in.Bool("token-stdin"):
+		tok, err = p.ReadLine(ctx)
+	case p.CanPrompt():
+		tok, err = p.PromptSecret(ctx, "Enter token (id:secret): ")
+	default:
+		return "", clierr.New(clierr.CodeValidation, "token required").
+			WithHint("pipe it via --token-stdin, or run in a terminal")
 	}
-	if p.CanPrompt() {
-		tok, err := p.PromptSecret(ctx, "Enter token (id:secret): ")
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return "", clierr.New(clierr.CodeValidation, "no token entered")
-			}
-			return "", clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", clierr.New(clierr.CodeValidation, "no token provided").
+				WithHint("pipe the token via --token-stdin, or enter it at the prompt")
 		}
-		return strings.TrimSpace(tok), nil
+		return "", clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
 	}
-	return "", clierr.New(clierr.CodeValidation, "token required").
-		WithHint("pipe it via --token-stdin, or run in a terminal")
+	tok = strings.TrimSpace(tok)
+	if tok == "" {
+		return "", clierr.New(clierr.CodeValidation, "no token provided").
+			WithHint("pipe the token via --token-stdin, or enter it at the prompt")
+	}
+	return tok, nil
 }
