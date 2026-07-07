@@ -415,12 +415,20 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	assert.Contains(t, err.Error(), "callback port", "should fail past the gate on the forced port error")
 }
 
+// blockingReader never returns from Read, so readLine's scan goroutine cannot
+// win the select against a cancelled context — making the ctrl-C test deterministic.
+type blockingReader struct{}
+
+func (blockingReader) Read([]byte) (int, error) { select {} }
+
 func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var errBuf strings.Builder
-	p := ui.New(&errBuf, strings.NewReader(""), false, true)
+	// A blocking reader (not an empty reader): an empty reader hits EOF instantly,
+	// racing ctx.Done() in the select and intermittently returning io.EOF.
+	p := ui.New(&errBuf, blockingReader{}, false, true)
 	providers := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
 	_, err := selectAuthProvider(ctx, providers, "", p)
 	require.Error(t, err)
