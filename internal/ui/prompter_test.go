@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -80,3 +81,28 @@ func TestDiscardRefuses(t *testing.T) {
 type blockingReader struct{}
 
 func (blockingReader) Read([]byte) (int, error) { select {} }
+
+func TestReadLineReadsFromInputUngated(t *testing.T) {
+	t.Parallel()
+	// noInput=true, isTTY=false: ReadLine is NOT gated (unlike Prompt/PromptSecret).
+	p := New(&bytes.Buffer{}, strings.NewReader("id:secret\n"), true, false)
+	got, err := p.ReadLine(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "id:secret", got)
+}
+
+func TestReadLineEmptyIsEOF(t *testing.T) {
+	t.Parallel()
+	p := New(&bytes.Buffer{}, strings.NewReader(""), true, false)
+	_, err := p.ReadLine(context.Background())
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestReadLineHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := New(&bytes.Buffer{}, blockingReader{}, true, false)
+	_, err := p.ReadLine(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+}

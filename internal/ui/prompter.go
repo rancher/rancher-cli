@@ -78,6 +78,15 @@ func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, erro
 	return p.readLine(ctx)
 }
 
+// ReadLine reads a single line from In, honoring ctx, with NO TTY/NoInput gating.
+// It is for explicit programmatic input (e.g. --token-stdin) fed by a pipe or file
+// redirect, which is not a terminal — distinct from PromptSecret (interactive,
+// TTY-gated, no-echo). Returns io.EOF only when the read yields no bytes; data
+// present on the final read is returned with no error.
+func (p *Prompter) ReadLine(ctx context.Context) (string, error) {
+	return p.readLine(ctx)
+}
+
 // readLine reads a single line in a goroutine and aborts on ctx cancellation.
 // A cancelled read abandons the goroutine (the process is exiting).
 // Creating a fresh Scanner per call is safe only because prompting is TTY-gated
