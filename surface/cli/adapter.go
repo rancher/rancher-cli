@@ -62,10 +62,15 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 
 // buildIO reads the resolved global flags/streams for a run.
 func buildIO(c *ucli.Command) runtime.IO {
+	r := c.Root()
+	in := r.Reader
+	if in == nil {
+		in = os.Stdin
+	}
 	return runtime.IO{
-		Out:             c.Root().Writer,
-		Err:             c.Root().ErrWriter,
-		In:              os.Stdin,
+		Out:             r.Writer,
+		Err:             r.ErrWriter,
+		In:              in,
 		Format:          c.String("output"),
 		DryRun:          c.Bool("dry-run"),
 		Apply:           c.Bool("apply"),

@@ -37,10 +37,11 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
+	root.Reader = bytes.NewBufferString("id:secret\n")
 
 	require.NoError(t, root.Run(context.Background(), []string{
-		"rancher", "--config", dir, "auth", "login", "https://r.ex",
-		"--token", "id:secret", "--name", "acme", "--context", "c-1:p-1", "-o", "json",
+		"rancher", "--config", dir, "auth", "login", "--server", "https://r.ex",
+		"--token-stdin", "--name", "acme", "--context", "c-1:p-1", "-o", "json",
 	}))
 
 	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))

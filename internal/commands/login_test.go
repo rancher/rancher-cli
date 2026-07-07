@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -22,16 +25,24 @@ func (x args) String(k string) string { return x.s[k] }
 func (x args) Bool(k string) bool     { return x.b[k] }
 func (x args) Args() []string         { return x.a }
 
-func TestLoginWritesConfigAndToken(t *testing.T) {
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
+
+// stdinPrompter builds a Prompter whose input is a canned reader (for --token-stdin).
+func stdinPrompter(tok string) *ui.Prompter {
+	return ui.New(&bytes.Buffer{}, strings.NewReader(tok), true, false)
+}
+
+func TestLoginTokenViaStdin(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	cmd := NewLogin(dir, store)
-
 	in := args{
-		s: map[string]string{"token": "id-1:secret-1", "name": "acme", "context": "c-1:p-1"},
-		a: []string{"https://rancher.example.com"},
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
+		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := cmd.Execute(context.Background(), in, safety.Effect{}, ui.Discard())
+	res, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id-1:secret-1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -40,36 +51,101 @@ func TestLoginWritesConfigAndToken(t *testing.T) {
 	assert.Equal(t, "acme", cfg.CurrentContext)
 	assert.Equal(t, "https://rancher.example.com", cfg.Servers["acme"].URL)
 	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster)
+	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project)
 
 	tok, err := store.GetToken("acme")
 	require.NoError(t, err)
 	assert.Equal(t, "id-1:secret-1", tok)
 }
 
-func TestLoginRequiresServerURL(t *testing.T) {
-	cmd := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir()))
-	_, err := cmd.Execute(context.Background(), args{s: map[string]string{"token": "a:b"}}, safety.Effect{}, ui.Discard())
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code) // must be exit-2, not CodeGeneric
+func TestLoginTokenViaPrompt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// isTTY=true, noInput=false -> CanPrompt; PromptSecret reads the line from the buffer.
+	p := ui.New(&bytes.Buffer{}, strings.NewReader("id:sec\n"), false, true)
+	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
+	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, p)
+	require.NoError(t, err)
+	tok, err := store.GetToken("acme")
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok)
 }
 
-func TestLoginRequiresToken(t *testing.T) {
-	cmd := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir()))
-	_, err := cmd.Execute(context.Background(), args{a: []string{"https://r.ex"}}, safety.Effect{}, ui.Discard())
+func TestLoginServerRequired(t *testing.T) {
+	t.Parallel()
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), args{b: map[string]bool{"token-stdin": true}}, safety.Effect{}, stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestLoginTokenRequiredNonInteractive(t *testing.T) {
+	t.Parallel()
+	// No --token-stdin and !CanPrompt (Discard) -> VALIDATION "token required".
+	in := args{s: map[string]string{"server": "https://r.ex"}}
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), in, safety.Effect{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestLoginEmptyStdinToken(t *testing.T) {
+	t.Parallel()
+	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), in, safety.Effect{}, stdinPrompter(""))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
+	t.Parallel()
+	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	p := ui.New(&bytes.Buffer{}, errReader{}, true, false)
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), in, safety.Effect{}, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+}
+
+func TestLoginBadTokenShape(t *testing.T) {
+	t.Parallel()
+	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
+		Execute(context.Background(), in, safety.Effect{}, stdinPrompter("notacolon\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
 func TestLoginStripsUserinfoAndQuery(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	_, err := NewLogin(dir, store).Execute(context.Background(),
-		args{s: map[string]string{"token": "id:sec", "name": "acme"},
-			a: []string{"https://admin:pw@rancher.ex/v3?debug=1#frag"}}, safety.Effect{}, ui.Discard())
+	in := args{
+		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
+		b: map[string]bool{"token-stdin": true},
+	}
+	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "https://rancher.ex", cfg.Servers["acme"].URL) // no userinfo/path/query/fragment
+	assert.Equal(t, "https://rancher.ex", cfg.Servers["acme"].URL)
+}
+
+func TestLoginDefaultName(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://r.ex", cfg.Servers["rancherDefault"].URL)
 }
