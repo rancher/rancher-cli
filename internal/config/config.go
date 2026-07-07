@@ -86,7 +86,7 @@ func (c *Config) SetPath(p string) { c.path = p }
 func (c *Config) CurrentServer() (string, Server, error) {
 	if c.CurrentContext == "" {
 		return "", Server{}, clierr.New(clierr.CodeContextNotSet,
-			"no current context set").WithHint("run: rancher auth login <SERVERURL>")
+			"no current context set").WithHint("run: rancher auth login --server <url>")
 	}
 	ctx, ok := c.Contexts[c.CurrentContext]
 	if !ok {

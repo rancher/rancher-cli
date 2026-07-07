@@ -89,8 +89,8 @@ func (p *Prompter) ReadLine(ctx context.Context) (string, error) {
 
 // readLine reads a single line in a goroutine and aborts on ctx cancellation.
 // A cancelled read abandons the goroutine (the process is exiting).
-// Creating a fresh Scanner per call is safe only because prompting is TTY-gated
-// (CanPrompt); piped multi-line stdin would drop buffered read-ahead between calls.
+// Creating a fresh Scanner per call is safe because callers read exactly once
+// (either stdin OR prompt, never both) — a single ungated ReadLine is fine.
 func (p *Prompter) readLine(ctx context.Context) (string, error) {
 	type res struct {
 		line string

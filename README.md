@@ -98,7 +98,7 @@ Every command emits one JSON document per invocation under `-o json` — an
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
     "error": { "code": "CONTEXT_NOT_SET", "message": "...",
-               "hint": "run: rancher auth login <SERVERURL>", "retryable": false } }
+               "hint": "run: rancher auth login --server <url>", "retryable": false } }
   ```
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·
