@@ -25,6 +25,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 
 	// Config-touching command factories (dir/store bound at run time by AdaptFactory).
 	loginF := func(dir string, s config.CredStore) runtime.Command { return commands.NewLogin(dir, s) }
+	logoutF := func(dir string, s config.CredStore) runtime.Command { return commands.NewLogout(dir, s) }
 	authCheckF := func(dir string, s config.CredStore) runtime.Command { return commands.NewAuthCheck(dir, s) }
 	purgeF := func(_ string, _ config.CredStore) runtime.Command { return commands.NewConfigPurgeLegacy() }
 	tokenF := func(dir string, s config.CredStore) runtime.Command { return token.NewTokenCommand(dir, s) }
@@ -49,7 +50,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// Register ONE instance of every command into the single registry for the
 	// schema manifest (Describe() only; dir/store irrelevant).
 	for _, f := range []func(string, config.CredStore) runtime.Command{
-		loginF, tokenF, delTokenF, listTokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
+		loginF, logoutF, tokenF, delTokenF, listTokenF, authCheckF, purgeF, ctxCurF, ctxSwF, ctxUseF, srvLsF, srvSwF,
 	} {
 		reg.Register(f("", nil))
 	}
@@ -79,6 +80,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			{Name: "auth", Usage: "Auth operations",
 				Commands: []*ucli.Command{
 					AdaptFactory(loginF),     // auth login
+					AdaptFactory(logoutF),    // auth logout
 					AdaptFactory(authCheckF), // auth check
 					AdaptFactory(tokenF),     // auth get-token
 					AdaptFactory(listTokenF), // auth list-tokens
