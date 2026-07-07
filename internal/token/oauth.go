@@ -46,18 +46,15 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	}
 	input.authFlow = strings.ToLower(input.authFlow)
 
+	if p.NoInput() {
+		return nil, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
+			WithHint("run without --no-input, or use a cached --name")
+	}
+
 	switch input.authFlow {
 	case authCodeFlow:
-		if !p.CanPrompt() {
-			return nil, clierr.New(clierr.CodeAuth, "interactive login required for authcode flow").
-				WithHint("run in a terminal, or use --auth-flow=devicecode / a cached --name")
-		}
 		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser, p)
 	case deviceAuthFlow, "":
-		if p.NoInput() {
-			return nil, clierr.New(clierr.CodeAuth, "interactive login required for device-code flow").
-				WithHint("run without --no-input, or use a cached --name")
-		}
 		return oauthDeviceCodeAuth(ctx, client, input, provider, useV1Public, p)
 	default:
 		return nil, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)

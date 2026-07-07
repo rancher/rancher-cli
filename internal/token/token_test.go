@@ -365,6 +365,56 @@ func TestOAuthDeviceCodeFlowNonTTYAllowed(t *testing.T) {
 	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate, fail later")
 }
 
+func TestOAuthAuthCodeFlowNoInputIsAuthError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "authcode"}},
+		safety.Effect{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code, "authcode flow with NoInput must fast-fail AUTH before network")
+}
+
+func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
+	// Not parallel: sets a process-wide env var. authcode, once past the gate,
+	// opens a browser and waits ~5m on a loopback callback; forcing an invalid
+	// callback port makes it fail fast right after the gate, so the test proves
+	// the gate is bypassed for non-TTY without entering that wait.
+	t.Setenv("CATTLE_OAUTH_CALLBACK_PORT", "70000") // out of range -> getCallbackPort errors
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, strings.NewReader(""), false, false)
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "authcode"}},
+		safety.Effect{}, p)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate")
+	assert.Contains(t, err.Error(), "callback port", "should fail past the gate on the forced port error")
+}
+
 func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
