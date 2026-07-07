@@ -44,7 +44,7 @@ func (p *Prompter) CanPrompt() bool { return p.isTTY && !p.noInput }
 
 // NoInput reports whether interaction is disabled entirely (the --no-input flag).
 // Distinct from CanPrompt: a print-and-poll flow (SAML, OAuth device-code) needs a
-// human to act out-of-band (!NoInput) but no terminal, whereas reading stdin needs
+// user to act out-of-band (!NoInput) but no terminal, whereas reading stdin needs
 // a TTY (CanPrompt).
 func (p *Prompter) NoInput() bool { return p.noInput }
 

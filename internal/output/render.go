@@ -17,7 +17,7 @@ type Tabular interface {
 }
 
 // Render writes env to w in the requested format.
-// format: "" or "table" (human), "json", "yaml", "name" (ids), else a Go template.
+// format: "" or "table" (user-facing), "json", "yaml", "name" (ids), else a Go template.
 func Render(w io.Writer, format string, env *Envelope) error {
 	switch format {
 	case "", "table":
