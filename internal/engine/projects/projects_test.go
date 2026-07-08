@@ -41,6 +41,8 @@ func (r *recClient) Delete(context.Context, schema.GroupVersionResource, string,
 type stubFactory struct{ c engine.ClusterClient }
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
+func (f stubFactory) ContextCluster() (string, error)                               { return "", nil }
+func (f stubFactory) Identity() (string, error)                                     { return "test-server", nil }
 
 type in struct {
 	s map[string]string

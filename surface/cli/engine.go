@@ -73,6 +73,22 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	return c, nil
 }
 
+func (f *clientFactory) ContextCluster() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	return eff.Cluster, nil
+}
+
+func (f *clientFactory) Identity() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	return eff.ServerName, nil
+}
+
 // AdaptEngine wires an engine command: it resolves the config dir/store per run
 // (via resolveDeps), builds the run-time client factory, derives the resolver
 // binding from Describe().Name, and runs the command through the pipeline.

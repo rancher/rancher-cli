@@ -27,8 +27,15 @@ type ClusterClient interface {
 }
 
 // ClusterClientFactory hands out per-cluster clients at call time (network
-// deferred; memoized per invocation). Branch 2 extends it with
-// ContextCluster/ResolveCluster/Identity.
+// deferred; memoized per invocation). Branch 4 adds ResolveCluster
+// (display-name → id).
 type ClusterClientFactory interface {
 	Cluster(ctx context.Context, clusterID string) (ClusterClient, error)
+	// ContextCluster returns the cluster from the resolved current context
+	// ("" if the context sets none). Commands that target "whatever the
+	// context says" must call this explicitly — implicit context targeting
+	// via an empty cluster id is forbidden (RF-2).
+	ContextCluster() (string, error)
+	// Identity returns the resolved server name for Effect stamping (PE-5).
+	Identity() (server string, err error)
 }

@@ -76,6 +76,18 @@ func TestFactoryRejectsEmptyClusterID(t *testing.T) {
 	}
 }
 
+func TestFactoryIdentityAndContextCluster(t *testing.T) {
+	t.Parallel()
+	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
+	server, err := f.Identity()
+	if err != nil || server == "" {
+		t.Fatalf("Identity() = %q, %v; want the configured server name", server, err)
+	}
+	if _, err := f.ContextCluster(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFactoryConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
