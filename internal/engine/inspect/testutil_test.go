@@ -67,6 +67,11 @@ func (f *fakeClient) withList(gvr schema.GroupVersionResource, list *unstructure
 	return f
 }
 
+func (f *fakeClient) withListErr(gvr schema.GroupVersionResource, err error) *fakeClient {
+	f.listErrs[gvr] = err
+	return f
+}
+
 func (f *fakeClient) withLog(container, out string) *fakeClient {
 	f.logs[container] = out
 	return f
