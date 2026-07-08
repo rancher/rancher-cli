@@ -4,8 +4,10 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -69,4 +71,46 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 
 	// delete with the correct resourceVersion succeeds.
 	require.NoError(t, repo.Delete(ctx, widgetGVR, "default", "real", created.GetResourceVersion(), false))
+}
+
+// TestUpdateStaleResourceVersionConflicts is the patch precondition end to end:
+// an update carrying a resourceVersion the server has since advanced past must
+// 409, and the provider must map that to CONFLICT — the guarantee patch relies
+// on so a concurrent modification is never a lost write.
+func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
+	t.Parallel()
+	env := &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
+	rc, err := env.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = env.Stop() })
+
+	repo, err := NewClusterClient(rc)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "test.rancher.io/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "conflict", "namespace": "default"},
+		"spec":     map[string]any{"replicas": int64(1)},
+	}}
+	created, err := repo.Create(ctx, widgetGVR, "default", obj, false)
+	require.NoError(t, err)
+	staleRV := created.GetResourceVersion()
+
+	// An out-of-band update advances the stored resourceVersion.
+	bumped := created.DeepCopy()
+	require.NoError(t, unstructured.SetNestedField(bumped.Object, int64(2), "spec", "replicas"))
+	updated, err := repo.Update(ctx, widgetGVR, "default", bumped, false)
+	require.NoError(t, err)
+	require.NotEqual(t, staleRV, updated.GetResourceVersion(), "the out-of-band update must bump the RV")
+
+	// A second update carrying the now-stale RV must 409 → CONFLICT.
+	stale := created.DeepCopy()
+	stale.SetResourceVersion(staleRV)
+	require.NoError(t, unstructured.SetNestedField(stale.Object, int64(3), "spec", "replicas"))
+	_, err = repo.Update(ctx, widgetGVR, "default", stale, false)
+	require.Error(t, err, "a stale resourceVersion must be rejected")
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }
