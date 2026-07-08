@@ -298,6 +298,19 @@ func TestValidateInput(t *testing.T) {
 	})
 }
 
+func TestRunRawBytesWrittenVerbatim(t *testing.T) {
+	t.Parallel()
+	payload := []byte("apiVersion: v1\nkind: Config\n")
+	cmd := fakeRead{
+		d:   Descriptor{Name: "kubeconfig", CommandType: Local},
+		res: Result{RawBytes: payload},
+	}
+	var out bytes.Buffer
+	streams := IO{Out: &out, Err: &bytes.Buffer{}, Format: "json"} // format ignored for raw bytes
+	require.Nil(t, Run(context.Background(), cmd, mapInput{}, streams, safety.Binding{}))
+	assert.Equal(t, payload, out.Bytes()) // no envelope, no JSON quoting, no trailing mutation
+}
+
 func TestQuietErrorStillRendersJSON(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer

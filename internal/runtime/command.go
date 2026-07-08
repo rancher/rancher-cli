@@ -54,10 +54,14 @@ type Input interface {
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
 // single ExecCredential object.
 type Result struct {
-	Kind      string
-	Data      any
-	Warnings  []string
-	Raw       bool
+	Kind     string
+	Data     any
+	Warnings []string
+	Raw      bool
+	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope
+	// and no encoding — used by `kubeconfig`, whose stdout must be a bare
+	// YAML document. Takes precedence over Raw.
+	RawBytes  []byte
 	Tier      string
 	Stability string
 }
