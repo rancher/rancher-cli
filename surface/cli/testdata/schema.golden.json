@@ -263,6 +263,39 @@
       "usage": "Create a project in a cluster"
     },
     {
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher create resource -f deploy.yaml --cluster prod --dry-run",
+        "rancher create resource -f - --apply"
+      ],
+      "flags": [
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "create resource",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Create a resource from a manifest file"
+    },
+    {
       "aliases": [
         "configmaps",
         "cm"

@@ -62,9 +62,9 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 	var out []ucli.Flag
 	for _, f := range d.Flags {
 		if f.Type == "bool" {
-			out = append(out, &ucli.BoolFlag{Name: f.Name})
+			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases})
 		} else {
-			out = append(out, &ucli.StringFlag{Name: f.Name})
+			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases})
 		}
 	}
 	return out

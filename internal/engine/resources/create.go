@@ -1,0 +1,195 @@
+package resources
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
+)
+
+type createCmd struct {
+	clients engine.ClusterClientFactory
+	src     engine.FileSource
+}
+
+// NewCreate builds `create resource -f <file>` (mutating): it reads a single
+// manifest document, resolves its apiVersion+kind to a table row (closed-world
+// — an un-tabled kind is a VALIDATION error), reconciles the manifest's
+// namespace with the routing flags per the kind's NamespacePolicy, and previews
+// the create through the shared PlanCreate.
+func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
+	return &createCmd{clients: clients, src: src}
+}
+
+func (createCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:        "create resource",
+		Usage:       "Create a resource from a manifest file",
+		CommandType: runtime.Mutating,
+		Flags: []runtime.ArgSpec{
+			{Name: "filename", Type: "string", Required: true, Aliases: []string{"f"}},
+			{Name: "cluster", Type: "string"},
+			{Name: "namespace", Type: "string"},
+		},
+		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
+		Destructive: "false",
+		Toolset:     "core",
+		Network:     true,
+		Auth:        true,
+	}
+}
+
+// overrideInput wraps a runtime.Input, preferring a manifest-derived value for
+// the reconciled routing flags (cluster, namespace). Args and Bool pass
+// through, so route sees the same positional/boolean input the user gave.
+type overrideInput struct {
+	runtime.Input
+	overrides map[string]string
+}
+
+func (o overrideInput) String(name string) string {
+	if v, ok := o.overrides[name]; ok {
+		return v
+	}
+	return o.Input.String(name)
+}
+
+func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	path := in.String("filename")
+	b, err := c.src.Read(path)
+	if err != nil {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("cannot read manifest %q: %v", path, err)).
+			WithHint("pass -f <file> or -f - for stdin")
+	}
+	if n := countDocs(b); n != 1 {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("manifest must contain exactly one document, found %d", n)).
+			WithHint("split a multi-document manifest into separate invocations")
+	}
+	var m map[string]any
+	if err := yaml.Unmarshal(b, &m); err != nil {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "invalid manifest: "+err.Error())
+	}
+	obj := &unstructured.Unstructured{Object: m}
+
+	k, ok := kinds.LookupGVK(obj.GetAPIVersion(), obj.GetKind())
+	if !ok {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("unsupported resource %s/%s", obj.GetAPIVersion(), obj.GetKind())).
+			WithHint("supported kinds: " + supportedKinds())
+	}
+
+	overrides, err := c.reconcile(ctx, k, in, obj.GetNamespace())
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+
+	clientCluster, ns, effectCluster, err := route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	client, err := c.clients.Cluster(ctx, clientCluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	// The request namespace and the object must never disagree: route owns the
+	// namespace decision, so the object is normalized to it (cleared for a
+	// cluster-scoped kind).
+	obj.SetNamespace(ns)
+	return engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.K8sKind)
+}
+
+// reconcile applies the kind's NamespacePolicy to the manifest namespace and
+// the routing flags, returning the overrides route should see. A conflict
+// between the manifest and an explicit flag is a VALIDATION error — flags fill
+// gaps, they never silently override the manifest.
+func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input, manifestNS string) (map[string]string, error) {
+	overrides := map[string]string{}
+	switch k.Policy {
+	case kinds.NSCluster:
+		// The manifest namespace IS a cluster id.
+		clusterFlag := in.String("cluster")
+		switch {
+		case clusterFlag == "" && manifestNS != "":
+			overrides["cluster"] = manifestNS // fully-specified manifest, no flag needed
+		case clusterFlag != "" && manifestNS != "":
+			id, err := c.clients.ResolveCluster(ctx, clusterFlag)
+			if err != nil {
+				return nil, err
+			}
+			if id != manifestNS {
+				return nil, clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("--cluster resolves to %q but the manifest namespace is %q", id, manifestNS)).
+					WithHint("drop metadata.namespace or pass the matching --cluster")
+			}
+		}
+		// Both empty: route rejects the named op with a --cluster hint.
+
+	case kinds.NSWorkspace, kinds.NSPlain:
+		flagNS := in.String("namespace")
+		if manifestNS != "" && flagNS != "" && manifestNS != flagNS {
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("--namespace %q conflicts with the manifest namespace %q", flagNS, manifestNS)).
+				WithHint("drop one of them")
+		}
+		if ns := flagNS; ns != "" {
+			overrides["namespace"] = ns
+		} else if manifestNS != "" {
+			overrides["namespace"] = manifestNS
+		}
+
+	case kinds.NSNone:
+		if manifestNS != "" {
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("%s is cluster-scoped; the manifest must not set metadata.namespace", k.Name)).
+				WithHint("remove metadata.namespace")
+		}
+	}
+	return overrides, nil
+}
+
+// countDocs counts the non-empty YAML documents in b, splitting on lines that
+// are exactly "---" after trimming. A JSON or single-object YAML manifest
+// counts as one; the leading "---" of a well-formed YAML file yields no extra
+// empty document.
+func countDocs(b []byte) int {
+	var count int
+	var cur strings.Builder
+	flush := func() {
+		if strings.TrimSpace(cur.String()) != "" {
+			count++
+		}
+		cur.Reset()
+	}
+	for _, ln := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(ln) == "---" {
+			flush()
+			continue
+		}
+		cur.WriteString(ln)
+		cur.WriteByte('\n')
+	}
+	flush()
+	return count
+}
+
+// supportedKinds is the sorted CLI-name list for the closed-world VALIDATION
+// hint when a manifest names an un-tabled kind.
+func supportedKinds() string {
+	all := kinds.All()
+	names := make([]string, 0, len(all))
+	for _, k := range all {
+		names = append(names, k.Name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}

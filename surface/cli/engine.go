@@ -206,3 +206,33 @@ func AdaptEngine(reg *runtime.Registry, make func(clients engine.ClusterClientFa
 		},
 	}
 }
+
+// AdaptEngineSrc wires an engine command that also needs a FileSource for -f
+// input (create resource, patch). It mirrors AdaptEngine but constructs the
+// FileSource from the same stdin reader buildIO resolves, so `-f -` reads the
+// invocation's stdin. Registry probe passes (nil, nil).
+func AdaptEngineSrc(reg *runtime.Registry, make func(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command) *ucli.Command {
+	probe := make(nil, nil)
+	d := probe.Describe()
+	b := reg.Binding(d.Name)
+	return &ucli.Command{
+		Name:    leafName(d.Name),
+		Aliases: d.Aliases,
+		Usage:   d.Usage,
+		Flags:   flagsFor(d),
+		Action: func(ctx context.Context, c *ucli.Command) error {
+			dir, store, err := resolveDeps(c)
+			if err != nil {
+				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
+			}
+			f := newClientFactory(dir, store)
+			io := buildIO(c)
+			io.ServerIdentity = f.Identity
+			cmd := make(f, newFileSource(io.In))
+			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
+				return exit(ce)
+			}
+			return nil
+		},
+	}
+}

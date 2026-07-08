@@ -15,7 +15,8 @@ type Resolver struct {
 // here only.
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
-		"create project": {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create project":  {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create resource": {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 

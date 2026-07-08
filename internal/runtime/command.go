@@ -21,6 +21,7 @@ type ArgSpec struct {
 	Type     string   `json:"type"`
 	Enum     []string `json:"enum,omitempty"`
 	Required bool     `json:"required,omitempty"`
+	Aliases  []string `json:"aliases,omitempty"` // short flag forms (e.g. "f" for --filename)
 }
 
 // Descriptor is a command's self-description (no tier/stability — those come

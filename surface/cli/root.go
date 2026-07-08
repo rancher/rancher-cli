@@ -19,13 +19,15 @@ import (
 )
 
 // entry is one command's declarative registration: its verb group and exactly
-// one constructor — engine (needs a cluster client factory) or local (needs the
-// config dir/store). The registration loop probes, validates, registers, and
-// wires each entry through the adapter matching the constructor kind.
+// one constructor — engine (needs a cluster client factory), engineSrc (also
+// needs a FileSource for -f input), or local (needs the config dir/store). The
+// registration loop probes, validates, registers, and wires each entry through
+// the adapter matching the constructor kind.
 type entry struct {
-	group  string
-	engine func(engine.ClusterClientFactory) runtime.Command
-	local  func(dir string, s config.CredStore) runtime.Command
+	group     string
+	engine    func(engine.ClusterClientFactory) runtime.Command
+	engineSrc func(engine.ClusterClientFactory, engine.FileSource) runtime.Command
+	local     func(dir string, s config.CredStore) runtime.Command
 }
 
 // buildEntries is the single source of command wiring: the bespoke config/token
@@ -47,6 +49,9 @@ func buildEntries() []entry {
 		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(d) }},
 		{group: "config", local: func(_ string, _ config.CredStore) runtime.Command { return commands.NewConfigPurgeLegacy() }},
 		{group: "create", engine: func(f engine.ClusterClientFactory) runtime.Command { return projects.NewCreate(f) }},
+		{group: "create", engineSrc: func(f engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
+			return resources.NewCreate(f, src)
+		}},
 	}
 	for _, k := range kinds.All() {
 		k := k
@@ -72,10 +77,12 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	switch {
 	case e.engine != nil:
 		probe = e.engine(nil)
+	case e.engineSrc != nil:
+		probe = e.engineSrc(nil, nil)
 	case e.local != nil:
 		probe = e.local("", nil)
 	default:
-		return nil, fmt.Errorf("entry in group %q sets neither engine nor local", e.group)
+		return nil, fmt.Errorf("entry in group %q sets none of engine, engineSrc, or local", e.group)
 	}
 	d := probe.Describe()
 
@@ -88,7 +95,7 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	if g := groupName(d.Name); g != e.group {
 		return nil, fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
 	}
-	if e.engine != nil {
+	if e.engine != nil || e.engineSrc != nil {
 		if _, ok := resolver.Resolve(d.Name); !ok {
 			return nil, fmt.Errorf("engine command %q has no resolver binding", d.Name)
 		}
@@ -96,10 +103,14 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 
 	reg.Register(probe)
 
-	if e.engine != nil {
+	switch {
+	case e.engine != nil:
 		return AdaptEngine(reg, e.engine), nil
+	case e.engineSrc != nil:
+		return AdaptEngineSrc(reg, e.engineSrc), nil
+	default:
+		return AdaptFactory(reg, e.local), nil
 	}
-	return AdaptFactory(reg, e.local), nil
 }
 
 // groupUsages documents the known verb groups. A group discovered from the
