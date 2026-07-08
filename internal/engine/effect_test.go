@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -12,20 +13,20 @@ import (
 
 var testGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
-// stubRepo records the last call and returns canned results.
-type stubRepo struct {
+// stubClient records the last call and returns canned results.
+type stubClient struct {
 	lastCreateDryRun bool
 	createOut        *unstructured.Unstructured
 	createErr        error
 }
 
-func (s *stubRepo) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+func (s *stubClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (s *stubRepo) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (s *stubClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
 }
-func (s *stubRepo) Create(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (s *stubClient) Create(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	s.lastCreateDryRun = dryRun
 	if s.createErr != nil {
 		return nil, s.createErr
@@ -35,33 +36,39 @@ func (s *stubRepo) Create(_ context.Context, _ schema.GroupVersionResource, _ st
 	}
 	return obj, nil
 }
-func (s *stubRepo) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+func (s *stubClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (s *stubRepo) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+func (s *stubClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
 	return nil
 }
 
 func TestPlanCreate(t *testing.T) {
-	repo := &stubRepo{}
+	client := &stubClient{}
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, err := PlanCreate(context.Background(), repo, testGVR, "c-x", obj, "public", "stable")
+	eff, exec, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project")
 	require.NoError(t, err)
-	assert.True(t, repo.lastCreateDryRun, "Plan must call Create with dryRun=true")
-	assert.Equal(t, "create", eff.Action)
+	assert.True(t, client.lastCreateDryRun, "Plan must call Create with dryRun=true")
+	assert.Equal(t, safety.ActionCreate, eff.Action)
 	assert.Equal(t, "projects/p-1", eff.Target)
+	assert.Equal(t, "c-x", eff.Cluster) // Effect targets the downstream cluster, not the proxy
 	assert.True(t, eff.ConflictDetection)
 	assert.False(t, eff.Destructive)
 	assert.Empty(t, eff.ResourceVersion) // create has no prior resourceVersion
-	assert.Equal(t, "public", eff.Tier)
-	assert.Equal(t, "stable", eff.Stability)
+
+	// The returned closure performs the real (non-dry-run) create.
+	require.NotNil(t, exec)
+	res, err := exec(context.Background())
+	require.NoError(t, err)
+	assert.False(t, client.lastCreateDryRun, "exec must call Create with dryRun=false")
+	assert.Equal(t, "Project", res.Kind)
 }
 
 func TestPlanCreatePropagatesError(t *testing.T) {
-	repo := &stubRepo{createErr: assert.AnError}
-	_, err := PlanCreate(context.Background(), repo, testGVR, "c-x",
-		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "public", "stable")
+	client := &stubClient{createErr: assert.AnError}
+	_, _, err := PlanCreate(context.Background(), client, testGVR, "c-x",
+		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "Project")
 	require.Error(t, err)
 }

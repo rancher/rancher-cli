@@ -7,7 +7,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -15,16 +14,15 @@ import (
 var gvr = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
 type createCmd struct {
-	newRepo         engine.RepoFactory
-	tier, stability string
+	clients engine.ClusterClientFactory
 }
 
 // NewCreate builds `create project <name> --cluster <id>` (mutating). The Project
 // is a management.cattle.io/v3 resource in the cluster-id namespace on the
 // management cluster (proxy "local"). Uses an explicit metadata.name (not
 // generateName) so Plan's dry-run and Execute address the same object.
-func NewCreate(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
-	return &createCmd{newRepo: newRepo, tier: tier, stability: stability}
+func NewCreate(clients engine.ClusterClientFactory) runtime.Command {
+	return &createCmd{clients: clients}
 }
 
 func (createCmd) Describe() runtime.Descriptor {
@@ -64,30 +62,17 @@ func (createCmd) build(in runtime.Input) (*unstructured.Unstructured, string, er
 	return obj, cluster, nil
 }
 
-func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, error) {
-	obj, ns, err := c.build(in)
+func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	obj, cluster, err := c.build(in)
 	if err != nil {
-		return safety.Effect{}, err
+		return safety.Effect{}, nil, err
 	}
-	repo, err := c.newRepo("local")
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		return safety.Effect{}, err
+		return safety.Effect{}, nil, err
 	}
-	return engine.PlanCreate(ctx, repo, gvr, ns, obj, c.tier, c.stability)
-}
-
-func (c createCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
-	obj, ns, err := c.build(in)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	repo, err := c.newRepo("local")
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	out, err := repo.Create(ctx, gvr, ns, obj, false)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	return runtime.Result{Kind: "Project", Data: out.Object, Tier: c.tier, Stability: c.stability}, nil
+	// The write goes through the management proxy (LocalCluster) because
+	// Project is a management.cattle.io resource namespaced by cluster ID,
+	// but the Effect targets the downstream cluster the project belongs to.
+	return engine.PlanCreate(ctx, client, gvr, cluster, obj, cluster, "Project")
 }

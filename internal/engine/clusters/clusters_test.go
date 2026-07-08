@@ -7,32 +7,35 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// memRepo serves canned cluster objects for List.
-type memRepo struct{ items []unstructured.Unstructured }
+// memClient serves canned cluster objects for List.
+type memClient struct{ items []unstructured.Unstructured }
 
-func (m *memRepo) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+func (m *memClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return &m.items[0], nil
 }
-func (m *memRepo) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (m *memClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{Items: m.items}, nil
 }
-func (m *memRepo) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+func (m *memClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (m *memRepo) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+func (m *memClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (m *memRepo) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+func (m *memClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
 	return nil
 }
+
+// stubFactory hands out a fixed ClusterClient for any cluster id.
+type stubFactory struct{ c engine.ClusterClient }
+
+func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{
@@ -42,25 +45,27 @@ func clusterObj(name, display, state string) unstructured.Unstructured {
 	}}
 }
 
-func factory(r engine.Repo) engine.RepoFactory {
-	return func(string) (engine.Repo, error) { return r, nil }
+func execGet(t *testing.T, cmd runtime.Command, in runtime.Input) runtime.Result {
+	t.Helper()
+	rc, ok := cmd.(runtime.ReadCommand)
+	require.True(t, ok, "get cluster must be a ReadCommand")
+	res, err := rc.Execute(context.Background(), in, nil)
+	require.NoError(t, err)
+	return res
 }
 
 func TestGetClusterList(t *testing.T) {
-	repo := &memRepo{items: []unstructured.Unstructured{
+	client := &memClient{items: []unstructured.Unstructured{
 		clusterObj("local", "local", "active"),
 		clusterObj("c-m-abc", "prod", "active"),
 	}}
-	cmd := NewGet(factory(repo), "crd", "beta")
+	cmd := NewGet(stubFactory{client})
 
 	d := cmd.Describe()
 	assert.Equal(t, "get cluster", d.Name)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
 
-	res, err := cmd.Execute(context.Background(), input{}, safety.Effect{}, ui.Discard())
-	require.NoError(t, err)
-	assert.Equal(t, "crd", res.Tier)
-	assert.Equal(t, "beta", res.Stability)
+	res := execGet(t, cmd, input{})
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
 	assert.Equal(t, []string{"NAME", "DISPLAY", "STATE"}, tab.Columns())
@@ -77,14 +82,13 @@ func (i input) Args() []string       { return i.args }
 
 // NewGet must accept a nil factory for Describe().
 func TestGetClusterDescribeNilFactory(t *testing.T) {
-	assert.Equal(t, "get cluster", NewGet(nil, "crd", "beta").Describe().Name)
+	assert.Equal(t, "get cluster", NewGet(nil).Describe().Name)
 }
 
 // An empty positional (`rancher get cluster ""`) must list, not Get("") — a real
 // API server rejects an empty name with an opaque error.
 func TestGetClusterEmptyArgLists(t *testing.T) {
-	repo := &memRepo{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
-	res, err := NewGet(factory(repo), "crd", "beta").Execute(context.Background(), input{args: []string{""}}, safety.Effect{}, ui.Discard())
-	require.NoError(t, err)
+	client := &memClient{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
+	res := execGet(t, NewGet(stubFactory{client}), input{args: []string{""}})
 	assert.Equal(t, "ClusterList", res.Kind)
 }

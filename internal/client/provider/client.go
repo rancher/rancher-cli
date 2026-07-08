@@ -12,18 +12,19 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type dynamicRepo struct{ dyn dynamic.Interface }
+type dynamicClient struct{ dyn dynamic.Interface }
 
-// NewRepo builds the dynamic-client Repo for a rest.Config (one cluster proxy).
-func NewRepo(rc *rest.Config) (engine.Repo, error) {
+// NewClusterClient builds the dynamic-client ClusterClient for a rest.Config
+// (one cluster proxy).
+func NewClusterClient(rc *rest.Config) (engine.ClusterClient, error) {
 	dyn, err := kube.Dynamic(rc)
 	if err != nil {
 		return nil, err
 	}
-	return &dynamicRepo{dyn: dyn}, nil
+	return &dynamicClient{dyn: dyn}, nil
 }
 
-func (r *dynamicRepo) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {
+func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {
 	res := r.dyn.Resource(gvr)
 	if ns == "" {
 		return res
@@ -31,17 +32,17 @@ func (r *dynamicRepo) ri(gvr schema.GroupVersionResource, ns string) dynamic.Res
 	return res.Namespace(ns)
 }
 
-func (r *dynamicRepo) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	out, err := r.ri(gvr, ns).Get(ctx, name, metav1.GetOptions{})
 	return out, mapErr(err)
 }
 
-func (r *dynamicRepo) List(ctx context.Context, gvr schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error) {
+func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error) {
 	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{})
 	return out, mapErr(err)
 }
 
-func (r *dynamicRepo) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	opts := metav1.CreateOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
@@ -50,7 +51,7 @@ func (r *dynamicRepo) Create(ctx context.Context, gvr schema.GroupVersionResourc
 	return out, mapErr(err)
 }
 
-func (r *dynamicRepo) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	opts := metav1.UpdateOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
@@ -59,7 +60,7 @@ func (r *dynamicRepo) Update(ctx context.Context, gvr schema.GroupVersionResourc
 	return out, mapErr(err)
 }
 
-func (r *dynamicRepo) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
+func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
 	opts := metav1.DeleteOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}

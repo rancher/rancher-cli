@@ -15,12 +15,12 @@ import (
 
 var projectGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
-func newFakeRepo(objs ...runtime.Object) (*dynamicRepo, *dynamicfake.FakeDynamicClient) {
+func newFakeClient(objs ...runtime.Object) (*dynamicClient, *dynamicfake.FakeDynamicClient) {
 	scheme := runtime.NewScheme()
 	// Register the GVR->ListKind so the fake tracker can serve List.
 	gvrToListKind := map[schema.GroupVersionResource]string{projectGVR: "ProjectList"}
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind, objs...)
-	return &dynamicRepo{dyn: fc}, fc
+	return &dynamicClient{dyn: fc}, fc
 }
 
 func project(ns, name string) *unstructured.Unstructured {
@@ -32,7 +32,7 @@ func project(ns, name string) *unstructured.Unstructured {
 }
 
 func TestDynamicRepoCreateAndGet(t *testing.T) {
-	r, _ := newFakeRepo()
+	r, _ := newFakeClient()
 	out, err := r.Create(context.Background(), projectGVR, "c-x", project("c-x", "p-1"), false)
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", out.GetName())
@@ -43,7 +43,7 @@ func TestDynamicRepoCreateAndGet(t *testing.T) {
 }
 
 func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
-	r, fc := newFakeRepo()
+	r, fc := newFakeClient()
 	var sawDryRun []string
 	fc.PrependReactor("create", "projects", func(a k8stesting.Action) (bool, runtime.Object, error) {
 		sawDryRun = a.(k8stesting.CreateActionImpl).GetCreateOptions().DryRun
@@ -55,7 +55,7 @@ func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
 }
 
 func TestDynamicRepoListAndDelete(t *testing.T) {
-	r, _ := newFakeRepo(project("c-x", "p-1"), project("c-x", "p-2"))
+	r, _ := newFakeClient(project("c-x", "p-1"), project("c-x", "p-2"))
 	list, err := r.List(context.Background(), projectGVR, "c-x")
 	require.NoError(t, err)
 	assert.Len(t, list.Items, 2)
@@ -66,7 +66,7 @@ func TestDynamicRepoListAndDelete(t *testing.T) {
 }
 
 func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
-	r, _ := newFakeRepo()
+	r, _ := newFakeClient()
 	_, err := r.Get(context.Background(), projectGVR, "c-x", "nope")
 	require.Error(t, err)
 	// mapErr(Task 1) turns the k8s NotFound into a CodeNotFound clierr.

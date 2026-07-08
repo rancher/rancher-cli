@@ -5,8 +5,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -14,14 +12,13 @@ import (
 var gvr = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 
 type getCmd struct {
-	newRepo         engine.RepoFactory
-	tier, stability string
+	clients engine.ClusterClientFactory
 }
 
 // NewGet builds `get cluster` (readOnly). Clusters are cluster-scoped on the
-// management cluster (proxy "local").
-func NewGet(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
-	return &getCmd{newRepo: newRepo, tier: tier, stability: stability}
+// management cluster.
+func NewGet(clients engine.ClusterClientFactory) runtime.Command {
+	return &getCmd{clients: clients}
 }
 
 func (getCmd) Describe() runtime.Descriptor {
@@ -34,32 +31,28 @@ func (getCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (getCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
-	repo, err := c.newRepo("local")
+func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	var items []unstructured.Unstructured
 	kind := "ClusterList"
 	if args := in.Args(); len(args) > 0 && args[0] != "" {
-		one, gerr := repo.Get(ctx, gvr, "", args[0])
+		one, gerr := client.Get(ctx, gvr, "", args[0])
 		if gerr != nil {
 			return runtime.Result{}, gerr
 		}
 		items = []unstructured.Unstructured{*one}
 		kind = "Cluster"
 	} else {
-		list, lerr := repo.List(ctx, gvr, "")
+		list, lerr := client.List(ctx, gvr, "")
 		if lerr != nil {
 			return runtime.Result{}, lerr
 		}
 		items = list.Items
 	}
-	return runtime.Result{Kind: kind, Data: table(items), Tier: c.tier, Stability: c.stability}, nil
+	return runtime.Result{Kind: kind, Data: table(items)}, nil
 }
 
 // table projects clusters to NAME/DISPLAY/STATE for -o table and -o name.
