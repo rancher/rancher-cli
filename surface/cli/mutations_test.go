@@ -49,3 +49,28 @@ func TestCreateResourceShortFlag(t *testing.T) {
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 	assert.Contains(t, env.Data.Error.Message, "Widget")
 }
+
+// TestPatchShortFlag exercises the real urfave tree: `patch pod web -f ops.json`
+// must parse the `-f` alias on a generated patch command. The missing file is a
+// VALIDATION error, proving the alias reached the leaf (the flag parsed at all).
+func TestPatchShortFlag(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	var out, errBuf bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errBuf
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+	runErr := root.Run(context.Background(), []string{
+		"rancher", "--config", dir, "patch", "pod", "web",
+		"-f", "does-not-exist.json", "--cluster", "local", "--namespace", "default", "--dry-run",
+	})
+	require.Error(t, runErr, "-f must parse on a generated patch command")
+
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+}

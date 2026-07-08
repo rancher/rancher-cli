@@ -1799,6 +1799,1479 @@
       "usage": "List users or show one"
     },
     {
+      "aliases": [
+        "bundles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch bundle",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a bundle with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "bundledeployments"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch bundledeployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a bundledeployment with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "capiclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch capi-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a capi-cluster with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "clusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a cluster with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "clustergroups"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch clustergroup",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a clustergroup with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "crtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch clusterroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a clusterroletemplatebinding with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "configmaps",
+        "cm"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch configmap",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a configmap with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "cronjobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch cronjob",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a cronjob with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "daemonsets",
+        "ds"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch daemonset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a daemonset with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "deployments",
+        "deploy"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch deployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a deployment with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "events",
+        "ev"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch event",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a event with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "fleetclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch fleet-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a fleet-cluster with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "gitrepos"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch gitrepo",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a gitrepo with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "globalroles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch globalrole",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a globalrole with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "globalrolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch globalrolebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a globalrolebinding with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "ingresses",
+        "ing"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch ingress",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a ingress with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "jobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch job",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a job with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "k3kclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch k3k-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a k3k-cluster with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "machines"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch machine",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a machine with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "machinedeployments"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch machinedeployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a machinedeployment with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "machinesets"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch machineset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a machineset with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "namespaces",
+        "ns"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch namespace",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a namespace with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "nodes"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch node",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a node with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "persistentvolumes",
+        "pv"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch persistentvolume",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a persistentvolume with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "persistentvolumeclaims",
+        "pvc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch persistentvolumeclaim",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a persistentvolumeclaim with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "pods",
+        "po"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch pod",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a pod with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "projects"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch project",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Patch a project with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "prtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch projectroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a projectroletemplatebinding with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "provisioningclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch provisioning-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a provisioning-cluster with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "replicasets",
+        "rs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch replicaset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a replicaset with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "roletemplates"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch roletemplate",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a roletemplate with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "secrets"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch secret",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a secret with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "services",
+        "svc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch service",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a service with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "serviceaccounts",
+        "sa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch serviceaccount",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a serviceaccount with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "settings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch setting",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a setting with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "statefulsets",
+        "sts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch statefulset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a statefulset with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "users"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch user",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a user with an RFC 6902 JSON patch"
+    },
+    {
       "auth": false,
       "commandType": "readOnly",
       "examples": [

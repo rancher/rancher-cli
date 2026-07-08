@@ -302,12 +302,13 @@ var table = []Kind{
 func All() []Kind { out := make([]Kind, len(table)); copy(out, table); return out }
 
 // Bindings returns the tier bindings for generated generic ops: "get <Name>"
-// for every kind and "delete <Name>" for deletable kinds. BuildRoot composes
-// these with the bespoke resolver (single source per op).
+// and "patch <Name>" for every kind, and "delete <Name>" for deletable kinds.
+// BuildRoot composes these with the bespoke resolver (single source per op).
 func Bindings() map[string]safety.Binding {
 	out := map[string]safety.Binding{}
 	for _, k := range table {
 		out["get "+k.Name] = k.Binding
+		out["patch "+k.Name] = k.Binding
 		if k.Deletable {
 			out["delete "+k.Name] = k.Binding
 		}

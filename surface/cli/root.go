@@ -58,6 +58,9 @@ func buildEntries() []entry {
 		entries = append(entries, entry{group: "get", engine: func(f engine.ClusterClientFactory) runtime.Command {
 			return resources.NewGet(k, f)
 		}})
+		entries = append(entries, entry{group: "patch", engineSrc: func(f engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
+			return resources.NewPatch(k, f, src)
+		}})
 		if k.Deletable {
 			entries = append(entries, entry{group: "delete", engine: func(f engine.ClusterClientFactory) runtime.Command {
 				return resources.NewDelete(k, f)
@@ -121,6 +124,7 @@ var groupUsages = map[string]string{
 	"config": "Config operations",
 	"create": "Create resources",
 	"get":    "Read resources",
+	"patch":  "Patch resources",
 	"delete": "Delete resources",
 }
 
