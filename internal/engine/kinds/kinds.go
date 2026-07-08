@@ -23,74 +23,99 @@ type Column struct {
 	Path   []string // unstructured.NestedString path; empty = metadata.name
 }
 
+// NamespacePolicy decides namespace semantics and flag generation for a
+// kind. Scope decides WHICH cluster serves the request; Policy decides how
+// the namespace is chosen. The two are orthogonal.
+type NamespacePolicy string
+
+const (
+	// NSNone: cluster-scoped resource — no namespace flag.
+	NSNone NamespacePolicy = "none"
+	// NSCluster: the namespace IS a cluster id (project,
+	// clusterroletemplatebinding) — --cluster flag, resolved via
+	// ResolveCluster, required for named ops; client is management.
+	NSCluster NamespacePolicy = "cluster"
+	// NSWorkspace: management-plane namespace with a default (fleet,
+	// provisioning, CAPI kinds — all default fleet-default) — --namespace
+	// flag with DefaultNamespace fallback, NO --cluster; client is management.
+	NSWorkspace NamespacePolicy = "workspace"
+	// NSPlain: ordinary namespace — --namespace flag, required for named
+	// ops; --cluster routes when Scope is Downstream. For the one Management
+	// NSPlain kind (projectroletemplatebinding) --namespace is a project id.
+	NSPlain NamespacePolicy = "plain"
+)
+
 type Kind struct {
-	Key        string   // canonical MCP-vocabulary key ("managementcluster")
-	Name       string   // CLI-facing singular ("cluster")
-	Aliases    []string // plural/short forms
-	GVR        schema.GroupVersionResource
-	Namespaced bool
-	Scope      Scope
-	Deletable  bool // false = no generic delete generated (clusters, nodes)
-	Binding    safety.Binding
-	Columns    []Column // extra table columns beyond NAME
+	Key              string   // canonical MCP-vocabulary key ("managementcluster")
+	Name             string   // CLI-facing singular ("cluster")
+	Aliases          []string // plural/short forms
+	GVR              schema.GroupVersionResource
+	Policy           NamespacePolicy // namespace semantics + flag generation
+	DefaultNamespace string          // NSWorkspace fallback ("" elsewhere)
+	K8sKind          string          // manifest `kind:` value ("Deployment") — consumed by parity branch 2 reverse lookup
+	Scope            Scope
+	Deletable        bool // false = no generic delete generated (clusters, nodes)
+	Sensitive        bool // patch on this kind is Destructive (parity branch 2)
+	Binding          safety.Binding
+	Columns          []Column // extra table columns beyond NAME
 }
 
 var table = []Kind{
 	{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
-		GVR:   schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
-		Scope: Management, Deletable: false,
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
+		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
-		GVR:        schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
-		Namespaced: true, Scope: Management, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
+		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable},
 		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
 	{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
-		GVR:   schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
-		Scope: Downstream, Deletable: false,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
+		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
-		GVR:   schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},
-		Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},
+		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
-		GVR:        schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
-		Namespaced: true, Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
+		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 		Columns: []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
 	},
 	{
 		Key: "deployment", Name: "deployment", Aliases: []string{"deployments", "deploy"},
-		GVR:        schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
-		Namespaced: true, Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
+		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "service", Name: "service", Aliases: []string{"services", "svc"},
-		GVR:        schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"},
-		Namespaced: true, Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"},
+		Policy: NSPlain, K8sKind: "Service", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "configmap", Name: "configmap", Aliases: []string{"configmaps", "cm"},
-		GVR:        schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"},
-		Namespaced: true, Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"},
+		Policy: NSPlain, K8sKind: "ConfigMap", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "secret", Name: "secret", Aliases: []string{"secrets"},
-		GVR:        schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"},
-		Namespaced: true, Scope: Downstream, Deletable: true,
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"},
+		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 }

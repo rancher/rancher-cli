@@ -215,3 +215,78 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	assert.Equal(t, []string{engine.LocalCluster}, fac2.clusterCalls)
 	assert.Equal(t, []string{""}, listAll.listNS, "empty --cluster lists across all clusters")
 }
+
+// TestRoutePolicyMatrix pins the routing contract for every NamespacePolicy:
+// which cluster serves the client, which namespace reaches the API, and which
+// inputs are VALIDATION errors. route is shared by get, delete, and (branch 2)
+// create/patch, so this matrix is the single behavior spec.
+func TestRoutePolicyMatrix(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		kind        kinds.Kind
+		flags       map[string]string
+		named       bool // operation targets a single name
+		wantCluster string
+		wantNS      string
+		wantErrCode string // "" = success
+	}{
+		{name: "NSNone downstream routes to resolved cluster, no ns",
+			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
+			flags: map[string]string{"cluster": "prod"}, named: true,
+			wantCluster: "c-abc", wantNS: ""},
+		{name: "NSNone management routes to local, no ns",
+			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
+			flags: map[string]string{}, named: true,
+			wantCluster: engine.LocalCluster, wantNS: ""},
+		{name: "NSCluster named op requires cluster",
+			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
+			flags: map[string]string{}, named: true,
+			wantErrCode: clierr.CodeValidation},
+		{name: "NSCluster resolves cluster into namespace, client is management",
+			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
+			flags: map[string]string{"cluster": "prod"}, named: true,
+			wantCluster: engine.LocalCluster, wantNS: "c-abc"},
+		{name: "NSCluster list may omit cluster",
+			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
+			flags: map[string]string{}, named: false,
+			wantCluster: engine.LocalCluster, wantNS: ""},
+		{name: "NSWorkspace defaults namespace, management client, no cluster flag consulted",
+			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
+			flags: map[string]string{}, named: true,
+			wantCluster: engine.LocalCluster, wantNS: "fleet-default"},
+		{name: "NSWorkspace namespace override",
+			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
+			flags: map[string]string{"namespace": "team-a"}, named: true,
+			wantCluster: engine.LocalCluster, wantNS: "team-a"},
+		{name: "NSPlain named op requires namespace",
+			kind:  kinds.Kind{Name: "pod", Scope: kinds.Downstream, Policy: kinds.NSPlain},
+			flags: map[string]string{"cluster": "prod"}, named: true,
+			wantErrCode: clierr.CodeValidation},
+		{name: "NSPlain list may omit namespace",
+			kind:  kinds.Kind{Name: "pod", Scope: kinds.Downstream, Policy: kinds.NSPlain},
+			flags: map[string]string{"cluster": "prod"}, named: false,
+			wantCluster: "c-abc", wantNS: ""},
+		{name: "NSPlain management client routes to local (projectroletemplatebinding)",
+			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+			flags: map[string]string{"namespace": "p-1"}, named: true,
+			wantCluster: engine.LocalCluster, wantNS: "p-1"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
+			gotCluster, gotNS, _, err := route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			if tt.wantErrCode != "" {
+				var ce *clierr.Error
+				require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+				assert.Equal(t, tt.wantErrCode, ce.Code)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCluster, gotCluster)
+			assert.Equal(t, tt.wantNS, gotNS)
+		})
+	}
+}

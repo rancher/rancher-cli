@@ -39,18 +39,26 @@ func (c getCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// getFlags declares the routing flags a kind's scope needs.
+// getFlags declares the routing flags a kind's namespace policy needs:
+//   - NSCluster: --cluster (it becomes the namespace).
+//   - NSWorkspace: --namespace only (client is always management).
+//   - NSPlain: --namespace, plus --cluster when the kind is Downstream.
+//   - NSNone: --cluster only when the kind is Downstream; nothing otherwise.
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
-	switch {
-	case k.Scope == kinds.Downstream:
-		flags := []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
-		if k.Namespaced {
-			flags = append(flags, runtime.ArgSpec{Name: "namespace", Type: "string"})
-		}
-		return flags
-	case k.Scope == kinds.Management && k.Namespaced:
+	switch k.Policy {
+	case kinds.NSCluster:
 		return []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
-	default:
+	case kinds.NSWorkspace:
+		return []runtime.ArgSpec{{Name: "namespace", Type: "string"}}
+	case kinds.NSPlain:
+		if k.Scope == kinds.Downstream {
+			return []runtime.ArgSpec{{Name: "cluster", Type: "string"}, {Name: "namespace", Type: "string"}}
+		}
+		return []runtime.ArgSpec{{Name: "namespace", Type: "string"}}
+	default: // NSNone
+		if k.Scope == kinds.Downstream {
+			return []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
+		}
 		return nil
 	}
 }
@@ -84,34 +92,32 @@ func hasName(in runtime.Input) bool {
 	return len(args) > 0 && args[0] != ""
 }
 
-// route maps a kind's scope + input to the client cluster id, namespace, and
-// the Effect's target cluster (the identity a mutation lands on, which differs
-// from the client cluster for management namespaced kinds):
+// route maps a kind's NamespacePolicy + input to the client cluster id, the
+// namespace, and the Effect's target cluster (the identity a mutation lands on,
+// which differs from the client cluster for management namespaced kinds):
 //
-//	Management, cluster-scoped:  client "local",   ns "",                effect "local"
-//	Management, namespaced:      client "local",   ns resolved --cluster, effect that cluster
-//	Downstream, cluster-scoped:  client resolved,  ns "",                effect that cluster
-//	Downstream, namespaced:      client resolved,  ns --namespace,       effect that cluster
+//	NSNone:      client per scope,     ns "",                 effect = client
+//	NSCluster:   client "local",       ns = resolved --cluster, effect that cluster
+//	NSWorkspace: client "local",       ns = --namespace|Default, effect "local"
+//	NSPlain:     client per scope,     ns = --namespace,      effect = client
 //
-// --cluster values pass through ResolveCluster (name-or-id). For Downstream
-// kinds an empty --cluster falls back to the context cluster; if that is also
-// empty it is a VALIDATION error.
+// "per scope" (NSNone, NSPlain): a Management kind is served by the local proxy
+// ("local"); a Downstream kind resolves --cluster (name-or-id) via
+// ResolveCluster, falling back to the context cluster, else a VALIDATION error.
 //
-// SAFETY (review F3) — for Management+Namespaced kinds an empty --cluster must
-// NEVER silently become "local" (ResolveCluster("") returns LocalCluster,
-// which as a namespace targets the local cluster's own resources): an empty
-// --cluster is allowed only for a nameless list (namespace "" = across all
-// clusters); addressing a resource by name requires --cluster.
+// SAFETY (review F3) — for NSCluster kinds an empty --cluster must NEVER
+// silently become "local" (ResolveCluster("") returns LocalCluster, which as a
+// namespace targets the local cluster's own resources): an empty --cluster is
+// allowed only for a nameless list (namespace "" = across all clusters);
+// addressing a resource by name requires --cluster. NSPlain applies the same
+// fail-fast rule to --namespace before any network resolution.
 //
 // route is shared by get and delete: delete always passes named=true and uses
 // the effect cluster to stamp Effect.Cluster.
 func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
-	clusterFlag := in.String("cluster")
-	switch {
-	case k.Scope == kinds.Management && !k.Namespaced:
-		return engine.LocalCluster, "", engine.LocalCluster, nil
-
-	case k.Scope == kinds.Management && k.Namespaced:
+	switch k.Policy {
+	case kinds.NSCluster:
+		clusterFlag := in.String("cluster")
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", clierr.New(clierr.CodeValidation,
@@ -127,40 +133,60 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// The namespace IS the cluster id; the Effect targets that cluster.
 		return engine.LocalCluster, id, id, nil
 
-	default: // Downstream
+	case kinds.NSWorkspace:
+		// A management-plane namespace with a default; --cluster is never
+		// consulted and a missing --namespace falls back to the default, so a
+		// named op never fails validation here.
+		nspace := in.String("namespace")
+		if nspace == "" {
+			nspace = k.DefaultNamespace
+		}
+		return engine.LocalCluster, nspace, engine.LocalCluster, nil
+
+	case kinds.NSPlain:
 		// Namespace is a pure input requirement — check it before any network
-		// resolution so a missing --namespace fails fast. A named op
-		// (get-by-name, delete) with an empty --namespace would pass ns="" to
-		// the API and 404 opaquely; a nameless list keeps ns="" (all-namespaces),
-		// which is valid and useful.
-		nspace := ""
-		if k.Namespaced {
-			nspace = in.String("namespace")
-			if named && nspace == "" {
-				return "", "", "", clierr.New(clierr.CodeValidation,
-					"--namespace is required to address a "+k.Name+" by name").
-					WithHint("pass --namespace <namespace>")
-			}
-		}
-		target := clusterFlag
-		if target == "" {
-			cc, cerr := clients.ContextCluster()
-			if cerr != nil {
-				return "", "", "", cerr
-			}
-			target = cc
-		}
-		if target == "" {
+		// resolution so a missing --namespace fails fast. A named op with an
+		// empty --namespace would pass ns="" to the API and 404 opaquely; a
+		// nameless list keeps ns="" (all-namespaces), which is valid and useful.
+		nspace := in.String("namespace")
+		if named && nspace == "" {
 			return "", "", "", clierr.New(clierr.CodeValidation,
-				"--cluster is required (no cluster set in the current context)").
-				WithHint("pass --cluster <id|name>")
+				"--namespace is required to address a "+k.Name+" by name").
+				WithHint("pass --namespace <namespace>")
 		}
-		id, rerr := clients.ResolveCluster(ctx, target)
-		if rerr != nil {
-			return "", "", "", rerr
-		}
-		return id, nspace, id, nil
+		return routeCluster(ctx, clients, k, in, nspace)
+
+	default: // NSNone — cluster-scoped, no namespace
+		return routeCluster(ctx, clients, k, in, "")
 	}
+}
+
+// routeCluster picks the serving cluster for the scope-driven policies (NSNone,
+// NSPlain): a Management kind is served by the local proxy; a Downstream kind
+// resolves --cluster (falling back to the context cluster, else VALIDATION).
+// ns passes through unchanged and the Effect targets the serving cluster.
+func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, ns string) (clientCluster, nsOut, effectCluster string, err error) {
+	if k.Scope == kinds.Management {
+		return engine.LocalCluster, ns, engine.LocalCluster, nil
+	}
+	target := in.String("cluster")
+	if target == "" {
+		cc, cerr := clients.ContextCluster()
+		if cerr != nil {
+			return "", "", "", cerr
+		}
+		target = cc
+	}
+	if target == "" {
+		return "", "", "", clierr.New(clierr.CodeValidation,
+			"--cluster is required (no cluster set in the current context)").
+			WithHint("pass --cluster <id|name>")
+	}
+	id, rerr := clients.ResolveCluster(ctx, target)
+	if rerr != nil {
+		return "", "", "", rerr
+	}
+	return id, ns, id, nil
 }
 
 // kindTitle upper-cases the kind's first rune for the Result envelope Kind
