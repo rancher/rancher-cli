@@ -136,7 +136,11 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	}
 	if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
 		if legacy, ok := config.FindLegacy(); ok {
-			if _, mErr := config.Migrate(legacy, dir, config.OpenStore("", dir)); mErr == nil {
+			store, sErr := config.OpenStore("", dir)
+			if sErr != nil {
+				return "", nil, sErr
+			}
+			if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
 				logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
 			}
 		}
@@ -145,7 +149,11 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return dir, config.OpenStore(cfg.CredentialStore, dir), nil
+	store, err := config.OpenStore(cfg.CredentialStore, dir)
+	if err != nil {
+		return "", nil, err
+	}
+	return dir, store, nil
 }
 
 // exit converts a structured error into a urfave exit with the right code.

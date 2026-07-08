@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -219,70 +220,104 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 // keyringStore keeps long-lived login tokens in the OS keychain, but forwards
 // the ephemeral exec-cred cache to a file store — the keychain has no list API,
 // and a single file is an enumerable single source of truth.
-type keyringStore struct{ cache CredStore }
+type keyringStore struct {
+	cache   CredStore
+	pinHint string // non-empty when selected via the auto pin (Task 2 uses it)
+}
 
-func NewKeyringStore(dir string) CredStore { return &keyringStore{cache: NewFileStore(dir)} }
+func NewKeyringStore(dir string) CredStore { return newPinnedKeyringStore(dir, false) }
 
-func (keyringStore) GetToken(server string) (string, error) {
+// newPinnedKeyringStore builds a keyring-backed store. When pinned is true the
+// store carries a remediation hint appended to every keyring error, so a
+// pinned-but-unusable keychain fails loudly with a way out instead of silently.
+func newPinnedKeyringStore(dir string, pinned bool) CredStore {
+	hint := ""
+	if pinned {
+		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set RANCHER_CREDENTIAL_STORE=file)", PinPath(dir))
+	}
+	return &keyringStore{cache: NewFileStore(dir), pinHint: hint}
+}
+
+func (k *keyringStore) GetToken(server string) (string, error) {
 	tok, err := keyring.Get(keyringService, server)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNoToken
 	}
 	if err != nil {
-		return "", fmt.Errorf("keyring get %q: %w", server, err)
+		return "", fmt.Errorf("keyring get %q: %w%s", server, err, k.pinHint)
 	}
 	return tok, nil
 }
 
-func (keyringStore) SetToken(server, token string) error {
+func (k *keyringStore) SetToken(server, token string) error {
 	if err := keyring.Set(keyringService, server, token); err != nil {
-		return fmt.Errorf("keyring set %q: %w", server, err)
+		return fmt.Errorf("keyring set %q: %w%s", server, err, k.pinHint)
 	}
 	return nil
 }
 
-func (keyringStore) DeleteToken(server string) error {
+func (k *keyringStore) DeleteToken(server string) error {
 	err := keyring.Delete(keyringService, server)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("keyring delete %q: %w", server, err)
+		return fmt.Errorf("keyring delete %q: %w%s", server, err, k.pinHint)
 	}
 	return nil
 }
 
-func (k keyringStore) GetCachedCred(key string) (string, time.Time, error) {
+func (k *keyringStore) GetCachedCred(key string) (string, time.Time, error) {
 	return k.cache.GetCachedCred(key)
 }
-func (k keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
+func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
 	return k.cache.SetCachedCred(key, token, expiry)
 }
-func (k keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
-func (k keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
-func (k keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
+func (k *keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
+func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
+func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
-// OpenStore selects a store by policy (keychain|file|auto), honoring
-// RANCHER_CREDENTIAL_STORE, falling back file-ward when the keyring is unusable.
-func OpenStore(policy, dir string) CredStore {
-	if env := os.Getenv("RANCHER_CREDENTIAL_STORE"); env != "" {
-		policy = env
-	}
-	switch policy {
+// OpenStore selects a store by policy. Explicit policies ("keychain"/"file")
+// are honored directly and never consult the pin. "auto" reads the pin; when
+// unpinned it probes ONCE, pins the outcome, and notices on stderr — loudly
+// when the outcome is plaintext. Unknown policies are hard errors (CS-6).
+func OpenStore(policy, dir string) (CredStore, error) {
+	p := EffectivePolicy(policy)
+	switch p {
 	case "file":
-		return NewFileStore(dir)
+		return NewFileStore(dir), nil
 	case "keychain":
-		return NewKeyringStore(dir)
-	default: // "" or "auto"
-		if keyringUsable() {
-			return NewKeyringStore(dir)
+		return newPinnedKeyringStore(dir, false), nil
+	case "auto":
+		switch ReadPin(dir) {
+		case "keychain":
+			return newPinnedKeyringStore(dir, true), nil
+		case "file":
+			return NewFileStore(dir), nil
 		}
-		return NewFileStore(dir)
+		if keyringUsable() {
+			if err := WritePin(dir, "keychain"); err != nil {
+				return nil, fmt.Errorf("writing credential store pin: %w", err)
+			}
+			logrus.Warnf("pinned credential store: keychain")
+			return newPinnedKeyringStore(dir, true), nil
+		}
+		if err := WritePin(dir, "file"); err != nil {
+			return nil, fmt.Errorf("writing credential store pin: %w", err)
+		}
+		logrus.Warnf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
+		return NewFileStore(dir), nil
+	default:
+		// Format the EFFECTIVE value p, not the cfg argument — when an invalid
+		// RANCHER_CREDENTIAL_STORE overrides an empty/valid config value, the
+		// error must name what was actually rejected.
+		return nil, fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
 	}
 }
 
-// keyringUsable probes the keyring with a harmless set/delete of a marker key.
-func keyringUsable() bool {
+// keyringUsable probes the keyring with a harmless set/delete of a marker
+// key. Package var so tests can count/stub probes.
+var keyringUsable = func() bool {
 	const probe = "__rancher_cli_probe__"
 	if err := keyring.Set(keyringService, probe, "1"); err != nil {
 		return false

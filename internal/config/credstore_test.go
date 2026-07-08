@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,11 +31,54 @@ func TestFileStoreRoundTrip(t *testing.T) {
 }
 
 func TestOpenStoreFilePolicy(t *testing.T) {
-	s := OpenStore("file", t.TempDir())
+	s, err := OpenStore("file", t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, s.SetToken("acme", "y"))
 	got, err := s.GetToken("acme")
 	require.NoError(t, err)
 	assert.Equal(t, "y", got)
+}
+
+func TestOpenStoreUnknownPolicyErrors(t *testing.T) {
+	_, err := OpenStore("keyChain", t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "keychain, file, auto") {
+		t.Fatalf("unknown policy: got %v, want error listing valid values", err)
+	}
+}
+
+func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
+	dir := t.TempDir()
+	probes := 0
+	orig := keyringUsable
+	keyringUsable = func() bool { probes++; return false }
+	defer func() { keyringUsable = orig }()
+
+	if _, err := OpenStore("auto", dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenStore("auto", dir); err != nil {
+		t.Fatal(err)
+	}
+	if probes != 1 {
+		t.Errorf("probes = %d, want 1 (second run must read the pin)", probes)
+	}
+	if got := ReadPin(dir); got != "file" {
+		t.Errorf("pin = %q, want file", got)
+	}
+}
+
+func TestOpenStoreExplicitPolicySkipsPin(t *testing.T) {
+	dir := t.TempDir()
+	if err := WritePin(dir, "keychain"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenStore("file", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.(*fileStore); !ok {
+		t.Errorf("explicit file policy must ignore the pin, got %T", s)
+	}
 }
 
 func TestCachedCredRoundTrip(t *testing.T) {
