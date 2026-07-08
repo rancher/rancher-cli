@@ -13,6 +13,13 @@ import (
 // LocalCluster is the management cluster's proxy id.
 const LocalCluster = "local"
 
+// FileSource is the port mutation commands use to read manifest/patch input.
+// Path "-" reads the invocation's stdin. The surface implements it; engine
+// code never touches os.Stdin (surface-neutral engine).
+type FileSource interface {
+	Read(path string) ([]byte, error)
+}
+
 // ClusterClient is the port for one cluster's Rancher-proxied k8s API
 // (https://<rancher>/k8s/clusters/<id>). The dynamic implementation lives in
 // internal/client/provider. Cluster-scoped resources pass ns == "". Writes
