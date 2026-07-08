@@ -9,11 +9,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -28,6 +30,7 @@ func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 type dynamicClient struct {
 	dyn  dynamic.Interface
 	disc discovery.DiscoveryInterface
+	cs   kubernetes.Interface
 
 	mu       sync.Mutex
 	versions map[string]string // group → resolved preferred version
@@ -46,7 +49,11 @@ func NewClusterClient(rc *rest.Config) (engine.ClusterClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dynamicClient{dyn: dyn, disc: disc, versions: map[string]string{}}, nil
+	cs, err := kube.Clientset(rc)
+	if err != nil {
+		return nil, err
+	}
+	return &dynamicClient{dyn: dyn, disc: disc, cs: cs, versions: map[string]string{}}, nil
 }
 
 func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {
@@ -114,15 +121,29 @@ func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource
 	return out, mapErr(err)
 }
 
-func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error) {
+func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
 	gvr, err := r.resolveVersion(gvr)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{})
+	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	return out, mapErr(err)
+}
+
+// Logs fetches the last tailLines lines of a container's log via the typed
+// clientset (pod logs have no dynamic/unstructured API).
+func (r *dynamicClient) Logs(ctx context.Context, ns, pod, container string, tailLines int) (string, error) {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
+	tl := int64(tailLines)
+	req := r.cs.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{Container: container, TailLines: &tl})
+	b, err := req.DoRaw(ctx)
+	if err != nil {
+		return "", mapErr(err)
+	}
+	return string(b), nil
 }
 
 func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {

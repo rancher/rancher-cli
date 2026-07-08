@@ -45,8 +45,11 @@ type createClient struct {
 func (c *createClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (c *createClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (c *createClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
+}
+func (c *createClient) Logs(context.Context, string, string, string, int) (string, error) {
+	return "", nil
 }
 func (c *createClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	c.creates = append(c.creates, createCall{gvr: gvr, ns: ns, dryRun: dryRun, obj: obj})

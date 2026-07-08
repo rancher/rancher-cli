@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -52,4 +53,9 @@ func Dynamic(rc *rest.Config) (dynamic.Interface, error) { return dynamic.NewFor
 // Discovery builds a discovery client (used by auth check / server-version).
 func Discovery(rc *rest.Config) (discovery.DiscoveryInterface, error) {
 	return discovery.NewDiscoveryClientForConfig(rc)
+}
+
+// Clientset builds a typed client-go clientset, used for pod log streaming.
+func Clientset(rc *rest.Config) (kubernetes.Interface, error) {
+	return kubernetes.NewForConfig(rc)
 }

@@ -25,8 +25,11 @@ type stubClient struct {
 func (s *stubClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (s *stubClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (s *stubClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
+}
+func (s *stubClient) Logs(context.Context, string, string, string, int) (string, error) {
+	return "", nil
 }
 func (s *stubClient) Create(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	s.lastCreateDryRun = dryRun

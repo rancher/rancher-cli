@@ -27,10 +27,13 @@ type FileSource interface {
 // resourceVersion precondition ("" = none).
 type ClusterClient interface {
 	Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error)
-	List(ctx context.Context, gvr schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error)
+	// List lists objects in ns; selector "" lists all (no label filter).
+	List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error)
 	Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error)
 	Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error)
 	Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error
+	// Logs fetches the last tailLines lines of a container's log.
+	Logs(ctx context.Context, ns, pod, container string, tailLines int) (string, error)
 }
 
 // ClusterClientFactory hands out per-cluster clients at call time (network

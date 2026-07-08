@@ -90,7 +90,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		}
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one})}, nil
 	}
-	list, lerr := client.List(ctx, c.k.GVR, ns)
+	list, lerr := client.List(ctx, c.k.GVR, ns, "")
 	if lerr != nil {
 		return runtime.Result{}, lerr
 	}

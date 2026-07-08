@@ -22,8 +22,11 @@ type recClient struct {
 func (r *recClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (r *recClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (r *recClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
+}
+func (r *recClient) Logs(context.Context, string, string, string, int) (string, error) {
+	return "", nil
 }
 func (r *recClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	r.created, r.createdNS = obj, ns

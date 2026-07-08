@@ -119,9 +119,12 @@ type listCountClient struct {
 func (c *listCountClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (c *listCountClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (c *listCountClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	c.listCalls++
 	return &unstructured.UnstructuredList{Items: c.items}, nil
+}
+func (c *listCountClient) Logs(context.Context, string, string, string, int) (string, error) {
+	return "", nil
 }
 func (c *listCountClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil

@@ -123,7 +123,7 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 	if err != nil {
 		return "", err
 	}
-	list, err := mgmt.List(ctx, clustersGVR, "")
+	list, err := mgmt.List(ctx, clustersGVR, "", "")
 	if err != nil {
 		return "", err
 	}

@@ -9,12 +9,14 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -55,12 +57,12 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": "v1beta1"}}
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
-	_, err := c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default")
+	_, err := c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default", "")
 	require.NoError(t, err)
 	assert.Equal(t, "v1beta1", lastVersion, "the empty version is filled from discovery before the API call")
 
 	// Second call, same group: discovery is memoized, not consulted again.
-	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "fleet-default")
+	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "fleet-default", "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, disc.calls)
 }
@@ -77,7 +79,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
 	machines := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}
-	_, err := c.List(context.Background(), machines, "fleet-default")
+	_, err := c.List(context.Background(), machines, "fleet-default", "")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
@@ -85,7 +87,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	assert.Equal(t, 1, disc.calls)
 
 	// Second call: the empty version was not cached, so discovery is consulted again.
-	_, err = c.List(context.Background(), machines, "fleet-default")
+	_, err = c.List(context.Background(), machines, "fleet-default", "")
 	require.Error(t, err)
 	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
 }
@@ -140,14 +142,66 @@ func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
 func TestDynamicRepoListAndDelete(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient(project("c-x", "p-1"), project("c-x", "p-2"))
-	list, err := r.List(context.Background(), projectGVR, "c-x")
+	list, err := r.List(context.Background(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Len(t, list.Items, 2)
 
 	require.NoError(t, r.Delete(context.Background(), projectGVR, "c-x", "p-1", "", false))
-	after, err := r.List(context.Background(), projectGVR, "c-x")
+	after, err := r.List(context.Background(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Len(t, after.Items, 1)
+}
+
+// TestListPassesLabelSelector asserts the selector param reaches the fake
+// dynamic client's ListOptions.LabelSelector unchanged, and that "" list-all
+// sends no selector.
+func TestListPassesLabelSelector(t *testing.T) {
+	t.Parallel()
+	r, fc := newFakeClient(project("c-x", "p-1"), project("c-x", "p-2"))
+	var lastSelector string
+	sawSelector := false
+	fc.PrependReactor("list", "*", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		la := a.(k8stesting.ListActionImpl)
+		lastSelector = la.ListOptions.LabelSelector
+		sawSelector = true
+		return false, nil, nil
+	})
+
+	_, err := r.List(context.Background(), projectGVR, "c-x", "app=web")
+	require.NoError(t, err)
+	assert.True(t, sawSelector)
+	assert.Equal(t, "app=web", lastSelector)
+
+	_, err = r.List(context.Background(), projectGVR, "c-x", "")
+	require.NoError(t, err)
+	assert.Empty(t, lastSelector)
+}
+
+// TestLogsFetchesTail asserts Logs returns the fake clientset's canned log
+// body and requests the given tail line count.
+func TestLogsFetchesTail(t *testing.T) {
+	t.Parallel()
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+	cs := k8sfake.NewClientset(pod)
+	r := &dynamicClient{cs: cs}
+
+	out, err := r.Logs(context.Background(), "ns1", "web", "app", 50)
+	require.NoError(t, err)
+	assert.NotEmpty(t, out)
+
+	found := false
+	for _, a := range cs.Actions() {
+		gen, ok := a.(k8stesting.GenericActionImpl)
+		if !ok || a.GetSubresource() != "log" {
+			continue
+		}
+		found = true
+		opts, ok := gen.Value.(*corev1.PodLogOptions)
+		require.True(t, ok)
+		require.NotNil(t, opts.TailLines)
+		assert.Equal(t, int64(50), *opts.TailLines)
+	}
+	assert.True(t, found, "expected a get pods/log action")
 }
 
 func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {

@@ -32,8 +32,11 @@ func (p *patchClient) Get(context.Context, schema.GroupVersionResource, string, 
 	}
 	return p.obj, nil
 }
-func (p *patchClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+func (p *patchClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
+}
+func (p *patchClient) Logs(context.Context, string, string, string, int) (string, error) {
+	return "", nil
 }
 func (p *patchClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
