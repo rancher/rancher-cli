@@ -70,6 +70,14 @@ func NewFileStore(dir string) CredStore {
 	}
 }
 
+// warnLoosePerm notices on stderr when a credential file is group/world
+// readable, so a plaintext token in a 0644 file does not sit unremarked (CS-1).
+func warnLoosePerm(path string) {
+	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o077 != 0 {
+		logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+	}
+}
+
 func (f *fileStore) read() (map[string]string, error) {
 	m := map[string]string{}
 	b, err := os.ReadFile(f.path)
@@ -79,6 +87,7 @@ func (f *fileStore) read() (map[string]string, error) {
 		}
 		return nil, err
 	}
+	warnLoosePerm(f.path)
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
@@ -138,6 +147,7 @@ func (f *fileStore) readCache() (map[string]cachedCred, error) {
 		}
 		return nil, err
 	}
+	warnLoosePerm(f.cachePath)
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}

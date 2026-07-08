@@ -134,24 +134,27 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
-		if legacy, ok := config.FindLegacy(); ok {
-			store, sErr := config.OpenStore("", dir)
-			if sErr != nil {
-				return "", nil, sErr
-			}
-			if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
-				logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
-			}
-		}
-	}
 	cfg, err := config.Load(config.FilePath(dir))
 	if err != nil {
 		return "", nil, err
 	}
+	// Load before OpenStore so the declared policy drives store selection, and
+	// migration lands tokens in the backend the config declares.
 	store, err := config.OpenStore(cfg.CredentialStore, dir)
 	if err != nil {
 		return "", nil, err
+	}
+	if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
+		if legacy, ok := config.FindLegacy(); ok {
+			// FindLegacy scans the real $HOME; only auto-migrate into the DEFAULT
+			// config dir. An explicitly overridden dir gets a hint, never a
+			// silent import of the user's real cli2.json.
+			if c.String("config") != "" || os.Getenv("RANCHER_CONFIG_DIR") != "" {
+				logrus.Warnf("legacy config found at %s; not importing into an explicitly overridden config dir", legacy)
+			} else if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
+				logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
+			}
+		}
 	}
 	return dir, store, nil
 }

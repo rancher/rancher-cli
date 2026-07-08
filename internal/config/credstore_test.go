@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -138,6 +140,29 @@ func TestFileStoreListCachedCreds(t *testing.T) {
 	require.Len(t, list, 2, "expired entry is pruned")
 	assert.Equal(t, "alpha", list[0].Name, "sorted by name")
 	assert.Equal(t, "bravo", list[1].Name)
+}
+
+func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	require.NoError(t, s.SetToken("acme", "id:sec"))
+	credPath := filepath.Join(dir, "credentials.yaml")
+
+	orig := logrus.StandardLogger().Out
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(orig)
+
+	require.NoError(t, os.Chmod(credPath, 0o644))
+	_, err := s.GetToken("acme")
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "group/world-readable", "0644 credentials must warn")
+
+	buf.Reset()
+	require.NoError(t, os.Chmod(credPath, 0o600))
+	_, err = s.GetToken("acme")
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "group/world-readable", "0600 credentials must be silent")
 }
 
 func TestCacheKeyScoping(t *testing.T) {
