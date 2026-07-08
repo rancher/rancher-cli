@@ -53,7 +53,7 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 }
 
 func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, ns, err := c.route(ctx, in, hasName(in))
+	clusterID, ns, _, err := route(ctx, c.clients, c.k, in, hasName(in))
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -81,12 +81,14 @@ func hasName(in runtime.Input) bool {
 	return len(args) > 0 && args[0] != ""
 }
 
-// route maps the kind's scope + input to the (client cluster id, namespace):
+// route maps a kind's scope + input to the client cluster id, namespace, and
+// the Effect's target cluster (the identity a mutation lands on, which differs
+// from the client cluster for management namespaced kinds):
 //
-//	Management, cluster-scoped:  ("local", "")
-//	Management, namespaced:      ("local", resolved --cluster)   // project: namespace IS the cluster id
-//	Downstream, cluster-scoped:  (resolve(--cluster or context), "")
-//	Downstream, namespaced:      (resolve(--cluster or context), --namespace)
+//	Management, cluster-scoped:  client "local",   ns "",                effect "local"
+//	Management, namespaced:      client "local",   ns resolved --cluster, effect that cluster
+//	Downstream, cluster-scoped:  client resolved,  ns "",                effect that cluster
+//	Downstream, namespaced:      client resolved,  ns --namespace,       effect that cluster
 //
 // --cluster values pass through ResolveCluster (name-or-id). For Downstream
 // kinds an empty --cluster falls back to the context cluster; if that is also
@@ -96,51 +98,55 @@ func hasName(in runtime.Input) bool {
 // NEVER silently become "local" (ResolveCluster("") returns LocalCluster,
 // which as a namespace targets the local cluster's own resources): an empty
 // --cluster is allowed only for a nameless list (namespace "" = across all
-// clusters); getting by name requires --cluster.
-func (c getCmd) route(ctx context.Context, in runtime.Input, named bool) (string, string, error) {
+// clusters); addressing a resource by name requires --cluster.
+//
+// route is shared by get and delete: delete always passes named=true and uses
+// the effect cluster to stamp Effect.Cluster.
+func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
 	clusterFlag := in.String("cluster")
 	switch {
-	case c.k.Scope == kinds.Management && !c.k.Namespaced:
-		return engine.LocalCluster, "", nil
+	case k.Scope == kinds.Management && !k.Namespaced:
+		return engine.LocalCluster, "", engine.LocalCluster, nil
 
-	case c.k.Scope == kinds.Management && c.k.Namespaced:
+	case k.Scope == kinds.Management && k.Namespaced:
 		if clusterFlag == "" {
 			if named {
-				return "", "", clierr.New(clierr.CodeValidation,
-					"--cluster is required to address a "+c.k.Name+" by name").
+				return "", "", "", clierr.New(clierr.CodeValidation,
+					"--cluster is required to address a "+k.Name+" by name").
 					WithHint("pass --cluster <id|name>")
 			}
-			return engine.LocalCluster, "", nil // list across all clusters
+			return engine.LocalCluster, "", "", nil // list across all clusters
 		}
-		id, err := c.clients.ResolveCluster(ctx, clusterFlag)
-		if err != nil {
-			return "", "", err
+		id, rerr := clients.ResolveCluster(ctx, clusterFlag)
+		if rerr != nil {
+			return "", "", "", rerr
 		}
-		return engine.LocalCluster, id, nil
+		// The namespace IS the cluster id; the Effect targets that cluster.
+		return engine.LocalCluster, id, id, nil
 
 	default: // Downstream
 		target := clusterFlag
 		if target == "" {
-			cc, err := c.clients.ContextCluster()
-			if err != nil {
-				return "", "", err
+			cc, cerr := clients.ContextCluster()
+			if cerr != nil {
+				return "", "", "", cerr
 			}
 			target = cc
 		}
 		if target == "" {
-			return "", "", clierr.New(clierr.CodeValidation,
+			return "", "", "", clierr.New(clierr.CodeValidation,
 				"--cluster is required (no cluster set in the current context)").
 				WithHint("pass --cluster <id|name>")
 		}
-		id, err := c.clients.ResolveCluster(ctx, target)
-		if err != nil {
-			return "", "", err
+		id, rerr := clients.ResolveCluster(ctx, target)
+		if rerr != nil {
+			return "", "", "", rerr
 		}
-		ns := ""
-		if c.k.Namespaced {
-			ns = in.String("namespace")
+		nspace := ""
+		if k.Namespaced {
+			nspace = in.String("namespace")
 		}
-		return id, ns, nil
+		return id, nspace, id, nil
 	}
 }
 
