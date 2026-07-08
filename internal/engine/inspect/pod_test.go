@@ -146,6 +146,37 @@ func TestInspectPodUnknownOwnerKindReported(t *testing.T) {
 	assert.Equal(t, "x", data.Owners[0]["name"])
 }
 
+func TestInspectPodFetchesInitContainerLogs(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+		"status":   map[string]any{"phase": "Init:CrashLoopBackOff"},
+		"spec": map[string]any{
+			"initContainers": []any{map[string]any{"name": "init-setup"}},
+			"containers":     []any{map[string]any{"name": "app"}},
+		},
+	}}
+
+	client := newFakeClient().
+		withObject(podKind.GVR, "ns1", "web", pod).
+		withGetErr(podMetricsGVR, "ns1", "web", errors.New("not found")).
+		withLog("app", "app log").
+		withLog("init-setup", "init log")
+
+	cmd := NewPod(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.NoError(t, err)
+
+	data, ok := res.Data.(podResult)
+	require.True(t, ok)
+	assert.Equal(t, "init log", data.Logs["init-setup"])
+	assert.Equal(t, "app log", data.Logs["app"])
+}
+
 func TestInspectPodTailFlagValidation(t *testing.T) {
 	t.Parallel()
 	client := newFakeClient()

@@ -9,11 +9,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/engine/resources"
-	"github.com/rancher/rancher-cli/internal/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
@@ -108,6 +105,34 @@ func asOwnerRef(r any) (ownerRef, bool) {
 	return ownerRef{apiVersion: apiVersion, kind: kind, name: name}, true
 }
 
+// metricsUnavailableWarning is the one wording for a degraded metrics.k8s.io
+// fetch, shared by every composite that joins in node/pod metrics.
+func metricsUnavailableWarning(clusterID string) string {
+	return fmt.Sprintf("metrics.k8s.io unavailable on cluster %s", clusterID)
+}
+
+// containerNames returns the name of every container in pod, spec.containers
+// then spec.initContainers, so callers that walk a pod's containers (log
+// fetching) see the whole pod rather than only its long-running containers —
+// an init container stuck in CrashLoopBackOff is the canonical case its logs
+// must not be silently skipped.
+func containerNames(pod map[string]any) []string {
+	var names []string
+	for _, field := range []string{"containers", "initContainers"} {
+		items, _, _ := unstructured.NestedSlice(pod, "spec", field)
+		for _, item := range items {
+			cm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if name, _ := cm["name"].(string); name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
 // selectorFrom decodes a deployment's FULL spec.selector (matchLabels AND
 // matchExpressions) into a rendered label selector string. A nil or empty
 // selector is an error — never "", which as a List selector would return
@@ -133,25 +158,4 @@ func selectorFrom(dep *unstructured.Unstructured) (string, error) {
 		return "", fmt.Errorf("deployment %s has an empty spec.selector", dep.GetName())
 	}
 	return rendered, nil
-}
-
-// resolveClusterFlag resolves --cluster for the fleet-wide composites
-// (images, usage), which are not tied to a kind-table row: an explicit flag
-// is resolved via ResolveCluster; an empty flag falls back to the context
-// cluster, else a VALIDATION error (mirrors resources' Downstream routing).
-func resolveClusterFlag(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	flag := in.String(resources.FlagCluster)
-	if flag == "" {
-		cc, err := clients.ContextCluster()
-		if err != nil {
-			return "", err
-		}
-		if cc == "" {
-			return "", clierr.New(clierr.CodeValidation,
-				"--cluster is required (no cluster set in the current context)").
-				WithHint("pass --cluster <id|name>")
-		}
-		flag = cc
-	}
-	return clients.ResolveCluster(ctx, flag)
 }

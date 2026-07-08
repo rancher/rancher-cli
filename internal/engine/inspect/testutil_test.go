@@ -40,9 +40,11 @@ type fakeClient struct {
 	getErrs  map[objKey]error
 	getCalls []objKey
 
-	lists         map[schema.GroupVersionResource]*unstructured.UnstructuredList
-	listErrs      map[schema.GroupVersionResource]error
-	listSelectors []string
+	lists          map[schema.GroupVersionResource]*unstructured.UnstructuredList
+	listsByNS      map[objKey]*unstructured.UnstructuredList // key: {gvr, ns, ""} — takes precedence over lists
+	listErrs       map[schema.GroupVersionResource]error
+	listSelectors  []string
+	listNamespaces []string // parallel to listSelectors: the ns each List call carried
 
 	logs    map[string]string
 	logErrs map[string]error
@@ -50,12 +52,13 @@ type fakeClient struct {
 
 func newFakeClient() *fakeClient {
 	return &fakeClient{
-		objects:  map[objKey]*unstructured.Unstructured{},
-		getErrs:  map[objKey]error{},
-		lists:    map[schema.GroupVersionResource]*unstructured.UnstructuredList{},
-		listErrs: map[schema.GroupVersionResource]error{},
-		logs:     map[string]string{},
-		logErrs:  map[string]error{},
+		objects:   map[objKey]*unstructured.Unstructured{},
+		getErrs:   map[objKey]error{},
+		lists:     map[schema.GroupVersionResource]*unstructured.UnstructuredList{},
+		listsByNS: map[objKey]*unstructured.UnstructuredList{},
+		listErrs:  map[schema.GroupVersionResource]error{},
+		logs:      map[string]string{},
+		logErrs:   map[string]error{},
 	}
 }
 
@@ -71,6 +74,14 @@ func (f *fakeClient) withGetErr(gvr schema.GroupVersionResource, ns, name string
 
 func (f *fakeClient) withList(gvr schema.GroupVersionResource, list *unstructured.UnstructuredList) *fakeClient {
 	f.lists[gvr] = list
+	return f
+}
+
+// withListNS serves list only for List(gvr, ns, ...) calls carrying that
+// exact namespace, so tests can prove a caller scoped its List rather than
+// fetching cluster-wide.
+func (f *fakeClient) withListNS(gvr schema.GroupVersionResource, ns string, list *unstructured.UnstructuredList) *fakeClient {
+	f.listsByNS[objKey{gvr, ns, ""}] = list
 	return f
 }
 
@@ -103,12 +114,16 @@ func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns,
 	return nil, fmt.Errorf("fakeClient: no object for %+v", k)
 }
 
-func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, _ string, selector string) (*unstructured.UnstructuredList, error) {
+func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns string, selector string) (*unstructured.UnstructuredList, error) {
 	f.mu.Lock()
 	f.listSelectors = append(f.listSelectors, selector)
+	f.listNamespaces = append(f.listNamespaces, ns)
 	f.mu.Unlock()
 	if err, ok := f.listErrs[gvr]; ok {
 		return nil, err
+	}
+	if l, ok := f.listsByNS[objKey{gvr, ns, ""}]; ok {
+		return l, nil
 	}
 	if l, ok := f.lists[gvr]; ok {
 		return l, nil

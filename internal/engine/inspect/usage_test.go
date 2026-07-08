@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -119,10 +120,63 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
 	require.NoError(t, err)
 
+	require.NotEmpty(t, client.listSelectors)
+	assert.Equal(t, "field.cattle.io/projectId=p-x", client.listSelectors[0], "the namespace List call must carry the rendered project selector")
 	rows, ok := res.Data.(usageRows)
 	require.True(t, ok)
 	require.Contains(t, rows, "p-x")
 	assert.NotContains(t, rows, "ns1")
+}
+
+func TestUsageNamespaceScopesMetricsFetch(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*podWithResources("ns1", "p1", "100m", "100Mi", "200m", "200Mi"),
+	}}
+	client := newFakeClient().
+		withListNS(podKind.GVR, "ns1", pods).
+		withListNS(podMetricsGVR, "ns1", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			podMetricsWithUsage("ns1", "p1", "80m", "90Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns1"}})
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Warnings)
+	rows, ok := res.Data.(usageRows)
+	require.True(t, ok)
+	assert.Equal(t, "80m", rows["ns1"].CPUUsage, "metrics List must be scoped to ns1, not cluster-wide")
+
+	for _, ns := range client.listNamespaces {
+		assert.Equal(t, "ns1", ns, "every List call in --namespace mode must be scoped, never cluster-wide")
+	}
+}
+
+func TestUsageProjectMatchingNoNamespacesErrors(t *testing.T) {
+	t.Parallel()
+	nsKind := mustKind(t, "namespace")
+	client := newFakeClient().withList(nsKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-typo"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}
+
+func TestUsageProjectRejectsInvalidLabelValue(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x,foo=bar"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Empty(t, client.listSelectors, "an invalid project value must never reach List")
 }
 
 func TestUsageNamespaceAndProjectConflict(t *testing.T) {

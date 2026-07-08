@@ -2,7 +2,6 @@ package inspect
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -66,7 +65,7 @@ func (c *topNodeCmd) single(ctx context.Context, client engine.ClusterClient, cl
 	var warnings []string
 	var usage map[string]any
 	if m, merr := client.Get(ctx, nodeMetricsGVR, "", name); merr != nil {
-		warnings = append(warnings, fmt.Sprintf("metrics.k8s.io unavailable on cluster %s", clusterID))
+		warnings = append(warnings, metricsUnavailableWarning(clusterID))
 	} else {
 		usage, _, _ = unstructured.NestedMap(m.Object, "usage")
 	}
@@ -85,7 +84,7 @@ func (c *topNodeCmd) list(ctx context.Context, client engine.ClusterClient, clus
 	var warnings []string
 	usageByName := map[string]map[string]any{}
 	if metrics, merr := client.List(ctx, nodeMetricsGVR, "", ""); merr != nil {
-		warnings = append(warnings, fmt.Sprintf("metrics.k8s.io unavailable on cluster %s", clusterID))
+		warnings = append(warnings, metricsUnavailableWarning(clusterID))
 	} else {
 		for i := range metrics.Items {
 			usage, _, _ := unstructured.NestedMap(metrics.Items[i].Object, "usage")

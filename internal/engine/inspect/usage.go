@@ -12,6 +12,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 )
 
 const flagProject = "project"
@@ -57,7 +59,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 			"--namespace and --project are mutually exclusive").
 			WithHint("pass at most one of --namespace or --project")
 	}
-	clusterID, err := resolveClusterFlag(ctx, c.clients, in)
+	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -68,16 +70,28 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 	podKind, _ := kinds.Lookup("pod")
 
 	grouped := map[string][]unstructured.Unstructured{}
+	var namespaces []string // nil = cluster-wide; scopes the metrics fetch below
 	switch {
 	case project != "":
+		sel, serr := projectSelector(project)
+		if serr != nil {
+			return runtime.Result{}, serr
+		}
 		nsKind, _ := kinds.Lookup("namespace")
-		nsList, nerr := client.List(ctx, nsKind.GVR, "", projectLabel+"="+project)
+		nsList, nerr := client.List(ctx, nsKind.GVR, "", sel)
 		if nerr != nil {
 			return runtime.Result{}, nerr
 		}
+		if len(nsList.Items) == 0 {
+			return runtime.Result{}, clierr.New(clierr.CodeNotFound,
+				fmt.Sprintf("no namespaces found for --project %q", project)).
+				WithHint("check the project id")
+		}
 		var pods []unstructured.Unstructured
 		for i := range nsList.Items {
-			l, lerr := client.List(ctx, podKind.GVR, nsList.Items[i].GetName(), "")
+			ns := nsList.Items[i].GetName()
+			namespaces = append(namespaces, ns)
+			l, lerr := client.List(ctx, podKind.GVR, ns, "")
 			if lerr != nil {
 				return runtime.Result{}, lerr
 			}
@@ -86,6 +100,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		grouped[project] = pods
 
 	case namespace != "":
+		namespaces = []string{namespace}
 		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
 		if lerr != nil {
 			return runtime.Result{}, lerr
@@ -102,22 +117,38 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		}
 	}
 
-	return c.aggregate(ctx, client, clusterID, grouped)
+	return c.aggregate(ctx, client, clusterID, grouped, namespaces)
 }
 
-func (c *usageCmd) aggregate(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured) (runtime.Result, error) {
+// fetchPodMetrics lists pod metrics scoped to namespaces (cluster-wide when
+// nil, one List per namespace otherwise), so a --namespace/--project run
+// never pulls metrics for the whole cluster to summarize a handful of pods.
+func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespaces []string) (map[string]*unstructured.Unstructured, error) {
+	scopes := namespaces
+	if len(scopes) == 0 {
+		scopes = []string{""}
+	}
+	byKey := map[string]*unstructured.Unstructured{}
+	for _, ns := range scopes {
+		list, err := client.List(ctx, podMetricsGVR, ns, "")
+		if err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			m := list.Items[i]
+			byKey[m.GetNamespace()+"/"+m.GetName()] = &list.Items[i]
+		}
+	}
+	return byKey, nil
+}
+
+func (c *usageCmd) aggregate(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured, namespaces []string) (runtime.Result, error) {
 	var warnings []string
 	metricsOK := true
-	metricsByKey := map[string]*unstructured.Unstructured{}
-	metricsList, merr := client.List(ctx, podMetricsGVR, "", "")
+	metricsByKey, merr := fetchPodMetrics(ctx, client, namespaces)
 	if merr != nil {
-		warnings = append(warnings, fmt.Sprintf("metrics.k8s.io unavailable on cluster %s", clusterID))
+		warnings = append(warnings, metricsUnavailableWarning(clusterID))
 		metricsOK = false
-	} else {
-		for i := range metricsList.Items {
-			m := metricsList.Items[i]
-			metricsByKey[m.GetNamespace()+"/"+m.GetName()] = &metricsList.Items[i]
-		}
 	}
 
 	result := usageRows{}
@@ -163,6 +194,20 @@ func (c *usageCmd) aggregate(ctx context.Context, client engine.ClusterClient, c
 		result[scope] = totals
 	}
 	return runtime.Result{Kind: "ResourceUsage", Data: result, Warnings: warnings}, nil
+}
+
+// projectSelector renders a validated, correctly-escaped equality selector
+// for the project label. labels.NewRequirement rejects a malformed project id
+// (e.g. one containing an unescaped comma) with a VALIDATION error instead of
+// silently building a selector that matches something other than intended.
+func projectSelector(project string) (string, error) {
+	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{project})
+	if err != nil {
+		return "", clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("invalid --project %q: %v", project, err)).
+			WithHint("pass a valid label value")
+	}
+	return labels.NewSelector().Add(*req).String(), nil
 }
 
 // addQuantity parses the string quantity at path within container (a

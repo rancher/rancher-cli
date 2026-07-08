@@ -179,24 +179,33 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 	if k.Scope == kinds.Management {
 		return engine.LocalCluster, ns, engine.LocalCluster, nil
 	}
+	id, err := ResolveDownstreamCluster(ctx, clients, in)
+	if err != nil {
+		return "", "", "", err
+	}
+	return id, ns, id, nil
+}
+
+// ResolveDownstreamCluster resolves --cluster for a command that always
+// targets a downstream cluster and is not tied to a kind's Scope (the fleet-
+// wide inspect composites: images, usage): an explicit flag is resolved via
+// ResolveCluster; an empty flag falls back to the context cluster, else a
+// VALIDATION error. routeCluster's Downstream branch is exactly this.
+func ResolveDownstreamCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
-		cc, cerr := clients.ContextCluster()
-		if cerr != nil {
-			return "", "", "", cerr
+		cc, err := clients.ContextCluster()
+		if err != nil {
+			return "", err
 		}
 		target = cc
 	}
 	if target == "" {
-		return "", "", "", clierr.New(clierr.CodeValidation,
+		return "", clierr.New(clierr.CodeValidation,
 			"--cluster is required (no cluster set in the current context)").
 			WithHint("pass --cluster <id|name>")
 	}
-	id, rerr := clients.ResolveCluster(ctx, target)
-	if rerr != nil {
-		return "", "", "", rerr
-	}
-	return id, ns, id, nil
+	return clients.ResolveCluster(ctx, target)
 }
 
 // kindTitle upper-cases the kind's first rune for the Result envelope Kind

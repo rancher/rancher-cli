@@ -70,22 +70,13 @@ func (c *podCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 
 	var metrics map[string]any
 	if m, merr := client.Get(ctx, podMetricsGVR, ns, name); merr != nil {
-		warnings = append(warnings, fmt.Sprintf("metrics.k8s.io unavailable on cluster %s", clusterID))
+		warnings = append(warnings, metricsUnavailableWarning(clusterID))
 	} else {
 		metrics = m.Object
 	}
 
 	logs := map[string]string{}
-	containers, _, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
-	for _, item := range containers {
-		cm, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		cname, _ := cm["name"].(string)
-		if cname == "" {
-			continue
-		}
+	for _, cname := range containerNames(pod.Object) {
 		out, lerr := client.Logs(ctx, ns, name, cname, tailLines)
 		if lerr != nil {
 			warnings = append(warnings, fmt.Sprintf("logs unavailable for container %s: %v", cname, lerr))

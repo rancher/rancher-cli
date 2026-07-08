@@ -63,7 +63,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return c.allClusters(ctx)
 	}
 
-	clusterID, err := resolveClusterFlag(ctx, c.clients, in)
+	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
