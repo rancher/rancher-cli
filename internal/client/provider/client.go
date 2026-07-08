@@ -66,21 +66,39 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 		return gvr, nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v, ok := r.versions[gvr.Group]; ok {
+	v, ok := r.versions[gvr.Group]
+	r.mu.Unlock()
+	if ok {
 		gvr.Version = v
 		return gvr, nil
 	}
+	// Discovery runs OUTSIDE the lock: ServerGroups() is a network round-trip
+	// bounded by the discovery config's transport timeout, and holding r.mu
+	// across it would serialize every concurrent version-resolving call behind
+	// one slow endpoint. Benign race by design — concurrent missers each
+	// resolve and converge on the same value (mirrors the factory's
+	// ResolveCluster memo). Do NOT reintroduce a lock around the call below.
 	groups, err := r.disc.ServerGroups()
 	if err != nil {
 		return gvr, fmt.Errorf("discovering version for group %q: %w", gvr.Group, err)
 	}
 	for _, g := range groups.Groups {
-		if g.Name == gvr.Group {
-			r.versions[gvr.Group] = g.PreferredVersion.Version
-			gvr.Version = g.PreferredVersion.Version
-			return gvr, nil
+		if g.Name != gvr.Group {
+			continue
 		}
+		// An empty preferred version must NOT be cached: memoizing "" would
+		// poison the group so every future call returns "" and fails with a
+		// malformed URL, with no recovery short of recreating the client. Leave
+		// it unset so a later call retries once the group reports a version.
+		if g.PreferredVersion.Version == "" {
+			return gvr, clierr.New(clierr.CodeNotFound,
+				fmt.Sprintf("API group %q has no preferred version", gvr.Group))
+		}
+		r.mu.Lock()
+		r.versions[gvr.Group] = g.PreferredVersion.Version
+		r.mu.Unlock()
+		gvr.Version = g.PreferredVersion.Version
+		return gvr, nil
 	}
 	return gvr, clierr.New(clierr.CodeNotFound, fmt.Sprintf("API group %q not served by the cluster", gvr.Group))
 }

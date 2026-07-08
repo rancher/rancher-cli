@@ -28,6 +28,9 @@ type memClient struct {
 func (m *memClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	m.getNS = append(m.getNS, ns)
 	m.getName = append(m.getName, name)
+	if len(m.items) == 0 {
+		return nil, clierr.New(clierr.CodeNotFound, name+" not found")
+	}
 	return &m.items[0], nil
 }
 func (m *memClient) List(_ context.Context, _ schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error) {

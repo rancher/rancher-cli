@@ -2,9 +2,11 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,14 +65,43 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 	assert.Equal(t, 1, disc.calls)
 }
 
+// TestEmptyPreferredVersionIsNotCached guards the cache-poisoning fix: a group
+// whose preferred version is the empty string must error, and the empty value
+// must NOT be memoized — a later call re-consults discovery so a group that
+// starts serving a version can recover without recreating the client.
+func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
+	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
+	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+
+	machines := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}
+	_, err := c.List(context.Background(), machines, "fleet-default")
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, 1, disc.calls)
+
+	// Second call: the empty version was not cached, so discovery is consulted again.
+	_, err = c.List(context.Background(), machines, "fleet-default")
+	require.Error(t, err)
+	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
+}
+
 var projectGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
+// newFakeClient builds a dynamicClient over the fake dynamic client. Discovery
+// is stubbed (empty groups) and the version memo initialized, so exercising an
+// empty-version GVR resolves through the stub instead of panicking on a nil
+// discovery client.
 func newFakeClient(objs ...runtime.Object) (*dynamicClient, *dynamicfake.FakeDynamicClient) {
 	scheme := runtime.NewScheme()
 	// Register the GVR->ListKind so the fake tracker can serve List.
 	gvrToListKind := map[schema.GroupVersionResource]string{projectGVR: "ProjectList"}
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind, objs...)
-	return &dynamicClient{dyn: fc}, fc
+	return &dynamicClient{dyn: fc, disc: &stubDiscovery{groups: map[string]string{}}, versions: map[string]string{}}, fc
 }
 
 func project(ns, name string) *unstructured.Unstructured {
