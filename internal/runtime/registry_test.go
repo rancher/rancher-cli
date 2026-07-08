@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -77,6 +78,25 @@ func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "commandType")
 	})
+}
+
+type fakeBoth struct{ d Descriptor }
+
+func (f fakeBoth) Describe() Descriptor { return f.d }
+func (f fakeBoth) Execute(context.Context, Input, Prompter) (Result, error) {
+	return Result{}, nil
+}
+func (f fakeBoth) Plan(context.Context, Input) (safety.Effect, ExecuteFunc, error) {
+	return safety.Effect{}, nil, nil
+}
+
+func TestValidateRejectsDualInterface(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{"do thing": {}})
+	reg.Register(fakeBoth{d: Descriptor{Name: "do thing", CommandType: Mutating}})
+	if err := reg.Validate(); err == nil {
+		t.Fatal("dual ReadCommand+MutatingCommand implementer must fail validation")
+	}
 }
 
 func TestValidatePassesWellFormedRegistry(t *testing.T) {

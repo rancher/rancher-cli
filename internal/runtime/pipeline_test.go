@@ -176,6 +176,21 @@ func TestRunExecClosureResultRendered(t *testing.T) {
 	assert.Equal(t, "X", env["kind"])
 }
 
+func TestRunRejectsNilExecutor(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:   Descriptor{Name: "create widget", CommandType: Mutating},
+		eff: safety.Effect{Action: safety.ActionCreate},
+		// exec deliberately nil: Plan returned (eff, nil, nil)
+	}
+	var out, errOut bytes.Buffer
+	io := IO{Out: &out, Err: &errOut, Apply: true, Format: "json"}
+	ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{})
+	if ce == nil || ce.Code != clierr.CodeGeneric {
+		t.Fatalf("nil executor: got %v, want GENERIC command-bug error (not a panic)", ce)
+	}
+}
+
 func TestRunReadCommandDryRunRejected(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly}, res: Result{Kind: "Thing"}}

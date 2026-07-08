@@ -93,6 +93,9 @@ func (reg *Registry) Validate() error {
 		if !isMut && !isRead {
 			return fmt.Errorf("command %q implements neither ReadCommand nor MutatingCommand", d.Name)
 		}
+		if isMut && isRead {
+			return fmt.Errorf("command %q implements both ReadCommand and MutatingCommand", d.Name)
+		}
 		if isMut != (d.CommandType == Mutating) {
 			return fmt.Errorf("command %q commandType %q does not match implemented interface", d.Name, d.CommandType)
 		}

@@ -51,6 +51,10 @@ func Run(ctx context.Context, cmd Command, in Input, io IO, b safety.Binding) *c
 		if err != nil {
 			return renderErr(io, toClierr(err).WithPhase("plan"))
 		}
+		if exec == nil {
+			return renderErr(io, clierr.New(clierr.CodeGeneric,
+				"command bug: Plan returned no executor"))
+		}
 		if !eff.Action.Valid() {
 			return renderErr(io, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("command bug: invalid effect action %q", eff.Action)))
