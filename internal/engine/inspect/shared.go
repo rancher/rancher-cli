@@ -9,11 +9,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -118,7 +121,7 @@ func selectorFrom(dep *unstructured.Unstructured) (string, error) {
 		return "", fmt.Errorf("deployment %s has no spec.selector", dep.GetName())
 	}
 	var ls metav1.LabelSelector
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(selMap, &ls); err != nil {
+	if err := k8sruntime.DefaultUnstructuredConverter.FromUnstructured(selMap, &ls); err != nil {
 		return "", fmt.Errorf("decoding spec.selector: %w", err)
 	}
 	sel, err := metav1.LabelSelectorAsSelector(&ls)
@@ -130,4 +133,25 @@ func selectorFrom(dep *unstructured.Unstructured) (string, error) {
 		return "", fmt.Errorf("deployment %s has an empty spec.selector", dep.GetName())
 	}
 	return rendered, nil
+}
+
+// resolveClusterFlag resolves --cluster for the fleet-wide composites
+// (images, usage), which are not tied to a kind-table row: an explicit flag
+// is resolved via ResolveCluster; an empty flag falls back to the context
+// cluster, else a VALIDATION error (mirrors resources' Downstream routing).
+func resolveClusterFlag(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
+	flag := in.String(resources.FlagCluster)
+	if flag == "" {
+		cc, err := clients.ContextCluster()
+		if err != nil {
+			return "", err
+		}
+		if cc == "" {
+			return "", clierr.New(clierr.CodeValidation,
+				"--cluster is required (no cluster set in the current context)").
+				WithHint("pass --cluster <id|name>")
+		}
+		flag = cc
+	}
+	return clients.ResolveCluster(ctx, flag)
 }

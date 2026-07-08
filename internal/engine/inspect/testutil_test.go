@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -13,10 +14,11 @@ import (
 type input struct {
 	args []string
 	s    map[string]string
+	b    map[string]bool
 }
 
 func (i input) String(k string) string { return i.s[k] }
-func (i input) Bool(string) bool       { return false }
+func (i input) Bool(k string) bool     { return i.b[k] }
 func (i input) Args() []string         { return i.args }
 
 type objKey struct {
@@ -28,7 +30,12 @@ type objKey struct {
 // fakeClient is a table-driven engine.ClusterClient fake: objects keyed by
 // GVR+ns+name serve Get; lists keyed by GVR serve List (the selector is
 // recorded, not filtered — tests assert on the recorded selector directly).
+// mu guards the recorded-call slices: the --all-clusters fan-out drives a
+// distinct fakeClient per goroutine, but the shared management-cluster
+// fakeClient and fakeFactory are still hit concurrently under -race.
 type fakeClient struct {
+	mu sync.Mutex
+
 	objects  map[objKey]*unstructured.Unstructured
 	getErrs  map[objKey]error
 	getCalls []objKey
@@ -84,7 +91,9 @@ func (f *fakeClient) withLogErr(container string, err error) *fakeClient {
 
 func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	k := objKey{gvr, ns, name}
+	f.mu.Lock()
 	f.getCalls = append(f.getCalls, k)
+	f.mu.Unlock()
 	if err, ok := f.getErrs[k]; ok {
 		return nil, err
 	}
@@ -95,7 +104,9 @@ func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns,
 }
 
 func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, _ string, selector string) (*unstructured.UnstructuredList, error) {
+	f.mu.Lock()
 	f.listSelectors = append(f.listSelectors, selector)
+	f.mu.Unlock()
 	if err, ok := f.listErrs[gvr]; ok {
 		return nil, err
 	}
@@ -127,7 +138,11 @@ func (f *fakeClient) Logs(_ context.Context, _ string, _ string, container strin
 var _ engine.ClusterClient = (*fakeClient)(nil)
 
 // fakeFactory hands back a fixed (or per-cluster) client for any cluster id.
+// mu guards clusterCalls: the --all-clusters fan-out calls Cluster()
+// concurrently from multiple goroutines.
 type fakeFactory struct {
+	mu sync.Mutex
+
 	client        engine.ClusterClient
 	perCluster    map[string]engine.ClusterClient
 	perClusterErr map[string]error
@@ -140,7 +155,9 @@ type fakeFactory struct {
 }
 
 func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClient, error) {
+	f.mu.Lock()
 	f.clusterCalls = append(f.clusterCalls, id)
+	f.mu.Unlock()
 	if err, ok := f.perClusterErr[id]; ok {
 		return nil, err
 	}
