@@ -37,66 +37,66 @@ type IO struct {
 // resolver binding for the command's op ({} for config/local commands); the
 // pipeline stamps Tier/Stability from it — Effect/Result values set by the
 // command are overwritten, never trusted.
-func Run(ctx context.Context, cmd Command, in Input, io IO, b safety.Binding) *clierr.Error {
+func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) *clierr.Error {
 	d := cmd.Describe()
 
-	if io.DryRun && d.CommandType != Mutating {
-		return renderErr(io, clierr.New(clierr.CodeDryRunNotApplicable,
+	if streams.DryRun && d.CommandType != Mutating {
+		return renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
 			fmt.Sprintf("%s is a %s command", d.Name, d.CommandType)).
 			WithHint("re-run without --dry-run"))
 	}
 
 	if ce := validateInput(d, in); ce != nil {
-		return renderErr(io, ce)
+		return renderErr(streams, ce)
 	}
 
 	switch c := cmd.(type) {
 	case MutatingCommand:
-		return runMutating(ctx, c, in, io, b)
+		return runMutating(ctx, c, in, streams, b)
 	case ReadCommand:
-		return runRead(ctx, c, in, io, b)
+		return runRead(ctx, c, in, streams, b)
 	default:
-		return renderErr(io, clierr.New(clierr.CodeGeneric,
+		return renderErr(streams, clierr.New(clierr.CodeGeneric,
 			"command implements neither ReadCommand nor MutatingCommand: "+d.Name))
 	}
 }
 
 // runMutating drives the Plan → invariant checks → tier/server stamping →
 // confirmation gate → Execute path for a mutating command.
-func runMutating(ctx context.Context, c MutatingCommand, in Input, io IO, b safety.Binding) *clierr.Error {
+func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) *clierr.Error {
 	eff, exec, err := c.Plan(ctx, in)
 	if err != nil {
-		return renderErr(io, toClierr(err).WithPhase("plan"))
+		return renderErr(streams, toClierr(err).WithPhase("plan"))
 	}
 	if ce := checkPlan(eff, exec); ce != nil {
-		return renderErr(io, ce)
+		return renderErr(streams, ce)
 	}
 	eff.Tier, eff.Stability = b.Tier, b.Stability
-	if io.ServerIdentity != nil {
-		server, err := io.ServerIdentity()
+	if streams.ServerIdentity != nil {
+		server, err := streams.ServerIdentity()
 		if err != nil {
-			return renderErr(io, toClierr(err).WithPhase("plan"))
+			return renderErr(streams, toClierr(err).WithPhase("plan"))
 		}
 		eff.Server = server
 	}
-	if io.DryRun {
-		return renderEffect(io, eff)
+	if streams.DryRun {
+		return renderEffect(streams, eff)
 	}
-	if missing := missingFlags(io, eff); len(missing) > 0 {
-		return renderErr(io, clierr.New(clierr.CodeConfirmationRequired,
+	if missing := missingFlags(streams, eff); len(missing) > 0 {
+		return renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
 			"confirmation required for this mutation").
 			WithHint("re-run with: "+strings.Join(missing, " ")).
 			WithTier(string(eff.Tier)))
 	}
 	res, err := exec(ctx)
 	if err != nil {
-		return renderErr(io, toClierr(err).WithPhase("execute"))
+		return renderErr(streams, toClierr(err).WithPhase("execute"))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	if b.Tier == safety.TierNorman && !eff.ConflictDetection {
 		res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
 	}
-	return renderResult(io, res)
+	return renderResult(streams, res)
 }
 
 // checkPlan enforces the command-bug invariants on a Plan result: a non-nil
@@ -118,14 +118,14 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 
 // runRead executes a read command and stamps the binding tier/stability onto
 // the result.
-func runRead(ctx context.Context, c ReadCommand, in Input, io IO, b safety.Binding) *clierr.Error {
-	p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
+func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) *clierr.Error {
+	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY)
 	res, err := c.Execute(ctx, in, p)
 	if err != nil {
-		return renderErr(io, toClierr(err))
+		return renderErr(streams, toClierr(err))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
-	return renderResult(io, res)
+	return renderResult(streams, res)
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:
@@ -168,25 +168,25 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 }
 
 // missingFlags computes the confirmation flags absent for this Effect.
-func missingFlags(io IO, eff safety.Effect) []string {
+func missingFlags(streams IO, eff safety.Effect) []string {
 	var missing []string
-	if !io.Apply {
+	if !streams.Apply {
 		missing = append(missing, "--apply")
 	}
-	if eff.Destructive && !io.Yes {
+	if eff.Destructive && !streams.Yes {
 		missing = append(missing, "--yes")
 	}
-	if eff.Stability == safety.Deprecated && !io.AllowDeprecated {
+	if eff.Stability == safety.Deprecated && !streams.AllowDeprecated {
 		missing = append(missing, "--allow-deprecated")
 	}
 	return missing
 }
 
-func renderResult(io IO, res Result) *clierr.Error {
+func renderResult(streams IO, res Result) *clierr.Error {
 	// Raw results (exec-credential) bypass the envelope: kubectl parses a single
 	// bare JSON object from the plugin's stdout.
 	if res.Raw {
-		enc := json.NewEncoder(io.Out)
+		enc := json.NewEncoder(streams.Out)
 		if err := enc.Encode(res.Data); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
@@ -195,30 +195,30 @@ func renderResult(io IO, res Result) *clierr.Error {
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
 	env.Tier, env.Stability = res.Tier, res.Stability
-	if err := output.Render(io.Out, io.Format, env); err != nil {
+	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	return nil
 }
 
-func renderEffect(io IO, eff safety.Effect) *clierr.Error {
+func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
 	env.Tier, env.Stability = string(eff.Tier), string(eff.Stability)
 	if !eff.ConflictDetection && eff.Tier == safety.TierNorman {
 		env.Warnings = append(env.Warnings, "served via norman tier: no conflict detection")
 	}
-	if err := output.Render(io.Out, io.Format, env); err != nil {
+	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	return nil
 }
 
-func renderErr(io IO, ce *clierr.Error) *clierr.Error {
-	errFmt := io.Format
+func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
+	errFmt := streams.Format
 	if errFmt == "name" || errFmt == "" {
 		errFmt = "json"
 	}
-	_ = output.Render(io.Err, errFmt, output.ErrorEnvelope(ce))
+	_ = output.Render(streams.Err, errFmt, output.ErrorEnvelope(ce))
 	return ce
 }
 
