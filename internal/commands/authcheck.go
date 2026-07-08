@@ -11,11 +11,14 @@ import (
 type authCheckCmd struct {
 	dir   string
 	store config.CredStore
+	// preflight is the server probe, injectable for tests; defaults to
+	// provider.Preflight in NewAuthCheck.
+	preflight func(ctx context.Context, eff config.Effective) (string, error)
 }
 
 // NewAuthCheck builds the `auth check` command (local; makes a server preflight call).
 func NewAuthCheck(dir string, store config.CredStore) runtime.Command {
-	return &authCheckCmd{dir: dir, store: store}
+	return &authCheckCmd{dir: dir, store: store, preflight: provider.Preflight}
 }
 
 func (authCheckCmd) Describe() runtime.Descriptor {
@@ -36,7 +39,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	ver, err := provider.Preflight(ctx, eff)
+	ver, err := a.preflight(ctx, eff)
 	if err != nil {
 		return runtime.Result{}, err
 	}

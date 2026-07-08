@@ -7,12 +7,57 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestAuthCheckUsesInjectedPreflight exercises Execute with a stub preflight so
+// the command's result-shaping and error propagation are covered without a
+// live server.
+func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
+	t.Parallel()
+	run := func(t *testing.T, pf func(context.Context, config.Effective) (string, error)) (runtime.Result, error) {
+		t.Helper()
+		dir := t.TempDir()
+		cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir), preflight: pf}
+		return cmd.Execute(context.Background(), args{}, ui.Discard())
+	}
+
+	t.Run("success returns an AuthCheck result", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "v1.31.0", nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "AuthCheck", res.Kind)
+		assert.Equal(t, "v1.31.0", res.Data.(map[string]any)["serverVersion"])
+	})
+
+	t.Run("auth failure propagates the AUTH code", func(t *testing.T) {
+		t.Parallel()
+		_, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeAuth, "bad token")
+		})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+	})
+
+	t.Run("unreachable server propagates GENERIC retryable", func(t *testing.T) {
+		t.Parallel()
+		_, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeGeneric, "cannot reach server").WithRetryable(true)
+		})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable)
+	})
+}
 
 func TestAuthCheckHitsServerVersion(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
