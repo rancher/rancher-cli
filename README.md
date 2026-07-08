@@ -16,11 +16,13 @@ management, the exec-credential token plugin, and the self-description surface
 dependency. The command surface is verb-first (kubectl-style): `auth …`,
 `config …`, `get …`, `create …`.
 
-**Phase 1 Wave 1 — implemented.** The engine/provider layer plus the first
-read (`get cluster`, crd tier) and first write (`create project`, public tier),
-running through the full plan/apply pipeline (dry-run → apply, confirmation
-gating, tiered stability). Broader reads (nodes, namespaces), more writes (RBAC,
-kubeconfig, tokens), and settings land in later Phase-1 waves.
+**Phase 1 Wave 1 — implemented.** The engine/provider layer plus generic,
+table-driven `get` and `delete` over a kind table (management: cluster, node,
+namespace, project; downstream core: pod, deployment, service, configmap,
+secret) and the bespoke `create project` write, all running through the full
+plan/apply pipeline (dry-run → apply, confirmation gating, tiered stability).
+Generic `create`/`patch`, fleet/provisioning kinds, RBAC, kubeconfig, and
+settings land in later Phase-1 waves.
 
 ## Install
 
@@ -61,21 +63,24 @@ Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 | `auth logout [<name>] [--all]` | Clear the stored login token for the current server (or `<name>`, or every server with `--all`); keeps server config; does not touch the exec-credential cache |
 | `auth check` | Connectivity + credential preflight (calls the cluster's k8s API) |
 | `auth get-token [--server --cluster --name --cacert --auth-provider --auth-flow --skip-verify]` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
-| `auth list-tokens` | List cached exec-credential entries (name, expiry) |
-| `auth delete-token [<name>] [--all]` | Clear cached exec-credential token(s) |
+| `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
+| `auth delete-token [<name>] [--all]` | Clear cached exec-credential token(s); a bare `<name>` deletes every matching record and is idempotent (no match = success) |
 | `config current-context` | Show the active context |
 | `config set-context --current --cluster <c> [--project <p>]` | Set the current context's scope |
 | `config use-context <name>` | Activate a different named context |
 | `config get-servers` | List configured servers |
 | `config use-server [name]` | Switch the active server |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
-| `get cluster [name]` | List clusters (or show one) — crd tier, read-only |
+| `get <kind> [name] [--cluster --namespace]` | List a kind, or show one by name — read-only. Kinds: `cluster`, `node`, `namespace`, `project` (management); `pod`, `deployment`, `service`, `configmap`, `secret` (downstream). |
 | `create project <name> --cluster <id> [--description]` | Create a project — public tier; dry-run/apply |
+| `delete <kind> <name> [--cluster --namespace]` | Delete a kind by name — destructive; dry-run/apply. Deletable: `project`, `namespace` (management); `pod`, `deployment`, `service`, `configmap`, `secret` (downstream). |
 | `schema [command]` | Machine-readable capability manifest |
 
-Nouns accept singular, plural, and short aliases (`get cluster` = `get clusters`
-= `get c`). Deferred to later Phase-1 waves: more `config`
-subcommands, `version`, and broader `get`/`create`/`delete`.
+Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
+`get po`). Scope routing is enforced: addressing a namespaced kind by name needs
+`--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
+Generic `create`/`patch`, fleet/provisioning kinds, more `config` subcommands,
+and `version` are deferred to later waves.
 
 ## Output & the agent contract
 
@@ -123,6 +128,12 @@ the exact confirmation flags are present. The refusal names them:
 (`public` > `crd` > `norman`) and **stability** (`stable`/`beta`/`deprecated`)
 surfaced in output so an agent knows the contract before acting.
 
+`--dry-run` runs a real server-side dry-run: it needs the same RBAC verb as the
+write, so read-only credentials get an `RBAC` error (that means the write would
+be denied, not that dry-run is broken). See [ARCHITECTURE.md](ARCHITECTURE.md)
+for the full pipeline, gates, and package-dependency model, and `rancher schema`
+for the machine-readable surface.
+
 ## Configuration
 
 - **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`),
@@ -130,9 +141,12 @@ surfaced in output so an agent knows the contract before acting.
   stored here.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
-- **Credential store:** OS keychain or a `0600` file, chosen by
-  `credentialStore: keychain|file|auto` (default `auto` — keychain if usable,
-  else file) or `RANCHER_CREDENTIAL_STORE`.
+- **Credential store:** OS keychain or a `0600` file. Precedence:
+  `RANCHER_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto` in config >
+  a machine-local `credstore-pin` file > one-time probe. Under `auto` the backend
+  is probed once and pinned; the pin is re-probed only at `auth login` and only to
+  upgrade file→keychain, and a pinned-but-unusable backend is a hard error (never
+  a silent downgrade to plaintext).
 - **Environment overrides** (precedence flag > env > file):
 
   | Var | Effect |
@@ -154,7 +168,8 @@ surfaced in output so an agent knows the contract before acting.
 `rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
 exec-credential plugin. Rancher-generated kubeconfigs invoke it to mint
 short-lived Kubernetes credentials; you don't run it directly. Flags: `--server`,
-`--cluster`, `--name` (cache slot; omitted = no caching), `--cacert`,
+`--cluster`, `--name` (cache slot, keyed per name+server+cluster; omitted = no
+caching), `--cacert`,
 `--auth-provider`, `--auth-flow`, `--skip-verify`. When flags are omitted,
 server/CA/cluster fall back to the active config context. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows. Long-poll flows are
@@ -187,9 +202,12 @@ A committed `.githooks/pre-commit` runs `make validate` on every commit
       config/               XDG config, credential store, migration, atomic writes
       client/kube/          rest.Config for the Rancher k8s proxy
       client/httpx/         HTTP client (TLS / proxy / timeouts)
-      client/provider/      op tier/stability resolver + dynamic Repo (adapter)
+      client/provider/      op tier/stability resolver + dynamic ClusterClient (adapter)
       runtime/              Command contract, middleware pipeline, schema
-      engine/               domain ops (clusters, projects) + Repo port + Effect builder
+      engine/               ClusterClient port + plan/execute helpers
+      engine/kinds/         kind table (MCP keys, GVRs, scope, bindings)
+      engine/resources/     generic get/delete over the kind table
+      engine/projects/      create project (bespoke write)
       commands/             auth login/check, config context/server ops, purge-legacy
       token/                exec-credential plugin (auth get-token / delete-token)
     surface/cli/            urfave/cli v3 adapter + root wiring + engine DI
