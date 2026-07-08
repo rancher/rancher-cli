@@ -1,9 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 // The pin file records what `auto` resolved to on THIS machine. It is
@@ -43,4 +46,33 @@ func EffectivePolicy(cfgPolicy string) string {
 		return cfgPolicy
 	}
 	return "auto"
+}
+
+// RepinForLogin re-probes at login time (only under auto): login is rare,
+// interactive, and the moment a new credential is written — the one place a
+// machine pinned "file" by an accident of first run (e.g. over SSH) can
+// upgrade to the keychain. The read path never re-probes (CS-3).
+func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, error) {
+	if EffectivePolicy(cfgPolicy) != "auto" {
+		return current, nil
+	}
+	want := "file"
+	if keyringUsable() {
+		want = "keychain"
+	}
+	pinned := ReadPin(dir)
+	if pinned == want && pinned != "" {
+		return current, nil
+	}
+	if err := WritePin(dir, want); err != nil {
+		return nil, fmt.Errorf("writing credential store pin: %w", err)
+	}
+	if pinned != "" {
+		logrus.Warnf("credential store re-pinned: %s → %s", pinned, want)
+	}
+	if want == "keychain" {
+		return newPinnedKeyringStore(dir, true), nil
+	}
+	logrus.Warnf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
+	return NewFileStore(dir), nil
 }

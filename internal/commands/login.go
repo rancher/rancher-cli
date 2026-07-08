@@ -86,7 +86,13 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
 	cfg.CurrentContext = name
 
-	if err := l.store.SetToken(name, token); err != nil {
+	// Login is the one place auto may re-probe and upgrade a stale "file" pin
+	// to the keychain; the returned store is the one to write into.
+	store, err := config.RepinForLogin(l.dir, cfg.CredentialStore, l.store)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	if err := store.SetToken(name, token); err != nil {
 		return runtime.Result{}, err
 	}
 	if err := cfg.Write(); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 type args struct {
@@ -34,10 +35,24 @@ func stdinPrompter(tok string) *ui.Prompter {
 	return ui.New(&bytes.Buffer{}, strings.NewReader(tok), true, false)
 }
 
+// filePolicyDir returns a config dir pinned to the file backend, so login's
+// RepinForLogin is a no-op and never probes or writes the real OS keychain.
+func filePolicyDir(t *testing.T) (string, config.CredStore) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{},
+		Contexts:        map[string]config.Context{},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	return dir, config.NewFileStore(dir)
+}
+
 func TestLoginTokenViaStdin(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	store := config.NewFileStore(dir)
+	dir, store := filePolicyDir(t)
 	in := args{
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
 		b: map[string]bool{"token-stdin": true},
@@ -60,8 +75,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 
 func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	store := config.NewFileStore(dir)
+	dir, store := filePolicyDir(t)
 	// isTTY=true, noInput=false -> CanPrompt; PromptSecret reads the line from the buffer.
 	p := ui.New(&bytes.Buffer{}, strings.NewReader("id:sec\n"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
@@ -120,8 +134,7 @@ func TestLoginBadTokenShape(t *testing.T) {
 
 func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	store := config.NewFileStore(dir)
+	dir, store := filePolicyDir(t)
 	in := args{
 		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
@@ -135,8 +148,7 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 
 func TestLoginDefaultName(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	store := config.NewFileStore(dir)
+	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
 	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
@@ -154,4 +166,29 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
+	// Non-parallel: keyring.MockInit swaps a process-global in-memory backend.
+	keyring.MockInit()
+	dir := t.TempDir() // no config on disk → auto policy; mock keychain is usable
+	in := args{
+		s: map[string]string{"server": "https://r.ex", "name": "acme"},
+		b: map[string]bool{"token-stdin": true},
+	}
+	// Inject a file store; under auto with a usable (mock) keychain, login must
+	// re-pin to keychain and write the token there, not to the file store.
+	_, err := NewLogin(dir, config.NewFileStore(dir)).(runtime.ReadCommand).
+		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+
+	if got := config.ReadPin(dir); got != "keychain" {
+		t.Fatalf("pin after auto login = %q, want keychain", got)
+	}
+	tok, err := config.NewKeyringStore(dir).GetToken("acme")
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok)
+	if _, ferr := config.NewFileStore(dir).GetToken("acme"); !errors.Is(ferr, config.ErrNoToken) {
+		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
+	}
 }
