@@ -1799,6 +1799,86 @@
       "usage": "List users or show one"
     },
     {
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "all-clusters",
+          "type": "bool"
+        }
+      ],
+      "name": "images",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List container images in use, deduplicated and counted"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "inspect deployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Inspect a deployment and the pods it selects"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "tail",
+          "type": "string"
+        }
+      ],
+      "name": "inspect pod",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Inspect a pod: owners, metrics, and container logs"
+    },
+    {
       "aliases": [
         "bundles"
       ],
@@ -3281,6 +3361,52 @@
       "network": false,
       "toolset": "core",
       "usage": "Print the machine-readable capability manifest"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "top node",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Show node resource usage from metrics.k8s.io"
+    },
+    {
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "name": "usage",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Show CPU/memory requests, limits, and usage per namespace or project"
     }
   ],
   "effectSchema": {

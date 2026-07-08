@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
+	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
@@ -46,6 +47,11 @@ func buildEntries() []entry {
 		{group: "config", make: func(runDeps) runtime.Command { return commands.NewConfigPurgeLegacy() }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
+		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
+		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
+		{group: "top", make: func(d runDeps) runtime.Command { return inspect.NewTopNode(d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
 	}
 	for _, k := range kinds.All() {
 		k := k
@@ -100,12 +106,14 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 // entries but absent here still gets a (usage-less) group command — command
 // reachability never depends on an allowlist.
 var groupUsages = map[string]string{
-	"auth":   "Auth operations",
-	"config": "Config operations",
-	"create": "Create resources",
-	"get":    "Read resources",
-	"patch":  "Patch resources",
-	"delete": "Delete resources",
+	"auth":    "Auth operations",
+	"config":  "Config operations",
+	"create":  "Create resources",
+	"get":     "Read resources",
+	"patch":   "Patch resources",
+	"delete":  "Delete resources",
+	"inspect": "Inspect composite reads",
+	"top":     "Resource usage composites",
 }
 
 // assembleCommands builds the root command list: the top-level commands

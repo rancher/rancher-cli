@@ -91,6 +91,7 @@ graph TD
     cli --> kinds
     cli --> projects
     cli --> resources
+    cli --> inspect
     cli --> provider
     cli --> kube
     cli --> config

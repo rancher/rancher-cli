@@ -17,6 +17,12 @@ func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
 		"create project":  {Tier: safety.TierPublic, Stability: safety.Stable},
 		"create resource": {Tier: safety.TierCRD, Stability: safety.Beta},
+
+		"inspect pod":        {Tier: safety.TierCRD, Stability: safety.Beta},
+		"inspect deployment": {Tier: safety.TierCRD, Stability: safety.Beta},
+		"top node":           {Tier: safety.TierCRD, Stability: safety.Beta},
+		"images":             {Tier: safety.TierCRD, Stability: safety.Beta},
+		"usage":              {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 
