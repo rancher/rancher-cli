@@ -1,193 +1,340 @@
 # Architecture
 
+`rancher` is a kubectl-style CLI for Rancher Manager, built for both operators at a
+terminal and coding agents (Claude Code, Codex, …). It is agent-first: every command
+describes its own surface via `rancher schema`, so automation discovers capabilities
+without reading docs, and non-interactive output is a stable, versioned JSON envelope.
+
 ## Overview
 
-`rancher` is a kubectl-style CLI for Rancher Manager, targeting both user operators and terminal coding agents (Claude Code, Codex, etc.). It talks exclusively to Rancher's Kubernetes API — no Norman dependency. Non-interactive commands emit a versioned JSON envelope on stdout; all commands exit with a typed code and describe their full surface via `rancher schema` so agents can discover capabilities without documentation.
+**Resource operations go exclusively through Rancher's Kubernetes API.** Every `get` /
+`create` / `delete` request is a client-go call against Rancher's k8s proxy —
+`/k8s/clusters/local` for management-plane kinds, `/k8s/clusters/<id>` for downstream
+clusters. There is no Norman/`v3` code on the resource path.
+
+**One documented exception: interactive auth-provider login.** `auth get-token` (the
+kubectl exec-credential plugin) authenticates against Rancher's legacy public
+endpoints — `/v1-public/authproviders`, falling back to `/v3-public/authProviders` on
+404 — because no Kubernetes-native login equivalent exists yet. This is the only
+subsystem that talks to Rancher's non-k8s API; migrating it is the intended first job of
+the reserved `RancherClient` port (see [Key design decisions](#key-design-decisions)).
+
+**Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
+stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
+`NOT_FOUND`, `CONFIRMATION_REQUIRED`, `DRY_RUN_NOT_APPLICABLE`, `AMBIGUOUS_SELECTION`,
+`NOT_IMPLEMENTED`, `CONTEXT_NOT_SET`, `GENERIC`) — **except `auth get-token`**, whose
+stdout is a bare `ExecCredential` JSON object for kubectl to parse. That command sets
+`runtime.Result.Raw`, which tells the pipeline to emit `Data` with no envelope.
 
 ## Layer map
 
-| Layer | Package(s) | Responsibility | Depends on |
-|---|---|---|---|
-| Entry | `main` | Signal-cancellable context; exit-code dispatch | `surface/cli` |
-| Wiring | `surface/cli` | Root command, `AdaptFactory`, `AdaptEngine`, `newRepoFactory`, DI | All layers below |
-| Commands | `internal/commands` | `auth login/logout/check`, `config *` | `runtime`, `config`, `clierr` |
-| Token | `internal/token` | `auth get-token/list/delete` (exec-credential plugin) | `runtime`, `config`, `clierr` |
-| Runtime | `internal/runtime` | `Command` contract, pipeline (Mutating: validate → Plan → gate → Execute; ReadOnly/Local: validate → Execute), Registry/schema | `client/provider`, `clierr`, `output`, `ui`, `runtime/safety` |
-| Safety | `internal/runtime/safety` | `Effect` struct (`Action`, `Target`, `Diff`, `ResourceVersion`, `ConflictDetection`, `Reversible`, `Destructive`, `Tier`, `Stability`) | — |
-| Engine | `internal/engine` | Pure domain ops (`PlanCreate`, …), `Repo` port, `RepoFactory` | `runtime/safety` |
-| Engine subdomains | `internal/engine/clusters`, `internal/engine/projects` | Resource-specific Plan/Execute logic | `engine`, `runtime`, `runtime/safety`, `ui`, `clierr` (projects only) |
-| Config | `internal/config` | XDG config load/write, `CredStore` (keyring + file), migration, env-override merge | `clierr` |
-| Client/provider | `internal/client/provider` | Dynamic k8s client implementing `Repo`; `Resolver` (op → tier/stability map) | `engine`, `client/kube`, `clierr` |
-| Client/kube | `internal/client/kube` | `rest.Config` builder from `config.Effective` | `config` |
-| Output | `internal/output` | Versioned `cli.rancher.io/v1` envelope, table/JSON/YAML/template renderers | `clierr` |
-| Errors | `internal/clierr` | Typed `Error` (code, hint, candidates, phase), exit codes | — |
-| UI | `internal/ui` | TTY prompter; respects `--no-input` | — |
+Responsibilities only — **dependencies live in exactly one place, the mermaid diagram
+below.** The `architecture_test.go` conformance test parses that diagram and fails the
+build if it drifts from the real package import graph, so there is no "depends on"
+column here to fall out of sync (keeping two hand-written views of the same facts is
+what drifted the previous revision of this doc).
+
+| Package | Responsibility |
+|---|---|
+| `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
+| `surface/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
+| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `config purge-legacy`. |
+| `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
+| `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
+| `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
+| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports and reusable plan/execute helpers; depends only on runtime + safety contracts. |
+| `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, tier bindings, table columns. |
+| `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing and table projection. |
+| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project). |
+| `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, legacy migration, store selection/pinning. |
+| `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
+| `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
+| `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used only by `internal/token`'s auth-provider HTTP flows. |
+| `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. |
+| `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
+| `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 
 ## Package dependency diagram
 
+Machine-checked against the real import graph by `architecture_test.go`
+(`TestArchitectureDocMatchesImports`). Edit an import, and the test tells you exactly
+which edge to add or remove here.
+
 ```mermaid
 graph TD
-    main --> surfacecli["surface/cli"]
-    surfacecli --> runtime["runtime"]
-    surfacecli --> engine["engine"]
-    surfacecli --> config["config"]
-    surfacecli --> commands["commands"]
-    surfacecli --> token["token"]
-    surfacecli --> provider["client/provider"]
-    surfacecli --> kube["client/kube"]
-    surfacecli --> clusters["engine/clusters"]
-    surfacecli --> projects["engine/projects"]
+    main["main"]
+    cli["surface/cli"]
+    commands["internal/commands"]
+    token["internal/token"]
+    runtime["internal/runtime"]
+    safety["internal/runtime/safety"]
+    engine["internal/engine"]
+    kinds["internal/engine/kinds"]
+    resources["internal/engine/resources"]
+    projects["internal/engine/projects"]
+    config["internal/config"]
+    provider["internal/client/provider"]
+    kube["internal/client/kube"]
+    httpx["internal/client/httpx"]
+    output["internal/output"]
+    clierr["internal/clierr"]
+    ui["internal/ui"]
 
-    runtime --> provider
-    runtime --> clierr["clierr"]
-    runtime --> output["output"]
-    runtime --> ui["ui"]
-    runtime --> safety["runtime/safety"]
+    main --> cli
+
+    cli --> commands
+    cli --> token
+    cli --> runtime
+    cli --> engine
+    cli --> kinds
+    cli --> projects
+    cli --> resources
+    cli --> provider
+    cli --> kube
+    cli --> config
+    cli --> clierr
 
     commands --> runtime
     commands --> config
+    commands --> provider
     commands --> clierr
 
     token --> runtime
     token --> config
+    token --> httpx
+    token --> ui
     token --> clierr
 
-    provider --> engine
-    provider --> kube
-    provider --> clierr
+    runtime --> safety
+    runtime --> output
+    runtime --> ui
+    runtime --> clierr
 
-    clusters --> engine
-    clusters --> runtime
-    clusters --> safety
-    clusters --> ui
+    engine --> runtime
+    engine --> safety
+
+    kinds --> safety
+
+    resources --> engine
+    resources --> kinds
+    resources --> runtime
+    resources --> safety
+    resources --> clierr
 
     projects --> engine
     projects --> runtime
     projects --> safety
-    projects --> ui
     projects --> clierr
 
-    engine --> safety
+    provider --> engine
+    provider --> kube
+    provider --> config
+    provider --> safety
+    provider --> clierr
 
     kube --> config
 
     config --> clierr
+
     output --> clierr
 ```
 
-## Command invocation flow
+## Command pipeline
 
-Engine command (`create project --apply`). `AdaptFactory` commands follow the same path but skip the RepoFactory step. `--dry-run` exits after Plan, before the gate check and Execute.
+Every command runs through `runtime.Run`, which type-switches on the command interface.
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CLI as urfave/cli
-    participant Adapt as surface/cli AdaptEngine
-    participant RT as runtime.Run
-    participant Cmd as engine command
-    participant RF as RepoFactory
-    participant Repo as client/provider
-    participant API as Rancher k8s API
+**Mutating flow** (`MutatingCommand`, e.g. `delete pod`, `create project`):
 
-    U->>CLI: rancher create project web --cluster c-x --apply
-    CLI->>Adapt: action(ctx, c)
-    Adapt->>Adapt: resolveDeps → dir, store
-    Adapt->>RF: newRepoFactory(dir, store) — closure, no I/O yet
-    Adapt->>Cmd: make(repoFactory, tier, stability)
-    Adapt->>RT: runtime.Run(ctx, cmd, input, io)
-    RT->>RT: validateInput (required positional args, required flags, enum membership)
-    RT->>Cmd: Plan(ctx, in)
-    Cmd->>RF: repoFactory("clusterID") — first call
-    RF->>RF: config.Load + cfg.Effective(store)
-    RF->>RF: kube.RESTConfig(eff) → rest.Config
-    RF->>Repo: provider.NewRepo(rc)
-    RF-->>Cmd: Repo (memoized in closure)
-    Cmd->>API: Create(dryRun=true) — server-side dry-run
-    API-->>Cmd: validated object
-    Cmd-->>RT: Effect
-    RT->>RT: check gates (--apply; --yes if Destructive; --allow-deprecated if stability=deprecated)
-    RT->>Cmd: Execute(ctx, in, eff, prompter)
-    Cmd->>RF: repoFactory("clusterID") — cache hit, same Repo
-    RF-->>Cmd: memoized Repo
-    Cmd->>API: Create(dryRun=false)
-    API-->>Cmd: created object
-    Cmd-->>RT: Result
-    RT->>RT: output.Render → versioned envelope on stdout
-```
+1. `validateInput` — required positional args, required flags, enum membership.
+2. `Plan(ctx, in)` returns `(safety.Effect, ExecuteFunc, error)`. Plan resolves the
+   target object, its `resourceVersion`, and the `ClusterClient`, and returns a closure
+   that captures them. Execute cannot diverge from what Plan previewed because Execute
+   *is* the closure Plan built (Approach B). Plan issues a **server-side dry-run** of the
+   write to surface admission/RBAC/webhook denials before the user confirms.
+3. Pipeline invariants (enforced centrally, never trusted from command code):
+   - `Effect.Action` must be in the closed enum `{create, update, delete, scale}`;
+     unknown → structured error before any gate.
+   - `Action == delete` ⇒ `Destructive == true`.
+   - `Effect.Tier` / `Effect.Stability` are **overwritten** from the resolver binding,
+     discarding whatever Plan set — gate inputs come from the resolver, not the command.
+   - `Effect.Server` is stamped from the factory's resolved identity; `Effect.Cluster` is
+     set by Plan. Dry-run output and gating state *where* the mutation lands.
+4. `--dry-run` renders the Effect and stops (the executor closure is discarded).
+5. Gates, in order: `--apply` (always) → `--yes` (only if `Destructive`) →
+   `--allow-deprecated` (only if `Stability == deprecated`). A missing gate →
+   `CONFIRMATION_REQUIRED`.
+6. `exec(ctx)` runs the real write; the result renders through the envelope.
 
-## Auth / credential resolution flow
+**Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
+server, which authorizes it with the *same* verb as the real write. An agent with
+read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` — that means
+"the write would be denied", **not** "dry-run is broken". The Norman-tier / no-conflict-
+detection warning is emitted on both the dry-run Effect and the applied result.
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant Adapt as surface/cli AdaptFactory
-    participant Login as commands.loginCmd
-    participant Cfg as config
-    participant Store as CredStore
+**Read flow** (`ReadCommand`, e.g. `get pod`): `validateInput` → `Execute(ctx, in,
+prompter)` → render. `--dry-run` on a read command is rejected with
+`DRY_RUN_NOT_APPLICABLE`.
 
-    Note over U,Store: auth login
-    U->>Adapt: rancher auth login --server https://rancher.ex --name prod
-    Adapt->>Adapt: resolveDeps → ResolveDir, one-time legacy migration, config.Load, OpenStore
-    Adapt->>Login: NewLogin(dir, store)
-    Login->>U: prompt: Enter token (id:secret)
-    U-->>Login: token
-    Login->>Cfg: Load + cfg.Servers[name] = Server{URL}
-    Login->>Store: SetToken(name, token)
-    Note over Store: keyringStore → OS keychain<br/>fileStore → credentials.yaml (0600)
-    Login->>Cfg: cfg.Write() → config.yaml (0600)
+**`CommandType: local` does not mean offline.** `auth check` and `auth get-token` are
+`local` (they own their own I/O rather than going through the cluster-client factory) yet
+both do network + auth. The manifest's per-command `network` and `auth` booleans are the
+authoritative "does this touch the network / need credentials" signal — not
+`commandType`.
 
-    Note over U,Store: subsequent command (engine — AdaptEngine path)
-    participant Adapt2 as surface/cli AdaptEngine
-    participant Cmd2 as engine command
-    participant RF as RepoFactory
-    participant API as Rancher k8s API
+## Generic verbs & registration
 
-    U->>Adapt2: rancher get cluster
-    Adapt2->>Adapt2: resolveDeps → ResolveDir, migration probe, config.Load, OpenStore
-    Adapt2->>RF: newRepoFactory(dir, store)
-    Adapt2->>Cmd2: make(repoFactory, tier, stability)
-    Cmd2->>RF: repoFactory("local") — first call
-    RF->>Cfg: config.Load → CurrentServer
-    RF->>Store: GetToken(serverName)
-    Store-->>RF: token
-    RF->>RF: kube.RESTConfig(eff) → rest.Config with bearer token
-    RF->>RF: provider.NewRepo(rc) → dynamic k8s client
-    RF-->>Cmd2: Repo (memoized)
-    Cmd2->>API: List clusters
-    API-->>Cmd2: result
-```
+**Kind table (`internal/engine/kinds`).** One row per resource kind: `Key` (canonical
+MCP-vocabulary key — `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
+singular — `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
+(`management` | `downstream`), `Deletable`, `Binding` (tier/stability for the generated
+generic ops), and table `Columns`. `Key` is conformance-tested against a pinned fixture
+copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) — the test matches on
+`Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
+MCP identity.
+
+**Scope routing / safety rule** (`resources.route`, shared by get and delete):
+
+- Management + Namespaced, addressing a resource *by name* → `--cluster` required.
+- Downstream + Namespaced, by name → `--namespace` required (a downstream `--cluster`
+  falls back to the context cluster, then errors if still unset).
+- Nameless *list* requests may omit both. `delete` marks the required flags at the
+  urfave layer, so they fail with `VALIDATION` before Plan runs.
+
+**Binding ownership — one source per op.** The kind table owns bindings for the
+*generated* generic ops (`get <kind>` for every kind, `delete <kind>` for deletable
+kinds). The provider's bespoke `Resolver` owns everything else (today just `create
+project`). `runtime.ComposeResolvers` merges the two and **rejects any op resolved by
+both** at `BuildRoot`. Every engine command — read or mutating — must resolve to a
+binding, or `BuildRoot` fails.
+
+**Declarative registration (`surface/cli/root.go`).** Commands live in one `entry` table
+(`group`, and exactly one of an `engine` or `local` constructor). `BuildRoot` loops the
+table: probes `Describe()` for nil-safety, validates (unique name; command name is 1 or 2
+space-separated tokens and its group matches the leading token; `commandType` matches the
+implemented interface; engine commands resolve to a binding), registers into the registry
+for schema, and wires the adapter. Command groups are derived from the entries in
+first-appearance order — there is **no group allowlist**; an unknown group still yields a
+reachable command.
+
+**Extension checklist:**
+
+- New resource kind → add a kind-table row (plus a fixture entry if MCP defines the key).
+  No new code — `get`/`delete` are generated from the row.
+- New bespoke command → add an `entry`-table row, plus a `Resolver`-map row if it is an
+  engine command. Everything else (name shape, binding coverage, interface/commandType
+  agreement) is validated at `BuildRoot`.
+
+## Auth & credentials
+
+**Login and the credential store.** `auth login` records the server and stores a manually
+supplied token. The store backend is resolved by `config.OpenStore` with strict
+precedence:
+
+`RANCHER_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`
+file > one-time probe.
+
+Under the default `auto` policy the backend is probed **once per machine** and the result
+(`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) — never
+into `config.yaml`, which is a portable user declaration that must not carry
+machine-specific probe state. First resolution prints a loud stderr notice when it lands
+on plaintext. Re-probe happens **only at `auth login`** and is **upgrade-only**: a `file`
+(or absent) pin may re-pin to `keychain` if the keychain is now usable; a `keychain` pin
+is never re-probed, so a transiently locked keychain can never silently downgrade to
+plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint
+(`delete the pin to re-probe, or set RANCHER_CREDENTIAL_STORE=file`), never a silent
+fallback. `auth check` surfaces `credentialStore: {policy, pinned}`.
+
+**Keyring read-through and logout drain.** With the keychain backend, `GetToken` falls
+through to the file store on a keychain miss, so tokens written before an upgrade re-pin
+keep working. `config.DrainToken` (logout) drains **both** backends unconditionally —
+because read-through makes the file store part of the effective read path under every
+policy — aggregating per-backend errors with `errors.Join` and reporting which backends a
+token was `deletedFrom`. No orphaned live tokens.
+
+**Exec-credential cache.** `auth get-token` caches short-lived bearer tokens as records
+(`{Name, Server, Cluster, Token, Expiry}`) keyed `<name>@<serverHost>/<cluster>` in
+`token-cache.yaml` (0600), separate from login tokens in `credentials.yaml`. A
+**flags-first fast path** serves a warm hit from `--name`/`--server`/`--cluster` alone
+with no config read, so a broken config never blocks kubectl's exec-credential path; full
+connection resolution runs only on a miss. `delete-token <name>` resolves the bare name
+against every record and **deletes all matches**, and is **idempotent** (zero matches →
+success, never `NOT_FOUND`) so teardown scripts stay green.
+
+**CS-5 posture (accepted).** Even under the keychain backend, the exec-credential cache
+— live short-lived bearer tokens — still lives in `token-cache.yaml` on disk (0600). The
+OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
+file-backed regardless of policy. Accepted trade-off.
+
+**Auth-provider subsystem (`internal/token`).** Login discovers providers at
+`/v1-public/authproviders` (falling back to `/v3-public/authProviders` on 404) and then
+runs the matching flow: **basic** (username/password), **SAML** (generates an RSA-2048
+keypair, sends the public key, polls the auth-token URL every 10s up to 15 min, and
+decrypts the returned token with RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code
+by default, or PKCE auth-code with a `127.0.0.1` callback). All of this HTTP goes through
+`internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts;
+`--skip-verify` on `auth get-token` sets `InsecureSkipVerify` for that client only.
+
+**Environment overrides.** Applied over the file-based context, env always wins:
+
+| Variable | Effect |
+|---|---|
+| `RANCHER_URL` | Override the effective server URL. |
+| `RANCHER_TOKEN` | Override the bearer token directly — used as-is, never read from or written to the store. |
+| `RANCHER_CACERT` | Override the CA bundle. |
+| `RANCHER_CONTEXT` | Set the target cluster (and project, as `cluster:project`). |
+| `RANCHER_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
+| `RANCHER_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
+
+**Legacy migration.** On a run whose config dir has no `config.yaml`, if a legacy
+`cli2.json` is found (`$RANCHER_CONFIG_DIR/cli2.json`, then `~/.rancher/cli2.json`), it is
+imported **only** when the config dir was not explicitly overridden. An explicitly
+overridden dir (`--config` or `RANCHER_CONFIG_DIR`) never auto-imports — it logs a hint
+instead — so a run against a throwaway dir cannot silently pull in the real
+`~/.rancher/cli2.json`. `config purge-legacy` deletes the migrated plaintext file.
 
 ## Key design decisions
 
-**Deferred Repo construction via `RepoFactory`**
-`engine.Repo` is a port interface; no live connection is created at command construction time. `newRepoFactory` returns a closure that builds a `Repo` on first call for a given cluster ID. Flag parsing, `--config` resolution, migration, and credential reads all complete before any network I/O. `--dry-run` previews an Effect without ever opening a live write connection.
+**Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
+is a port; the concrete `clientFactory` (in `surface/cli`) loads config and computes the
+effective connection **once per invocation** under a `sync.Once`. `Cluster(id)` builds
+and memoizes a `ClusterClient` per cluster ID under a mutex (safe under future concurrent
+fan-out); `""` is rejected. `ResolveCluster(nameOrID)` maps a display name or ID to a
+cluster ID (matching `metadata.name` or `spec.displayName`), memoized per invocation.
+Server identity is deliberately **not** on the port interface — it lives on the concrete
+factory and the adapter reads it to stamp `Effect.Server`, so a `Plan`/`Execute` pair can
+never see two different servers.
 
-**Per-invocation factory + memoization**
-A fresh `RepoFactory` closure (with its own `cache map[string]Repo`) is created per command invocation inside the `AdaptEngine` action. `Plan` and `Execute` receive the same factory and share the same memoized `Repo` — one config read, one credential read, one TLS handshake per invocation. A concurrent `auth login` between Plan and Execute cannot swap credentials mid-flight.
+**Approach B — Plan returns the executor.** `MutatingCommand.Plan` returns the
+`ExecuteFunc` closure rather than the pipeline calling a separate `Execute` method. The
+object, resourceVersion, and client that Execute uses are captured at Plan time, so
+Execute structurally cannot act on anything Plan did not preview.
 
-**Pluggable credential store**
-`config.CredStore` is an interface. `OpenStore` selects the backend from `credentialStore` in `config.yaml` or `RANCHER_CREDENTIAL_STORE`. `keyringStore` wraps `zalando/go-keyring` (OS keychain) for long-lived login tokens and delegates the exec-credential cache to `fileStore` — the keychain has no list API. `fileStore` keeps everything in `0600` YAML files. `auto` (the default) probes the keychain at startup and falls back to file if unusable.
+**Pipeline-stamped gate inputs.** Tier, stability, destructiveness, and server identity
+that drive the gates are stamped by the pipeline from the resolver binding and factory —
+never read from values the command returned — so a command cannot weaken its own gates.
 
-**Registry-driven schema surface**
-`runtime.Registry` holds one lightweight instance of every registered command (built with `nil` repo / empty dir). `rancher schema` merges each command's `Describe()` with `Resolver`'s tier/stability map to emit a versioned manifest: CLI version, output `apiVersion`, error-code enum, global flags, and per-command args/flags/`commandType`/tier/stability. Automation discovers the full surface without documentation. The `Resolver` is the single place a tier promotion lands — no command code changes needed.
+**Machine-local pin file.** The credential-store decision is a machine-local probe result
+(`credstore-pin`), not portable config, and needs no lock: concurrent first-runs
+last-writer-win with identical values and self-correct on the next run. Writing it into
+`config.yaml` would be a lost-update race from read-only commands and would bake
+machine-specific state into a portable file.
 
-## Extension points
+**Kind table + composed resolver.** Generic verbs are generated from a declarative kind
+table whose MCP keys are conformance-pinned, and each op's safety binding has exactly one
+owner (kind table for generated ops, bespoke `Resolver` for the rest), with overlaps
+rejected at `BuildRoot`.
 
-### Adding an engine command
+**Schema manifest as the discovery contract.** `rancher schema` emits a golden-tested
+manifest: per-command args/flags, `commandType`, `destructive`
+(`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, tier,
+stability, and aliases, plus the global flags, error-code enum, and an `effectSchema`
+(the `Effect` field names and the closed `Action` enum) so agents can parse `--dry-run`
+output from the manifest alone.
 
-1. Implement `runtime.Command` in `internal/engine/<subdomain>/`. The constructor takes `(newRepo engine.RepoFactory, tier, stability string)`. `Describe()` must not call `newRepo`.
-2. Add an entry to `NewResolver()` in `internal/client/provider/resolver.go` with the canonical singular op name, tier, and stability.
-3. In `surface/cli/root.go`:
-   - Define a factory: `myF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command { return mysubdomain.NewMyCmd(newRepo, tier, stability) }`
-   - Obtain the tier binding: `tc, sc := reg.Binding("my op")`
-   - Register for schema: `reg.Register(myF(nil, tc, sc))`
-   - Wire into the command tree: `AdaptEngine("my op", reg, myF)` under the appropriate verb group.
-
-### Adding a config-touching command
-
-1. Implement `runtime.Command` in `internal/commands/` (or `internal/token/`). The constructor takes `(dir string, store config.CredStore)`. `Describe()` must not use `dir` or `store`.
-2. In `surface/cli/root.go`:
-   - Define a factory: `myF := func(dir string, s config.CredStore) runtime.Command { return commands.NewMyCmd(dir, s) }`
-   - Register for schema: `reg.Register(myF("", nil))`
-   - Wire into the command tree: `AdaptFactory(myF)` under the appropriate group.
+**Reserved `RancherClient` port.** `ClusterClient` covers the two cluster-scoped endpoint
+families (`/k8s/clusters/local` and `/k8s/clusters/<id>`). Management-*plane* operations
+that are not operations on any cluster — minting a token, generating a kubeconfig — need
+a third scope against the Rancher server itself. That port, `RancherClient`, is reserved
+now and added when the first consumer needs it: migrating `internal/token` off its
+hand-rolled Norman HTTP, the `auth check` preflight, and a future `rancher kubeconfig`
+command. The factory struct is the seam that will later hand out both.
