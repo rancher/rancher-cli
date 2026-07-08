@@ -6,6 +6,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"k8s.io/client-go/rest"
 )
 
 // Preflight verifies connectivity and credentials by asking the server for
@@ -18,7 +19,7 @@ func Preflight(eff config.Effective) (string, error) {
 	if err != nil {
 		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(config.LoginHint)
 	}
-	disc, err := kube.Discovery(rc)
+	disc, err := kube.Discovery(discoveryConfig(rc))
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, err.Error())
 	}
@@ -30,6 +31,16 @@ func Preflight(eff config.Effective) (string, error) {
 		return "", clierr.New(clierr.CodeGeneric, "server returned no version info")
 	}
 	return ver.GitVersion, nil
+}
+
+// discoveryConfig returns a copy of rc bounded by requestTimeout. The discovery
+// client's ServerVersion() takes no context.Context, so a transport-level
+// timeout is the only deadline it can honor; without it an unreachable server
+// hangs the preflight indefinitely. The input config is not mutated.
+func discoveryConfig(rc *rest.Config) *rest.Config {
+	c := *rc
+	c.Timeout = requestTimeout
+	return &c
 }
 
 // mapPreflightErr distinguishes credential rejection from unreachability.

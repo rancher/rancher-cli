@@ -8,7 +8,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/rest"
 )
+
+func TestDiscoveryConfigBoundsTimeout(t *testing.T) {
+	t.Parallel()
+	in := &rest.Config{Host: "https://r.ex", BearerToken: "tok"}
+	out := discoveryConfig(in)
+	assert.Equal(t, requestTimeout, out.Timeout, "discovery config must carry the request timeout")
+	assert.Equal(t, "https://r.ex", out.Host, "other fields must be preserved")
+	assert.Zero(t, in.Timeout, "input config must not be mutated")
+}
 
 func TestMapPreflightErr(t *testing.T) {
 	t.Parallel()
