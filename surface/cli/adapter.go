@@ -91,9 +91,10 @@ func buildIO(c *ucli.Command) runtime.IO {
 func Adapt(rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	return &ucli.Command{
-		Name:  leafName(d.Name),
-		Usage: d.Usage,
-		Flags: flagsFor(d),
+		Name:    leafName(d.Name),
+		Aliases: d.Aliases,
+		Usage:   d.Usage,
+		Flags:   flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), safety.Binding{}); ce != nil {
 				return exit(ce)
@@ -109,9 +110,10 @@ func Adapt(rc runtime.Command) *ucli.Command {
 func AdaptFactory(make func(dir string, store config.CredStore) runtime.Command) *ucli.Command {
 	d := make("", nil).Describe() // Describe is dir/store-independent
 	return &ucli.Command{
-		Name:  leafName(d.Name),
-		Usage: d.Usage,
-		Flags: flagsFor(d),
+		Name:    leafName(d.Name),
+		Aliases: d.Aliases,
+		Usage:   d.Usage,
+		Flags:   flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			dir, store, err := resolveDeps(c)
 			if err != nil {

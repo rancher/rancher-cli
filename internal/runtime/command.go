@@ -29,6 +29,7 @@ type ArgSpec struct {
 // urfave command by the surface adapter.
 type Descriptor struct {
 	Name        string      `json:"name"`
+	Aliases     []string    `json:"aliases,omitempty"` // leaf aliases (plural/short forms)
 	Usage       string      `json:"usage,omitempty"`
 	Args        []ArgSpec   `json:"args,omitempty"`
 	Flags       []ArgSpec   `json:"flags,omitempty"`

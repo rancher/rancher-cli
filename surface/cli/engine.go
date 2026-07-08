@@ -165,9 +165,10 @@ func AdaptEngine(reg *runtime.Registry, make func(clients engine.ClusterClientFa
 	d := probe.Describe()
 	b := reg.Binding(d.Name)
 	return &ucli.Command{
-		Name:  leafName(d.Name),
-		Usage: d.Usage,
-		Flags: flagsFor(d),
+		Name:    leafName(d.Name),
+		Aliases: d.Aliases,
+		Usage:   d.Usage,
+		Flags:   flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			dir, store, err := resolveDeps(c)
 			if err != nil {

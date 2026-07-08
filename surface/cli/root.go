@@ -8,8 +8,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/clusters"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/sirupsen/logrus"
@@ -39,8 +40,12 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	srvSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(dir) }
 
 	// Engine command factories (cluster client bound at run time by AdaptEngine).
+	clusterKind, ok := kinds.Lookup("cluster")
+	if !ok {
+		return nil, fmt.Errorf("kind table is missing the cluster kind")
+	}
 	getClusterF := func(clients engine.ClusterClientFactory) runtime.Command {
-		return clusters.NewGet(clients)
+		return resources.NewGet(clusterKind, clients)
 	}
 	createProjectF := func(clients engine.ClusterClientFactory) runtime.Command {
 		return projects.NewCreate(clients)
