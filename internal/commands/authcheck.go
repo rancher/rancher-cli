@@ -27,7 +27,7 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(a.dir))
 	if err != nil {
 		return runtime.Result{}, err
@@ -36,7 +36,7 @@ func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prom
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	ver, err := provider.Preflight(eff)
+	ver, err := provider.Preflight(ctx, eff)
 	if err != nil {
 		return runtime.Result{}, err
 	}

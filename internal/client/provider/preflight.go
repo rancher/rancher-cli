@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -14,7 +15,11 @@ import (
 // commands never reach into client/kube directly (L-2): auth failures map
 // to AUTH, everything else stays GENERIC/retryable instead of being
 // mislabeled as an auth problem.
-func Preflight(eff config.Effective) (string, error) {
+//
+// ctx is accepted for cancellation and forward-compatibility. The discovery
+// ServerVersion() call does not yet consume a context, so a slow server is
+// bounded by discoveryConfig's transport timeout rather than ctx today.
+func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	rc, err := kube.RESTConfig(eff)
 	if err != nil {
 		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(config.LoginHint)
