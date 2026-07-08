@@ -8,7 +8,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -43,6 +42,16 @@ func leafName(fullName string) string {
 		return fullName[idx+1:]
 	}
 	return fullName
+}
+
+// groupName returns the verb-group prefix of a command name ("auth check" ->
+// "auth", "get pod" -> "get", "schema" -> ""). The registration loop checks it
+// against the entry's declared group.
+func groupName(fullName string) string {
+	if idx := strings.LastIndex(fullName, " "); idx >= 0 {
+		return fullName[:idx]
+	}
+	return ""
 }
 
 // flagsFor converts a Descriptor's named Flags into urfave flags (string/bool).
@@ -87,16 +96,18 @@ func buildIO(c *ucli.Command) runtime.IO {
 }
 
 // Adapt wraps a fixed runtime.Command that needs no per-run config dir/store
-// (e.g. `schema`). Prefer AdaptFactory for commands that touch config.
-func Adapt(rc runtime.Command) *ucli.Command {
+// (e.g. `schema`). The binding is derived from the registry uniformly, so a
+// mutating command wired this way still runs under its gate.
+func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
+	b := reg.Binding(d.Name)
 	return &ucli.Command{
 		Name:    leafName(d.Name),
 		Aliases: d.Aliases,
 		Usage:   d.Usage,
 		Flags:   flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
-			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), safety.Binding{}); ce != nil {
+			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b); ce != nil {
 				return exit(ce)
 			}
 			return nil
@@ -106,9 +117,12 @@ func Adapt(rc runtime.Command) *ucli.Command {
 
 // AdaptFactory wraps a command that needs the config dir/store resolved at
 // RUN time from the (persistent) --config flag. `make` must build the command
-// from (dir, store); its Describe() must not depend on dir/store.
-func AdaptFactory(make func(dir string, store config.CredStore) runtime.Command) *ucli.Command {
+// from (dir, store); its Describe() must not depend on dir/store. The binding
+// is derived from the registry (deferral (b): no wiring path runs with a
+// hardcoded zero binding).
+func AdaptFactory(reg *runtime.Registry, make func(dir string, store config.CredStore) runtime.Command) *ucli.Command {
 	d := make("", nil).Describe() // Describe is dir/store-independent
+	b := reg.Binding(d.Name)
 	return &ucli.Command{
 		Name:    leafName(d.Name),
 		Aliases: d.Aliases,
@@ -119,7 +133,7 @@ func AdaptFactory(make func(dir string, store config.CredStore) runtime.Command)
 			if err != nil {
 				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
 			}
-			if ce := runtime.Run(ctx, make(dir, store), cmdInput{c}, buildIO(c), safety.Binding{}); ce != nil {
+			if ce := runtime.Run(ctx, make(dir, store), cmdInput{c}, buildIO(c), b); ce != nil {
 				return exit(ce)
 			}
 			return nil

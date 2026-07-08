@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -26,11 +27,12 @@ func (pingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtim
 
 func TestAdaptRunsAndRendersJSON(t *testing.T) {
 	var out bytes.Buffer
+	reg := runtime.NewRegistry(provider.NewResolver())
 	root := &ucli.Command{
 		Name:     "rancher",
 		Writer:   &out,
 		Flags:    GlobalFlags(),
-		Commands: []*ucli.Command{Adapt(pingCmd{})},
+		Commands: []*ucli.Command{Adapt(reg, pingCmd{})},
 	}
 	err := root.Run(context.Background(), []string{"rancher", "ping", "-o", "json"})
 	require.NoError(t, err)
