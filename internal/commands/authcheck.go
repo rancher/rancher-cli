@@ -35,6 +35,11 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	// Only the auto policy consults the pin; explicit policies have no pin.
+	pinned := ""
+	if config.EffectivePolicy(cfg.CredentialStore) == "auto" {
+		pinned = config.ReadPin(a.dir)
+	}
 	eff, err := cfg.Effective(a.store)
 	if err != nil {
 		return runtime.Result{}, err
@@ -45,5 +50,9 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	}
 	return runtime.Result{Kind: "AuthCheck", Data: map[string]any{
 		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
+		"credentialStore": map[string]any{
+			"policy": config.EffectivePolicy(cfg.CredentialStore),
+			"pinned": pinned,
+		},
 	}}, nil
 }

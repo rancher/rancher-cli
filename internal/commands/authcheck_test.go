@@ -59,6 +59,26 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 	})
 }
 
+func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // pin the effective policy to config/auto
+	dir := t.TempDir()
+	require.NoError(t, config.WritePin(dir, "file"))
+	cmd := &authCheckCmd{
+		dir:       dir,
+		store:     config.NewFileStore(dir),
+		preflight: func(context.Context, config.Effective) (string, error) { return "v1.31.0", nil },
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+
+	data, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	cs, ok := data["credentialStore"].(map[string]any)
+	require.True(t, ok, "result carries credentialStore")
+	assert.Equal(t, "auto", cs["policy"])
+	assert.Equal(t, "file", cs["pinned"])
+}
+
 func TestAuthCheckHitsServerVersion(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/k8s/clusters/local/version" {
