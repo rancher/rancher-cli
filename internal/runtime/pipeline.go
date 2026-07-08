@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -29,40 +28,38 @@ type IO struct {
 	IsTTY           bool
 }
 
-// Run executes one command through the single middleware path.
-// Returns a structured error (nil on success); the caller maps it to exit code.
-func Run(ctx context.Context, cmd Command, in Input, io IO) *clierr.Error {
+// Run executes one command through the single middleware path. b is the
+// resolver binding for the command's op ({} for config/local commands); the
+// pipeline stamps Tier/Stability from it — Effect/Result values set by the
+// command are overwritten, never trusted.
+func Run(ctx context.Context, cmd Command, in Input, io IO, b safety.Binding) *clierr.Error {
 	d := cmd.Describe()
 
-	// Single pre-switch guard: --dry-run is meaningful only for mutating.
 	if io.DryRun && d.CommandType != Mutating {
 		return renderErr(io, clierr.New(clierr.CodeDryRunNotApplicable,
 			fmt.Sprintf("%s is a %s command", d.Name, d.CommandType)).
 			WithHint("re-run without --dry-run"))
 	}
 
-	// Schema-driven input validation (required flags present, enum membership).
-	// Done here, not via urfave flag flags, so failures are structured errors.
 	if ce := validateInput(d, in); ce != nil {
 		return renderErr(io, ce)
 	}
 
-	p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
-
-	switch d.CommandType {
-	case ReadOnly, Local:
-		res, err := cmd.Execute(ctx, in, safety.Effect{}, p)
+	switch c := cmd.(type) {
+	case MutatingCommand:
+		eff, exec, err := c.Plan(ctx, in)
 		if err != nil {
-			return renderErr(io, toClierr(err))
+			return renderErr(io, toClierr(err).WithPhase("plan"))
 		}
-		return renderResult(io, res)
-
-	case Mutating:
-		eff, err := cmd.Plan(ctx, in)
-		if err != nil {
-			ce := toClierr(err).WithPhase("plan")
-			return renderErr(io, ce)
+		if !eff.Action.Valid() {
+			return renderErr(io, clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("command bug: invalid effect action %q", eff.Action)))
 		}
+		if eff.Action == safety.ActionDelete && !eff.Destructive {
+			return renderErr(io, clierr.New(clierr.CodeGeneric,
+				"command bug: delete effect must be destructive"))
+		}
+		eff.Tier, eff.Stability = b.Tier, b.Stability
 		if io.DryRun {
 			return renderEffect(io, eff)
 		}
@@ -70,17 +67,30 @@ func Run(ctx context.Context, cmd Command, in Input, io IO) *clierr.Error {
 			return renderErr(io, clierr.New(clierr.CodeConfirmationRequired,
 				"confirmation required for this mutation").
 				WithHint("re-run with: "+strings.Join(missing, " ")).
-				WithTier(eff.Tier))
+				WithTier(string(eff.Tier)))
 		}
-		res, err := cmd.Execute(ctx, in, eff, p)
+		res, err := exec(ctx)
 		if err != nil {
 			return renderErr(io, toClierr(err).WithPhase("execute"))
 		}
+		res.Tier, res.Stability = string(b.Tier), string(b.Stability)
+		if b.Tier == safety.TierNorman && !eff.ConflictDetection {
+			res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
+		}
+		return renderResult(io, res)
+
+	case ReadCommand:
+		p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
+		res, err := c.Execute(ctx, in, p)
+		if err != nil {
+			return renderErr(io, toClierr(err))
+		}
+		res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 		return renderResult(io, res)
 
 	default:
 		return renderErr(io, clierr.New(clierr.CodeGeneric,
-			"unknown command type: "+string(d.CommandType)))
+			"command implements neither ReadCommand nor MutatingCommand: "+d.Name))
 	}
 }
 
@@ -132,7 +142,7 @@ func missingFlags(io IO, eff safety.Effect) []string {
 	if eff.Destructive && !io.Yes {
 		missing = append(missing, "--yes")
 	}
-	if eff.Stability == string(provider.Deprecated) && !io.AllowDeprecated {
+	if eff.Stability == safety.Deprecated && !io.AllowDeprecated {
 		missing = append(missing, "--allow-deprecated")
 	}
 	return missing
@@ -159,8 +169,8 @@ func renderResult(io IO, res Result) *clierr.Error {
 
 func renderEffect(io IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
-	env.Tier, env.Stability = eff.Tier, eff.Stability
-	if !eff.ConflictDetection && eff.Tier == string(provider.TierNorman) {
+	env.Tier, env.Stability = string(eff.Tier), string(eff.Stability)
+	if !eff.ConflictDetection && eff.Tier == safety.TierNorman {
 		env.Warnings = append(env.Warnings, "served via norman tier: no conflict detection")
 	}
 	if err := output.Render(io.Out, io.Format, env); err != nil {

@@ -5,25 +5,39 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type fakeCmd struct{}
-
-func (fakeCmd) Describe() Descriptor {
-	return Descriptor{Name: "widgets ls", Usage: "list", CommandType: ReadOnly}
-}
-func (fakeCmd) Plan(context.Context, Input) (safety.Effect, error) { return safety.Effect{}, nil }
-func (fakeCmd) Execute(context.Context, Input, safety.Effect, *ui.Prompter) (Result, error) {
-	return Result{Kind: "WidgetList", Data: []string{"a"}}, nil
-}
-
-func TestCommandInterfaceSatisfied(t *testing.T) {
-	var c Command = fakeCmd{}
+func TestReadCommandContract(t *testing.T) {
+	t.Parallel()
+	var c Command = fakeRead{
+		d:   Descriptor{Name: "widgets ls", Usage: "list", CommandType: ReadOnly},
+		res: Result{Kind: "WidgetList", Data: []string{"a"}},
+	}
 	assert.Equal(t, ReadOnly, c.Describe().CommandType)
-	res, err := c.Execute(context.Background(), nil, safety.Effect{}, ui.Discard())
+	rc, ok := c.(ReadCommand)
+	require.True(t, ok, "fakeRead must satisfy ReadCommand")
+	res, err := rc.Execute(context.Background(), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "WidgetList", res.Kind)
+}
+
+func TestMutatingCommandContract(t *testing.T) {
+	t.Parallel()
+	var c Command = fakeMutating{
+		d:    Descriptor{Name: "clusters scale", CommandType: Mutating},
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x"},
+		exec: func(context.Context) (Result, error) { return Result{Kind: "ScaleResult"}, nil },
+	}
+	assert.Equal(t, Mutating, c.Describe().CommandType)
+	mc, ok := c.(MutatingCommand)
+	require.True(t, ok, "fakeMutating must satisfy MutatingCommand")
+	eff, exec, err := mc.Plan(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, safety.ActionUpdate, eff.Action)
+	require.NotNil(t, exec)
+	res, err := exec(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "ScaleResult", res.Kind)
 }

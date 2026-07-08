@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // CommandType selects the pipeline path. Exactly one per command.
@@ -57,9 +56,26 @@ type Result struct {
 	Stability string
 }
 
-// Command is the A+B contract every command implements.
+// Command is the minimal self-describing contract. Concrete commands
+// implement exactly one of ReadCommand or MutatingCommand.
 type Command interface {
 	Describe() Descriptor
-	Plan(ctx context.Context, in Input) (safety.Effect, error)
-	Execute(ctx context.Context, in Input, eff safety.Effect, p *ui.Prompter) (Result, error)
+}
+
+// ReadCommand executes without a Plan/gate phase (CommandType readOnly/local).
+type ReadCommand interface {
+	Command
+	Execute(ctx context.Context, in Input, p Prompter) (Result, error)
+}
+
+// ExecuteFunc performs the mutation a Plan previewed. It closes over the
+// planned object, resourceVersion, and client — executing anything other
+// than what was planned is unrepresentable.
+type ExecuteFunc func(ctx context.Context) (Result, error)
+
+// MutatingCommand plans a mutation and returns the closure that performs it
+// (CommandType mutating). No Prompter: mutation gates are flag-only.
+type MutatingCommand interface {
+	Command
+	Plan(ctx context.Context, in Input) (safety.Effect, ExecuteFunc, error)
 }
