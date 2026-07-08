@@ -3,8 +3,7 @@ package commands
 import (
 	"context"
 
-	"github.com/rancher/rancher-cli/internal/client/kube"
-	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -37,24 +36,11 @@ func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prom
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	rc, err := kube.RESTConfig(eff)
+	ver, err := provider.Preflight(eff)
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, err.Error()).
-			WithHint(config.LoginHint)
-	}
-	disc, err := kube.Discovery(rc)
-	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, err.Error())
-	}
-	ver, err := disc.ServerVersion()
-	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, "cannot reach server: "+err.Error()).
-			WithHint("check the server URL, token, and CA")
-	}
-	if ver == nil {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, "server returned no version info")
+		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "AuthCheck", Data: map[string]any{
-		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver.GitVersion,
+		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
 	}}, nil
 }
