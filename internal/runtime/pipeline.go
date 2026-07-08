@@ -26,6 +26,11 @@ type IO struct {
 	AllowDeprecated bool
 	NoInput         bool
 	IsTTY           bool
+
+	// ServerIdentity, when set, resolves the server name for Effect.Server
+	// stamping after a successful Plan. AdaptEngine wires the factory's
+	// Identity; other adapters leave it nil.
+	ServerIdentity func() (string, error)
 }
 
 // Run executes one command through the single middleware path. b is the
@@ -64,6 +69,13 @@ func Run(ctx context.Context, cmd Command, in Input, io IO, b safety.Binding) *c
 				"command bug: delete effect must be destructive"))
 		}
 		eff.Tier, eff.Stability = b.Tier, b.Stability
+		if io.ServerIdentity != nil {
+			server, err := io.ServerIdentity()
+			if err != nil {
+				return renderErr(io, toClierr(err).WithPhase("plan"))
+			}
+			eff.Server = server
+		}
 		if io.DryRun {
 			return renderEffect(io, eff)
 		}

@@ -109,8 +109,11 @@ func AdaptEngine(reg *runtime.Registry, make func(clients engine.ClusterClientFa
 			if err != nil {
 				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
 			}
-			cmd := make(newClientFactory(dir, store))
-			if ce := runtime.Run(ctx, cmd, cmdInput{c}, buildIO(c), b); ce != nil {
+			f := newClientFactory(dir, store)
+			cmd := make(f)
+			io := buildIO(c)
+			io.ServerIdentity = f.Identity
+			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
 				return exit(ce)
 			}
 			return nil

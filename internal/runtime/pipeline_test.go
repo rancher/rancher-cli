@@ -176,6 +176,32 @@ func TestRunExecClosureResultRendered(t *testing.T) {
 	assert.Equal(t, "X", env["kind"])
 }
 
+func TestRunStampsEffectServer(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:    Descriptor{Name: "create widget", CommandType: Mutating},
+		eff:  safety.Effect{Action: safety.ActionCreate, Cluster: "c-x"},
+		exec: func(context.Context) (Result, error) { return Result{Kind: "Widget"}, nil },
+	}
+	var out bytes.Buffer
+	io := IO{Out: &out, Err: &out, DryRun: true, Format: "json",
+		ServerIdentity: func() (string, error) { return "prod", nil }}
+	if ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable}); ce != nil {
+		t.Fatal(ce)
+	}
+	var env struct {
+		Data struct {
+			Server string `json:"server"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("decode effect envelope: %v", err)
+	}
+	if env.Data.Server != "prod" {
+		t.Errorf("dry-run Effect server = %q, want %q; output: %s", env.Data.Server, "prod", out.String())
+	}
+}
+
 func TestRunRejectsNilExecutor(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
