@@ -94,9 +94,7 @@ func TestValidateRejectsDualInterface(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"do thing": {}})
 	reg.Register(fakeBoth{d: Descriptor{Name: "do thing", CommandType: Mutating}})
-	if err := reg.Validate(); err == nil {
-		t.Fatal("dual ReadCommand+MutatingCommand implementer must fail validation")
-	}
+	require.Error(t, reg.Validate(), "dual ReadCommand+MutatingCommand implementer must fail validation")
 }
 
 func TestValidatePassesWellFormedRegistry(t *testing.T) {

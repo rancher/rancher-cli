@@ -104,6 +104,7 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 }
 
 func TestRegistryBindingLookup(t *testing.T) {
+	t.Parallel()
 	reg := runtime.NewRegistry(provider.NewResolver())
 	b := reg.Binding("get cluster")
 	assert.Equal(t, safety.TierCRD, b.Tier)

@@ -28,17 +28,20 @@ func (s stubStore) DeleteAllCachedCreds() error                   { return nil }
 func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error)    { return nil, nil }
 
 func TestEffectiveSurfacesStoreError(t *testing.T) {
+	t.Parallel()
 	c := &Config{
 		CurrentContext: "prod",
 		Contexts:       map[string]Context{"prod": {Server: "acme"}},
 		Servers:        map[string]Server{"acme": {URL: "https://r.ex"}},
 	}
 	t.Run("non-ErrNoToken failure surfaces as credential store error", func(t *testing.T) {
+		t.Parallel()
 		_, err := c.Effective(stubStore{tokenErr: errors.New("keyring: dbus unavailable")})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "credential store:")
 	})
 	t.Run("ErrNoToken leaves an empty token and no error", func(t *testing.T) {
+		t.Parallel()
 		eff, err := c.Effective(stubStore{tokenErr: ErrNoToken})
 		require.NoError(t, err)
 		assert.Empty(t, eff.Token)

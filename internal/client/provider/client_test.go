@@ -33,6 +33,7 @@ func project(ns, name string) *unstructured.Unstructured {
 }
 
 func TestDynamicRepoCreateAndGet(t *testing.T) {
+	t.Parallel()
 	r, _ := newFakeClient()
 	out, err := r.Create(context.Background(), projectGVR, "c-x", project("c-x", "p-1"), false)
 	require.NoError(t, err)
@@ -44,6 +45,7 @@ func TestDynamicRepoCreateAndGet(t *testing.T) {
 }
 
 func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
+	t.Parallel()
 	r, fc := newFakeClient()
 	var sawDryRun []string
 	fc.PrependReactor("create", "projects", func(a k8stesting.Action) (bool, runtime.Object, error) {
@@ -56,17 +58,20 @@ func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
 }
 
 func TestDynamicRepoListAndDelete(t *testing.T) {
+	t.Parallel()
 	r, _ := newFakeClient(project("c-x", "p-1"), project("c-x", "p-2"))
 	list, err := r.List(context.Background(), projectGVR, "c-x")
 	require.NoError(t, err)
 	assert.Len(t, list.Items, 2)
 
 	require.NoError(t, r.Delete(context.Background(), projectGVR, "c-x", "p-1", "", false))
-	after, _ := r.List(context.Background(), projectGVR, "c-x")
+	after, err := r.List(context.Background(), projectGVR, "c-x")
+	require.NoError(t, err)
 	assert.Len(t, after.Items, 1)
 }
 
 func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {
+	t.Parallel()
 	r, _ := newFakeClient()
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
 	defer cancel()
@@ -75,6 +80,7 @@ func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {
 }
 
 func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
+	t.Parallel()
 	r, _ := newFakeClient()
 	_, err := r.Get(context.Background(), projectGVR, "c-x", "nope")
 	require.Error(t, err)

@@ -61,6 +61,7 @@ func planProject(t *testing.T, cmd runtime.Command, input runtime.Input) (safety
 }
 
 func TestCreateProjectPlanBuildsObjectAndDryRuns(t *testing.T) {
+	t.Parallel()
 	client := &recClient{}
 	cmd := projectCmdFor(t, client)
 
@@ -84,6 +85,7 @@ func TestCreateProjectPlanBuildsObjectAndDryRuns(t *testing.T) {
 }
 
 func TestCreateProjectExecutorWrites(t *testing.T) {
+	t.Parallel()
 	client := &recClient{}
 	cmd := projectCmdFor(t, client)
 	_, exec, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}})
@@ -96,6 +98,7 @@ func TestCreateProjectExecutorWrites(t *testing.T) {
 }
 
 func TestCreateProjectRequiresClusterAndName(t *testing.T) {
+	t.Parallel()
 	client := &recClient{}
 	cmd := projectCmdFor(t, client)
 	// missing cluster

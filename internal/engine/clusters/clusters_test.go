@@ -57,6 +57,7 @@ func execGet(t *testing.T, cmd runtime.Command, in runtime.Input) runtime.Result
 }
 
 func TestGetClusterList(t *testing.T) {
+	t.Parallel()
 	client := &memClient{items: []unstructured.Unstructured{
 		clusterObj("local", "local", "active"),
 		clusterObj("c-m-abc", "prod", "active"),
@@ -84,12 +85,14 @@ func (i input) Args() []string       { return i.args }
 
 // NewGet must accept a nil factory for Describe().
 func TestGetClusterDescribeNilFactory(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "get cluster", NewGet(nil).Describe().Name)
 }
 
 // An empty positional (`rancher get cluster ""`) must list, not Get("") — a real
 // API server rejects an empty name with an opaque error.
 func TestGetClusterEmptyArgLists(t *testing.T) {
+	t.Parallel()
 	client := &memClient{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
 	res := execGet(t, NewGet(stubFactory{client}), input{args: []string{""}})
 	assert.Equal(t, "ClusterList", res.Kind)

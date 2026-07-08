@@ -27,8 +27,9 @@ type ClusterClient interface {
 }
 
 // ClusterClientFactory hands out per-cluster clients at call time (network
-// deferred; memoized per invocation). Branch 4 adds ResolveCluster
-// (display-name → id).
+// deferred; memoized per invocation).
+//
+// TODO: add ResolveCluster (display-name → id) when generic verbs land.
 type ClusterClientFactory interface {
 	Cluster(ctx context.Context, clusterID string) (ClusterClient, error)
 	// ContextCluster returns the cluster from the resolved current context
