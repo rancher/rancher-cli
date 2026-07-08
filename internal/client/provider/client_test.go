@@ -7,12 +7,61 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
+
+// stubDiscovery serves only ServerGroups (the sole method resolveVersion needs)
+// and counts how many times it is consulted, so the memoization can be
+// asserted. The embedded interface panics on any other call.
+type stubDiscovery struct {
+	discovery.DiscoveryInterface
+	groups map[string]string // group name → preferred version
+	calls  int
+}
+
+func (s *stubDiscovery) ServerGroups() (*metav1.APIGroupList, error) {
+	s.calls++
+	gl := &metav1.APIGroupList{}
+	for name, ver := range s.groups {
+		gl.Groups = append(gl.Groups, metav1.APIGroup{
+			Name:             name,
+			PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: name + "/" + ver, Version: ver},
+		})
+	}
+	return gl, nil
+}
+
+func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
+	t.Parallel()
+	machinesV1 := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "v1beta1", Resource: "machines"}
+	clustersV1 := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "v1beta1", Resource: "clusters"}
+	scheme := runtime.NewScheme()
+	gvrToListKind := map[schema.GroupVersionResource]string{machinesV1: "MachineList", clustersV1: "ClusterList"}
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind)
+
+	var lastVersion string
+	fc.PrependReactor("list", "*", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		lastVersion = a.GetResource().Version
+		return false, nil, nil // fall through to the tracker
+	})
+	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": "v1beta1"}}
+	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+
+	_, err := c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default")
+	require.NoError(t, err)
+	assert.Equal(t, "v1beta1", lastVersion, "the empty version is filled from discovery before the API call")
+
+	// Second call, same group: discovery is memoized, not consulted again.
+	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "fleet-default")
+	require.NoError(t, err)
+	assert.Equal(t, 1, disc.calls)
+}
 
 var projectGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
