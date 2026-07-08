@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,18 +35,13 @@ func TestEffectiveSurfacesStoreError(t *testing.T) {
 	}
 	t.Run("non-ErrNoToken failure surfaces as credential store error", func(t *testing.T) {
 		_, err := c.Effective(stubStore{tokenErr: errors.New("keyring: dbus unavailable")})
-		if err == nil || !strings.Contains(err.Error(), "credential store:") {
-			t.Fatalf("got %v, want error containing 'credential store:'", err)
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "credential store:")
 	})
 	t.Run("ErrNoToken leaves an empty token and no error", func(t *testing.T) {
 		eff, err := c.Effective(stubStore{tokenErr: ErrNoToken})
-		if err != nil {
-			t.Fatalf("ErrNoToken must not error: %v", err)
-		}
-		if eff.Token != "" {
-			t.Errorf("token = %q, want empty", eff.Token)
-		}
+		require.NoError(t, err)
+		assert.Empty(t, eff.Token)
 	})
 }
 

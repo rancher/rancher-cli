@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -32,15 +34,9 @@ func TestMapPreflightErr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var ce *clierr.Error
-			if !errors.As(mapPreflightErr(tt.err), &ce) {
-				t.Fatalf("mapPreflightErr(%v) did not return *clierr.Error", tt.err)
-			}
-			if ce.Code != tt.wantCode {
-				t.Errorf("code = %q, want %q", ce.Code, tt.wantCode)
-			}
-			if ce.Retryable != tt.wantRetryable {
-				t.Errorf("retryable = %v, want %v", ce.Retryable, tt.wantRetryable)
-			}
+			require.ErrorAs(t, mapPreflightErr(tt.err), &ce)
+			assert.Equal(t, tt.wantCode, ce.Code)
+			assert.Equal(t, tt.wantRetryable, ce.Retryable)
 		})
 	}
 }

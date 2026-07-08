@@ -186,20 +186,11 @@ func TestRunStampsEffectServer(t *testing.T) {
 	var out bytes.Buffer
 	io := IO{Out: &out, Err: &out, DryRun: true, Format: "json",
 		ServerIdentity: func() (string, error) { return "prod", nil }}
-	if ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable}); ce != nil {
-		t.Fatal(ce)
-	}
-	var env struct {
-		Data struct {
-			Server string `json:"server"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-		t.Fatalf("decode effect envelope: %v", err)
-	}
-	if env.Data.Server != "prod" {
-		t.Errorf("dry-run Effect server = %q, want %q; output: %s", env.Data.Server, "prod", out.String())
-	}
+	ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	data := env["data"].(map[string]any)
+	assert.Equal(t, "prod", data["server"])
 }
 
 func TestRunRejectsNilExecutor(t *testing.T) {
