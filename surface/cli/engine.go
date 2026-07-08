@@ -51,14 +51,17 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 			"cluster id must not be empty").
 			WithHint("pass engine.LocalCluster or an explicit cluster id")
 	}
+	// Resolve config+credentials before locking: sync.Once serializes its own
+	// first run, so the mutex only needs to guard the cache map — not the
+	// one-time config file read.
+	eff, err := f.resolve()
+	if err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if c, ok := f.cache[clusterID]; ok {
 		return c, nil
-	}
-	eff, err := f.resolve()
-	if err != nil {
-		return nil, err
 	}
 	eff.Cluster = clusterID // eff is a copy; the resolved snapshot is not mutated
 	rc, err := kube.RESTConfig(eff)
