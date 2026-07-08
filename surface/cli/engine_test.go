@@ -11,10 +11,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // writeTestConfig writes a minimal config.yaml (one server, current context)
@@ -103,6 +106,108 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wg.Wait() // -race is the assertion
+}
+
+// listCountClient serves canned management-cluster objects for List and counts
+// the List calls so the memoization test can assert a single hit to the server.
+type listCountClient struct {
+	items     []unstructured.Unstructured
+	listCalls int
+}
+
+func (c *listCountClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (c *listCountClient) List(context.Context, schema.GroupVersionResource, string) (*unstructured.UnstructuredList, error) {
+	c.listCalls++
+	return &unstructured.UnstructuredList{Items: c.items}, nil
+}
+func (c *listCountClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (c *listCountClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (c *listCountClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	return nil
+}
+
+func mgmtClusterObj(name, display string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+		"spec":     map[string]any{"displayName": display},
+	}}
+}
+
+// resolveFactory seeds the factory's "local" client with a fake so ResolveCluster
+// lists against it without a real network call.
+func resolveFactory(t *testing.T, c engine.ClusterClient) *clientFactory {
+	t.Helper()
+	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
+	f.cache[engine.LocalCluster] = c
+	return f
+}
+
+func TestResolveClusterByIDNameAndLocal(t *testing.T) {
+	t.Parallel()
+	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "prod"),
+		mgmtClusterObj("c-def", "dev"),
+	}})
+	for _, tc := range []struct{ in, want string }{
+		{"local", "local"},
+		{"", "local"},
+		{"c-abc", "c-abc"},
+		{"prod", "c-abc"},
+	} {
+		got, err := f.ResolveCluster(context.Background(), tc.in)
+		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
+		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
+	}
+}
+
+func TestResolveClusterUnknownIsNotFound(t *testing.T) {
+	t.Parallel()
+	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "prod"),
+		mgmtClusterObj("c-def", "dev"),
+	}})
+	_, err := f.ResolveCluster(context.Background(), "staging")
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	var names []string
+	for _, c := range ce.Candidates {
+		names = append(names, c.Name)
+	}
+	assert.ElementsMatch(t, []string{"prod", "dev"}, names, "candidates list every cluster")
+}
+
+func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
+	t.Parallel()
+	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "dup"),
+		mgmtClusterObj("c-def", "dup"),
+	}})
+	_, err := f.ResolveCluster(context.Background(), "dup")
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+}
+
+func TestResolveClusterMemoizes(t *testing.T) {
+	t.Parallel()
+	client := &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "prod"),
+		mgmtClusterObj("c-def", "dev"),
+	}}
+	f := resolveFactory(t, client)
+	for i := 0; i < 2; i++ {
+		got, err := f.ResolveCluster(context.Background(), "prod")
+		require.NoError(t, err)
+		assert.Equal(t, "c-abc", got)
+	}
+	assert.Equal(t, 1, client.listCalls, "second resolve served from the memo")
 }
 
 func TestRegistryBindingLookup(t *testing.T) {

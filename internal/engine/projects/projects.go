@@ -67,6 +67,15 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	// --cluster accepts a display name or id uniformly (spec §3); resolve to
+	// the id before it becomes the namespace, spec.clusterName, and Effect
+	// target — build validated it is non-empty.
+	cluster, err = c.clients.ResolveCluster(ctx, cluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	obj.SetNamespace(cluster)
+	_ = unstructured.SetNestedField(obj.Object, cluster, "spec", "clusterName")
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return safety.Effect{}, nil, err

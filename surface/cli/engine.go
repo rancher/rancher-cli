@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -11,7 +12,11 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+var clustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
 // Config + credentials resolve exactly once (RF-1): one server, one token,
@@ -25,12 +30,18 @@ type clientFactory struct {
 	eff        config.Effective
 	resolveErr error
 
-	mu    sync.Mutex
-	cache map[string]engine.ClusterClient
+	mu       sync.Mutex
+	cache    map[string]engine.ClusterClient
+	resolved map[string]string // ResolveCluster memo: nameOrID → cluster id
 }
 
 func newClientFactory(dir string, store config.CredStore) *clientFactory {
-	return &clientFactory{dir: dir, store: store, cache: map[string]engine.ClusterClient{}}
+	return &clientFactory{
+		dir:      dir,
+		store:    store,
+		cache:    map[string]engine.ClusterClient{},
+		resolved: map[string]string{},
+	}
 }
 
 func (f *clientFactory) resolve() (config.Effective, error) {
@@ -90,6 +101,56 @@ func (f *clientFactory) Identity() (string, error) {
 		return "", err
 	}
 	return eff.ServerName, nil
+}
+
+// ResolveCluster accepts a cluster id or display name (agents pass names;
+// rancher-ai-mcp accepts both — keep the semantics aligned).
+func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (string, error) {
+	if nameOrID == "" || nameOrID == engine.LocalCluster {
+		return engine.LocalCluster, nil
+	}
+	f.mu.Lock()
+	if id, ok := f.resolved[nameOrID]; ok {
+		f.mu.Unlock()
+		return id, nil
+	}
+	f.mu.Unlock()
+	mgmt, err := f.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return "", err
+	}
+	list, err := mgmt.List(ctx, clustersGVR, "")
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	var cands []clierr.Candidate
+	for i := range list.Items {
+		id := list.Items[i].GetName()
+		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
+		cands = append(cands, clierr.Candidate{ID: id, Name: display})
+		if id == nameOrID {
+			matches = []string{id}
+			break
+		}
+		if display == nameOrID {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		f.mu.Lock()
+		f.resolved[nameOrID] = matches[0]
+		f.mu.Unlock()
+		return matches[0], nil
+	case 0:
+		return "", clierr.New(clierr.CodeNotFound, "cluster not found: "+nameOrID).
+			WithCandidates(cands).WithHint("pass a cluster id or display name")
+	default:
+		return "", clierr.New(clierr.CodeAmbiguousSelection,
+			fmt.Sprintf("%d clusters have display name %q", len(matches), nameOrID)).
+			WithCandidates(cands).WithHint("pass the cluster id")
+	}
 }
 
 // AdaptEngine wires an engine command: it resolves the config dir/store per run

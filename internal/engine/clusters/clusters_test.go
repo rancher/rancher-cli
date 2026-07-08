@@ -37,7 +37,7 @@ type stubFactory struct{ c engine.ClusterClient }
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
 func (f stubFactory) ContextCluster() (string, error)                               { return "", nil }
-func (f stubFactory) Identity() (string, error)                                     { return "test-server", nil }
+func (f stubFactory) ResolveCluster(_ context.Context, s string) (string, error)    { return s, nil }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{

@@ -37,12 +37,21 @@ func (r *recClient) Delete(context.Context, schema.GroupVersionResource, string,
 	return nil
 }
 
-// stubFactory hands out a fixed ClusterClient for any cluster id.
-type stubFactory struct{ c engine.ClusterClient }
+// stubFactory hands out a fixed ClusterClient for any cluster id and resolves
+// display names via an optional map (unmapped names pass through unchanged).
+type stubFactory struct {
+	c       engine.ClusterClient
+	resolve map[string]string
+}
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
 func (f stubFactory) ContextCluster() (string, error)                               { return "", nil }
-func (f stubFactory) Identity() (string, error)                                     { return "test-server", nil }
+func (f stubFactory) ResolveCluster(_ context.Context, s string) (string, error) {
+	if id, ok := f.resolve[s]; ok {
+		return id, nil
+	}
+	return s, nil
+}
 
 type in struct {
 	s map[string]string
@@ -109,7 +118,20 @@ func TestCreateProjectRequiresClusterAndName(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCreateProjectResolvesClusterDisplayName(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := NewCreate(stubFactory{c: client, resolve: map[string]string{"prod": "c-abc"}})
+
+	eff, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "prod"}, a: []string{"web"}})
+	require.NoError(t, err)
+	assert.Equal(t, "c-abc", eff.Cluster, "Effect targets the resolved cluster id")
+	assert.Equal(t, "c-abc", client.createdNS, "namespace is the resolved cluster id")
+	cn, _, _ := unstructured.NestedString(client.created.Object, "spec", "clusterName")
+	assert.Equal(t, "c-abc", cn)
+}
+
 func projectCmdFor(t *testing.T, c engine.ClusterClient) runtime.Command {
 	t.Helper()
-	return NewCreate(stubFactory{c})
+	return NewCreate(stubFactory{c: c})
 }

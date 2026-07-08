@@ -29,7 +29,9 @@ type ClusterClient interface {
 // ClusterClientFactory hands out per-cluster clients at call time (network
 // deferred; memoized per invocation).
 //
-// TODO: add ResolveCluster (display-name → id) when generic verbs land.
+// Server identity for Effect stamping is NOT part of this port: only the
+// surface adapter needs it, and it reads it off the concrete factory
+// (io.ServerIdentity) rather than through the engine-facing interface (ISP).
 type ClusterClientFactory interface {
 	Cluster(ctx context.Context, clusterID string) (ClusterClient, error)
 	// ContextCluster returns the cluster from the resolved current context
@@ -37,6 +39,8 @@ type ClusterClientFactory interface {
 	// context says" must call this explicitly — implicit context targeting
 	// via an empty cluster id is forbidden (RF-2).
 	ContextCluster() (string, error)
-	// Identity returns the resolved server name for Effect stamping (PE-5).
-	Identity() (server string, err error)
+	// ResolveCluster maps a cluster display name or id to its cluster id
+	// (rancher-ai-mcp GetClusterID semantics); "" and LocalCluster
+	// short-circuit to LocalCluster. Memoized per invocation.
+	ResolveCluster(ctx context.Context, nameOrID string) (string, error)
 }
