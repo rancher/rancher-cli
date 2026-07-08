@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -212,12 +213,17 @@ func TestResolveClusterMemoizes(t *testing.T) {
 
 func TestRegistryBindingLookup(t *testing.T) {
 	t.Parallel()
-	reg := runtime.NewRegistry(provider.NewResolver())
-	b := reg.Binding("get cluster")
+	// The registry runs on the composed resolver: generated bindings from the
+	// kind table plus the bespoke provider map.
+	res, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	require.NoError(t, err)
+	reg := runtime.NewRegistry(res)
+
+	b := reg.Binding("get cluster") // owned by the kind table
 	assert.Equal(t, safety.TierCRD, b.Tier)
 	assert.Equal(t, safety.Beta, b.Stability)
 
-	b2 := reg.Binding("create project")
+	b2 := reg.Binding("create project") // owned by the bespoke resolver
 	assert.Equal(t, safety.TierPublic, b2.Tier)
 	assert.Equal(t, safety.Stable, b2.Stability)
 

@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConformsToMCPVocabulary(t *testing.T) {
@@ -42,6 +46,24 @@ func TestValidateRejectsCollidingAliases(t *testing.T) {
 	if err := Validate(); err != nil {
 		t.Fatalf("shipped table must validate: %v", err)
 	}
+}
+
+func TestBindingsGeneratedPerKind(t *testing.T) {
+	t.Parallel()
+	b := Bindings()
+
+	gc, ok := b["get cluster"]
+	require.True(t, ok, "get cluster must have a generated binding")
+	assert.Equal(t, safety.TierCRD, gc.Tier)
+	assert.Equal(t, safety.Beta, gc.Stability)
+
+	dp, ok := b["delete project"]
+	require.True(t, ok, "delete project must have a generated binding")
+	assert.Equal(t, safety.TierPublic, dp.Tier)
+	assert.Equal(t, safety.Stable, dp.Stability)
+
+	_, ok = b["delete cluster"]
+	assert.False(t, ok, "clusters are not deletable — no delete binding")
 }
 
 func TestLookupByNameAliasAndKey(t *testing.T) {

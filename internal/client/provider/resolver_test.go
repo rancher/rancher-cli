@@ -15,10 +15,9 @@ func TestResolveKnownOps(t *testing.T) {
 		assert.Equal(t, safety.TierPublic, b.Tier)
 		assert.Equal(t, safety.Stable, b.Stability)
 	})
-	t.Run("get cluster is crd/beta", func(t *testing.T) {
-		b, ok := r.Resolve("get cluster")
-		assert.True(t, ok)
-		assert.Equal(t, safety.TierCRD, b.Tier)
+	t.Run("generated ops are not owned by the bespoke resolver", func(t *testing.T) {
+		_, ok := r.Resolve("get cluster")
+		assert.False(t, ok, "get cluster's binding is owned by the kind table now")
 	})
 	t.Run("unknown op", func(t *testing.T) {
 		_, ok := r.Resolve("does not exist")

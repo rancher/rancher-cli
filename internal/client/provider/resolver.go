@@ -7,21 +7,15 @@ type Resolver struct {
 	m map[string]safety.Binding
 }
 
-// NewResolver returns the Phase-0/1 op map. Promotions are edits here only.
-// Keys are the canonical-singular Descriptor.Name (grammar rule: nouns are
-// canonical singular; plural/short forms are accepted aliases that resolve to the
-// singular). Phase-1 read/write commands MUST register with singular names so the
-// schema merge finds their tier/stability here.
+// NewResolver returns the bespoke op map: bindings for non-generic operations
+// only (composites, auth-adjacent). Bindings for generated generic ops
+// (get/delete <kind>) are owned by the kind table (kinds.Bindings) and composed
+// in at BuildRoot — an op defined by both sources fails composition. Keys are
+// the canonical-singular Descriptor.Name; promotions of a bespoke op are edits
+// here only.
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
-		// public tier (RK-API), stable
 		"create project": {Tier: safety.TierPublic, Stability: safety.Stable},
-		"get project":    {Tier: safety.TierPublic, Stability: safety.Stable},
-		"delete project": {Tier: safety.TierPublic, Stability: safety.Stable},
-		// crd tier, beta reads (Phase 1)
-		"get cluster":   {Tier: safety.TierCRD, Stability: safety.Beta},
-		"get node":      {Tier: safety.TierCRD, Stability: safety.Beta},
-		"get namespace": {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 
