@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,7 +87,7 @@ func TestOpenStoreExplicitPolicySkipsPin(t *testing.T) {
 func TestCachedCredRoundTrip(t *testing.T) {
 	s := NewFileStore(t.TempDir())
 	exp := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", exp))
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", exp, "", "", ""))
 	tok, gotExp, err := s.GetCachedCred("acme/u/c")
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
@@ -95,15 +96,15 @@ func TestCachedCredRoundTrip(t *testing.T) {
 
 func TestCachedCredExpiredIsErrNoToken(t *testing.T) {
 	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute)))
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", ""))
 	_, _, err := s.GetCachedCred("acme/u/c")
 	assert.ErrorIs(t, err, ErrNoToken)
 }
 
 func TestDeleteAllCachedCredsFlushesFileStore(t *testing.T) {
 	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("acme/u/c1", "t1", time.Now().Add(time.Hour)))
-	require.NoError(t, s.SetCachedCred("acme/u/c2", "t2", time.Now().Add(time.Hour)))
+	require.NoError(t, s.SetCachedCred("acme/u/c1", "t1", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, s.SetCachedCred("acme/u/c2", "t2", time.Now().Add(time.Hour), "", "", ""))
 	require.NoError(t, s.DeleteAllCachedCreds())
 	_, _, err := s.GetCachedCred("acme/u/c1")
 	assert.ErrorIs(t, err, ErrNoToken)
@@ -114,7 +115,7 @@ func TestDeleteAllCachedCredsFlushesFileStore(t *testing.T) {
 func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 	dir := t.TempDir()
 	s := NewFileStore(dir).(*fileStore)
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute)))
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", ""))
 
 	tok, _, err := s.GetCachedCred("acme/u/c")
 	assert.ErrorIs(t, err, ErrNoToken)
@@ -128,9 +129,9 @@ func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 
 func TestFileStoreListCachedCreds(t *testing.T) {
 	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("bravo", "t2", time.Now().Add(time.Hour)))
-	require.NoError(t, s.SetCachedCred("alpha", "t1", time.Now().Add(time.Hour)))
-	require.NoError(t, s.SetCachedCred("gone", "t3", time.Now().Add(-time.Minute))) // expired
+	require.NoError(t, s.SetCachedCred("bravo", "t2", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, s.SetCachedCred("alpha", "t1", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, s.SetCachedCred("gone", "t3", time.Now().Add(-time.Minute), "", "", "")) // expired
 
 	list, err := s.ListCachedCreds()
 	require.NoError(t, err)
@@ -139,12 +140,50 @@ func TestFileStoreListCachedCreds(t *testing.T) {
 	assert.Equal(t, "bravo", list[1].Name)
 }
 
+func TestCacheKeyScoping(t *testing.T) {
+	if got := CacheKey("prod", "rancher.example.com", "c-abc"); got != "prod@rancher.example.com/c-abc" {
+		t.Errorf("CacheKey = %q", got)
+	}
+}
+
+func TestScopedCacheRoundTripAndList(t *testing.T) {
+	fs := NewFileStore(t.TempDir())
+	key := CacheKey("prod", "r.example.com", "c-1")
+	if err := fs.SetCachedCred(key, "tok", time.Now().Add(time.Hour), "prod", "r.example.com", "c-1"); err != nil {
+		t.Fatal(err)
+	}
+	infos, err := fs.ListCachedCreds()
+	if err != nil || len(infos) != 1 {
+		t.Fatal(infos, err)
+	}
+	i := infos[0]
+	if i.Name != "prod" || i.Server != "r.example.com" || i.Cluster != "c-1" || i.Key != key {
+		t.Errorf("info = %+v", i)
+	}
+}
+
+func TestLegacyBareEntryListsAndMisses(t *testing.T) {
+	dir := t.TempDir()
+	fs := &fileStore{path: filepath.Join(dir, "credentials.yaml"), cachePath: filepath.Join(dir, "token-cache.yaml")}
+	// simulate a pre-change entry: bare key, no record fields
+	if err := os.WriteFile(fs.cachePath, []byte("prod:\n  token: old\n  expiry: \"2027-01-01T00:00:00Z\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	infos, _ := fs.ListCachedCreds()
+	if len(infos) != 1 || infos[0].Name != "prod" || infos[0].Key != "prod" {
+		t.Errorf("legacy entry must list by raw key: %+v", infos)
+	}
+	if _, _, err := fs.GetCachedCred(CacheKey("prod", "r.example.com", "c-1")); !errors.Is(err, ErrNoToken) {
+		t.Errorf("scoped read of legacy entry must miss, got %v", err)
+	}
+}
+
 func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	// No keyring.MockInit needed: the exec-cred cache methods forward to the file
 	// store and never touch the OS keychain backend (only GetToken/SetToken do).
 	dir := t.TempDir()
 	s := NewKeyringStore(dir)
-	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour)))
+	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour), "", "", ""))
 
 	list, err := s.ListCachedCreds()
 	require.NoError(t, err)
@@ -207,8 +246,8 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	s := NewFileStore(dir)
-	require.NoError(t, s.SetCachedCred("live", "tok1", time.Now().Add(time.Hour)))
-	require.NoError(t, s.SetCachedCred("expired", "tok2", time.Now().Add(-time.Minute)))
+	require.NoError(t, s.SetCachedCred("live", "tok1", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, s.SetCachedCred("expired", "tok2", time.Now().Add(-time.Minute), "", "", ""))
 
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })

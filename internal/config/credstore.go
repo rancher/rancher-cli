@@ -25,21 +25,35 @@ type CredStore interface {
 	SetToken(server, token string) error
 	DeleteToken(server string) error
 	GetCachedCred(key string) (token string, expiry time.Time, err error)
-	SetCachedCred(key, token string, expiry time.Time) error
+	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error
 	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
 	ListCachedCreds() ([]CachedCredInfo, error)
 }
 
 type cachedCred struct {
-	Token  string    `json:"token"`
-	Expiry time.Time `json:"expiry"`
+	Token   string    `json:"token"`
+	Expiry  time.Time `json:"expiry"`
+	Name    string    `json:"name,omitempty"`
+	Server  string    `json:"server,omitempty"`
+	Cluster string    `json:"cluster,omitempty"`
 }
 
-// CachedCredInfo describes one cached exec-credential entry for listing.
+// CachedCredInfo describes one cached exec-credential entry for listing. Key is
+// the composite storage key; Name/Server/Cluster are the display fields (for a
+// legacy bare entry Name is the raw key and Server/Cluster are empty).
 type CachedCredInfo struct {
-	Name   string    `json:"name"`
-	Expiry time.Time `json:"expiry,omitempty"`
+	Key     string    `json:"key"`
+	Name    string    `json:"name"`
+	Server  string    `json:"server,omitempty"`
+	Cluster string    `json:"cluster,omitempty"`
+	Expiry  time.Time `json:"expiry,omitempty"`
+}
+
+// CacheKey scopes an exec-credential cache entry by server host and cluster, so
+// the same --name used against two servers never collides.
+func CacheKey(name, serverHost, cluster string) string {
+	return name + "@" + serverHost + "/" + cluster
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.
@@ -159,14 +173,14 @@ func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	return cred.Token, cred.Expiry, nil
 }
 
-func (f *fileStore) SetCachedCred(key, token string, expiry time.Time) error {
+func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m, err := f.readCache()
 	if err != nil {
 		return err
 	}
-	m[key] = cachedCred{Token: token, Expiry: expiry}
+	m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster}
 	return f.writeCache(m)
 }
 
@@ -200,20 +214,36 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 	}
 	out := make([]CachedCredInfo, 0, len(m))
 	pruned := false
-	for name, cred := range m {
+	for key, cred := range m {
 		if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-			delete(m, name)
+			delete(m, key)
 			pruned = true
 			continue
 		}
-		out = append(out, CachedCredInfo{Name: name, Expiry: cred.Expiry})
+		info := CachedCredInfo{
+			Key:     key,
+			Name:    cred.Name,
+			Server:  cred.Server,
+			Cluster: cred.Cluster,
+			Expiry:  cred.Expiry,
+		}
+		if info.Name == "" {
+			// Legacy bare entry: no record fields — surface the raw key as the name.
+			info.Name = key
+		}
+		out = append(out, info)
 	}
 	if pruned {
 		// Best-effort prune: expired entries are already excluded from out; a failed
 		// write-back just leaves them on disk for a later pass. Never fail a list for it.
 		_ = f.writeCache(m)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Key < out[j].Key
+	})
 	return out, nil
 }
 
@@ -272,8 +302,8 @@ func (k *keyringStore) DeleteToken(server string) error {
 func (k *keyringStore) GetCachedCred(key string) (string, time.Time, error) {
 	return k.cache.GetCachedCred(key)
 }
-func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time) error {
-	return k.cache.SetCachedCred(key, token, expiry)
+func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
+	return k.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster)
 }
 func (k *keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }

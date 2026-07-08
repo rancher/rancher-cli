@@ -2,10 +2,30 @@ package token
 
 import (
 	"context"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
+
+// credList renders cached exec-credential entries as a NAME SERVER CLUSTER
+// EXPIRY table. The composite Key is deliberately not a column — it stays in
+// the JSON/YAML payload but never surfaces raw in the table.
+type credList []config.CachedCredInfo
+
+func (credList) Columns() []string { return []string{"NAME", "SERVER", "CLUSTER", "EXPIRY"} }
+
+func (l credList) Rows() [][]string {
+	rows := make([][]string, 0, len(l))
+	for _, c := range l {
+		exp := ""
+		if !c.Expiry.IsZero() {
+			exp = c.Expiry.Format(time.RFC3339)
+		}
+		rows = append(rows, []string{c.Name, c.Server, c.Cluster, exp})
+	}
+	return rows
+}
 
 type listTokensCmd struct{ store config.CredStore }
 
@@ -29,5 +49,5 @@ func (c listTokensCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	return runtime.Result{Kind: "TokenList", Data: list}, nil
+	return runtime.Result{Kind: "TokenList", Data: credList(list)}, nil
 }

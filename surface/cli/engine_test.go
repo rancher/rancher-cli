@@ -45,7 +45,9 @@ func (c *countingStore) DeleteToken(string) error        { return nil }
 func (c *countingStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
-func (c *countingStore) SetCachedCred(string, string, time.Time) error     { return nil }
+func (c *countingStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+	return nil
+}
 func (c *countingStore) DeleteCachedCred(string) error                     { return nil }
 func (c *countingStore) DeleteAllCachedCreds() error                       { return nil }
 func (c *countingStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }

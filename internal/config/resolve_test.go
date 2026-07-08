@@ -22,10 +22,12 @@ func (s stubStore) DeleteToken(string) error        { return nil }
 func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
-func (s stubStore) SetCachedCred(string, string, time.Time) error { return nil }
-func (s stubStore) DeleteCachedCred(string) error                 { return nil }
-func (s stubStore) DeleteAllCachedCreds() error                   { return nil }
-func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error)    { return nil, nil }
+func (s stubStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+	return nil
+}
+func (s stubStore) DeleteCachedCred(string) error              { return nil }
+func (s stubStore) DeleteAllCachedCreds() error                { return nil }
+func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error) { return nil, nil }
 
 func TestEffectiveSurfacesStoreError(t *testing.T) {
 	t.Parallel()

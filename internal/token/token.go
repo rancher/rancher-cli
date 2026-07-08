@@ -111,8 +111,19 @@ func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	name := in.String("name")
+
+	// Resolve the connection before the cache read so the cache key is scoped by
+	// server host and cluster (spec accepts the one config read on a cache hit).
+	server, caPEM, clusterID, err := t.resolveConn(in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	serverHost := cacheServerHost(server)
+
+	cacheKey := ""
 	if name != "" {
-		token, expiry, cerr := t.store.GetCachedCred(name)
+		cacheKey = config.CacheKey(name, serverHost, clusterID)
+		token, expiry, cerr := t.store.GetCachedCred(cacheKey)
 		if cerr == nil {
 			return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(token, expiry)}, nil
 		}
@@ -121,12 +132,6 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		}
 	} else {
 		p.Notice("caching disabled: no --name; each call re-authenticates")
-	}
-
-	// Cache miss (or no --name): only now resolve the connection (config + CA disk I/O).
-	server, caPEM, clusterID, err := t.resolveConn(in)
-	if err != nil {
-		return runtime.Result{}, err
 	}
 
 	input := &loginInput{
@@ -160,7 +165,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	}
 
 	if name != "" {
-		if cacheErr := t.store.SetCachedCred(name, rancherToken.Token, tokenExpiry); cacheErr != nil {
+		if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, name, serverHost, clusterID); cacheErr != nil {
 			p.Notice("cache write failed: " + cacheErr.Error())
 		}
 	}
@@ -210,16 +215,42 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 			"provide a cached-credential name or --all").
 			WithHint("name is the cached entry name; or: rancher auth delete-token --all")
 	}
-	// Delete each key; on failure report which keys were already removed so the
-	// caller isn't left guessing the partial state.
+	// Resolve each argument against the cached record set: a bare display name,
+	// or the full composite key. Report which keys were removed so a partial
+	// failure doesn't leave the caller guessing.
+	infos, err := d.store.ListCachedCreds()
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	deleted := make([]string, 0, len(keys))
-	for _, key := range keys {
-		if err := d.store.DeleteCachedCred(key); err != nil {
-			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("failed to delete %q: %v", key, err)).
-				WithHint(fmt.Sprintf("already deleted: %v", deleted))
+	for _, arg := range keys {
+		var matches []config.CachedCredInfo
+		for _, info := range infos {
+			if info.Name == arg || info.Key == arg {
+				matches = append(matches, info)
+			}
 		}
-		deleted = append(deleted, key)
+		switch len(matches) {
+		case 0:
+			return runtime.Result{}, clierr.New(clierr.CodeNotFound, "no cached credential: "+arg).
+				WithHint("list cached credentials with: rancher auth list-tokens")
+		case 1:
+			if err := d.store.DeleteCachedCred(matches[0].Key); err != nil {
+				return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+					fmt.Sprintf("failed to delete %q: %v", arg, err)).
+					WithHint(fmt.Sprintf("already deleted: %v", deleted))
+			}
+			deleted = append(deleted, matches[0].Key)
+		default:
+			cands := make([]clierr.Candidate, 0, len(matches))
+			for _, m := range matches {
+				cands = append(cands, clierr.Candidate{ID: m.Key, Name: fmt.Sprintf("%s (%s/%s)", m.Name, m.Server, m.Cluster)})
+			}
+			return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection,
+				fmt.Sprintf("%q matches %d cached credentials", arg, len(matches))).
+				WithCandidates(cands).
+				WithHint("re-run with the full key: rancher auth delete-token <key>")
+		}
 	}
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
 }
@@ -576,6 +607,15 @@ func resolveCA(s string) (string, error) {
 		return "", fmt.Errorf("reading CA file %q: %w", s, err)
 	}
 	return string(data), nil
+}
+
+// cacheServerHost reduces a server URL to its host for the cache key, falling
+// back to the raw string when it does not parse to a host.
+func cacheServerHost(server string) string {
+	if u, err := url.Parse(server); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return server
 }
 
 // resolveConn fills server/CA/cluster from flags, falling back to the CLI config

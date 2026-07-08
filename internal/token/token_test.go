@@ -57,7 +57,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
+		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
@@ -65,7 +65,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 
 	t.Run("named delete removes the entry", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
+		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
@@ -73,7 +73,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 
 	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour)))
+		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -137,7 +137,7 @@ func TestGetTokenServerRequired(t *testing.T) {
 func TestGetTokenCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred("prod", "cached-tok", time.Now().Add(time.Hour)))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "r.ex", ""))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(context.Background(),
@@ -147,6 +147,22 @@ func TestGetTokenCacheHit(t *testing.T) {
 	assert.True(t, res.Raw)
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "cached-tok", cred.Status.Token)
+}
+
+func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Same --name cached against two servers must not collide.
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r1.example.com", ""), "tok-r1", time.Now().Add(time.Hour), "prod", "r1.example.com", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r2.example.com", ""), "tok-r2", time.Now().Add(time.Hour), "prod", "r2.example.com", ""))
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r2.example.com", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "tok-r2", cred.Status.Token, "get-token must return the token scoped to the requested server")
 }
 
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
