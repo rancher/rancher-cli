@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,8 +49,14 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 			ServerName: name, URL: s.URL, CA: s.CA,
 			Cluster: ctx.Cluster, Project: ctx.Project,
 		}
-		if tok, terr := store.GetToken(name); terr == nil {
+		tok, terr := store.GetToken(name)
+		switch {
+		case terr == nil:
 			eff.Token = tok
+		case errors.Is(terr, ErrNoToken):
+			// no stored token: leave empty; RESTConfig reports it with LoginHint
+		default:
+			return Effective{}, fmt.Errorf("credential store: %w", terr)
 		}
 	}
 

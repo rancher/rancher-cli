@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"k8s.io/client-go/discovery"
@@ -40,7 +39,6 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	rc := &rest.Config{
 		Host:        host,
 		BearerToken: eff.Token,
-		Timeout:     time.Minute,
 	}
 	if eff.CA != "" {
 		rc.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(eff.CA)}

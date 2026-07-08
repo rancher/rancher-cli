@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -11,6 +12,14 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
+
+// requestTimeout bounds every non-streaming API operation. Watch/stream
+// calls (none yet) must exempt themselves at the call site.
+const requestTimeout = 30 * time.Second
+
+func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, requestTimeout)
+}
 
 type dynamicClient struct{ dyn dynamic.Interface }
 
@@ -33,16 +42,22 @@ func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.R
 }
 
 func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
 	out, err := r.ri(gvr, ns).Get(ctx, name, metav1.GetOptions{})
 	return out, mapErr(err)
 }
 
 func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns string) (*unstructured.UnstructuredList, error) {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
 	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{})
 	return out, mapErr(err)
 }
 
 func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
 	opts := metav1.CreateOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
@@ -52,6 +67,8 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 }
 
 func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
 	opts := metav1.UpdateOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
@@ -61,6 +78,8 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
 	opts := metav1.DeleteOptions{}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}

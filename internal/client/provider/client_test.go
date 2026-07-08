@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,6 +64,14 @@ func TestDynamicRepoListAndDelete(t *testing.T) {
 	require.NoError(t, r.Delete(context.Background(), projectGVR, "c-x", "p-1", "", false))
 	after, _ := r.List(context.Background(), projectGVR, "c-x")
 	assert.Len(t, after.Items, 1)
+}
+
+func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {
+	r, _ := newFakeClient()
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+	defer cancel()
+	_, err := r.Get(ctx, projectGVR, "c-x", "p-1")
+	require.Error(t, err, "an already-expired parent context must surface a deadline error")
 }
 
 func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {

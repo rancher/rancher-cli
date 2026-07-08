@@ -1,11 +1,55 @@
 package config
 
 import (
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// stubStore is a CredStore whose GetToken returns a fixed token/error, for
+// exercising Effective's credential-store error handling.
+type stubStore struct {
+	token    string
+	tokenErr error
+}
+
+func (s stubStore) GetToken(string) (string, error) { return s.token, s.tokenErr }
+func (s stubStore) SetToken(string, string) error   { return nil }
+func (s stubStore) DeleteToken(string) error        { return nil }
+func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
+	return "", time.Time{}, nil
+}
+func (s stubStore) SetCachedCred(string, string, time.Time) error { return nil }
+func (s stubStore) DeleteCachedCred(string) error                 { return nil }
+func (s stubStore) DeleteAllCachedCreds() error                   { return nil }
+func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error)    { return nil, nil }
+
+func TestEffectiveSurfacesStoreError(t *testing.T) {
+	c := &Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]Context{"prod": {Server: "acme"}},
+		Servers:        map[string]Server{"acme": {URL: "https://r.ex"}},
+	}
+	t.Run("non-ErrNoToken failure surfaces as credential store error", func(t *testing.T) {
+		_, err := c.Effective(stubStore{tokenErr: errors.New("keyring: dbus unavailable")})
+		if err == nil || !strings.Contains(err.Error(), "credential store:") {
+			t.Fatalf("got %v, want error containing 'credential store:'", err)
+		}
+	})
+	t.Run("ErrNoToken leaves an empty token and no error", func(t *testing.T) {
+		eff, err := c.Effective(stubStore{tokenErr: ErrNoToken})
+		if err != nil {
+			t.Fatalf("ErrNoToken must not error: %v", err)
+		}
+		if eff.Token != "" {
+			t.Errorf("token = %q, want empty", eff.Token)
+		}
+	})
+}
 
 func TestEffectiveFromFile(t *testing.T) {
 	store := NewFileStore(t.TempDir())
