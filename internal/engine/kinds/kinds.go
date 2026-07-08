@@ -118,6 +118,184 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
+
+	{
+		Key: "statefulset", Name: "statefulset", Aliases: []string{"statefulsets", "sts"},
+		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"},
+		Policy: NSPlain, K8sKind: "StatefulSet", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "daemonset", Name: "daemonset", Aliases: []string{"daemonsets", "ds"},
+		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"},
+		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "replicaset", Name: "replicaset", Aliases: []string{"replicasets", "rs"},
+		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"},
+		Policy: NSPlain, K8sKind: "ReplicaSet", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "job", Name: "job", Aliases: []string{"jobs"},
+		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"},
+		Policy: NSPlain, K8sKind: "Job", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "cronjob", Name: "cronjob", Aliases: []string{"cronjobs"},
+		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"},
+		Policy: NSPlain, K8sKind: "CronJob", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "ingress", Name: "ingress", Aliases: []string{"ingresses", "ing"},
+		GVR:    schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
+		Policy: NSPlain, K8sKind: "Ingress", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "persistentvolume", Name: "persistentvolume", Aliases: []string{"persistentvolumes", "pv"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"},
+		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "persistentvolumeclaim", Name: "persistentvolumeclaim", Aliases: []string{"persistentvolumeclaims", "pvc"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+		Policy: NSPlain, K8sKind: "PersistentVolumeClaim", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "serviceaccount", Name: "serviceaccount", Aliases: []string{"serviceaccounts", "sa"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"},
+		Policy: NSPlain, K8sKind: "ServiceAccount", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "event", Name: "event", Aliases: []string{"events", "ev"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"},
+		Policy: NSPlain, K8sKind: "Event", Scope: Downstream, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+
+	{
+		Key: "gitrepo", Name: "gitrepo", Aliases: []string{"gitrepos"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "gitrepos"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "GitRepo", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "clustergroup", Name: "clustergroup", Aliases: []string{"clustergroups"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clustergroups"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ClusterGroup", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		// K8sKind "Cluster" is shared with provisioningcluster/capicluster —
+		// branch 2's manifest reverse lookup disambiguates by apiVersion group.
+		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+
+	{
+		Key: "setting", Name: "setting", Aliases: []string{"settings"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"},
+		Policy: NSNone, K8sKind: "Setting", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "user", Name: "user", Aliases: []string{"users"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
+		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"},
+		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalroles"},
+		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "globalrolebinding", Name: "globalrolebinding", Aliases: []string{"globalrolebindings"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalrolebindings"},
+		Policy: NSNone, K8sKind: "GlobalRoleBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "clusterroletemplatebinding", Name: "clusterroletemplatebinding", Aliases: []string{"crtb"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterroletemplatebindings"},
+		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		// The one Management + NSPlain kind: --namespace is a project id, not a
+		// cluster id — reflected in the generated flag help.
+		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"prtb"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
+		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+
+	{
+		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters"},
+		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		// Empty GVR version: cluster.x-k8s.io is resolved via discovery at call
+		// time (the served version varies by Rancher release).
+		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters"},
+		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
+		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
+		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
+		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters"},
+		GVR:    schema.GroupVersionResource{Group: "k3k.io", Version: "v1beta1", Resource: "clusters"},
+		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
 }
 
 func All() []Kind { out := make([]Kind, len(table)); copy(out, table); return out }

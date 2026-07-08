@@ -92,7 +92,19 @@ func TestLookupByNameAliasAndKey(t *testing.T) {
 			t.Errorf("Lookup(%q) = %+v, %v", q, k, ok)
 		}
 	}
-	if _, ok := Lookup("gitrepo"); ok {
+	for q, wantKey := range map[string]string{
+		"sts":           "statefulset",
+		"pv":            "persistentvolume",
+		"ing":           "ingress",
+		"crtb":          "clusterroletemplatebinding",
+		"machine":       "capimachine",
+		"fleet-cluster": "fleetcluster",
+	} {
+		k, ok := Lookup(q)
+		require.True(t, ok, q)
+		assert.Equal(t, wantKey, k.Key)
+	}
+	if _, ok := Lookup("nonesuch"); ok {
 		t.Error("unknown kind must not resolve")
 	}
 }

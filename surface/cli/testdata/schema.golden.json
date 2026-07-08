@@ -297,6 +297,71 @@
     },
     {
       "aliases": [
+        "cronjobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete cronjob",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a cronjob"
+    },
+    {
+      "aliases": [
+        "daemonsets",
+        "ds"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete daemonset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a daemonset"
+    },
+    {
+      "aliases": [
         "deployments",
         "deploy"
       ],
@@ -330,6 +395,130 @@
     },
     {
       "aliases": [
+        "gitrepos"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete gitrepo",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a gitrepo"
+    },
+    {
+      "aliases": [
+        "ingresses",
+        "ing"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete ingress",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a ingress"
+    },
+    {
+      "aliases": [
+        "jobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete job",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a job"
+    },
+    {
+      "aliases": [
+        "k3kclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete k3k-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a k3k-cluster"
+    },
+    {
+      "aliases": [
         "namespaces",
         "ns"
       ],
@@ -355,6 +544,39 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Delete a namespace"
+    },
+    {
+      "aliases": [
+        "persistentvolumeclaims",
+        "pvc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete persistentvolumeclaim",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a persistentvolumeclaim"
     },
     {
       "aliases": [
@@ -416,6 +638,39 @@
       "tier": "public",
       "toolset": "core",
       "usage": "Delete a project"
+    },
+    {
+      "aliases": [
+        "replicasets",
+        "rs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete replicaset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a replicaset"
     },
     {
       "aliases": [
@@ -484,6 +739,147 @@
     },
     {
       "aliases": [
+        "serviceaccounts",
+        "sa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete serviceaccount",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a serviceaccount"
+    },
+    {
+      "aliases": [
+        "statefulsets",
+        "sts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete statefulset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a statefulset"
+    },
+    {
+      "aliases": [
+        "bundles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get bundle",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List bundles or show one"
+    },
+    {
+      "aliases": [
+        "bundledeployments"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get bundledeployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List bundledeployments or show one"
+    },
+    {
+      "aliases": [
+        "capiclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get capi-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List capi-clusters or show one"
+    },
+    {
+      "aliases": [
         "clusters"
       ],
       "args": [
@@ -500,6 +896,56 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List clusters or show one"
+    },
+    {
+      "aliases": [
+        "clustergroups"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get clustergroup",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List clustergroups or show one"
+    },
+    {
+      "aliases": [
+        "crtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "get clusterroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List clusterroletemplatebindings or show one"
     },
     {
       "aliases": [
@@ -533,6 +979,65 @@
     },
     {
       "aliases": [
+        "cronjobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get cronjob",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List cronjobs or show one"
+    },
+    {
+      "aliases": [
+        "daemonsets",
+        "ds"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get daemonset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List daemonsets or show one"
+    },
+    {
+      "aliases": [
         "deployments",
         "deploy"
       ],
@@ -560,6 +1065,287 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List deployments or show one"
+    },
+    {
+      "aliases": [
+        "events",
+        "ev"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get event",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List events or show one"
+    },
+    {
+      "aliases": [
+        "fleetclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get fleet-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List fleet-clusters or show one"
+    },
+    {
+      "aliases": [
+        "gitrepos"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get gitrepo",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List gitrepos or show one"
+    },
+    {
+      "aliases": [
+        "globalroles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get globalrole",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List globalroles or show one"
+    },
+    {
+      "aliases": [
+        "globalrolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get globalrolebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List globalrolebindings or show one"
+    },
+    {
+      "aliases": [
+        "ingresses",
+        "ing"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get ingress",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List ingresss or show one"
+    },
+    {
+      "aliases": [
+        "jobs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get job",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List jobs or show one"
+    },
+    {
+      "aliases": [
+        "k3kclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get k3k-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List k3k-clusters or show one"
+    },
+    {
+      "aliases": [
+        "machines"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get machine",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List machines or show one"
+    },
+    {
+      "aliases": [
+        "machinedeployments"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get machinedeployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List machinedeployments or show one"
+    },
+    {
+      "aliases": [
+        "machinesets"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get machineset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List machinesets or show one"
     },
     {
       "aliases": [
@@ -611,6 +1397,62 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List nodes or show one"
+    },
+    {
+      "aliases": [
+        "persistentvolumes",
+        "pv"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "get persistentvolume",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List persistentvolumes or show one"
+    },
+    {
+      "aliases": [
+        "persistentvolumeclaims",
+        "pvc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get persistentvolumeclaim",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List persistentvolumeclaims or show one"
     },
     {
       "aliases": [
@@ -666,6 +1508,105 @@
       "tier": "public",
       "toolset": "core",
       "usage": "List projects or show one"
+    },
+    {
+      "aliases": [
+        "prtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get projectroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List projectroletemplatebindings or show one"
+    },
+    {
+      "aliases": [
+        "provisioningclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get provisioning-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List provisioning-clusters or show one"
+    },
+    {
+      "aliases": [
+        "replicasets",
+        "rs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get replicaset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List replicasets or show one"
+    },
+    {
+      "aliases": [
+        "roletemplates"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get roletemplate",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List roletemplates or show one"
     },
     {
       "aliases": [
@@ -725,6 +1666,104 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List services or show one"
+    },
+    {
+      "aliases": [
+        "serviceaccounts",
+        "sa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get serviceaccount",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List serviceaccounts or show one"
+    },
+    {
+      "aliases": [
+        "settings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get setting",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List settings or show one"
+    },
+    {
+      "aliases": [
+        "statefulsets",
+        "sts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get statefulset",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List statefulsets or show one"
+    },
+    {
+      "aliases": [
+        "users"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get user",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List users or show one"
     },
     {
       "auth": false,
