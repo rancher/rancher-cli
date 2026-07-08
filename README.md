@@ -12,9 +12,10 @@ Users get the same commands with readable table output.
 
 **Phase 0 (foundation) — implemented.** Auth, configuration, context/server
 management, the exec-credential token plugin, and the self-description surface
-(`schema`). Kube-native: talks to Rancher's Kubernetes API, no Norman
-dependency. The command surface is verb-first (kubectl-style): `auth …`,
-`config …`, `get …`, `create …`.
+(`schema`). Kube-native: resource operations go through Rancher's Kubernetes
+API, with one exception — interactive auth-provider login (`auth get-token`)
+uses Rancher's legacy `/v1-public` / `/v3-public` endpoints. The command surface
+is verb-first (kubectl-style): `auth …`, `config …`, `get …`, `create …`.
 
 **Phase 1 Wave 1 — implemented.** The engine/provider layer plus generic,
 table-driven `get` and `delete` over a kind table (management: cluster, node,

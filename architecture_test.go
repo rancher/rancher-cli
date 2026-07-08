@@ -47,17 +47,11 @@ var (
 	edgeRe = regexp.MustCompile(`(?m)^\s*(\w+)\s*-->\s*(\w+)`)
 )
 
-// parseMermaid extracts node id→package mappings and edges from the FIRST
+// parseMermaid extracts node id→package mappings and edges from the first
 // mermaid block containing "graph TD".
 func parseMermaid(t *testing.T, doc string) (map[string]bool, map[string]bool) {
 	t.Helper()
-	start := strings.Index(doc, "```mermaid")
-	if start < 0 {
-		t.Fatal("no mermaid block in ARCHITECTURE.md")
-	}
-	rest := doc[start:]
-	end := strings.Index(rest[3:], "```")
-	block := rest[:end+3]
+	block := graphBlock(t, doc)
 
 	ids := map[string]string{}
 	nodes := map[string]bool{}
@@ -77,6 +71,30 @@ func parseMermaid(t *testing.T, doc string) (map[string]bool, map[string]bool) {
 	return nodes, edges
 }
 
+// graphBlock returns the body of the first ```mermaid block that declares a
+// "graph TD", so a future sequence diagram in the doc cannot be mistaken for
+// the dependency graph.
+func graphBlock(t *testing.T, doc string) string {
+	t.Helper()
+	for rest := doc; ; {
+		open := strings.Index(rest, "```mermaid")
+		if open < 0 {
+			break
+		}
+		body := rest[open+len("```mermaid"):]
+		end := strings.Index(body, "\n```")
+		if end < 0 {
+			t.Fatal("unterminated mermaid block in ARCHITECTURE.md")
+		}
+		if block := body[:end]; strings.Contains(block, "graph TD") {
+			return block
+		}
+		rest = body[end+len("\n```"):]
+	}
+	t.Fatal("no `graph TD` mermaid block in ARCHITECTURE.md")
+	return ""
+}
+
 // packagesOnDisk returns every package dir under internal/ + surface/ + main.
 func packagesOnDisk(t *testing.T) map[string]bool {
 	t.Helper()
@@ -86,7 +104,7 @@ func packagesOnDisk(t *testing.T) map[string]bool {
 			if err != nil || !d.IsDir() {
 				return err
 			}
-			if hasGoFiles(path) {
+			if hasGoFiles(t, path) {
 				out[path] = true
 			}
 			return nil
@@ -97,8 +115,12 @@ func packagesOnDisk(t *testing.T) map[string]bool {
 	return out
 }
 
-func hasGoFiles(dir string) bool {
-	entries, _ := os.ReadDir(dir)
+func hasGoFiles(t *testing.T, dir string) bool {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
 			return true
@@ -119,7 +141,10 @@ func realImportEdges(t *testing.T) map[string]bool {
 		if pkg == "main" {
 			dir = "."
 		}
-		entries, _ := os.ReadDir(dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 				continue
