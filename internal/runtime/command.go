@@ -35,6 +35,10 @@ type Descriptor struct {
 	Flags       []ArgSpec   `json:"flags,omitempty"`
 	Examples    []string    `json:"examples,omitempty"`
 	CommandType CommandType `json:"commandType"`
+	Destructive string      `json:"destructive,omitempty"` // "true"|"false"|"dependsOnInput"; empty for readOnly
+	Toolset     string      `json:"toolset,omitempty"`     // MCP toolset filter ("core" today)
+	Network     bool        `json:"network"`               // performs network I/O
+	Auth        bool        `json:"auth"`                  // requires credentials
 }
 
 // Input abstracts parsed flags/args so engine code never imports urfave/cli.

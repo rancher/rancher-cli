@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -71,6 +72,40 @@ func schemaCommandNames(t *testing.T) []string {
 		names = append(names, c.Name)
 	}
 	return names
+}
+
+var update = flag.Bool("update", false, "rewrite golden files")
+
+func TestSchemaManifestGolden(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	// Re-marshal the manifest (the envelope's data) through a map so key order is
+	// stable regardless of struct field order.
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	var manifest any
+	require.NoError(t, json.Unmarshal(env.Data, &manifest))
+	got, err := json.MarshalIndent(manifest, "", "  ")
+	require.NoError(t, err)
+	got = append(got, '\n')
+
+	golden := filepath.Join("testdata", "schema.golden.json")
+	if *update {
+		require.NoError(t, os.WriteFile(golden, got, 0o644))
+		return
+	}
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err)
+	assert.Equal(t, string(want), string(got), "schema manifest drifted from golden; run with -update if intended")
 }
 
 func TestBuildRootWiresGeneratedCommands(t *testing.T) {

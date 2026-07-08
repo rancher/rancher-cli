@@ -27,6 +27,9 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 		Usage:       "Verify connectivity and credentials against the current server",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher auth check -o json"},
+		Toolset:     "core",
+		Network:     true,
+		Auth:        true,
 	}
 }
 

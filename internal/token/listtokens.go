@@ -41,6 +41,7 @@ func (listTokensCmd) Describe() runtime.Descriptor {
 		Usage:       "List cached exec-credential token entries",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher auth list-tokens -o json"},
+		Toolset:     "core",
 	}
 }
 

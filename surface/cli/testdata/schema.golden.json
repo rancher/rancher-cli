@@ -1,0 +1,860 @@
+{
+  "cliVersion": "golden",
+  "commands": [
+    {
+      "auth": true,
+      "commandType": "local",
+      "examples": [
+        "rancher auth check -o json"
+      ],
+      "name": "auth check",
+      "network": true,
+      "toolset": "core",
+      "usage": "Verify connectivity and credentials against the current server"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher auth delete-token --all",
+        "rancher auth delete-token prod"
+      ],
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        }
+      ],
+      "name": "auth delete-token",
+      "network": false,
+      "toolset": "core",
+      "usage": "Delete cached exec-credential token(s)"
+    },
+    {
+      "auth": true,
+      "commandType": "local",
+      "flags": [
+        {
+          "name": "server",
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "auth-provider",
+          "type": "string"
+        },
+        {
+          "enum": [
+            "devicecode",
+            "authcode"
+          ],
+          "name": "auth-flow",
+          "type": "string"
+        },
+        {
+          "name": "cacert",
+          "type": "string"
+        },
+        {
+          "name": "skip-verify",
+          "type": "bool"
+        }
+      ],
+      "name": "auth get-token",
+      "network": true,
+      "toolset": "core",
+      "usage": "Authenticate and emit a kubeconfig ExecCredential"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher auth list-tokens -o json"
+      ],
+      "name": "auth list-tokens",
+      "network": false,
+      "toolset": "core",
+      "usage": "List cached exec-credential token entries"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 \u003c token.txt"
+      ],
+      "flags": [
+        {
+          "name": "server",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "token-stdin",
+          "type": "bool"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "cacert",
+          "type": "string"
+        },
+        {
+          "name": "context",
+          "type": "string"
+        }
+      ],
+      "name": "auth login",
+      "network": false,
+      "toolset": "core",
+      "usage": "Login to a Rancher server"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher auth logout",
+        "rancher auth logout prod",
+        "rancher auth logout --all"
+      ],
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        }
+      ],
+      "name": "auth logout",
+      "network": false,
+      "toolset": "core",
+      "usage": "Clear stored login credentials for a server"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "name": "config current-context",
+      "network": false,
+      "toolset": "core",
+      "usage": "Show the current context"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "name": "config get-servers",
+      "network": false,
+      "toolset": "core",
+      "usage": "List configured servers"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "name": "config purge-legacy",
+      "network": false,
+      "toolset": "core",
+      "usage": "Delete the migrated legacy cli2.json (plaintext credentials)"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config set-context --current --cluster c-1 --project p-1"
+      ],
+      "flags": [
+        {
+          "name": "current",
+          "type": "bool"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "name": "config set-context",
+      "network": false,
+      "toolset": "core",
+      "usage": "Set the current context's cluster/project scope"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config use-context acme-prod"
+      ],
+      "name": "config use-context",
+      "network": false,
+      "toolset": "core",
+      "usage": "Activate a named context"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "name": "config use-server",
+      "network": false,
+      "toolset": "core",
+      "usage": "Switch the current server"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher create project web --cluster c-x --dry-run",
+        "rancher create project web --cluster c-x --apply"
+      ],
+      "flags": [
+        {
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        }
+      ],
+      "name": "create project",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Create a project in a cluster"
+    },
+    {
+      "aliases": [
+        "configmaps",
+        "cm"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete configmap",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a configmap"
+    },
+    {
+      "aliases": [
+        "deployments",
+        "deploy"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete deployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a deployment"
+    },
+    {
+      "aliases": [
+        "namespaces",
+        "ns"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "delete namespace",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a namespace"
+    },
+    {
+      "aliases": [
+        "pods",
+        "po"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete pod",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a pod"
+    },
+    {
+      "aliases": [
+        "projects"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "delete project",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Delete a project"
+    },
+    {
+      "aliases": [
+        "secrets"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete secret",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a secret"
+    },
+    {
+      "aliases": [
+        "services",
+        "svc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "delete service",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a service"
+    },
+    {
+      "aliases": [
+        "clusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List clusters or show one"
+    },
+    {
+      "aliases": [
+        "configmaps",
+        "cm"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get configmap",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List configmaps or show one"
+    },
+    {
+      "aliases": [
+        "deployments",
+        "deploy"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get deployment",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List deployments or show one"
+    },
+    {
+      "aliases": [
+        "namespaces",
+        "ns"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "get namespace",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List namespaces or show one"
+    },
+    {
+      "aliases": [
+        "nodes"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "get node",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List nodes or show one"
+    },
+    {
+      "aliases": [
+        "pods",
+        "po"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get pod",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List pods or show one"
+    },
+    {
+      "aliases": [
+        "projects"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "get project",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "List projects or show one"
+    },
+    {
+      "aliases": [
+        "secrets"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get secret",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List secrets or show one"
+    },
+    {
+      "aliases": [
+        "services",
+        "svc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "name": "get service",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List services or show one"
+    },
+    {
+      "auth": false,
+      "commandType": "readOnly",
+      "examples": [
+        "rancher schema -o json"
+      ],
+      "name": "schema",
+      "network": false,
+      "toolset": "core",
+      "usage": "Print the machine-readable capability manifest"
+    }
+  ],
+  "effectSchema": {
+    "actions": [
+      "create",
+      "update",
+      "delete",
+      "scale"
+    ],
+    "fields": [
+      {
+        "name": "action",
+        "type": "string"
+      },
+      {
+        "name": "target",
+        "type": "string"
+      },
+      {
+        "name": "server",
+        "type": "string"
+      },
+      {
+        "name": "cluster",
+        "type": "string"
+      },
+      {
+        "name": "diff",
+        "type": "array"
+      },
+      {
+        "name": "resourceVersion",
+        "type": "string"
+      },
+      {
+        "name": "conflictDetection",
+        "type": "bool"
+      },
+      {
+        "name": "reversible",
+        "type": "bool"
+      },
+      {
+        "name": "destructive",
+        "type": "bool"
+      },
+      {
+        "name": "tier",
+        "type": "string"
+      },
+      {
+        "name": "stability",
+        "type": "string"
+      }
+    ]
+  },
+  "errorCodes": [
+    "CONTEXT_NOT_SET",
+    "CONFIRMATION_REQUIRED",
+    "DRY_RUN_NOT_APPLICABLE",
+    "AMBIGUOUS_SELECTION",
+    "CONFLICT",
+    "NOT_IMPLEMENTED",
+    "AUTH",
+    "NOT_FOUND",
+    "RBAC",
+    "VALIDATION",
+    "GENERIC"
+  ],
+  "globalFlags": [
+    {
+      "appliesTo": "mutating",
+      "desc": "preview Effect, no change",
+      "name": "--dry-run",
+      "type": "bool"
+    },
+    {
+      "appliesTo": "mutating",
+      "desc": "execute the mutation",
+      "name": "--apply",
+      "type": "bool"
+    },
+    {
+      "appliesTo": "mutating",
+      "desc": "confirm a destructive Effect",
+      "name": "--yes",
+      "type": "bool"
+    },
+    {
+      "appliesTo": "mutating",
+      "desc": "permit a deprecated-tier write",
+      "name": "--allow-deprecated",
+      "type": "bool"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "never prompt; ambiguity -\u003e error",
+      "name": "--no-input",
+      "type": "bool"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "'name' = ids only",
+      "enum": [
+        "table",
+        "json",
+        "yaml",
+        "name",
+        "template"
+      ],
+      "name": "-o/--output",
+      "type": "enum"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "config dir override",
+      "name": "-c/--config",
+      "type": "string"
+    },
+    {
+      "appliesTo": "all",
+      "name": "--debug",
+      "type": "bool"
+    }
+  ],
+  "outputApiVersion": "cli.rancher.io/v1"
+}

@@ -102,6 +102,9 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string"},
 			{Name: "skip-verify", Type: "bool"},
 		},
+		Toolset: "core",
+		Network: true,
+		Auth:    true,
 	}
 }
 
@@ -216,6 +219,7 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 			"rancher auth delete-token --all",
 			"rancher auth delete-token prod",
 		},
+		Toolset: "core",
 	}
 }
 

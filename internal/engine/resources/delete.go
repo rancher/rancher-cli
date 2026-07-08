@@ -31,6 +31,10 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       deleteFlags(c.k),
+		Destructive: "true",
+		Toolset:     "core",
+		Network:     true,
+		Auth:        true,
 	}
 }
 

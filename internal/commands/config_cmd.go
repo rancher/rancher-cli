@@ -18,6 +18,7 @@ func (purgeLegacyCmd) Describe() runtime.Descriptor {
 		Name:        "config purge-legacy",
 		Usage:       "Delete the migrated legacy cli2.json (plaintext credentials)",
 		CommandType: runtime.Local,
+		Toolset:     "core",
 	}
 }
 func (purgeLegacyCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {

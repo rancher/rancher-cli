@@ -33,6 +33,9 @@ func (c getCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Flags:       getFlags(c.k),
+		Toolset:     "core",
+		Network:     true,
+		Auth:        true,
 	}
 }
 

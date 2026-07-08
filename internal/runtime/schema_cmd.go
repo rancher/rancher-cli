@@ -22,6 +22,7 @@ func (s *schemaCmd) Describe() Descriptor {
 		Usage:       "Print the machine-readable capability manifest",
 		CommandType: ReadOnly,
 		Examples:    []string{"rancher schema -o json"},
+		Toolset:     "core",
 	}
 }
 
