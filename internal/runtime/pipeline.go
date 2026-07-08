@@ -52,62 +52,80 @@ func Run(ctx context.Context, cmd Command, in Input, io IO, b safety.Binding) *c
 
 	switch c := cmd.(type) {
 	case MutatingCommand:
-		eff, exec, err := c.Plan(ctx, in)
-		if err != nil {
-			return renderErr(io, toClierr(err).WithPhase("plan"))
-		}
-		if exec == nil {
-			return renderErr(io, clierr.New(clierr.CodeGeneric,
-				"command bug: Plan returned no executor"))
-		}
-		if !eff.Action.Valid() {
-			return renderErr(io, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("command bug: invalid effect action %q", eff.Action)))
-		}
-		if eff.Action == safety.ActionDelete && !eff.Destructive {
-			return renderErr(io, clierr.New(clierr.CodeGeneric,
-				"command bug: delete effect must be destructive"))
-		}
-		eff.Tier, eff.Stability = b.Tier, b.Stability
-		if io.ServerIdentity != nil {
-			server, err := io.ServerIdentity()
-			if err != nil {
-				return renderErr(io, toClierr(err).WithPhase("plan"))
-			}
-			eff.Server = server
-		}
-		if io.DryRun {
-			return renderEffect(io, eff)
-		}
-		if missing := missingFlags(io, eff); len(missing) > 0 {
-			return renderErr(io, clierr.New(clierr.CodeConfirmationRequired,
-				"confirmation required for this mutation").
-				WithHint("re-run with: "+strings.Join(missing, " ")).
-				WithTier(string(eff.Tier)))
-		}
-		res, err := exec(ctx)
-		if err != nil {
-			return renderErr(io, toClierr(err).WithPhase("execute"))
-		}
-		res.Tier, res.Stability = string(b.Tier), string(b.Stability)
-		if b.Tier == safety.TierNorman && !eff.ConflictDetection {
-			res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
-		}
-		return renderResult(io, res)
-
+		return runMutating(ctx, c, in, io, b)
 	case ReadCommand:
-		p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
-		res, err := c.Execute(ctx, in, p)
-		if err != nil {
-			return renderErr(io, toClierr(err))
-		}
-		res.Tier, res.Stability = string(b.Tier), string(b.Stability)
-		return renderResult(io, res)
-
+		return runRead(ctx, c, in, io, b)
 	default:
 		return renderErr(io, clierr.New(clierr.CodeGeneric,
 			"command implements neither ReadCommand nor MutatingCommand: "+d.Name))
 	}
+}
+
+// runMutating drives the Plan → invariant checks → tier/server stamping →
+// confirmation gate → Execute path for a mutating command.
+func runMutating(ctx context.Context, c MutatingCommand, in Input, io IO, b safety.Binding) *clierr.Error {
+	eff, exec, err := c.Plan(ctx, in)
+	if err != nil {
+		return renderErr(io, toClierr(err).WithPhase("plan"))
+	}
+	if ce := checkPlan(eff, exec); ce != nil {
+		return renderErr(io, ce)
+	}
+	eff.Tier, eff.Stability = b.Tier, b.Stability
+	if io.ServerIdentity != nil {
+		server, err := io.ServerIdentity()
+		if err != nil {
+			return renderErr(io, toClierr(err).WithPhase("plan"))
+		}
+		eff.Server = server
+	}
+	if io.DryRun {
+		return renderEffect(io, eff)
+	}
+	if missing := missingFlags(io, eff); len(missing) > 0 {
+		return renderErr(io, clierr.New(clierr.CodeConfirmationRequired,
+			"confirmation required for this mutation").
+			WithHint("re-run with: "+strings.Join(missing, " ")).
+			WithTier(string(eff.Tier)))
+	}
+	res, err := exec(ctx)
+	if err != nil {
+		return renderErr(io, toClierr(err).WithPhase("execute"))
+	}
+	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
+	if b.Tier == safety.TierNorman && !eff.ConflictDetection {
+		res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
+	}
+	return renderResult(io, res)
+}
+
+// checkPlan enforces the command-bug invariants on a Plan result: a non-nil
+// executor, a valid action, and destructive-delete. It never renders; the
+// caller wraps the returned error.
+func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
+	if exec == nil {
+		return clierr.New(clierr.CodeGeneric, "command bug: Plan returned no executor")
+	}
+	if !eff.Action.Valid() {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: invalid effect action %q", eff.Action))
+	}
+	if eff.Action == safety.ActionDelete && !eff.Destructive {
+		return clierr.New(clierr.CodeGeneric, "command bug: delete effect must be destructive")
+	}
+	return nil
+}
+
+// runRead executes a read command and stamps the binding tier/stability onto
+// the result.
+func runRead(ctx context.Context, c ReadCommand, in Input, io IO, b safety.Binding) *clierr.Error {
+	p := ui.New(io.Err, io.In, io.NoInput, io.IsTTY)
+	res, err := c.Execute(ctx, in, p)
+	if err != nil {
+		return renderErr(io, toClierr(err))
+	}
+	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
+	return renderResult(io, res)
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:
