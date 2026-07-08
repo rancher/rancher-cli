@@ -13,6 +13,16 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// Flag names shared across the generic verbs. Flag generation (getFlags),
+// routing (route), and the manifest namespace reconciliation (reconcile) must
+// agree on these exact strings, so they are named once here.
+const (
+	flagCluster   = "cluster"
+	flagNamespace = "namespace"
+	flagFilename  = "filename"
+	flagPatch     = "patch"
+)
+
 type getCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
@@ -47,17 +57,17 @@ func (c getCmd) Describe() runtime.Descriptor {
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	switch k.Policy {
 	case kinds.NSCluster:
-		return []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
+		return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}}
 	case kinds.NSWorkspace:
-		return []runtime.ArgSpec{{Name: "namespace", Type: "string"}}
+		return []runtime.ArgSpec{{Name: flagNamespace, Type: "string"}}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: "cluster", Type: "string"}, {Name: "namespace", Type: "string"}}
+			return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}, {Name: flagNamespace, Type: "string"}}
 		}
-		return []runtime.ArgSpec{{Name: "namespace", Type: "string"}}
+		return []runtime.ArgSpec{{Name: flagNamespace, Type: "string"}}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
+			return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}}
 		}
 		return nil
 	}
@@ -117,7 +127,7 @@ func hasName(in runtime.Input) bool {
 func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
 	switch k.Policy {
 	case kinds.NSCluster:
-		clusterFlag := in.String("cluster")
+		clusterFlag := in.String(flagCluster)
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", clierr.New(clierr.CodeValidation,
@@ -137,7 +147,7 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// A management-plane namespace with a default; --cluster is never
 		// consulted and a missing --namespace falls back to the default, so a
 		// named op never fails validation here.
-		nspace := in.String("namespace")
+		nspace := in.String(flagNamespace)
 		if nspace == "" {
 			nspace = k.DefaultNamespace
 		}
@@ -148,7 +158,7 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// resolution so a missing --namespace fails fast. A named op with an
 		// empty --namespace would pass ns="" to the API and 404 opaquely; a
 		// nameless list keeps ns="" (all-namespaces), which is valid and useful.
-		nspace := in.String("namespace")
+		nspace := in.String(flagNamespace)
 		if named && nspace == "" {
 			return "", "", "", clierr.New(clierr.CodeValidation,
 				"--namespace is required to address a "+k.Name+" by name").
@@ -169,7 +179,7 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 	if k.Scope == kinds.Management {
 		return engine.LocalCluster, ns, engine.LocalCluster, nil
 	}
-	target := in.String("cluster")
+	target := in.String(flagCluster)
 	if target == "" {
 		cc, cerr := clients.ContextCluster()
 		if cerr != nil {

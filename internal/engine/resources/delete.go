@@ -50,9 +50,9 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := getFlags(k)
 	for i := range flags {
 		switch {
-		case k.Policy == kinds.NSCluster && flags[i].Name == "cluster":
+		case k.Policy == kinds.NSCluster && flags[i].Name == flagCluster:
 			flags[i].Required = true
-		case k.Policy == kinds.NSPlain && flags[i].Name == "namespace":
+		case k.Policy == kinds.NSPlain && flags[i].Name == flagNamespace:
 			flags[i].Required = true
 		}
 	}

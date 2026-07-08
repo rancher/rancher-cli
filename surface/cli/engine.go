@@ -174,46 +174,27 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 	}
 }
 
-// AdaptEngine wires an engine command: it resolves the config dir/store per run
-// (via resolveDeps), builds the run-time client factory, derives the resolver
-// binding from Describe().Name, and runs the command through the pipeline.
-func AdaptEngine(reg *runtime.Registry, make func(clients engine.ClusterClientFactory) runtime.Command) *ucli.Command {
-	// Probe with a nil factory: engine constructors MUST NOT touch the factory in
-	// Describe() (Describe is dir/store/client-independent). A command whose
-	// Describe needs a client (e.g. a dynamic flag enum) would panic here — split
-	// its construction instead of dereferencing the factory in Describe.
-	probe := make(nil)
-	d := probe.Describe()
-	b := reg.Binding(d.Name)
-	return &ucli.Command{
-		Name:    leafName(d.Name),
-		Aliases: d.Aliases,
-		Usage:   d.Usage,
-		Flags:   flagsFor(d),
-		Action: func(ctx context.Context, c *ucli.Command) error {
-			dir, store, err := resolveDeps(c)
-			if err != nil {
-				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
-			}
-			f := newClientFactory(dir, store)
-			cmd := make(f)
-			io := buildIO(c)
-			io.ServerIdentity = f.Identity
-			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
-				return exit(ce)
-			}
-			return nil
-		},
-	}
+// runDeps bundles everything a command constructor might need for one run: the
+// per-run cluster client factory, the file source for -f input, and the
+// resolved config dir/store. Each entry's constructor takes what it needs and
+// ignores the rest, so a command is one entry row — no per-shape adapter or
+// wiring switch.
+type runDeps struct {
+	clients engine.ClusterClientFactory
+	src     engine.FileSource
+	dir     string
+	store   config.CredStore
 }
 
-// AdaptEngineSrc wires an engine command that also needs a FileSource for -f
-// input (create resource, patch). It mirrors AdaptEngine but constructs the
-// FileSource from the same stdin reader buildIO resolves, so `-f -` reads the
-// invocation's stdin. Registry probe passes (nil, nil).
-func AdaptEngineSrc(reg *runtime.Registry, make func(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command) *ucli.Command {
-	probe := make(nil, nil)
-	d := probe.Describe()
+// adaptEntry wires one declarative entry through the single run path: it
+// resolves the config dir/store, builds the client factory and file source,
+// stamps server identity, derives the resolver binding, and runs the command
+// through the pipeline. The registry probe passes a zero runDeps — a
+// constructor MUST NOT touch its deps in Describe() (Describe is
+// dir/store/client-independent); one that does would panic here rather than in
+// production.
+func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli.Command {
+	d := make(runDeps{}).Describe()
 	b := reg.Binding(d.Name)
 	return &ucli.Command{
 		Name:    leafName(d.Name),
@@ -228,7 +209,7 @@ func AdaptEngineSrc(reg *runtime.Registry, make func(clients engine.ClusterClien
 			f := newClientFactory(dir, store)
 			io := buildIO(c)
 			io.ServerIdentity = f.Identity
-			cmd := make(f, newFileSource(io.In))
+			cmd := make(runDeps{clients: f, src: newFileSource(io.In), dir: dir, store: store})
 			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
 				return exit(ce)
 			}

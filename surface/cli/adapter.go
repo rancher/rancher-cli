@@ -115,32 +115,6 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	}
 }
 
-// AdaptFactory wraps a command that needs the config dir/store resolved at
-// RUN time from the (persistent) --config flag. `make` must build the command
-// from (dir, store); its Describe() must not depend on dir/store. The binding
-// is derived from the registry (deferral (b): no wiring path runs with a
-// hardcoded zero binding).
-func AdaptFactory(reg *runtime.Registry, make func(dir string, store config.CredStore) runtime.Command) *ucli.Command {
-	d := make("", nil).Describe() // Describe is dir/store-independent
-	b := reg.Binding(d.Name)
-	return &ucli.Command{
-		Name:    leafName(d.Name),
-		Aliases: d.Aliases,
-		Usage:   d.Usage,
-		Flags:   flagsFor(d),
-		Action: func(ctx context.Context, c *ucli.Command) error {
-			dir, store, err := resolveDeps(c)
-			if err != nil {
-				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
-			}
-			if ce := runtime.Run(ctx, make(dir, store), cmdInput{c}, buildIO(c), b); ce != nil {
-				return exit(ce)
-			}
-			return nil
-		},
-	}
-}
-
 // resolveDeps resolves the config dir from --config (flag > env > XDG), runs a
 // one-time legacy migration when no new config exists yet, and opens the
 // credential store per the config's policy. This is THE single place dir/store

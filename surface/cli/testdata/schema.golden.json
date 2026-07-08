@@ -265,7 +265,7 @@
     {
       "auth": true,
       "commandType": "mutating",
-      "destructive": "false",
+      "destructive": "dependsOnInput",
       "examples": [
         "rancher create resource -f deploy.yaml --cluster prod --dry-run",
         "rancher create resource -f - --apply"

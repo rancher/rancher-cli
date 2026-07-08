@@ -56,8 +56,8 @@ func (c patchCmd) Describe() runtime.Descriptor {
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := deleteFlags(k)
 	return append(flags,
-		runtime.ArgSpec{Name: "patch", Type: "string"},
-		runtime.ArgSpec{Name: "filename", Type: "string", Aliases: []string{"f"}},
+		runtime.ArgSpec{Name: flagPatch, Type: "string"},
+		runtime.ArgSpec{Name: flagFilename, Type: "string", Aliases: []string{"f"}},
 	)
 }
 
@@ -108,39 +108,18 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	diff := diffObjects("", orig.Object, patched.Object)
 
 	patched.SetResourceVersion(rv)
-	// Admission preview: a server-side dry-run update surfaces RBAC/webhook
-	// denials before the user confirms.
-	if _, err := client.Update(ctx, c.k.GVR, ns, patched, true); err != nil {
-		return safety.Effect{}, nil, err
-	}
-
-	title := kindTitle(c.k.Name)
-	eff := safety.Effect{
-		Action:            safety.ActionUpdate,
-		Target:            c.k.GVR.Resource + "/" + name,
-		Cluster:           effectCluster,
-		Diff:              diff,
-		ResourceVersion:   rv,
-		ConflictDetection: true,
-		Reversible:        true,
-		Destructive:       c.k.Sensitive,
-	}
-	exec := func(ctx context.Context) (runtime.Result, error) {
-		updated, err := client.Update(ctx, c.k.GVR, ns, patched, false)
-		if err != nil {
-			return runtime.Result{}, err
-		}
-		return runtime.Result{Kind: title, Data: updated.Object}, nil
-	}
-	return eff, exec, nil
+	// PlanUpdate dry-runs the update for an admission preview and returns the
+	// executor; the Effect carries the field diff, the RV precondition, and the
+	// per-kind destructiveness.
+	return engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, kindTitle(c.k.Name), diff, c.k.Sensitive)
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,-f} rule and decodes the
 // RFC 6902 patch. A read error, both sources, neither source, or malformed ops
 // are VALIDATION errors.
 func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
-	inline := in.String("patch")
-	file := in.String("filename")
+	inline := in.String(flagPatch)
+	file := in.String(flagFilename)
 	var raw []byte
 	switch {
 	case inline != "" && file != "":

@@ -1,8 +1,11 @@
 package resources
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	yamlv3 "gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 )
@@ -35,12 +39,12 @@ func (createCmd) Describe() runtime.Descriptor {
 		Usage:       "Create a resource from a manifest file",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
-			{Name: "filename", Type: "string", Required: true, Aliases: []string{"f"}},
-			{Name: "cluster", Type: "string"},
-			{Name: "namespace", Type: "string"},
+			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}},
+			{Name: flagCluster, Type: "string"},
+			{Name: flagNamespace, Type: "string"},
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
-		Destructive: "false",
+		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
 		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
@@ -63,14 +67,18 @@ func (o overrideInput) String(name string) string {
 }
 
 func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	path := in.String("filename")
+	path := in.String(flagFilename)
 	b, err := c.src.Read(path)
 	if err != nil {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("cannot read manifest %q: %v", path, err)).
 			WithHint("pass -f <file> or -f - for stdin")
 	}
-	if n := countDocs(b); n != 1 {
+	n, derr := countDocs(b)
+	if derr != nil {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "invalid manifest: "+derr.Error())
+	}
+	if n != 1 {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("manifest must contain exactly one document, found %d", n)).
 			WithHint("split a multi-document manifest into separate invocations")
@@ -105,7 +113,14 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	// namespace decision, so the object is normalized to it (cleared for a
 	// cluster-scoped kind).
 	obj.SetNamespace(ns)
-	return engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.K8sKind)
+	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.K8sKind)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	// Creating a Sensitive kind is destructive and must gate on --yes exactly as
+	// patching one does — PlanCreate can't know the kind, so the caller sets it.
+	eff.Destructive = k.Sensitive
+	return eff, exec, nil
 }
 
 // reconcile applies the kind's NamespacePolicy to the manifest namespace and
@@ -117,10 +132,10 @@ func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input
 	switch k.Policy {
 	case kinds.NSCluster:
 		// The manifest namespace IS a cluster id.
-		clusterFlag := in.String("cluster")
+		clusterFlag := in.String(flagCluster)
 		switch {
 		case clusterFlag == "" && manifestNS != "":
-			overrides["cluster"] = manifestNS // fully-specified manifest, no flag needed
+			overrides[flagCluster] = manifestNS // fully-specified manifest, no flag needed
 		case clusterFlag != "" && manifestNS != "":
 			id, err := c.clients.ResolveCluster(ctx, clusterFlag)
 			if err != nil {
@@ -135,16 +150,16 @@ func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input
 		// Both empty: route rejects the named op with a --cluster hint.
 
 	case kinds.NSWorkspace, kinds.NSPlain:
-		flagNS := in.String("namespace")
+		flagNS := in.String(flagNamespace)
 		if manifestNS != "" && flagNS != "" && manifestNS != flagNS {
 			return nil, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--namespace %q conflicts with the manifest namespace %q", flagNS, manifestNS)).
 				WithHint("drop one of them")
 		}
 		if ns := flagNS; ns != "" {
-			overrides["namespace"] = ns
+			overrides[flagNamespace] = ns
 		} else if manifestNS != "" {
-			overrides["namespace"] = manifestNS
+			overrides[flagNamespace] = manifestNS
 		}
 
 	case kinds.NSNone:
@@ -157,29 +172,26 @@ func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input
 	return overrides, nil
 }
 
-// countDocs counts the non-empty YAML documents in b, splitting on lines that
-// are exactly "---" after trimming. A JSON or single-object YAML manifest
-// counts as one; the leading "---" of a well-formed YAML file yields no extra
-// empty document.
-func countDocs(b []byte) int {
-	var count int
-	var cur strings.Builder
-	flush := func() {
-		if strings.TrimSpace(cur.String()) != "" {
+// countDocs counts the YAML documents in b with a structural decoder, so a
+// "---" inside a block or flow scalar is never mistaken for a document
+// separator. JSON and single-object YAML count as one; empty documents (a bare
+// "---" or trailing separator) are ignored. A decode error is surfaced so the
+// caller reports an invalid manifest rather than a misleading count.
+func countDocs(b []byte) (int, error) {
+	dec := yamlv3.NewDecoder(bytes.NewReader(b))
+	count := 0
+	for {
+		var doc any
+		switch err := dec.Decode(&doc); {
+		case errors.Is(err, io.EOF):
+			return count, nil
+		case err != nil:
+			return 0, err
+		}
+		if doc != nil {
 			count++
 		}
-		cur.Reset()
 	}
-	for _, ln := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(ln) == "---" {
-			flush()
-			continue
-		}
-		cur.WriteString(ln)
-		cur.WriteByte('\n')
-	}
-	flush()
-	return count
 }
 
 // supportedKinds is the sorted CLI-name list for the closed-world VALIDATION

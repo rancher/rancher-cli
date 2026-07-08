@@ -167,6 +167,27 @@ func TestCreateResourceFlagManifestConflict(t *testing.T) {
 	assert.Equal(t, "team-b", client.creates[0].ns, "the flag namespace fills the manifest gap")
 }
 
+func TestCreateResourceBlockScalarSeparatorNotMultiDoc(t *testing.T) {
+	t.Parallel()
+	const manifest = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: ns1
+data:
+  script: |
+    line one
+    ---
+    line three
+`
+	client := &createClient{}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planCreate(t, NewCreate(fac, mapFileSource{"m.yaml": []byte(manifest)}),
+		input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
+	require.NoError(t, err, "a --- inside a block scalar must not count as a document separator")
+	require.Len(t, client.creates, 1)
+}
+
 func TestCreateResourceStdin(t *testing.T) {
 	t.Parallel()
 	client := &createClient{}
@@ -206,6 +227,27 @@ func TestCreateResourceNSClusterManifestAsClusterID(t *testing.T) {
 	_, _, err = planCreate(t, NewCreate(badFac, mapFileSource{"m.yaml": []byte(projectManifest)}),
 		input{s: map[string]string{"filename": "m.yaml", "cluster": "other"}})
 	requireValidation(t, err)
+}
+
+func TestCreateResourceSensitiveKindIsDestructive(t *testing.T) {
+	t.Parallel()
+	const setting = "apiVersion: management.cattle.io/v3\nkind: Setting\nmetadata:\n  name: server-url\nvalue: https://x\n"
+	client := &createClient{}
+	fac := &recFactory{client: client}
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(setting)})
+
+	eff, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml"}})
+	require.NoError(t, err)
+	assert.True(t, eff.Destructive, "creating a sensitive kind must be destructive")
+	assert.Equal(t, "settings/server-url", eff.Target)
+
+	// A non-sensitive kind stays non-destructive.
+	client2 := &createClient{}
+	fac2 := &recFactory{client: client2, resolve: map[string]string{"prod": "c-abc"}}
+	eff2, _, err := planCreate(t, NewCreate(fac2, mapFileSource{"m.yaml": []byte(deploymentManifest)}),
+		input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
+	require.NoError(t, err)
+	assert.False(t, eff2.Destructive)
 }
 
 func TestCreateResourceClusterScopedRejectsNamespace(t *testing.T) {

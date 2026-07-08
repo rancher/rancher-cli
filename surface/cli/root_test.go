@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
-	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -149,7 +148,7 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	require.NoError(t, err)
 	reg := runtime.NewRegistry(resolver)
 
-	bad := entry{group: "get", engine: func(engine.ClusterClientFactory) runtime.Command {
+	bad := entry{group: "get", make: func(runDeps) runtime.Command {
 		return fakeEngineCmd{name: "get pod extra"}
 	}}
 	_, werr := wireEntry(reg, resolver, bad)
@@ -166,7 +165,7 @@ func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	// An engine entry whose Describe().Name is absent from the composed resolver
 	// must fail wiring (deferral (a): read OR mutating engine commands need a
 	// binding). The name's group matches so the leaf/group check passes first.
-	bad := entry{group: "get", engine: func(engine.ClusterClientFactory) runtime.Command {
+	bad := entry{group: "get", make: func(runDeps) runtime.Command {
 		return fakeEngineCmd{name: "get gizmo"}
 	}}
 	_, werr := wireEntry(reg, resolver, bad)

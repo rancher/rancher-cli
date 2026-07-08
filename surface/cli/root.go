@@ -7,8 +7,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
-	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
@@ -18,16 +16,14 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
-// entry is one command's declarative registration: its verb group and exactly
-// one constructor — engine (needs a cluster client factory), engineSrc (also
-// needs a FileSource for -f input), or local (needs the config dir/store). The
-// registration loop probes, validates, registers, and wires each entry through
-// the adapter matching the constructor kind.
+// entry is one command's declarative registration: its verb group and a single
+// constructor taking runDeps. The constructor pulls whatever it needs (client
+// factory, file source, config dir/store) off runDeps and ignores the rest, so
+// adding a command is one row here — the compiler enforces the dependency set,
+// with no per-shape adapter or wiring switch.
 type entry struct {
-	group     string
-	engine    func(engine.ClusterClientFactory) runtime.Command
-	engineSrc func(engine.ClusterClientFactory, engine.FileSource) runtime.Command
-	local     func(dir string, s config.CredStore) runtime.Command
+	group string
+	make  func(runDeps) runtime.Command
 }
 
 // buildEntries is the single source of command wiring: the bespoke config/token
@@ -36,34 +32,32 @@ type entry struct {
 // kind).
 func buildEntries() []entry {
 	entries := []entry{
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return commands.NewLogin(d, s) }},
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return commands.NewLogout(d, s) }},
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return commands.NewAuthCheck(d, s) }},
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return token.NewTokenCommand(d, s) }},
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return token.NewListTokensCommand(d, s) }},
-		{group: "auth", local: func(d string, s config.CredStore) runtime.Command { return token.NewDeleteTokenCommand(d, s) }},
-		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewContextCurrent(d) }},
-		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewContextSet(d) }},
-		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewContextUse(d) }},
-		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewServerLs(d) }},
-		{group: "config", local: func(d string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(d) }},
-		{group: "config", local: func(_ string, _ config.CredStore) runtime.Command { return commands.NewConfigPurgeLegacy() }},
-		{group: "create", engine: func(f engine.ClusterClientFactory) runtime.Command { return projects.NewCreate(f) }},
-		{group: "create", engineSrc: func(f engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
-			return resources.NewCreate(f, src)
-		}},
+		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogin(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogout(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewAuthCheck(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewListTokensCommand(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewDeleteTokenCommand(d.dir, d.store) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextCurrent(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextSet(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextUse(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerLs(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerSwitch(d.dir) }},
+		{group: "config", make: func(runDeps) runtime.Command { return commands.NewConfigPurgeLegacy() }},
+		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
 	}
 	for _, k := range kinds.All() {
 		k := k
-		entries = append(entries, entry{group: "get", engine: func(f engine.ClusterClientFactory) runtime.Command {
-			return resources.NewGet(k, f)
+		entries = append(entries, entry{group: "get", make: func(d runDeps) runtime.Command {
+			return resources.NewGet(k, d.clients)
 		}})
-		entries = append(entries, entry{group: "patch", engineSrc: func(f engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
-			return resources.NewPatch(k, f, src)
+		entries = append(entries, entry{group: "patch", make: func(d runDeps) runtime.Command {
+			return resources.NewPatch(k, d.clients, d.src)
 		}})
 		if k.Deletable {
-			entries = append(entries, entry{group: "delete", engine: func(f engine.ClusterClientFactory) runtime.Command {
-				return resources.NewDelete(k, f)
+			entries = append(entries, entry{group: "delete", make: func(d runDeps) runtime.Command {
+				return resources.NewDelete(k, d.clients)
 			}})
 		}
 	}
@@ -71,23 +65,15 @@ func buildEntries() []entry {
 }
 
 // wireEntry validates one entry and returns its urfave leaf. It probes
-// Describe() with nil deps (Describe must be dir/store/client-independent),
+// Describe() with zero deps (Describe must be dir/store/client-independent),
 // checks the name's group matches the declared group, requires every engine
-// command — read or mutating — to resolve to a binding, registers the probe,
-// and wires it through the adapter for its constructor kind.
+// command — read or mutating (CommandType != Local) — to resolve to a binding,
+// registers the probe, and wires it through the single run adapter.
 func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli.Command, error) {
-	var probe runtime.Command
-	switch {
-	case e.engine != nil:
-		probe = e.engine(nil)
-	case e.engineSrc != nil:
-		probe = e.engineSrc(nil, nil)
-	case e.local != nil:
-		probe = e.local("", nil)
-	default:
-		return nil, fmt.Errorf("entry in group %q sets none of engine, engineSrc, or local", e.group)
+	if e.make == nil {
+		return nil, fmt.Errorf("entry in group %q has no constructor", e.group)
 	}
-	d := probe.Describe()
+	d := e.make(runDeps{}).Describe()
 
 	// The tree is two levels deep: a command name is exactly one token (a
 	// top-level command) or two (group + leaf). Reject 3+ tokens with a clear
@@ -98,22 +84,16 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	if g := groupName(d.Name); g != e.group {
 		return nil, fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
 	}
-	if e.engine != nil || e.engineSrc != nil {
+	// Engine commands (read or mutating) must resolve to a binding; Local
+	// config/auth commands carry no tier.
+	if d.CommandType != runtime.Local {
 		if _, ok := resolver.Resolve(d.Name); !ok {
 			return nil, fmt.Errorf("engine command %q has no resolver binding", d.Name)
 		}
 	}
 
-	reg.Register(probe)
-
-	switch {
-	case e.engine != nil:
-		return AdaptEngine(reg, e.engine), nil
-	case e.engineSrc != nil:
-		return AdaptEngineSrc(reg, e.engineSrc), nil
-	default:
-		return AdaptFactory(reg, e.local), nil
-	}
+	reg.Register(e.make(runDeps{}))
+	return adaptEntry(reg, e.make), nil
 }
 
 // groupUsages documents the known verb groups. A group discovered from the

@@ -38,3 +38,33 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 	}
 	return eff, exec, nil
 }
+
+// PlanUpdate previews an update via server-side dry-run and returns the Effect
+// plus the closure that performs the real update. The mutation is fully decided
+// by the caller: obj is the already-transformed object carrying the
+// resourceVersion precondition, diff is the precomputed field-level change, and
+// destructive is the caller's per-kind policy. Tier/Stability are stamped by
+// the pipeline. Mirrors PlanCreate so create and update share one shape.
+func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	if _, err := client.Update(ctx, gvr, ns, obj, true); err != nil {
+		return safety.Effect{}, nil, err
+	}
+	eff := safety.Effect{
+		Action:            safety.ActionUpdate,
+		Target:            gvr.Resource + "/" + obj.GetName(),
+		Cluster:           effectCluster,
+		Diff:              diff,
+		ResourceVersion:   obj.GetResourceVersion(),
+		ConflictDetection: true,
+		Reversible:        true,
+		Destructive:       destructive,
+	}
+	exec := func(ctx context.Context) (runtime.Result, error) {
+		updated, err := client.Update(ctx, gvr, ns, obj, false)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		return runtime.Result{Kind: resultKind, Data: updated.Object}, nil
+	}
+	return eff, exec, nil
+}
