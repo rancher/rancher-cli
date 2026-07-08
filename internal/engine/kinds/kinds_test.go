@@ -108,3 +108,30 @@ func TestLookupByNameAliasAndKey(t *testing.T) {
 		t.Error("unknown kind must not resolve")
 	}
 }
+
+func TestLookupGVK(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		apiVersion, kind string
+		wantKey          string
+		ok               bool
+	}{
+		{"apps/v1", "Deployment", "deployment", true},
+		{"management.cattle.io/v3", "Cluster", "managementcluster", true},
+		{"provisioning.cattle.io/v1", "Cluster", "provisioningcluster", true},
+		{"fleet.cattle.io/v1alpha1", "Cluster", "fleetcluster", true},
+		{"cluster.x-k8s.io/v1beta1", "Cluster", "capicluster", true}, // empty-version row matches any served version of its group
+		{"v1", "Pod", "pod", true},                                   // core group apiVersion has no slash
+		{"apps/v1", "Widget", "", false},
+		{"unknown.io/v1", "Deployment", "", false},
+		{"apps/v1beta1", "Deployment", "", false}, // version MUST match for fixed-version rows — never silently dispatch a v1beta1 manifest on the v1 GVR
+		{"batch/v2", "Job", "", false},
+	}
+	for _, tt := range tests {
+		k, ok := LookupGVK(tt.apiVersion, tt.kind)
+		assert.Equal(t, tt.ok, ok, "%s %s", tt.apiVersion, tt.kind)
+		if ok {
+			assert.Equal(t, tt.wantKey, k.Key)
+		}
+	}
+}

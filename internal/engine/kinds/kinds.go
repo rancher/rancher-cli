@@ -6,6 +6,7 @@ package kinds
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -312,6 +313,27 @@ func Bindings() map[string]safety.Binding {
 		}
 	}
 	return out
+}
+
+// LookupGVK resolves a manifest's apiVersion+kind to a table row. Group,
+// VERSION, and K8sKind must all match — four rows share K8sKind "Cluster"
+// across groups, and a version mismatch (apps/v1beta1 Deployment) must be
+// rejected, never silently dispatched on the table's fixed GVR. Rows with an
+// empty GVR.Version (CAPI) match any version of their group.
+func LookupGVK(apiVersion, kind string) (Kind, bool) {
+	group, version := "", apiVersion
+	if i := strings.Index(apiVersion, "/"); i >= 0 {
+		group, version = apiVersion[:i], apiVersion[i+1:]
+	}
+	for _, k := range table {
+		if k.K8sKind != kind || k.GVR.Group != group {
+			continue
+		}
+		if k.GVR.Version == "" || k.GVR.Version == version {
+			return k, true
+		}
+	}
+	return Kind{}, false
 }
 
 // Lookup resolves a CLI-facing name, alias, or canonical key to a Kind.
