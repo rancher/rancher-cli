@@ -49,7 +49,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// patchFlags is delete's route flag set (same Required-per-policy rules — patch
+// patchFlags is delete's Route flag set (same Required-per-policy rules — patch
 // is always a named op) plus the two input sources: --patch (inline ops) and
 // --filename/-f (a file or "-" for stdin). Exactly one of the two is required,
 // enforced in Plan.
@@ -73,7 +73,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, err
 	}
 
-	clientCluster, ns, effectCluster, err := route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, err := Route(ctx, c.clients, c.k, in, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

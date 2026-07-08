@@ -14,11 +14,11 @@ import (
 )
 
 // Flag names shared across the generic verbs. Flag generation (getFlags),
-// routing (route), and the manifest namespace reconciliation (reconcile) must
+// routing (Route), and the manifest namespace reconciliation (reconcile) must
 // agree on these exact strings, so they are named once here.
 const (
-	flagCluster   = "cluster"
-	flagNamespace = "namespace"
+	FlagCluster   = "cluster"
+	FlagNamespace = "namespace"
 	flagFilename  = "filename"
 	flagPatch     = "patch"
 )
@@ -57,24 +57,24 @@ func (c getCmd) Describe() runtime.Descriptor {
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	switch k.Policy {
 	case kinds.NSCluster:
-		return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}}
+		return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
 	case kinds.NSWorkspace:
-		return []runtime.ArgSpec{{Name: flagNamespace, Type: "string"}}
+		return []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}, {Name: flagNamespace, Type: "string"}}
+			return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}, {Name: FlagNamespace, Type: "string"}}
 		}
-		return []runtime.ArgSpec{{Name: flagNamespace, Type: "string"}}
+		return []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: flagCluster, Type: "string"}}
+			return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
 		}
 		return nil
 	}
 }
 
 func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, ns, _, err := route(ctx, c.clients, c.k, in, hasName(in))
+	clusterID, ns, _, err := Route(ctx, c.clients, c.k, in, hasName(in))
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -102,7 +102,7 @@ func hasName(in runtime.Input) bool {
 	return len(args) > 0 && args[0] != ""
 }
 
-// route maps a kind's NamespacePolicy + input to the client cluster id, the
+// Route maps a kind's NamespacePolicy + input to the client cluster id, the
 // namespace, and the Effect's target cluster (the identity a mutation lands on,
 // which differs from the client cluster for management namespaced kinds):
 //
@@ -122,12 +122,12 @@ func hasName(in runtime.Input) bool {
 // addressing a resource by name requires --cluster. NSPlain applies the same
 // fail-fast rule to --namespace before any network resolution.
 //
-// route is shared by get and delete: delete always passes named=true and uses
+// Route is shared by get and delete: delete always passes named=true and uses
 // the effect cluster to stamp Effect.Cluster.
-func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
+func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
 	switch k.Policy {
 	case kinds.NSCluster:
-		clusterFlag := in.String(flagCluster)
+		clusterFlag := in.String(FlagCluster)
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", clierr.New(clierr.CodeValidation,
@@ -147,7 +147,7 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// A management-plane namespace with a default; --cluster is never
 		// consulted and a missing --namespace falls back to the default, so a
 		// named op never fails validation here.
-		nspace := in.String(flagNamespace)
+		nspace := in.String(FlagNamespace)
 		if nspace == "" {
 			nspace = k.DefaultNamespace
 		}
@@ -158,7 +158,7 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// resolution so a missing --namespace fails fast. A named op with an
 		// empty --namespace would pass ns="" to the API and 404 opaquely; a
 		// nameless list keeps ns="" (all-namespaces), which is valid and useful.
-		nspace := in.String(flagNamespace)
+		nspace := in.String(FlagNamespace)
 		if named && nspace == "" {
 			return "", "", "", clierr.New(clierr.CodeValidation,
 				"--namespace is required to address a "+k.Name+" by name").
@@ -179,7 +179,7 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 	if k.Scope == kinds.Management {
 		return engine.LocalCluster, ns, engine.LocalCluster, nil
 	}
-	target := in.String(flagCluster)
+	target := in.String(FlagCluster)
 	if target == "" {
 		cc, cerr := clients.ContextCluster()
 		if cerr != nil {

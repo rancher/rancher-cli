@@ -142,7 +142,7 @@ func TestDeleteDownstreamNamespacedRequiresNamespace(t *testing.T) {
 	}
 	assert.True(t, nsFlag.Required, "--namespace must be Required for a downstream namespaced delete")
 
-	// route independently rejects an empty --namespace (delete is always named).
+	// Route independently rejects an empty --namespace (delete is always named).
 	cmd := NewDelete(k, &recFactory{client: &delClient{obj: objWithRV("web", "1")}, resolve: map[string]string{"prod": "c-abc"}})
 	_, _, err := planDelete(t, cmd, input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}})
 	var ce *clierr.Error
@@ -163,7 +163,7 @@ func TestDeleteManagementNamespacedRequiresCluster(t *testing.T) {
 	}
 	assert.True(t, clusterFlag.Required, "--cluster must be Required for a management namespaced delete")
 
-	// route independently rejects an empty --cluster (belt and suspenders): a
+	// Route independently rejects an empty --cluster (belt and suspenders): a
 	// bare `delete project web --apply --yes` must never hit the local cluster.
 	cmd := NewDelete(k, &recFactory{client: &delClient{obj: objWithRV("p1", "1")}})
 	_, _, err := planDelete(t, cmd, input{args: []string{"p1"}})

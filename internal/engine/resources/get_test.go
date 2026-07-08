@@ -224,7 +224,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 
 // TestRoutePolicyMatrix pins the routing contract for every NamespacePolicy:
 // which cluster serves the client, which namespace reaches the API, and which
-// inputs are VALIDATION errors. route is shared by get, delete, and (branch 2)
+// inputs are VALIDATION errors. Route is shared by get, delete, and (branch 2)
 // create/patch, so this matrix is the single behavior spec.
 func TestRoutePolicyMatrix(t *testing.T) {
 	t.Parallel()
@@ -283,7 +283,7 @@ func TestRoutePolicyMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			gotCluster, gotNS, _, err := route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			gotCluster, gotNS, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
 			if tt.wantErrCode != "" {
 				var ce *clierr.Error
 				require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)

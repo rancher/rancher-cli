@@ -50,9 +50,9 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := getFlags(k)
 	for i := range flags {
 		switch {
-		case k.Policy == kinds.NSCluster && flags[i].Name == flagCluster:
+		case k.Policy == kinds.NSCluster && flags[i].Name == FlagCluster:
 			flags[i].Required = true
-		case k.Policy == kinds.NSPlain && flags[i].Name == flagNamespace:
+		case k.Policy == kinds.NSPlain && flags[i].Name == FlagNamespace:
 			flags[i].Required = true
 		}
 	}
@@ -66,9 +66,9 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 	name := args[0]
 
-	// delete always addresses a resource by name; route enforces the
+	// delete always addresses a resource by name; Route enforces the
 	// Management+Namespaced --cluster requirement independently of the flag.
-	clientCluster, ns, effectCluster, err := route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, err := Route(ctx, c.clients, c.k, in, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

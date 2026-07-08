@@ -40,8 +40,8 @@ func (createCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}},
-			{Name: flagCluster, Type: "string"},
-			{Name: flagNamespace, Type: "string"},
+			{Name: FlagCluster, Type: "string"},
+			{Name: FlagNamespace, Type: "string"},
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
@@ -53,7 +53,7 @@ func (createCmd) Describe() runtime.Descriptor {
 
 // overrideInput wraps a runtime.Input, preferring a manifest-derived value for
 // the reconciled routing flags (cluster, namespace). Args and Bool pass
-// through, so route sees the same positional/boolean input the user gave.
+// through, so Route sees the same positional/boolean input the user gave.
 type overrideInput struct {
 	runtime.Input
 	overrides map[string]string
@@ -101,7 +101,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		return safety.Effect{}, nil, err
 	}
 
-	clientCluster, ns, effectCluster, err := route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
+	clientCluster, ns, effectCluster, err := Route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -109,7 +109,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	// The request namespace and the object must never disagree: route owns the
+	// The request namespace and the object must never disagree: Route owns the
 	// namespace decision, so the object is normalized to it (cleared for a
 	// cluster-scoped kind).
 	obj.SetNamespace(ns)
@@ -124,7 +124,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 }
 
 // reconcile applies the kind's NamespacePolicy to the manifest namespace and
-// the routing flags, returning the overrides route should see. A conflict
+// the routing flags, returning the overrides Route should see. A conflict
 // between the manifest and an explicit flag is a VALIDATION error — flags fill
 // gaps, they never silently override the manifest.
 func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input, manifestNS string) (map[string]string, error) {
@@ -132,10 +132,10 @@ func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input
 	switch k.Policy {
 	case kinds.NSCluster:
 		// The manifest namespace IS a cluster id.
-		clusterFlag := in.String(flagCluster)
+		clusterFlag := in.String(FlagCluster)
 		switch {
 		case clusterFlag == "" && manifestNS != "":
-			overrides[flagCluster] = manifestNS // fully-specified manifest, no flag needed
+			overrides[FlagCluster] = manifestNS // fully-specified manifest, no flag needed
 		case clusterFlag != "" && manifestNS != "":
 			id, err := c.clients.ResolveCluster(ctx, clusterFlag)
 			if err != nil {
@@ -147,19 +147,19 @@ func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input
 					WithHint("drop metadata.namespace or pass the matching --cluster")
 			}
 		}
-		// Both empty: route rejects the named op with a --cluster hint.
+		// Both empty: Route rejects the named op with a --cluster hint.
 
 	case kinds.NSWorkspace, kinds.NSPlain:
-		flagNS := in.String(flagNamespace)
+		flagNS := in.String(FlagNamespace)
 		if manifestNS != "" && flagNS != "" && manifestNS != flagNS {
 			return nil, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--namespace %q conflicts with the manifest namespace %q", flagNS, manifestNS)).
 				WithHint("drop one of them")
 		}
 		if ns := flagNS; ns != "" {
-			overrides[flagNamespace] = ns
+			overrides[FlagNamespace] = ns
 		} else if manifestNS != "" {
-			overrides[flagNamespace] = manifestNS
+			overrides[FlagNamespace] = manifestNS
 		}
 
 	case kinds.NSNone:

@@ -45,6 +45,7 @@ what drifted the previous revision of this doc).
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports and reusable plan/execute helpers; depends only on runtime + safety contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, tier bindings, table columns. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing and table projection. |
+| `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`, `top node`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, legacy migration, store selection/pinning. |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
@@ -71,6 +72,7 @@ graph TD
     engine["internal/engine"]
     kinds["internal/engine/kinds"]
     resources["internal/engine/resources"]
+    inspect["internal/engine/inspect"]
     projects["internal/engine/projects"]
     config["internal/config"]
     provider["internal/client/provider"]
@@ -120,6 +122,12 @@ graph TD
     resources --> runtime
     resources --> safety
     resources --> clierr
+
+    inspect --> engine
+    inspect --> kinds
+    inspect --> resources
+    inspect --> runtime
+    inspect --> clierr
 
     projects --> engine
     projects --> runtime
