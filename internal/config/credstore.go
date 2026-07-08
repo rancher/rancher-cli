@@ -241,7 +241,9 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 func (k *keyringStore) GetToken(server string) (string, error) {
 	tok, err := keyring.Get(keyringService, server)
 	if errors.Is(err, keyring.ErrNotFound) {
-		return "", ErrNoToken
+		// Read-through: tokens stored under an earlier "file" pin keep
+		// working after an upgrade re-pin; they age out via logout/re-login.
+		return k.cache.GetToken(server)
 	}
 	if err != nil {
 		return "", fmt.Errorf("keyring get %q: %w%s", server, err, k.pinHint)
@@ -276,6 +278,40 @@ func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time) error 
 func (k *keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
+
+// DrainToken deletes a server's login token from every backend the current
+// policy could have written to. Under auto both backends are drained so a
+// backend flip (or an old split-brain) cannot leave a live token behind;
+// explicit policies drain only their own backend.
+func DrainToken(dir, policy, server string) ([]string, error) {
+	var from []string
+	p := EffectivePolicy(policy)
+	if p == "keychain" || p == "auto" {
+		if err := keyring.Delete(keyringService, server); err == nil {
+			from = append(from, "keychain")
+		} else if !errors.Is(err, keyring.ErrNotFound) {
+			return from, fmt.Errorf("keyring delete %q: %w", server, err)
+		}
+	}
+	if p == "file" || p == "auto" {
+		fs := NewFileStore(dir)
+		_, err := fs.GetToken(server)
+		switch {
+		case err == nil:
+			if err := fs.DeleteToken(server); err != nil {
+				return from, err
+			}
+			from = append(from, "file")
+		case errors.Is(err, ErrNoToken):
+			// nothing stored in the file backend — fine
+		default:
+			// NEVER report a successful drain when the file store is
+			// unreadable/corrupt: a live plaintext token may remain.
+			return from, fmt.Errorf("file credential store: %w", err)
+		}
+	}
+	return from, nil
+}
 
 // OpenStore selects a store by policy. Explicit policies ("keychain"/"file")
 // are honored directly and never consult the pin. "auto" reads the pin; when

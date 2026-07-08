@@ -2,12 +2,14 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 func TestFileStoreRoundTrip(t *testing.T) {
@@ -153,6 +155,52 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	list, err = s.ListCachedCreds()
 	require.NoError(t, err)
 	assert.Empty(t, list)
+}
+
+func TestKeyringGetTokenReadsThroughToFile(t *testing.T) {
+	keyring.MockInit() // in-memory keyring, empty
+	dir := t.TempDir()
+	if err := NewFileStore(dir).SetToken("prod", "id:secret"); err != nil {
+		t.Fatal(err)
+	}
+	s := NewKeyringStore(dir)
+	tok, err := s.GetToken("prod")
+	if err != nil || tok != "id:secret" {
+		t.Fatalf("read-through: got %q, %v", tok, err)
+	}
+}
+
+func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	_ = keyring.Set(keyringService, "prod", "in-keychain")
+	_ = NewFileStore(dir).SetToken("prod", "in-file")
+	from, err := DrainToken(dir, "auto", "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(from) != 2 {
+		t.Errorf("deletedFrom = %v, want both backends", from)
+	}
+	if _, err := keyring.Get(keyringService, "prod"); err == nil {
+		t.Error("token still in keychain")
+	}
+	if _, err := NewFileStore(dir).GetToken("prod"); err == nil {
+		t.Error("token still in file store")
+	}
+}
+
+func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	// corrupt credentials.yaml: GetToken returns a non-ErrNoToken error
+	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := DrainToken(dir, "auto", "prod")
+	if err == nil {
+		t.Fatal("DrainToken must fail, not report success, when the file store is unreadable (a live token may remain)")
+	}
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {

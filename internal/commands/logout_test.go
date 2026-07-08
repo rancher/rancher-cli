@@ -19,9 +19,10 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: current,
-		Servers:        map[string]config.Server{},
-		Contexts:       map[string]config.Context{},
+		CurrentContext:  current,
+		CredentialStore: "file", // keep DrainToken off the real OS keychain in tests
+		Servers:         map[string]config.Server{},
+		Contexts:        map[string]config.Context{},
 	}
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
@@ -39,6 +40,12 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "LogoutResult", res.Kind)
+
+	data, isMap := res.Data.(map[string]any)
+	require.True(t, isMap, "Result data is a map")
+	df, isDF := data["deletedFrom"].(map[string][]string)
+	require.True(t, isDF, "Result carries per-server deletedFrom")
+	assert.Equal(t, []string{"file"}, df["acme"], "file-policy logout drains only the file backend")
 
 	_, err = store.GetToken("acme")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -127,9 +134,10 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: "acme",
-		Servers:        map[string]config.Server{}, // server missing
-		Contexts:       map[string]config.Context{"acme": {Server: "gone"}},
+		CurrentContext:  "acme",
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{}, // server missing
+		Contexts:        map[string]config.Context{"acme": {Server: "gone"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -145,9 +153,10 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: "ghost",
-		Servers:        map[string]config.Server{"acme": {URL: "https://acme.ex"}},
-		Contexts:       map[string]config.Context{"acme": {Server: "acme"}},
+		CurrentContext:  "ghost",
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{"acme": {URL: "https://acme.ex"}},
+		Contexts:        map[string]config.Context{"acme": {Server: "acme"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
