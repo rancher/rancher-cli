@@ -1,11 +1,12 @@
 package runtime
 
 import (
+	"fmt"
 	"sort"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
 // GlobalFlag documents a global flag in the schema manifest.
@@ -52,24 +53,56 @@ type Manifest struct {
 	Commands         []SchemaCommand `json:"commands"`
 }
 
+// Resolver maps operation names to their current tier binding. provider
+// implements it; the kind table composes into it in a later branch.
+type Resolver interface {
+	Resolve(op string) (safety.Binding, bool)
+	All() map[string]safety.Binding
+}
+
 // Registry holds all commands and the tier resolver.
 type Registry struct {
-	resolver *provider.Resolver
+	resolver Resolver
 	cmds     []Command
 }
 
-func NewRegistry(r *provider.Resolver) *Registry { return &Registry{resolver: r} }
+func NewRegistry(r Resolver) *Registry { return &Registry{resolver: r} }
 
 func (reg *Registry) Register(c Command) { reg.cmds = append(reg.cmds, c) }
 
 func (reg *Registry) Commands() []Command { return reg.cmds }
 
-// Binding returns the tier/stability for an op name (empty strings if unknown).
-func (reg *Registry) Binding(op string) (tier, stability string) {
-	if b, ok := reg.resolver.Resolve(op); ok {
-		return string(b.Tier), string(b.Stability)
+// Binding returns the op's binding (zero value if unknown; Validate enforces
+// that mutating commands have one).
+func (reg *Registry) Binding(op string) safety.Binding {
+	b, _ := reg.resolver.Resolve(op)
+	return b
+}
+
+// Validate enforces registry invariants; BuildRoot fails on any violation.
+func (reg *Registry) Validate() error {
+	seen := map[string]bool{}
+	for _, c := range reg.cmds {
+		d := c.Describe()
+		if seen[d.Name] {
+			return fmt.Errorf("duplicate command name %q", d.Name)
+		}
+		seen[d.Name] = true
+		_, isMut := c.(MutatingCommand)
+		_, isRead := c.(ReadCommand)
+		if !isMut && !isRead {
+			return fmt.Errorf("command %q implements neither ReadCommand nor MutatingCommand", d.Name)
+		}
+		if isMut != (d.CommandType == Mutating) {
+			return fmt.Errorf("command %q commandType %q does not match implemented interface", d.Name, d.CommandType)
+		}
+		if isMut {
+			if _, ok := reg.resolver.Resolve(d.Name); !ok {
+				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
+			}
+		}
 	}
-	return "", ""
+	return nil
 }
 
 // Schema assembles the manifest, merging each Descriptor with the resolver tier.

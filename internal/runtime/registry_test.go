@@ -3,16 +3,25 @@ package runtime
 import (
 	"testing"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+type stubResolver map[string]safety.Binding
+
+func (s stubResolver) Resolve(op string) (safety.Binding, bool) { b, ok := s[op]; return b, ok }
+func (s stubResolver) All() map[string]safety.Binding           { return s }
+
 func TestSchemaMergesResolverTier(t *testing.T) {
-	reg := NewRegistry(provider.NewResolver())
-	reg.Register(fakeCmd{}) // "widgets ls", readOnly (from command_test.go)
-	reg.Register(clustersLsStub{})
-	reg.Register(flaggedStub{})
+	t.Parallel()
+	reg := NewRegistry(stubResolver{
+		"get cluster": {Tier: safety.TierCRD, Stability: safety.Beta},
+	})
+	reg.Register(fakeRead{d: Descriptor{Name: "widgets ls", Usage: "list", CommandType: ReadOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "widgets set", CommandType: Local,
+		Flags: []ArgSpec{{Name: "token", Type: "string", Required: true}}}})
 
 	m := reg.Schema("v-test")
 	assert.Equal(t, "cli.rancher.io/v1", m.OutputAPIVersion)
@@ -33,15 +42,49 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 	assert.True(t, byName["widgets set"].Flags[0].Required)
 }
 
-type clustersLsStub struct{ fakeCmd }
-
-func (clustersLsStub) Describe() Descriptor {
-	return Descriptor{Name: "get cluster", CommandType: ReadOnly}
+func TestValidateRejectsDuplicateNames(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
 }
 
-type flaggedStub struct{ fakeCmd }
+func TestValidateRejectsMutatingWithoutBinding(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{}) // no binding for "create widget"
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no resolver binding")
+}
 
-func (flaggedStub) Describe() Descriptor {
-	return Descriptor{Name: "widgets set", CommandType: Local,
-		Flags: []ArgSpec{{Name: "token", Type: "string", Required: true}}}
+func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
+	t.Parallel()
+	t.Run("read command declared mutating", func(t *testing.T) {
+		reg := NewRegistry(stubResolver{"x": {Tier: safety.TierPublic, Stability: safety.Stable}})
+		reg.Register(fakeRead{d: Descriptor{Name: "x", CommandType: Mutating}})
+		err := reg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "commandType")
+	})
+	t.Run("mutating command declared readOnly", func(t *testing.T) {
+		reg := NewRegistry(stubResolver{})
+		reg.Register(fakeMutating{d: Descriptor{Name: "y", CommandType: ReadOnly}})
+		err := reg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "commandType")
+	})
+}
+
+func TestValidatePassesWellFormedRegistry(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{
+		"create widget": {Tier: safety.TierPublic, Stability: safety.Stable},
+	})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
+	require.NoError(t, reg.Validate())
 }
