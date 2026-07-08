@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/ui"
+	iruntime "github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
@@ -40,7 +40,7 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p *ui.Prompter) (*Token, error) {
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p iruntime.Prompter) (*Token, error) {
 	if input.authFlow == "" {
 		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
 	}
@@ -61,7 +61,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	}
 }
 
-func getCallbackPort(p *ui.Prompter) (int, error) {
+func getCallbackPort(p iruntime.Prompter) (int, error) {
 	env := os.Getenv("CATTLE_OAUTH_CALLBACK_PORT")
 	if env == "" {
 		return 0, nil
@@ -89,7 +89,7 @@ func oauthAuthCodeAuth(
 	timeoutAfter time.Duration,
 	useV1Public bool,
 	openBrowser openBrowserFunc,
-	p *ui.Prompter,
+	p iruntime.Prompter,
 ) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
@@ -258,7 +258,7 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p *ui.Prompter) (*Token, error) {
+func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p iruntime.Prompter) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)

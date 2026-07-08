@@ -6,8 +6,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type contextCurrentCmd struct{ dir string }
@@ -18,10 +16,7 @@ func NewContextCurrent(dir string) runtime.Command { return &contextCurrentCmd{d
 func (contextCurrentCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{Name: "config current-context", Usage: "Show the current context", CommandType: runtime.Local}
 }
-func (contextCurrentCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(c.dir))
 	if err != nil {
 		return runtime.Result{}, err
@@ -63,10 +58,7 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 		Examples: []string{"rancher config set-context --current --cluster c-1 --project p-1"},
 	}
 }
-func (contextSetCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cluster, project := in.String("cluster"), in.String("project")
 	// Require at least one scope flag so a bare `set-context [--current]` is a
 	// clear error, not a silent no-op that rewrites the config unchanged.
@@ -121,10 +113,7 @@ func (contextUseCmd) Describe() runtime.Descriptor {
 		Examples:    []string{"rancher config use-context acme-prod"},
 	}
 }
-func (contextUseCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	if len(in.Args()) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "argument <name> is required").
 			WithHint("provide <name>")

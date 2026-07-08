@@ -9,7 +9,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id-1:secret-1\n"))
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id-1:secret-1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -65,7 +65,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	// isTTY=true, noInput=false -> CanPrompt; PromptSecret reads the line from the buffer.
 	p := ui.New(&bytes.Buffer{}, strings.NewReader("id:sec\n"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
-	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, p)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	require.NoError(t, err)
 	tok, err := store.GetToken("acme")
 	require.NoError(t, err)
@@ -74,8 +74,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 
 func TestLoginServerRequired(t *testing.T) {
 	t.Parallel()
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), args{b: map[string]bool{"token-stdin": true}}, safety.Effect{}, stdinPrompter("id:sec\n"))
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"token-stdin": true}}, stdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -85,8 +84,7 @@ func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 	t.Parallel()
 	// No --token-stdin and !CanPrompt (Discard) -> VALIDATION "token required".
 	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), in, safety.Effect{}, ui.Discard())
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), in, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -95,8 +93,7 @@ func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 func TestLoginEmptyStdinToken(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), in, safety.Effect{}, stdinPrompter(""))
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter(""))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -106,8 +103,7 @@ func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
 	p := ui.New(&bytes.Buffer{}, errReader{}, true, false)
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), in, safety.Effect{}, p)
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -116,8 +112,7 @@ func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 func TestLoginBadTokenShape(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), in, safety.Effect{}, stdinPrompter("notacolon\n"))
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("notacolon\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -131,7 +126,7 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id:sec\n"))
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -143,7 +138,7 @@ func TestLoginDefaultName(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(dir, store).Execute(context.Background(), in, safety.Effect{}, stdinPrompter("id:sec\n"))
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -155,8 +150,7 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 	// TTY prompt returns a blank line -> "no token", not an id:secret shape error.
 	p := ui.New(&bytes.Buffer{}, strings.NewReader("\n"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).
-		Execute(context.Background(), in, safety.Effect{}, p)
+	_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)

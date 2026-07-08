@@ -10,8 +10,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type loginCmd struct {
@@ -42,11 +40,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (loginCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (l loginCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, p *ui.Prompter) (runtime.Result, error) {
+func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	// Defense-in-depth: the pipeline's validateInput normally rejects a missing
 	// --server first, but Execute must be safe when called directly (tests).
 	server := in.String("server")
@@ -104,7 +98,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect
 	}}, nil
 }
 
-func resolveLoginToken(ctx context.Context, in runtime.Input, p *ui.Prompter) (string, error) {
+func resolveLoginToken(ctx context.Context, in runtime.Input, p runtime.Prompter) (string, error) {
 	var (
 		tok string
 		err error

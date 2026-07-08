@@ -24,7 +24,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/tidwall/gjson"
 )
@@ -106,15 +105,11 @@ func (tokenCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (tokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, _ safety.Effect, p *ui.Prompter) (runtime.Result, error) {
+func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	return t.run(ctx, in, p)
 }
 
-func (t tokenCmd) run(ctx context.Context, in runtime.Input, p *ui.Prompter) (runtime.Result, error) {
+func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	name := in.String("name")
 	if name != "" {
 		token, expiry, cerr := t.store.GetCachedCred(name)
@@ -196,11 +191,7 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (deleteTokenCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	all := in.Bool("all")
 	keys := in.Args()
 	if all && len(keys) > 0 {
@@ -233,7 +224,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ safety.Ef
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
 }
 
-func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p *ui.Prompter) (Token, error) {
+func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
 	authProviders, useV1Public, err := getAuthProviders(ctx, client, input.server, true)
 	if err != nil {
 		return Token{}, err
@@ -266,7 +257,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	return token, nil
 }
 
-func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p *ui.Prompter) (Token, error) {
+func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p runtime.Prompter) (Token, error) {
 	username, err := p.Prompt(ctx, "Enter username: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
@@ -322,7 +313,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV
 	return token, nil
 }
 
-func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p *ui.Prompter) (Token, error) {
+func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p runtime.Prompter) (Token, error) {
 	token := Token{}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -509,7 +500,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string, u
 	return supportedProviders, useV1Public, err
 }
 
-func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p *ui.Prompter) (typedProvider, error) {
+func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p runtime.Prompter) (typedProvider, error) {
 	if len(providers) == 0 {
 		return nil, clierr.New(clierr.CodeGeneric, "no auth provider configured")
 	}

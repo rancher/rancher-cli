@@ -9,8 +9,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // serverEntry is one server in the ServerList payload. Fields are exported so the
@@ -45,10 +43,7 @@ func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
 func (serverLsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{Name: "config get-servers", Usage: "List configured servers", CommandType: runtime.Local}
 }
-func (serverLsCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(s.dir))
 	if err != nil {
 		return runtime.Result{}, err
@@ -84,10 +79,7 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 		Args: []runtime.ArgSpec{{Name: "name", Type: "string"}},
 	}
 }
-func (serverSwitchCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(s.dir))
 	if err != nil {
 		return runtime.Result{}, err

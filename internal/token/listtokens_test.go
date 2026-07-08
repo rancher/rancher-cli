@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,8 +18,8 @@ func TestListTokens(t *testing.T) {
 	require.NoError(t, store.SetCachedCred("prod", "t1", time.Now().Add(time.Hour)))
 	require.NoError(t, store.SetCachedCred("dev", "t2", time.Now().Add(time.Hour)))
 
-	res, err := NewListTokensCommand(dir, store).
-		Execute(context.Background(), tin{}, safety.Effect{}, ui.Discard())
+	res, err := NewListTokensCommand(dir, store).(runtime.ReadCommand).
+		Execute(context.Background(), tin{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "TokenList", res.Kind)
 	list := res.Data.([]config.CachedCredInfo)

@@ -8,8 +8,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type logoutCmd struct {
@@ -39,11 +37,7 @@ func (logoutCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (logoutCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	all := in.Bool("all")
 	name := ""
 	if a := in.Args(); len(a) > 0 {

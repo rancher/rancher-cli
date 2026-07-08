@@ -15,7 +15,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,10 +47,10 @@ func TestExecCredentialJSONShape(t *testing.T) {
 func TestDeleteTokenCommand(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	cmd := NewDeleteTokenCommand(dir, store)
+	cmd := NewDeleteTokenCommand(dir, store).(runtime.ReadCommand)
 
 	t.Run("no name and no --all is validation error", func(t *testing.T) {
-		_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{}, ui.Discard())
+		_, err := cmd.Execute(context.Background(), tin{}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -58,7 +58,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -66,7 +66,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("named delete removes the entry", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, safety.Effect{}, ui.Discard())
+		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -74,7 +74,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour)))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, safety.Effect{}, ui.Discard())
+		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -127,8 +127,8 @@ func TestResolveCA(t *testing.T) {
 
 func TestGetTokenServerRequired(t *testing.T) {
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
-	_, err := cmd.Execute(context.Background(), tin{}, safety.Effect{}, ui.Discard())
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), tin{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -138,11 +138,11 @@ func TestGetTokenCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred("prod", "cached-tok", time.Now().Add(time.Hour)))
-	cmd := NewTokenCommand(dir, store)
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "prod"}},
-		safety.Effect{}, ui.Discard())
+		ui.Discard())
 	require.NoError(t, err)
 	assert.True(t, res.Raw)
 	cred := res.Data.(*execCredential)
@@ -228,10 +228,10 @@ func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
-		safety.Effect{}, ui.Discard())
+		ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -284,8 +284,8 @@ func TestGetTokenNoNameWritesCachingDisabledNotice(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
-	_, err := cmd.Execute(context.Background(), tin{s: map[string]string{"server": srv.URL}}, safety.Effect{}, p)
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), tin{s: map[string]string{"server": srv.URL}}, p)
 	require.Error(t, err, "non-interactive local auth should fail")
 	assert.Contains(t, errBuf.String(), "caching disabled", "notice must appear in Err")
 }
@@ -309,12 +309,12 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
-		safety.Effect{}, p)
+		p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code, "401 from login POST must map to CodeAuth")
@@ -333,10 +333,10 @@ func TestOAuthDeviceCodeFlowNoInputIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
-		safety.Effect{}, ui.Discard())
+		ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code, "device-code flow with NoInput must fast-fail AUTH before network")
@@ -357,10 +357,10 @@ func TestOAuthDeviceCodeFlowNonTTYAllowed(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
-		safety.Effect{}, p)
+		p)
 	require.Error(t, err, "device-code will fail on OAuth config/network, but not on the gate")
 	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate, fail later")
 }
@@ -378,10 +378,10 @@ func TestOAuthAuthCodeFlowNoInputIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "authcode"}},
-		safety.Effect{}, ui.Discard())
+		ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code, "authcode flow with NoInput must fast-fail AUTH before network")
@@ -406,10 +406,10 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir))
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "authcode"}},
-		safety.Effect{}, p)
+		p)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate")
 	assert.Contains(t, err.Error(), "callback port", "should fail past the gate on the forced port error")

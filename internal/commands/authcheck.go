@@ -7,8 +7,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 type authCheckCmd struct {
@@ -30,11 +28,7 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (authCheckCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-
-func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ safety.Effect, _ *ui.Prompter) (runtime.Result, error) {
+func (a authCheckCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(a.dir))
 	if err != nil {
 		return runtime.Result{}, err

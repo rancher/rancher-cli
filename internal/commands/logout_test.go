@@ -6,7 +6,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir, store).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
+	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "LogoutResult", res.Kind)
 
@@ -55,7 +55,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 func TestLogoutByName(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{a: []string{"other"}}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken("other")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -69,7 +69,7 @@ func TestLogoutByName(t *testing.T) {
 func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{a: []string{"nope"}}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -83,7 +83,7 @@ func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 func TestLogoutAll(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken("acme")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -97,8 +97,8 @@ func TestLogoutAll(t *testing.T) {
 func TestLogoutNameAndAllIsValidation(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir, store).Execute(context.Background(),
-		args{a: []string{"acme"}, b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(),
+		args{a: []string{"acme"}, b: map[string]bool{"all": true}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -107,7 +107,7 @@ func TestLogoutNameAndAllIsValidation(t *testing.T) {
 func TestLogoutNoCurrentContext(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "", "acme") // no current context
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -116,7 +116,7 @@ func TestLogoutNoCurrentContext(t *testing.T) {
 func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
 	t.Parallel()
 	dir, store := seedLogout(t, "ghost", "acme") // CurrentContext points at a missing key
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -133,7 +133,7 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -153,7 +153,7 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	require.NoError(t, store.SetToken("acme", "id:sec"))
 
-	_, err := NewLogout(dir, store).Execute(context.Background(), args{b: map[string]bool{"all": true}}, safety.Effect{}, ui.Discard())
+	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
