@@ -128,6 +128,20 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		return engine.LocalCluster, id, id, nil
 
 	default: // Downstream
+		// Namespace is a pure input requirement — check it before any network
+		// resolution so a missing --namespace fails fast. A named op
+		// (get-by-name, delete) with an empty --namespace would pass ns="" to
+		// the API and 404 opaquely; a nameless list keeps ns="" (all-namespaces),
+		// which is valid and useful.
+		nspace := ""
+		if k.Namespaced {
+			nspace = in.String("namespace")
+			if named && nspace == "" {
+				return "", "", "", clierr.New(clierr.CodeValidation,
+					"--namespace is required to address a "+k.Name+" by name").
+					WithHint("pass --namespace <namespace>")
+			}
+		}
 		target := clusterFlag
 		if target == "" {
 			cc, cerr := clients.ContextCluster()
@@ -145,10 +159,6 @@ func route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if rerr != nil {
 			return "", "", "", rerr
 		}
-		nspace := ""
-		if k.Namespaced {
-			nspace = in.String("namespace")
-		}
 		return id, nspace, id, nil
 	}
 }
@@ -159,5 +169,6 @@ func kindTitle(name string) string {
 	if name == "" {
 		return ""
 	}
-	return strings.ToUpper(name[:1]) + name[1:]
+	r := []rune(name)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
 }

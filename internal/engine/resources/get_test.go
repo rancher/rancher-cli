@@ -169,6 +169,25 @@ func TestGetPodTargetsResolvedCluster(t *testing.T) {
 	assert.Equal(t, []string{"team-a"}, client.listNS, "--namespace honored")
 }
 
+func TestGetDownstreamNamespacedNamedRequiresNamespace(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "pod")
+
+	// get pod web --cluster prod, no --namespace → VALIDATION (named op).
+	byName := NewGet(k, &recFactory{client: &memClient{items: []unstructured.Unstructured{podObj("web")}}, resolve: map[string]string{"prod": "c-abc"}})
+	rc := byName.(runtime.ReadCommand)
+	_, err := rc.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	// get pods --cluster prod, no --namespace → lists across all namespaces.
+	lc := &memClient{items: []unstructured.Unstructured{podObj("web")}}
+	res := execGet(t, NewGet(k, &recFactory{client: lc, resolve: map[string]string{"prod": "c-abc"}}), input{s: map[string]string{"cluster": "prod"}})
+	assert.Equal(t, "PodList", res.Kind)
+	assert.Equal(t, []string{""}, lc.listNS, "a nameless list uses the all-namespaces query")
+}
+
 func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "project")

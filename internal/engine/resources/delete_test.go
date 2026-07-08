@@ -126,6 +126,27 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
+func TestDeleteDownstreamNamespacedRequiresNamespace(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "pod")
+
+	// The Descriptor marks --namespace Required so the pipeline rejects pre-Plan.
+	var nsFlag runtime.ArgSpec
+	for _, f := range NewDelete(k, nil).Describe().Flags {
+		if f.Name == "namespace" {
+			nsFlag = f
+		}
+	}
+	assert.True(t, nsFlag.Required, "--namespace must be Required for a downstream namespaced delete")
+
+	// route independently rejects an empty --namespace (delete is always named).
+	cmd := NewDelete(k, &recFactory{client: &delClient{obj: objWithRV("web", "1")}, resolve: map[string]string{"prod": "c-abc"}})
+	_, _, err := planDelete(t, cmd, input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
 func TestDeleteManagementNamespacedRequiresCluster(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "project")

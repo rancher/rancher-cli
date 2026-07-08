@@ -196,6 +196,20 @@ func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 }
 
+func TestResolveClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	// A's display name equals B's id: an exact-id match on "foo" (B) must not
+	// silently shadow the display match on "foo" (A).
+	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "foo"),
+		mgmtClusterObj("foo", "bar"),
+	}})
+	_, err := f.ResolveCluster(context.Background(), "foo")
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+}
+
 func TestResolveClusterMemoizes(t *testing.T) {
 	t.Parallel()
 	client := &listCountClient{items: []unstructured.Unstructured{

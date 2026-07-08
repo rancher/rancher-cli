@@ -126,10 +126,22 @@ func Lookup(q string) (Kind, bool) {
 	return Kind{}, false
 }
 
-// Validate rejects Name/Alias/Key collisions across kinds (BuildRoot calls it).
-func Validate() error {
+// Validate rejects Key duplicates and Name/Alias/Key collisions across kinds
+// (BuildRoot calls it).
+func Validate() error { return validateKinds(table) }
+
+func validateKinds(ts []Kind) error {
+	// Key uniqueness is its own pass: the self-Key exemption in the collision
+	// pass below would otherwise mask two kinds sharing a Key.
+	seenKeys := map[string]bool{}
+	for _, k := range ts {
+		if seenKeys[k.Key] {
+			return fmt.Errorf("duplicate kind Key %q", k.Key)
+		}
+		seenKeys[k.Key] = true
+	}
 	seen := map[string]string{}
-	for _, k := range table {
+	for _, k := range ts {
 		for _, id := range append([]string{k.Name, k.Key}, k.Aliases...) {
 			if prev, dup := seen[id]; dup && prev != k.Key {
 				return fmt.Errorf("kind identifier %q claimed by both %q and %q", id, prev, k.Key)

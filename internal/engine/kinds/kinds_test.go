@@ -46,6 +46,25 @@ func TestValidateRejectsCollidingAliases(t *testing.T) {
 	if err := Validate(); err != nil {
 		t.Fatalf("shipped table must validate: %v", err)
 	}
+	// A distinct-Key table whose alias collides with another kind's name.
+	collide := []Kind{
+		{Key: "a", Name: "foo"},
+		{Key: "b", Name: "bar", Aliases: []string{"foo"}},
+	}
+	if err := validateKinds(collide); err == nil {
+		t.Error("colliding alias must fail validation")
+	}
+}
+
+func TestValidateRejectsDuplicateKey(t *testing.T) {
+	t.Parallel()
+	dup := []Kind{
+		{Key: "same", Name: "one"},
+		{Key: "same", Name: "two"},
+	}
+	if err := validateKinds(dup); err == nil {
+		t.Error("duplicate Key must fail validation")
+	}
 }
 
 func TestBindingsGeneratedPerKind(t *testing.T) {

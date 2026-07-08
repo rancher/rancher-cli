@@ -109,6 +109,10 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
 	}
+	// Benign race by design: a concurrent caller may also miss the memo and List
+	// in parallel. Both compute identical results and the memo writes converge,
+	// costing at most one duplicate List — cheaper than holding mu across the
+	// network call. Do NOT "fix" this by locking around the List below.
 	f.mu.Lock()
 	if id, ok := f.resolved[nameOrID]; ok {
 		f.mu.Unlock()
@@ -123,32 +127,49 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 	if err != nil {
 		return "", err
 	}
-	var matches []string
+	// Collect id and display matches separately: an exact id match must not
+	// silently shadow a different cluster whose display name equals the query.
+	var idMatch string
+	var idFound bool
+	var displayMatches []string
 	var cands []clierr.Candidate
 	for i := range list.Items {
 		id := list.Items[i].GetName()
 		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 		if id == nameOrID {
-			matches = []string{id}
-			break
+			idMatch, idFound = id, true
 		}
 		if display == nameOrID {
-			matches = append(matches, id)
+			displayMatches = append(displayMatches, id)
 		}
 	}
-	switch len(matches) {
+	matched := map[string]bool{}
+	if idFound {
+		matched[idMatch] = true
+	}
+	for _, id := range displayMatches {
+		matched[id] = true
+	}
+	var ids []string
+	for id := range matched {
+		ids = append(ids, id)
+	}
+	switch len(ids) {
 	case 1:
 		f.mu.Lock()
-		f.resolved[nameOrID] = matches[0]
+		f.resolved[nameOrID] = ids[0]
 		f.mu.Unlock()
-		return matches[0], nil
+		return ids[0], nil
 	case 0:
 		return "", clierr.New(clierr.CodeNotFound, "cluster not found: "+nameOrID).
 			WithCandidates(cands).WithHint("pass a cluster id or display name")
 	default:
-		return "", clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d clusters have display name %q", len(matches), nameOrID)).
+		msg := fmt.Sprintf("%d clusters have display name %q", len(displayMatches), nameOrID)
+		if idFound {
+			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", nameOrID)
+		}
+		return "", clierr.New(clierr.CodeAmbiguousSelection, msg).
 			WithCandidates(cands).WithHint("pass the cluster id")
 	}
 }

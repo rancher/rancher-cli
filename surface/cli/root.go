@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
@@ -78,6 +79,12 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	}
 	d := probe.Describe()
 
+	// The tree is two levels deep: a command name is exactly one token (a
+	// top-level command) or two (group + leaf). Reject 3+ tokens with a clear
+	// message rather than a misleading group mismatch.
+	if n := strings.Count(d.Name, " "); n > 1 {
+		return nil, fmt.Errorf("command name %q must be one or two space-separated tokens, has %d", d.Name, n+1)
+	}
 	if g := groupName(d.Name); g != e.group {
 		return nil, fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
 	}
@@ -93,6 +100,36 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 		return AdaptEngine(reg, e.engine), nil
 	}
 	return AdaptFactory(reg, e.local), nil
+}
+
+// groupUsages documents the known verb groups. A group discovered from the
+// entries but absent here still gets a (usage-less) group command — command
+// reachability never depends on an allowlist.
+var groupUsages = map[string]string{
+	"auth":   "Auth operations",
+	"config": "Config operations",
+	"create": "Create resources",
+	"get":    "Read resources",
+	"delete": "Delete resources",
+}
+
+// assembleCommands builds the root command list: the top-level commands
+// followed by one group command per group in first-appearance order. Leaves in
+// the "" group are attached at the top level.
+func assembleCommands(topLevel []*ucli.Command, order []string, groups map[string][]*ucli.Command) []*ucli.Command {
+	out := append([]*ucli.Command{}, topLevel...)
+	for _, g := range order {
+		leaves := groups[g]
+		if len(leaves) == 0 {
+			continue
+		}
+		if g == "" {
+			out = append(out, leaves...)
+			continue
+		}
+		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves})
+	}
+	return out
 }
 
 // BuildRoot constructs the root command from the declarative entry table. Kind
@@ -111,10 +148,14 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	reg := runtime.NewRegistry(resolver)
 
 	groups := map[string][]*ucli.Command{}
+	var order []string
 	for _, e := range buildEntries() {
 		leaf, err := wireEntry(reg, resolver, e)
 		if err != nil {
 			return nil, err
+		}
+		if _, seen := groups[e.group]; !seen {
+			order = append(order, e.group)
 		}
 		groups[e.group] = append(groups[e.group], leaf)
 	}
@@ -127,18 +168,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		return nil, fmt.Errorf("command registry: %w", err)
 	}
 
-	commandsList := []*ucli.Command{Adapt(reg, schemaCmd)}
-	for _, g := range []struct{ name, usage string }{
-		{"auth", "Auth operations"},
-		{"config", "Config operations"},
-		{"create", "Create resources"},
-		{"get", "Read resources"},
-		{"delete", "Delete resources"},
-	} {
-		if leaves := groups[g.name]; len(leaves) > 0 {
-			commandsList = append(commandsList, &ucli.Command{Name: g.name, Usage: g.usage, Commands: leaves})
-		}
-	}
+	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd)}, order, groups)
 
 	root := &ucli.Command{
 		Name:    "rancher",

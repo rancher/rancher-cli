@@ -134,6 +134,29 @@ func TestBuildRootWiresAliases(t *testing.T) {
 	assert.Contains(t, project.Aliases, "projects")
 }
 
+func TestAssembleCommandsUnknownGroupReachable(t *testing.T) {
+	t.Parallel()
+	leaf := &ucli.Command{Name: "widget"}
+	out := assembleCommands(nil, []string{"update"}, map[string][]*ucli.Command{"update": {leaf}})
+	grp := findCommand(out, "update")
+	require.NotNil(t, grp, "a group not in the usage allowlist must still be reachable")
+	require.NotNil(t, findCommand(grp.Commands, "widget"))
+}
+
+func TestWireEntryRejectsThreeTokenName(t *testing.T) {
+	t.Parallel()
+	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	require.NoError(t, err)
+	reg := runtime.NewRegistry(resolver)
+
+	bad := entry{group: "get", engine: func(engine.ClusterClientFactory) runtime.Command {
+		return fakeEngineCmd{name: "get pod extra"}
+	}}
+	_, werr := wireEntry(reg, resolver, bad)
+	require.Error(t, werr)
+	assert.Contains(t, werr.Error(), "token")
+}
+
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	t.Parallel()
 	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))

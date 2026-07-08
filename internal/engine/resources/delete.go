@@ -38,16 +38,20 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// deleteFlags is get's flag set, except a management namespaced kind's
-// --cluster is Required: it becomes the namespace, and deleting by name with an
-// empty --cluster must be rejected by the pipeline before Plan runs (F3).
+// deleteFlags is get's flag set with the flags a delete (always a named op)
+// requires marked Required so the pipeline rejects before Plan:
+//   - a management namespaced kind's --cluster (it becomes the namespace; an
+//     empty value must not fall through to the local cluster — F3);
+//   - a downstream namespaced kind's --namespace (an empty value would 404
+//     opaquely).
 func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := getFlags(k)
-	if k.Scope == kinds.Management && k.Namespaced {
-		for i := range flags {
-			if flags[i].Name == "cluster" {
-				flags[i].Required = true
-			}
+	for i := range flags {
+		switch {
+		case k.Scope == kinds.Management && k.Namespaced && flags[i].Name == "cluster":
+			flags[i].Required = true
+		case k.Scope == kinds.Downstream && k.Namespaced && flags[i].Name == "namespace":
+			flags[i].Required = true
 		}
 	}
 	return flags
