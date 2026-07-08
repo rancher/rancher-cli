@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
@@ -37,12 +38,12 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	srvLsF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerLs(dir) }
 	srvSwF := func(dir string, _ config.CredStore) runtime.Command { return commands.NewServerSwitch(dir) }
 
-	// Engine command factories (repo bound at run time by AdaptEngine).
-	getClusterF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
-		return clusters.NewGet(newRepo, tier, stability)
+	// Engine command factories (cluster client bound at run time by AdaptEngine).
+	getClusterF := func(clients engine.ClusterClientFactory) runtime.Command {
+		return clusters.NewGet(clients)
 	}
-	createProjectF := func(newRepo engine.RepoFactory, tier, stability string) runtime.Command {
-		return projects.NewCreate(newRepo, tier, stability)
+	createProjectF := func(clients engine.ClusterClientFactory) runtime.Command {
+		return projects.NewCreate(clients)
 	}
 
 	schemaCmd := runtime.NewSchemaCommand(reg, version)
@@ -54,11 +55,13 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	} {
 		reg.Register(f("", nil))
 	}
-	tc, sc := reg.Binding("get cluster")
-	reg.Register(getClusterF(nil, tc, sc))
-	tcp, scp := reg.Binding("create project")
-	reg.Register(createProjectF(nil, tcp, scp))
+	reg.Register(getClusterF(nil))
+	reg.Register(createProjectF(nil))
 	reg.Register(schemaCmd)
+
+	if err := reg.Validate(); err != nil {
+		return nil, fmt.Errorf("command registry: %w", err)
+	}
 
 	root := &ucli.Command{
 		Name:    "rancher",
@@ -96,10 +99,10 @@ func BuildRoot(version string) (*ucli.Command, error) {
 					AdaptFactory(purgeF),  // config purge-legacy
 				}},
 			{Name: "create", Usage: "Create resources", Commands: []*ucli.Command{
-				AdaptEngine("create project", reg, createProjectF),
+				AdaptEngine(reg, createProjectF),
 			}},
 			{Name: "get", Usage: "Read resources", Commands: []*ucli.Command{
-				AdaptEngine("get cluster", reg, getClusterF),
+				AdaptEngine(reg, getClusterF),
 			}},
 		},
 	}

@@ -15,13 +15,13 @@ type Resolver struct {
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
 		// public tier (RK-API), stable
-		"create project": {safety.TierPublic, safety.Stable},
-		"get project":    {safety.TierPublic, safety.Stable},
-		"delete project": {safety.TierPublic, safety.Stable},
+		"create project": {Tier: safety.TierPublic, Stability: safety.Stable},
+		"get project":    {Tier: safety.TierPublic, Stability: safety.Stable},
+		"delete project": {Tier: safety.TierPublic, Stability: safety.Stable},
 		// crd tier, beta reads (Phase 1)
-		"get cluster":   {safety.TierCRD, safety.Beta},
-		"get node":      {safety.TierCRD, safety.Beta},
-		"get namespace": {safety.TierCRD, safety.Beta},
+		"get cluster":   {Tier: safety.TierCRD, Stability: safety.Beta},
+		"get node":      {Tier: safety.TierCRD, Stability: safety.Beta},
+		"get namespace": {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 

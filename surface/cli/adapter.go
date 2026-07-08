@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -94,7 +95,7 @@ func Adapt(rc runtime.Command) *ucli.Command {
 		Usage: d.Usage,
 		Flags: flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
-			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c)); ce != nil {
+			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), safety.Binding{}); ce != nil {
 				return exit(ce)
 			}
 			return nil
@@ -116,7 +117,7 @@ func AdaptFactory(make func(dir string, store config.CredStore) runtime.Command)
 			if err != nil {
 				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
 			}
-			if ce := runtime.Run(ctx, make(dir, store), cmdInput{c}, buildIO(c)); ce != nil {
+			if ce := runtime.Run(ctx, make(dir, store), cmdInput{c}, buildIO(c), safety.Binding{}); ce != nil {
 				return exit(ce)
 			}
 			return nil

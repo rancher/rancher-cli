@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
-	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
@@ -19,10 +17,7 @@ type pingCmd struct{}
 func (pingCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{Name: "ping", CommandType: runtime.Local}
 }
-func (pingCmd) Plan(context.Context, runtime.Input) (safety.Effect, error) {
-	return safety.Effect{}, nil
-}
-func (pingCmd) Execute(context.Context, runtime.Input, safety.Effect, *ui.Prompter) (runtime.Result, error) {
+func (pingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
 	return runtime.Result{Kind: "Pong", Data: map[string]string{"msg": "pong"}}, nil
 }
 

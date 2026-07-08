@@ -12,6 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBuildRootValidatesRegistry(t *testing.T) {
+	t.Parallel()
+	root, err := BuildRoot("test")
+	if err != nil {
+		t.Fatalf("BuildRoot on the real wiring must pass validation: %v", err)
+	}
+	if root == nil {
+		t.Fatal("nil root")
+	}
+}
+
 func TestSchemaCommandEndToEnd(t *testing.T) {
 	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
