@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"sync"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -13,11 +14,18 @@ import (
 )
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
-// Branch 2 adds once-only Effective resolution, Identity, and "" rejection;
-// here it preserves existing per-miss behavior behind the new interface.
+// Config + credentials resolve exactly once (RF-1): one server, one token,
+// one context snapshot per invocation — a concurrent `auth login` cannot
+// swap identity between Plan and Execute.
 type clientFactory struct {
 	dir   string
 	store config.CredStore
+
+	once       sync.Once
+	eff        config.Effective
+	resolveErr error
+
+	mu    sync.Mutex
 	cache map[string]engine.ClusterClient
 }
 
@@ -25,27 +33,34 @@ func newClientFactory(dir string, store config.CredStore) *clientFactory {
 	return &clientFactory{dir: dir, store: store, cache: map[string]engine.ClusterClient{}}
 }
 
-// Cluster builds a creds-bound ClusterClient for a cluster proxy id at CALL
-// time (network deferred). "local" targets the management cluster. Results are
-// memoized per cluster id for the lifetime of the factory (one command
-// invocation), so a command's Plan and Execute reuse a single client built from
-// a single config + credential read — one identity, no re-read, and no window
-// for a concurrent `login` to swap credentials between the two phases.
+func (f *clientFactory) resolve() (config.Effective, error) {
+	f.once.Do(func() {
+		cfg, err := config.Load(config.FilePath(f.dir))
+		if err != nil {
+			f.resolveErr = err
+			return
+		}
+		f.eff, f.resolveErr = cfg.Effective(f.store)
+	})
+	return f.eff, f.resolveErr
+}
+
 func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.ClusterClient, error) {
+	if clusterID == "" {
+		return nil, clierr.New(clierr.CodeValidation,
+			"cluster id must not be empty").
+			WithHint("pass engine.LocalCluster or an explicit cluster id")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if c, ok := f.cache[clusterID]; ok {
 		return c, nil
 	}
-	cfg, err := config.Load(config.FilePath(f.dir))
+	eff, err := f.resolve()
 	if err != nil {
 		return nil, err
 	}
-	eff, err := cfg.Effective(f.store)
-	if err != nil {
-		return nil, err
-	}
-	if clusterID != "" {
-		eff.Cluster = clusterID
-	}
+	eff.Cluster = clusterID // eff is a copy; the resolved snapshot is not mutated
 	rc, err := kube.RESTConfig(eff)
 	if err != nil {
 		return nil, err
