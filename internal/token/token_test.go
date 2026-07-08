@@ -82,6 +82,27 @@ func TestDeleteTokenCommand(t *testing.T) {
 		_, _, gerr := store.GetCachedCred("keep/u/c")
 		require.NoError(t, gerr)
 	})
+
+	t.Run("bare name deletes every entry sharing that name", func(t *testing.T) {
+		scoped := config.CacheKey("prod", "r.ex", "c-1")
+		require.NoError(t, store.SetCachedCred("prod", "legacy", time.Now().Add(time.Hour), "", "", ""))
+		require.NoError(t, store.SetCachedCred(scoped, "scoped", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
+		res, err := cmd.Execute(context.Background(), tin{a: []string{"prod"}}, ui.Discard())
+		require.NoError(t, err)
+		deleted := res.Data.(map[string]any)["deleted"].([]string)
+		assert.ElementsMatch(t, []string{"prod", scoped}, deleted)
+		_, _, gerr := store.GetCachedCred("prod")
+		assert.ErrorIs(t, gerr, config.ErrNoToken)
+		_, _, gerr = store.GetCachedCred(scoped)
+		assert.ErrorIs(t, gerr, config.ErrNoToken)
+	})
+
+	t.Run("unknown name is an idempotent success", func(t *testing.T) {
+		res, err := cmd.Execute(context.Background(), tin{a: []string{"ghost"}}, ui.Discard())
+		require.NoError(t, err)
+		deleted := res.Data.(map[string]any)["deleted"].([]string)
+		assert.Empty(t, deleted, "already-deleted / unknown names must be a no-op success")
+	})
 }
 
 func TestBasicAuthNonInteractiveIsAuthError(t *testing.T) {
@@ -145,6 +166,24 @@ func TestGetTokenCacheHit(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 	assert.True(t, res.Raw)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "cached-tok", cred.Status.Token)
+}
+
+func TestGetTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	key := config.CacheKey("prod", "r.ex", "c-1")
+	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
+	// A broken config.yaml must not block a warm cache hit when the connection
+	// is fully specified by flags (finding 3).
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r.ex", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "cached-tok", cred.Status.Token)
 }

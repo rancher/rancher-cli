@@ -10,19 +10,20 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 // seedConfig writes a config with the given current context and servers/contexts,
 // and stores a token per server. Returns dir + store.
 func seedLogout(t *testing.T, current string, servers ...string) (string, config.CredStore) {
 	t.Helper()
+	keyring.MockInit() // in-memory keychain: DrainToken now drains both backends unconditionally
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext:  current,
-		CredentialStore: "file", // keep DrainToken off the real OS keychain in tests
-		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
+		CurrentContext: current,
+		Servers:        map[string]config.Server{},
+		Contexts:       map[string]config.Context{},
 	}
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
@@ -35,7 +36,6 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 }
 
 func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
@@ -45,7 +45,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	require.True(t, isMap, "Result data is a map")
 	df, isDF := data["deletedFrom"].(map[string][]string)
 	require.True(t, isDF, "Result carries per-server deletedFrom")
-	assert.Equal(t, []string{"file"}, df["acme"], "file-policy logout drains only the file backend")
+	assert.Equal(t, []string{"file"}, df["acme"], "mock keychain is empty, so only the file backend reports a drain")
 
 	_, err = store.GetToken("acme")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -60,7 +60,6 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 }
 
 func TestLogoutByName(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
@@ -74,7 +73,6 @@ func TestLogoutByName(t *testing.T) {
 }
 
 func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme")
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
@@ -88,7 +86,6 @@ func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 }
 
 func TestLogoutAll(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
@@ -102,7 +99,6 @@ func TestLogoutAll(t *testing.T) {
 }
 
 func TestLogoutNameAndAllIsValidation(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "acme", "acme")
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(),
 		args{a: []string{"acme"}, b: map[string]bool{"all": true}}, ui.Discard())
@@ -112,7 +108,6 @@ func TestLogoutNameAndAllIsValidation(t *testing.T) {
 }
 
 func TestLogoutNoCurrentContext(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "", "acme") // no current context
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
@@ -121,7 +116,6 @@ func TestLogoutNoCurrentContext(t *testing.T) {
 }
 
 func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
-	t.Parallel()
 	dir, store := seedLogout(t, "ghost", "acme") // CurrentContext points at a missing key
 	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
@@ -130,14 +124,13 @@ func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
 }
 
 func TestLogoutCurrentContextServerAbsent(t *testing.T) {
-	t.Parallel()
+	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext:  "acme",
-		CredentialStore: "file",
-		Servers:         map[string]config.Server{}, // server missing
-		Contexts:        map[string]config.Context{"acme": {Server: "gone"}},
+		CurrentContext: "acme",
+		Servers:        map[string]config.Server{}, // server missing
+		Contexts:       map[string]config.Context{"acme": {Server: "gone"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -148,15 +141,14 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 }
 
 func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
-	t.Parallel()
+	keyring.MockInit()
 	// CurrentContext points at a context key that doesn't exist.
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext:  "ghost",
-		CredentialStore: "file",
-		Servers:         map[string]config.Server{"acme": {URL: "https://acme.ex"}},
-		Contexts:        map[string]config.Context{"acme": {Server: "acme"}},
+		CurrentContext: "ghost",
+		Servers:        map[string]config.Server{"acme": {URL: "https://acme.ex"}},
+		Contexts:       map[string]config.Context{"acme": {Server: "acme"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())

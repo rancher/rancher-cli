@@ -59,7 +59,7 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 		return runtime.Result{}, err
 	}
 
-	deletedFrom, err := l.drainTargets(cfg.CredentialStore, targets)
+	deletedFrom, err := l.drainTargets(targets)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -106,14 +106,14 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 	}
 }
 
-// drainTargets removes each target's token from every backend the policy could
-// have written to, reporting the backends touched per server so a partial
-// failure names what was already drained.
-func (l logoutCmd) drainTargets(policy string, targets []string) (map[string][]string, error) {
+// drainTargets removes each target's token from both backends, reporting the
+// backends touched per server so a partial failure names what was already
+// drained.
+func (l logoutCmd) drainTargets(targets []string) (map[string][]string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, derr := config.DrainToken(l.dir, policy, s)
+		from, derr := config.DrainToken(l.dir, s)
 		if derr != nil {
 			return nil, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("failed to log out %q: %v", s, derr)).

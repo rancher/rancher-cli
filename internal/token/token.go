@@ -112,26 +112,36 @@ func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	name := in.String("name")
 
-	// Resolve the connection before the cache read so the cache key is scoped by
-	// server host and cluster (spec accepts the one config read on a cache hit).
+	// Fast path: when --server is given, build the cache key from flags alone and
+	// serve a warm hit WITHOUT reading config, so a broken config.yaml never
+	// blocks a cached credential.
+	flagServer := in.String("server")
+	flagKey := ""
+	if name != "" && flagServer != "" {
+		flagKey = config.CacheKey(name, cacheServerHost(flagServer), in.String("cluster"))
+		if r, hit := t.cachedResult(flagKey, p); hit {
+			return r, nil
+		}
+	}
+
+	// Full resolution (config + CA disk I/O): required to authenticate on a miss
+	// and to build the definitive cache key when --server was not provided.
 	server, caPEM, clusterID, err := t.resolveConn(in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	serverHost := cacheServerHost(server)
+	cacheKey := config.CacheKey(name, serverHost, clusterID)
 
-	cacheKey := ""
-	if name != "" {
-		cacheKey = config.CacheKey(name, serverHost, clusterID)
-		token, expiry, cerr := t.store.GetCachedCred(cacheKey)
-		if cerr == nil {
-			return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(token, expiry)}, nil
-		}
-		if !errors.Is(cerr, config.ErrNoToken) {
-			p.Notice("cache read failed: " + cerr.Error())
-		}
-	} else {
+	switch {
+	case name == "":
 		p.Notice("caching disabled: no --name; each call re-authenticates")
+	case cacheKey != flagKey:
+		// The flag fast path either did not run or used a different key (e.g.
+		// cluster sourced from config) — check the resolved key now.
+		if r, hit := t.cachedResult(cacheKey, p); hit {
+			return r, nil
+		}
 	}
 
 	input := &loginInput{
@@ -171,6 +181,19 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	}
 
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
+}
+
+// cachedResult returns an ExecCredential result for a warm cache entry and
+// whether it hit. A non-ErrNoToken read failure is noticed but treated as a miss.
+func (t tokenCmd) cachedResult(key string, p runtime.Prompter) (runtime.Result, bool) {
+	tok, expiry, err := t.store.GetCachedCred(key)
+	if err == nil {
+		return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}, true
+	}
+	if !errors.Is(err, config.ErrNoToken) {
+		p.Notice("cache read failed: " + err.Error())
+	}
+	return runtime.Result{}, false
 }
 
 type deleteTokenCmd struct{ store config.CredStore }
@@ -215,41 +238,28 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 			"provide a cached-credential name or --all").
 			WithHint("name is the cached entry name; or: rancher auth delete-token --all")
 	}
-	// Resolve each argument against the cached record set: a bare display name,
-	// or the full composite key. Report which keys were removed so a partial
-	// failure doesn't leave the caller guessing.
+	// Resolve each argument against the cached record set: a bare display name
+	// matches EVERY entry with that name (a legacy bare entry and a scoped entry
+	// sharing the name are the same logical credential — deleting cached tokens
+	// is always safe, they re-auth), and the full composite key matches one.
+	// Deletion is idempotent: an unknown or already-deleted name is a success
+	// with nothing removed, so teardown scripts can call it unconditionally.
 	infos, err := d.store.ListCachedCreds()
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	deleted := make([]string, 0, len(keys))
 	for _, arg := range keys {
-		var matches []config.CachedCredInfo
 		for _, info := range infos {
-			if info.Name == arg || info.Key == arg {
-				matches = append(matches, info)
+			if info.Name != arg && info.Key != arg {
+				continue
 			}
-		}
-		switch len(matches) {
-		case 0:
-			return runtime.Result{}, clierr.New(clierr.CodeNotFound, "no cached credential: "+arg).
-				WithHint("list cached credentials with: rancher auth list-tokens")
-		case 1:
-			if err := d.store.DeleteCachedCred(matches[0].Key); err != nil {
+			if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
 				return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-					fmt.Sprintf("failed to delete %q: %v", arg, err)).
+					fmt.Sprintf("failed to delete %q: %v", arg, derr)).
 					WithHint(fmt.Sprintf("already deleted: %v", deleted))
 			}
-			deleted = append(deleted, matches[0].Key)
-		default:
-			cands := make([]clierr.Candidate, 0, len(matches))
-			for _, m := range matches {
-				cands = append(cands, clierr.Candidate{ID: m.Key, Name: fmt.Sprintf("%s (%s/%s)", m.Name, m.Server, m.Cluster)})
-			}
-			return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection,
-				fmt.Sprintf("%q matches %d cached credentials", arg, len(matches))).
-				WithCandidates(cands).
-				WithHint("re-run with the full key: rancher auth delete-token <key>")
+			deleted = append(deleted, info.Key)
 		}
 	}
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil

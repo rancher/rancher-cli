@@ -70,11 +70,18 @@ func NewFileStore(dir string) CredStore {
 	}
 }
 
+// warnedLoosePerm dedupes the loose-permission warning: read paths run on every
+// credential access, so without this the same warning would repeat all run.
+var warnedLoosePerm sync.Map // path -> struct{}
+
 // warnLoosePerm notices on stderr when a credential file is group/world
 // readable, so a plaintext token in a 0644 file does not sit unremarked (CS-1).
+// It warns at most once per path per process.
 func warnLoosePerm(path string) {
 	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o077 != 0 {
-		logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+		if _, seen := warnedLoosePerm.LoadOrStore(path, struct{}{}); !seen {
+			logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+		}
 	}
 }
 
@@ -300,11 +307,13 @@ func (k *keyringStore) SetToken(server, token string) error {
 
 func (k *keyringStore) DeleteToken(server string) error {
 	err := keyring.Delete(keyringService, server)
-	if errors.Is(err, keyring.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return fmt.Errorf("keyring delete %q: %w%s", server, err, k.pinHint)
+	}
+	// Read-through symmetry with GetToken: a token may live in the file store
+	// under an earlier "file" pin, so clear it here too (absent is not an error).
+	if ferr := k.cache.DeleteToken(server); ferr != nil && !errors.Is(ferr, ErrNoToken) {
+		return ferr
 	}
 	return nil
 }
@@ -319,38 +328,39 @@ func (k *keyringStore) DeleteCachedCred(key string) error          { return k.ca
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
-// DrainToken deletes a server's login token from every backend the current
-// policy could have written to. Under auto both backends are drained so a
-// backend flip (or an old split-brain) cannot leave a live token behind;
-// explicit policies drain only their own backend.
-func DrainToken(dir, policy, server string) ([]string, error) {
-	var from []string
-	p := EffectivePolicy(policy)
-	if p == "keychain" || p == "auto" {
-		if err := keyring.Delete(keyringService, server); err == nil {
-			from = append(from, "keychain")
-		} else if !errors.Is(err, keyring.ErrNotFound) {
-			return from, fmt.Errorf("keyring delete %q: %w", server, err)
-		}
+// DrainToken deletes a server's login token from BOTH backends, unconditionally
+// and independently of policy: read-through made the file store part of the
+// effective read path under every policy, so every logout must drain it, and
+// the keychain may still hold a token from before a backend flip. Neither
+// backend's failure short-circuits the other; per-backend errors are joined so
+// a live token is never left behind unreported. deletedFrom lists the backends
+// a token was actually removed from.
+func DrainToken(dir, server string) ([]string, error) {
+	var (
+		from []string
+		errs []error
+	)
+	if err := keyring.Delete(keyringService, server); err == nil {
+		from = append(from, "keychain")
+	} else if !errors.Is(err, keyring.ErrNotFound) {
+		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, err))
 	}
-	if p == "file" || p == "auto" {
-		fs := NewFileStore(dir)
-		_, err := fs.GetToken(server)
-		switch {
-		case err == nil:
-			if err := fs.DeleteToken(server); err != nil {
-				return from, err
-			}
+	fs := NewFileStore(dir)
+	switch _, err := fs.GetToken(server); {
+	case err == nil:
+		if derr := fs.DeleteToken(server); derr != nil {
+			errs = append(errs, fmt.Errorf("file credential store: %w", derr))
+		} else {
 			from = append(from, "file")
-		case errors.Is(err, ErrNoToken):
-			// nothing stored in the file backend — fine
-		default:
-			// NEVER report a successful drain when the file store is
-			// unreadable/corrupt: a live plaintext token may remain.
-			return from, fmt.Errorf("file credential store: %w", err)
 		}
+	case errors.Is(err, ErrNoToken):
+		// nothing stored in the file backend — fine
+	default:
+		// NEVER report a successful drain when the file store is
+		// unreadable/corrupt: a live plaintext token may remain.
+		errs = append(errs, fmt.Errorf("file credential store: %w", err))
 	}
-	return from, nil
+	return from, errors.Join(errs...)
 }
 
 // OpenStore selects a store by policy. Explicit policies ("keychain"/"file")

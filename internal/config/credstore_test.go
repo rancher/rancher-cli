@@ -143,24 +143,30 @@ func TestFileStoreListCachedCreds(t *testing.T) {
 }
 
 func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
-	dir := t.TempDir()
-	s := NewFileStore(dir)
-	require.NoError(t, s.SetToken("acme", "id:sec"))
-	credPath := filepath.Join(dir, "credentials.yaml")
-
 	orig := logrus.StandardLogger().Out
 	var buf bytes.Buffer
 	logrus.SetOutput(&buf)
 	defer logrus.SetOutput(orig)
 
-	require.NoError(t, os.Chmod(credPath, 0o644))
-	_, err := s.GetToken("acme")
+	// Loose (0644): warns once, then deduped for the same path.
+	looseDir := t.TempDir()
+	loose := NewFileStore(looseDir)
+	require.NoError(t, loose.SetToken("acme", "id:sec"))
+	require.NoError(t, os.Chmod(filepath.Join(looseDir, "credentials.yaml"), 0o644))
+	_, err := loose.GetToken("acme")
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "group/world-readable", "0644 credentials must warn")
 
 	buf.Reset()
-	require.NoError(t, os.Chmod(credPath, 0o600))
-	_, err = s.GetToken("acme")
+	_, err = loose.GetToken("acme")
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "group/world-readable", "warning must fire once per path per process")
+
+	// Tight (0600), fresh path: silent.
+	buf.Reset()
+	tight := NewFileStore(t.TempDir())
+	require.NoError(t, tight.SetToken("acme", "id:sec")) // written 0600
+	_, err = tight.GetToken("acme")
 	require.NoError(t, err)
 	assert.NotContains(t, buf.String(), "group/world-readable", "0600 credentials must be silent")
 }
@@ -239,7 +245,7 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
 	_ = NewFileStore(dir).SetToken("prod", "in-file")
-	from, err := DrainToken(dir, "auto", "prod")
+	from, err := DrainToken(dir, "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,10 +267,34 @@ func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := DrainToken(dir, "auto", "prod")
+	_, err := DrainToken(dir, "prod")
 	if err == nil {
 		t.Fatal("DrainToken must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
+}
+
+func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	// Token lives only in the file store (e.g. written under an earlier file pin).
+	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
+	s := NewKeyringStore(dir)
+	require.NoError(t, s.DeleteToken("prod"))
+	_, err := NewFileStore(dir).GetToken("prod")
+	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also drain the file store")
+}
+
+func TestDrainTokenJoinsKeychainErrorButStillDrainsFile(t *testing.T) {
+	keyring.MockInitWithError(errors.New("keychain boom"))
+	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
+	dir := t.TempDir()
+	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
+
+	from, err := DrainToken(dir, "prod")
+	require.Error(t, err, "a keychain delete error must surface, not be swallowed")
+	assert.Contains(t, from, "file", "file backend must still be drained despite the keychain error")
+	_, gerr := NewFileStore(dir).GetToken("prod")
+	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain errored")
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {

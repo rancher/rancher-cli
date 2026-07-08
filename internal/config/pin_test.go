@@ -62,3 +62,29 @@ func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
 		t.Fatalf("explicit policy must not re-probe: %v %v", s, err)
 	}
 }
+
+func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
+	dir := t.TempDir()
+	if err := WritePin(dir, "keychain"); err != nil {
+		t.Fatal(err)
+	}
+	probes := 0
+	orig := keyringUsable
+	keyringUsable = func() bool { probes++; return false } // keychain "broken" this run
+	defer func() { keyringUsable = orig }()
+
+	cur := NewFileStore(dir)
+	s, err := RepinForLogin(dir, "", cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probes != 0 {
+		t.Errorf("keychain-pinned login must not probe, got %d probes", probes)
+	}
+	if got := ReadPin(dir); got != "keychain" {
+		t.Errorf("pin downgraded to %q; a transient keychain hiccup must not flip to plaintext", got)
+	}
+	if s != cur {
+		t.Errorf("expected the injected store returned unchanged, got %T", s)
+	}
+}
