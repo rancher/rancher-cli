@@ -57,6 +57,7 @@ type Kind struct {
 	Scope            Scope
 	Deletable        bool // false = no generic delete generated (clusters, nodes)
 	Sensitive        bool // patch on this kind is Destructive (parity branch 2)
+	Waitable         bool // false = bare --wait rejects; an explicit --for is honored regardless
 	Binding          safety.Binding
 	Columns          []Column // extra table columns beyond NAME
 }
@@ -65,46 +66,46 @@ var table = []Kind{
 	{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
-		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false,
+		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
-		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
+		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable},
 		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
 	{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
-		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false,
+		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},
-		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true,
+		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
-		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 		Columns: []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
 	},
 	{
 		Key: "deployment", Name: "deployment", Aliases: []string{"deployments", "deploy"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
-		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "service", Name: "service", Aliases: []string{"services", "svc"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"},
-		Policy: NSPlain, K8sKind: "Service", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Service", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
@@ -123,49 +124,49 @@ var table = []Kind{
 	{
 		Key: "statefulset", Name: "statefulset", Aliases: []string{"statefulsets", "sts"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"},
-		Policy: NSPlain, K8sKind: "StatefulSet", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "StatefulSet", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "daemonset", Name: "daemonset", Aliases: []string{"daemonsets", "ds"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"},
-		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "replicaset", Name: "replicaset", Aliases: []string{"replicasets", "rs"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"},
-		Policy: NSPlain, K8sKind: "ReplicaSet", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "ReplicaSet", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "job", Name: "job", Aliases: []string{"jobs"},
 		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"},
-		Policy: NSPlain, K8sKind: "Job", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Job", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "cronjob", Name: "cronjob", Aliases: []string{"cronjobs"},
 		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"},
-		Policy: NSPlain, K8sKind: "CronJob", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "CronJob", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "ingress", Name: "ingress", Aliases: []string{"ingresses", "ing"},
 		GVR:    schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
-		Policy: NSPlain, K8sKind: "Ingress", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Ingress", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "persistentvolume", Name: "persistentvolume", Aliases: []string{"persistentvolumes", "pv"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"},
-		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false,
+		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "persistentvolumeclaim", Name: "persistentvolumeclaim", Aliases: []string{"persistentvolumeclaims", "pvc"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-		Policy: NSPlain, K8sKind: "PersistentVolumeClaim", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "PersistentVolumeClaim", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
@@ -184,25 +185,25 @@ var table = []Kind{
 	{
 		Key: "gitrepo", Name: "gitrepo", Aliases: []string{"gitrepos"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "gitrepos"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "GitRepo", Scope: Management, Deletable: true,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "GitRepo", Scope: Management, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "clustergroup", Name: "clustergroup", Aliases: []string{"clustergroups"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clustergroups"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ClusterGroup", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ClusterGroup", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
@@ -210,7 +211,7 @@ var table = []Kind{
 		// branch 2's manifest reverse lookup disambiguates by apiVersion group.
 		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 
@@ -262,7 +263,7 @@ var table = []Kind{
 	{
 		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters"},
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
@@ -270,31 +271,31 @@ var table = []Kind{
 		// time (the served version varies by Rancher release).
 		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false,
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters"},
 		GVR:    schema.GroupVersionResource{Group: "k3k.io", Version: "v1beta1", Resource: "clusters"},
-		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true, Waitable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 }

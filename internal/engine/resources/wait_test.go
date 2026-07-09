@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -97,6 +98,7 @@ func TestParseWaitCondition(t *testing.T) {
 		{"state=migrating", mgmt, waitCond{kind: "state", name: "migrating"}, false},
 		{"condition=Ready", down, waitCond{kind: "condition", name: "Ready", status: "True"}, false},
 		{"condition=Synced=False", down, waitCond{kind: "condition", name: "Synced", status: "False"}, false},
+		{"condition=Ready=", down, waitCond{}, true},
 		{"jsonpath={.foo}", down, waitCond{}, true},
 		{"garbage", down, waitCond{}, true},
 	}
@@ -185,6 +187,50 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 	assert.Contains(t, err.Error(), "provisioning")
 }
 
+func TestWaitForNotFoundFailsImmediately(t *testing.T) {
+	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{clierr.New(clierr.CodeNotFound, "x not found")}}
+	cond := waitCond{kind: "state", name: "active"}
+	start := time.Now()
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second)
+	elapsed := time.Since(start)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Less(t, elapsed, 5*time.Second, "NOT_FOUND must fail fast, not burn the timeout")
+}
+
+func TestWaitForRetriesTransientGetError(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{
+		objs: []*unstructured.Unstructured{stateObj("provisioning", "yes"), nil, stateObj("active", "no")},
+		errs: []error{nil, errors.New("transient network blip"), nil},
+	}
+	cond := waitCond{kind: "state", name: "active"}
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, "active", mustState(got))
+	assert.Equal(t, 3, client.calls)
+}
+
+func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{errors.New("down")}}
+	cond := waitCond{kind: "state", name: "active"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.True(t, ce.Retryable)
+	assert.Contains(t, err.Error(), "no state observed")
+}
+
 func mustState(obj *unstructured.Unstructured) string {
 	s, _, _ := unstructured.NestedString(obj.Object, "status", "state")
 	return s
@@ -209,4 +255,27 @@ func TestGetForWithoutWait(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestGetWaitRejectsNonWaitableKindWithoutFor(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "secret")
+	require.False(t, k.Waitable, "secret must stay non-waitable for this test to mean anything")
+	cmd := NewGet(k, &recFactory{}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "ns"}, b: map[string]bool{"wait": true}}, nil)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Error(), "no status.state or status.conditions")
+}
+
+func TestGetWaitOnNonWaitableKindHonorsExplicitFor(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "secret")
+	client := &memClient{items: []unstructured.Unstructured{*stateObj("active", "")}}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns", "for": "state=active",
+	}, b: map[string]bool{"wait": true}}, nil)
+	require.NoError(t, err)
 }

@@ -54,7 +54,8 @@ func writeTestConfig(t *testing.T, ca string) string {
 
 func TestKubeconfigEmitsExecStanza(t *testing.T) {
 	t.Parallel()
-	dir := writeTestConfig(t, "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n")
+	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+	dir := writeTestConfig(t, caPEM)
 	cmd := NewKubeconfig(dir, stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "webprod"}}, nil)
 	require.NoError(t, err)
@@ -71,8 +72,25 @@ func TestKubeconfigEmitsExecStanza(t *testing.T) {
 	require.NotNil(t, user.Exec)
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", user.Exec.APIVersion)
 	assert.Equal(t, "rancher", user.Exec.Command)
-	assert.Equal(t, []string{"auth", "get-token", "--server", "https://r.example.com", "--cluster", "c-abc", "--name", "prod-c-abc"}, user.Exec.Args)
+	assert.Equal(t, []string{
+		"auth", "get-token", "--server", "https://r.example.com", "--cluster", "c-abc", "--name", "prod-c-abc",
+		"--cacert", caPEM,
+	}, user.Exec.Args)
 	assert.Equal(t, "prod-c-abc", cfg.CurrentContext)
+}
+
+func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+	cfg, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	user := cfg.AuthInfos["prod-c-ctx"]
+	require.NotNil(t, user)
+	require.NotNil(t, user.Exec)
+	assert.NotContains(t, user.Exec.Args, "--cacert")
 }
 
 func TestKubeconfigFallsBackToContextCluster(t *testing.T) {

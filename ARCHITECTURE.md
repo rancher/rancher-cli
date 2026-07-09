@@ -104,6 +104,7 @@ graph TD
     commands --> config
     commands --> provider
     commands --> engine
+    commands --> kube
     commands --> clierr
 
     token --> runtime

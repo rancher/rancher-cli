@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -43,8 +44,13 @@ func parseWaitCondition(forExpr string, k kinds.Kind) (waitCond, error) {
 		if name == "" {
 			return waitCond{}, invalidForErr(forExpr)
 		}
-		if !hasStatus {
+		switch {
+		case !hasStatus:
 			status = "True"
+		case status == "":
+			// "condition=<Type>=" with nothing after the second "=" — a real
+			// condition status is never empty, so this would wait forever.
+			return waitCond{}, invalidForErr(forExpr)
 		}
 		return waitCond{kind: "condition", name: name, status: status}, nil
 	}
@@ -59,35 +65,57 @@ func invalidForErr(forExpr string) *clierr.Error {
 
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
 // object reports a Rancher fail-fast (status.transitioning == "error"), or
-// timeout elapses. Fail-fast returns immediately with a non-retryable error;
-// a timeout returns a retryable error carrying the last-observed state.
+// timeout elapses. A NOT_FOUND Get error fails immediately (the target is
+// gone, not slow); any other Get error is treated as transient and retried
+// with the last-observed object carried into the eventual timeout message.
+// Fail-fast returns immediately with a non-retryable error; a timeout always
+// returns a retryable error carrying the last-observed state, never a raw Get
+// error.
 func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration) (*unstructured.Unstructured, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	var last *unstructured.Unstructured
 	for {
 		obj, err := client.Get(ctx, gvr, ns, name)
-		if err != nil {
+		switch {
+		case err != nil && isNotFound(err):
 			return nil, err
-		}
-
-		if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
-			msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
-			return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
-		}
-
-		if waitSatisfied(obj, cond) {
-			return obj, nil
+		case err != nil:
+			// Transient error: fall through to the poll-or-timeout select below,
+			// carrying whatever state was last observed into the eventual message.
+		default:
+			last = obj
+			if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
+				msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
+				return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
+			}
+			if waitSatisfied(obj, cond) {
+				return obj, nil
+			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("timed out waiting for %s; last state: %s", name, summarizeState(obj, cond))).
-				WithRetryable(true)
+			return nil, waitTimeoutErr(name, last, cond)
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+func isNotFound(err error) bool {
+	var ce *clierr.Error
+	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound
+}
+
+func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond) *clierr.Error {
+	summary := "<no state observed>"
+	if last != nil {
+		summary = summarizeState(last, cond)
+	}
+	return clierr.New(clierr.CodeGeneric,
+		fmt.Sprintf("timed out waiting for %s; last state: %s", name, summary)).
+		WithRetryable(true)
 }
 
 // waitSatisfied checks whether obj meets cond: state-kind matches
@@ -106,22 +134,29 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 		}
 		return true
 	case "condition":
-		conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
-		for _, c := range conds {
-			cm, ok := c.(map[string]any)
-			if !ok {
-				continue
-			}
-			t, _, _ := unstructured.NestedString(cm, "type")
-			s, _, _ := unstructured.NestedString(cm, "status")
-			if t == cond.name && s == cond.status {
-				return true
-			}
-		}
-		return false
+		status, ok := conditionStatus(obj, cond.name)
+		return ok && status == cond.status
 	default:
 		return false
 	}
+}
+
+// conditionStatus returns the status of the first status.conditions[] entry
+// whose type matches name, and whether one was found — the scan shared by
+// waitSatisfied and summarizeState.
+func conditionStatus(obj *unstructured.Unstructured, name string) (string, bool) {
+	conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	for _, c := range conds {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		if t, _, _ := unstructured.NestedString(cm, "type"); t == name {
+			s, _, _ := unstructured.NestedString(cm, "status")
+			return s, true
+		}
+	}
+	return "", false
 }
 
 // summarizeState renders the last-observed signal for the timeout error.
@@ -134,16 +169,8 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 		}
 		return s
 	case "condition":
-		conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
-		for _, c := range conds {
-			cm, ok := c.(map[string]any)
-			if !ok {
-				continue
-			}
-			if t, _, _ := unstructured.NestedString(cm, "type"); t == cond.name {
-				s, _, _ := unstructured.NestedString(cm, "status")
-				return fmt.Sprintf("%s=%s", cond.name, s)
-			}
+		if status, ok := conditionStatus(obj, cond.name); ok {
+			return fmt.Sprintf("%s=%s", cond.name, status)
 		}
 		return fmt.Sprintf("%s not present", cond.name)
 	default:

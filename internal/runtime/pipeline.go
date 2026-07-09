@@ -183,6 +183,9 @@ func missingFlags(streams IO, eff safety.Effect) []string {
 }
 
 func renderResult(streams IO, res Result) *clierr.Error {
+	if res.Raw && res.RawBytes != nil {
+		return clierr.New(clierr.CodeGeneric, "command bug: Result set both Raw and RawBytes")
+	}
 	if res.RawBytes != nil {
 		if _, err := streams.Out.Write(res.RawBytes); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())

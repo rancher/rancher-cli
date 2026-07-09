@@ -3,9 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -73,12 +72,19 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 		return runtime.Result{}, err
 	}
 
-	base := baseURL(srv.URL)
+	base := kube.BaseURL(srv.URL)
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
 
 	cluster := &clientcmdapi.Cluster{Server: base + "/k8s/clusters/" + id}
+	execArgs := []string{"auth", "get-token", "--server", base, "--cluster", id, "--name", entryName}
 	if caPEM != "" {
 		cluster.CertificateAuthorityData = []byte(caPEM)
+		// The exec plugin resolves its own CA from the ACTIVE context at
+		// invocation time, which may not be this server if the user has since
+		// switched contexts. Pin the CA baked into this kubeconfig explicitly so
+		// the cached exec plugin can never authenticate against the wrong trust
+		// root.
+		execArgs = append(execArgs, "--cacert", caPEM)
 	}
 
 	kc := clientcmdapi.Config{
@@ -87,7 +93,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 			Exec: &clientcmdapi.ExecConfig{
 				APIVersion:      "client.authentication.k8s.io/v1beta1",
 				Command:         "rancher",
-				Args:            []string{"auth", "get-token", "--server", base, "--cluster", id, "--name", entryName},
+				Args:            execArgs,
 				InteractiveMode: clientcmdapi.IfAvailableExecInteractiveMode,
 			},
 		}},
@@ -103,15 +109,4 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 		return runtime.Result{}, err
 	}
 	return runtime.Result{RawBytes: b}, nil
-}
-
-// baseURL returns scheme://host for a Rancher server URL, dropping a /v3
-// suffix — the same normalization kube.BaseURL applies, kept local here so
-// this command does not pull in a client/kube import edge for one helper.
-func baseURL(serverURL string) string {
-	u, err := url.Parse(strings.TrimSuffix(serverURL, "/"))
-	if err != nil || u.Host == "" {
-		return strings.TrimSuffix(strings.TrimSuffix(serverURL, "/"), "/v3")
-	}
-	return u.Scheme + "://" + u.Host
 }

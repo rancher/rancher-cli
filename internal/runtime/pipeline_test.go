@@ -311,6 +311,18 @@ func TestRunRawBytesWrittenVerbatim(t *testing.T) {
 	assert.Equal(t, payload, out.Bytes()) // no envelope, no JSON quoting, no trailing mutation
 }
 
+func TestRunRejectsResultWithBothRawFields(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "kubeconfig", CommandType: Local},
+		res: Result{Raw: true, RawBytes: []byte("x")},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+}
+
 func TestQuietErrorStillRendersJSON(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer

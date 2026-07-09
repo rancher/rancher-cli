@@ -103,6 +103,11 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name").
 			WithHint("pass a name argument")
 	}
+	if wait && !c.k.Waitable && forExpr == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("%s has no status.state or status.conditions to wait on", c.k.Name)).
+			WithHint("pass --for state=<value> or --for condition=<Type>[=<Status>] to specify a custom signal")
+	}
 
 	clusterID, ns, _, err := Route(ctx, c.clients, c.k, in, named)
 	if err != nil {

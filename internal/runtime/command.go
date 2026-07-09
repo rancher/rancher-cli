@@ -60,7 +60,8 @@ type Result struct {
 	Raw      bool
 	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope
 	// and no encoding — used by `kubeconfig`, whose stdout must be a bare
-	// YAML document. Takes precedence over Raw.
+	// YAML document. Mutually exclusive with Raw; renderResult rejects a
+	// Result that sets both.
 	RawBytes  []byte
 	Tier      string
 	Stability string
