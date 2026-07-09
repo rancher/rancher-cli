@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // LegacyPaths returns candidate cli2.json locations, in probe order.
@@ -53,7 +52,7 @@ func Migrate(legacyPath, newDir string, store CredStore) (*Config, error) {
 			continue
 		}
 		c.Servers[name] = Server{URL: s.URL, CA: s.CACerts}
-		cluster, project, _ := strings.Cut(s.Project, ":")
+		cluster, project, _ := SplitContext(s.Project)
 		c.Contexts[name] = Context{Server: name, Cluster: cluster, Project: project}
 
 		token := s.TokenKey

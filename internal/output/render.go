@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,13 +46,18 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		}
 		// Execute the template over the JSON view of data, so templates address
 		// the same shape agents see under -o json (and json.Marshaler-only
-		// payloads like get's table are reachable at all) — CW-4.
+		// payloads like get's table are reachable at all) — CW-4. Decode with
+		// UseNumber so a large int64 (byte counts, unix-nano timestamps) prints
+		// verbatim as json.Number instead of round-tripping through float64 and
+		// rendering as scientific notation.
 		b, err := json.Marshal(env.Data)
 		if err != nil {
 			return err
 		}
 		var view any
-		if err := json.Unmarshal(b, &view); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.UseNumber()
+		if err := dec.Decode(&view); err != nil {
 			return err
 		}
 		if err := tmpl.Execute(w, view); err != nil {

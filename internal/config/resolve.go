@@ -27,6 +27,15 @@ func ResolveDir(flagDir string) (string, error) {
 	return filepath.Join(home, ".config", "rancher"), nil
 }
 
+// SplitContext splits a "cluster[:project]" scope value into its cluster and
+// project axes. hasProject reports whether v contained a colon at all — a
+// bare cluster name (no colon) must not clobber an already-resolved project
+// axis, so per-axis callers should only assign project when hasProject is
+// true; callers initializing a brand-new scope from scratch can ignore it.
+func SplitContext(v string) (cluster, project string, hasProject bool) {
+	return strings.Cut(v, ":")
+}
+
 // ResolveCA turns a --cacert value or config CA (pem-or-path) into a PEM
 // string. An inline PEM (has a BEGIN header) passes through; anything else is
 // a file path.
@@ -88,19 +97,19 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		eff.Token = v
 	}
 	if v := os.Getenv("RANCHER_CONTEXT"); v != "" {
-		if cl, pr, ok := strings.Cut(v, ":"); ok {
-			eff.Cluster, eff.Project = cl, pr
-		} else {
-			eff.Cluster = v
+		cl, pr, hasProject := SplitContext(v)
+		eff.Cluster = cl
+		if hasProject {
+			eff.Project = pr
 		}
 	}
 
 	// Flag overrides (flag > env > file).
 	if v := contextOverride.context; v != "" {
-		if cl, pr, ok := strings.Cut(v, ":"); ok {
-			eff.Cluster, eff.Project = cl, pr
-		} else {
-			eff.Cluster = v
+		cl, pr, hasProject := SplitContext(v)
+		eff.Cluster = cl
+		if hasProject {
+			eff.Project = pr
 		}
 	}
 	if v := contextOverride.project; v != "" {
@@ -119,4 +128,13 @@ var contextOverride struct{ context, project string }
 // --project flag values for this process. Empty strings clear/skip an axis.
 func SetContextOverride(contextVal, project string) {
 	contextOverride.context, contextOverride.project = contextVal, project
+}
+
+// ContextOverride returns the currently recorded global --context/--project
+// flag values (see SetContextOverride). Write-commands whose own local flag
+// of the same name is empty must not silently ignore a non-empty value here —
+// the global flags scope reads, not writes, and the two are easy to conflate
+// since they share a name with a command's local write flag.
+func ContextOverride() (contextVal, project string) {
+	return contextOverride.context, contextOverride.project
 }

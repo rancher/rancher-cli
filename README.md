@@ -183,7 +183,8 @@ Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
 
   The global `--context cluster[:project]` and `--project` flags override
   `RANCHER_CONTEXT` for a single invocation, resolved per axis (a bare
-  `--project` keeps whatever cluster env/config supplies).
+  `--project` keeps whatever cluster env/config supplies). `--context c:`
+  (trailing colon, no project) clears the project for this invocation.
 
 - **Migration:** on first run the CLI imports a legacy
   `~/.rancher/cli2.json` (also `$RANCHER_CONFIG_DIR/cli2.json`) into the new

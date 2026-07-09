@@ -57,6 +57,18 @@ func TestRenderNameNoNameColumnIsEmpty(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
+func TestRenderTemplatePreservesIntegerPrecision(t *testing.T) {
+	t.Parallel()
+	type widget struct {
+		Bytes int64 `json:"bytes"`
+	}
+	var buf bytes.Buffer
+	env := &Envelope{Data: widget{Bytes: 1073741824}}
+	require.NoError(t, Render(&buf, "{{.bytes}}", env))
+	assert.Equal(t, "1073741824\n", buf.String(),
+		"a large int64 must round-trip through the JSON view verbatim, not as scientific notation")
+}
+
 type onlyMarshaler struct{}
 
 func (onlyMarshaler) MarshalJSON() ([]byte, error) { return []byte(`{"name":"m"}`), nil }

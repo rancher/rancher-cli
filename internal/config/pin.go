@@ -65,8 +65,10 @@ func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, error) 
 	}
 	// Pin is "file" or absent: this is the only place we probe, and only to
 	// upgrade. If the keychain is unusable, keep the file backend as-is — no
-	// rewrite, no duplicate plaintext notice.
-	if !keyringUsable() {
+	// rewrite, no duplicate plaintext notice. keyringUsableOnce shares its
+	// memoized result with OpenStore's own auto-probe above, so a single
+	// `rancher login` process never pays the (bounded) probe cost twice.
+	if !keyringUsableOnce() {
 		return current, nil
 	}
 	pinned := ReadPin(dir)

@@ -129,12 +129,35 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
 	require.NoError(t, err)
-	assert.Contains(t, errBuf.String(), "http://",
-		"the http:// server notice must reach the prompter's stderr writer")
+	assert.Contains(t, errBuf.String(), "not https",
+		"the non-https server notice must reach the prompter's stderr writer")
 
 	kc, err := clientcmd.Load(res.RawBytes)
 	require.NoError(t, err)
 	assert.NotEmpty(t, kc.CurrentContext, "stdout must still be exactly the bare kubeconfig YAML")
+}
+
+// A malformed server URL makes kube.BaseURL's url.Parse fail, falling back to
+// raw string trimming that preserves the original scheme case verbatim — the
+// warning must still fire (case-insensitive, not-https rather than a literal
+// "http://" match) instead of silently skipping it (CW-7 review finding 10).
+func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]config.Context{"prod": {Server: "prod", Cluster: "c-ctx"}},
+		Servers:        map[string]config.Server{"prod": {URL: "HTTP://foo%zz.example.com/v3"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	var errBuf bytes.Buffer
+	p := ui.New(&errBuf, strings.NewReader(""), true, false)
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "not https")
 }
 
 func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {

@@ -42,6 +42,20 @@ func (loginCmd) Describe() runtime.Descriptor {
 }
 
 func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
+	// Guard the CW-3 footgun: the global --context/--project flags and this
+	// command's local --context are separate, unsynchronized urfave/cli Flag
+	// objects sharing a name. If the caller supplied a global override but
+	// login's own --context is empty, the override would otherwise be
+	// silently dropped from the written config — the global flags scope
+	// server reads, not config writes.
+	if in.String("context") == "" {
+		if ctxVal, projVal := config.ContextOverride(); ctxVal != "" || projVal != "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"--context/--project at the root scope server operations, not config writes").
+				WithHint("pass --context explicitly: rancher auth login --context <cluster[:project]>")
+		}
+	}
+
 	// Defense-in-depth: the pipeline's validateInput normally rejects a missing
 	// --server first, but Execute must be safe when called directly (tests).
 	server := in.String("server")
@@ -82,7 +96,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 	var cluster, project string
 	if c := in.String("context"); c != "" {
-		cluster, project, _ = strings.Cut(c, ":")
+		cluster, project, _ = config.SplitContext(c)
 	}
 	cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
 	cfg.CurrentContext = name

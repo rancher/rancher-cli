@@ -361,10 +361,14 @@ func DrainToken(dir, server string) ([]string, error) {
 	return from, errors.Join(errs...)
 }
 
-// OpenStore selects a store by policy. Explicit policies ("keychain"/"file")
-// are honored directly and never consult the pin. "auto" reads the pin; when
-// unpinned it probes ONCE, pins the outcome, and notices on stderr — loudly
-// when the outcome is plaintext. Unknown policies are hard errors (CS-6).
+// OpenStore selects a store by policy. policy is the config-file-level
+// declaration; RANCHER_CREDENTIAL_STORE, when set, outranks it — same
+// precedence as everywhere else env beats config — so an explicit "keychain"
+// argument here can still resolve to the file backend under that env var.
+// Explicit policies ("keychain"/"file") are honored directly and never
+// consult the pin. "auto" reads the pin; when unpinned it probes ONCE, pins
+// the outcome, and notices on stderr — loudly when the outcome is plaintext.
+// Unknown policies are hard errors (CS-6).
 func OpenStore(policy, dir string) (CredStore, error) {
 	p := EffectivePolicy(policy)
 	switch p {
@@ -379,7 +383,7 @@ func OpenStore(policy, dir string) (CredStore, error) {
 		case "file":
 			return NewFileStore(dir), nil
 		}
-		if keyringUsable() {
+		if keyringUsableOnce() {
 			if err := WritePin(dir, "keychain"); err != nil {
 				return nil, fmt.Errorf("writing credential store pin: %w", err)
 			}
@@ -432,4 +436,30 @@ var keyringUsable = func() bool {
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+var (
+	keyringUsableOnceGuard sync.Once
+	keyringUsableCached    bool
+)
+
+// keyringUsableOnce runs keyringUsable at most once per process and caches
+// the result. A CLI invocation is one process: OpenStore's auto-probe and
+// login's RepinForLogin re-probe would otherwise pay the (bounded,
+// keyringProbeTimeout-worst-case) probe cost twice sequentially on an
+// unusable keychain. keyringUsable itself stays the swappable seam for tests
+// that exercise it directly (e.g. the timeout test); callers that go through
+// OpenStore/RepinForLogin observe the memoized result.
+func keyringUsableOnce() bool {
+	keyringUsableOnceGuard.Do(func() { keyringUsableCached = keyringUsable() })
+	return keyringUsableCached
+}
+
+// resetKeyringUsableCache clears keyringUsableOnce's memoized result. Tests
+// that stub keyringUsable and exercise the probe through OpenStore or
+// RepinForLogin must call this first, so their own stub is actually invoked
+// rather than a cached result left over from an earlier test in the same
+// process.
+func resetKeyringUsableCache() {
+	keyringUsableOnceGuard = sync.Once{}
 }

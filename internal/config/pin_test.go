@@ -33,13 +33,15 @@ func TestReadPinIgnoresGarbage(t *testing.T) {
 }
 
 func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
 	if err := WritePin(dir, "file"); err != nil {
 		t.Fatal(err)
 	}
 	orig := keyringUsable
 	keyringUsable = func() bool { return true } // keychain now works
-	defer func() { keyringUsable = orig }()
+	resetKeyringUsableCache()                   // fresh probe, not a result cached by an earlier test
+	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "", cur)
@@ -54,7 +56,37 @@ func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 	}
 }
 
+// Reviewer repro: a fresh unpinned dir with an unusable keychain previously
+// paid the (bounded) probe cost twice in one login — once via OpenStore's
+// auto-probe (which pins "file"), once more via RepinForLogin re-probing
+// since the pin is now "file" not "keychain". Both calls must share one
+// memoized probe.
+func TestOpenStoreThenRepinForLoginShareOneProbe(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "")
+	dir := t.TempDir()
+	probes := 0
+	orig := keyringUsable
+	keyringUsable = func() bool { probes++; return false } // keychain unusable
+	resetKeyringUsableCache()
+	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
+
+	store, err := OpenStore("auto", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadPin(dir); got != "file" {
+		t.Fatalf("pin after OpenStore = %q, want file", got)
+	}
+	if _, err := RepinForLogin(dir, "", store); err != nil {
+		t.Fatal(err)
+	}
+	if probes != 1 {
+		t.Errorf("probes = %d, want 1 (RepinForLogin must reuse OpenStore's memoized probe)", probes)
+	}
+}
+
 func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate: env would otherwise outrank the explicit "file" policy under test
 	dir := t.TempDir()
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "file", cur)
@@ -64,6 +96,7 @@ func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
 }
 
 func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
 	if err := WritePin(dir, "keychain"); err != nil {
 		t.Fatal(err)

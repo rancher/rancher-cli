@@ -61,6 +61,9 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 }
 func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cluster, project := in.String("cluster"), in.String("project")
+	if ce := rejectShadowedGlobalOverride(cluster, project); ce != nil {
+		return runtime.Result{}, ce
+	}
 	// Require at least one scope flag so a bare `set-context [--current]` is a
 	// clear error, not a silent no-op that rewrites the config unchanged.
 	// (Clearing a field back to empty is not supported in Phase 1 — it needs
@@ -138,4 +141,34 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "Context", Data: map[string]string{"current": name}}, nil
+}
+
+// rejectShadowedGlobalOverride guards against the CW-3 footgun: the global
+// --context/--project flags and this command's local --cluster/--project
+// flags are separate, unsynchronized urfave/cli Flag objects that happen to
+// share names. If the caller supplied a global override for an axis but this
+// command's own local flag for that axis is empty, the global value would
+// otherwise be silently dropped from the write with no error — the global
+// flags scope server reads, not config writes. localCluster/localProject are
+// this command's own (possibly empty) --cluster/--project values.
+func rejectShadowedGlobalOverride(localCluster, localProject string) *clierr.Error {
+	ctxVal, projVal := config.ContextOverride()
+	var globalCluster, globalProject string
+	if ctxVal != "" {
+		globalCluster, globalProject, _ = config.SplitContext(ctxVal)
+	}
+	if projVal != "" {
+		globalProject = projVal
+	}
+	if localCluster == "" && globalCluster != "" {
+		return clierr.New(clierr.CodeValidation,
+			"--context at the root scopes server operations, not config writes").
+			WithHint("pass --cluster explicitly: rancher config set-context --current --cluster <c>")
+	}
+	if localProject == "" && globalProject != "" {
+		return clierr.New(clierr.CodeValidation,
+			"--context/--project at the root scope server operations, not config writes").
+			WithHint("pass --project explicitly: rancher config set-context --current --project <p>")
+	}
+	return nil
 }

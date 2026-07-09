@@ -56,7 +56,8 @@ func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
 	probes := 0
 	orig := keyringUsable
 	keyringUsable = func() bool { probes++; return false }
-	defer func() { keyringUsable = orig }()
+	resetKeyringUsableCache() // fresh probe, not a result cached by an earlier test
+	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
 	if _, err := OpenStore("auto", dir); err != nil {
 		t.Fatal(err)
@@ -64,11 +65,38 @@ func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
 	if _, err := OpenStore("auto", dir); err != nil {
 		t.Fatal(err)
 	}
+	// The second OpenStore call reads the pin written by the first and never
+	// re-probes — this is the pin's own once-per-dir contract. probes still
+	// pins the underlying keyringUsableOnce process-wide memoization: a
+	// second unpinned dir in the SAME process would reuse this cached result
+	// rather than probing again (deliberate: one process, one probe).
 	if probes != 1 {
 		t.Errorf("probes = %d, want 1 (second run must read the pin)", probes)
 	}
 	if got := ReadPin(dir); got != "file" {
 		t.Errorf("pin = %q, want file", got)
+	}
+}
+
+func TestKeyringUsableOnceMemoizesPerProcess(t *testing.T) {
+	probes := 0
+	orig := keyringUsable
+	keyringUsable = func() bool { probes++; return true }
+	resetKeyringUsableCache()
+	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
+
+	dirA, dirB := t.TempDir(), t.TempDir()
+	if _, err := OpenStore("auto", dirA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenStore("auto", dirB); err != nil {
+		t.Fatal(err)
+	}
+	if probes != 1 {
+		t.Errorf("probes = %d, want 1 (a second unpinned dir in the same process must reuse the memoized result)", probes)
+	}
+	if got := ReadPin(dirB); got != "keychain" {
+		t.Errorf("pin for dirB = %q, want keychain (memoized result still applied)", got)
 	}
 }
 

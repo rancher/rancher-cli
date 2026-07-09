@@ -95,6 +95,35 @@ func TestEffectiveFromFile(t *testing.T) {
 		assert.Equal(t, "c-env", eff.Cluster)
 		assert.Equal(t, "p-env", eff.Project)
 	})
+	t.Run("bare RANCHER_CONTEXT (no colon) overrides cluster only, keeps file project", func(t *testing.T) {
+		t.Setenv("RANCHER_CONTEXT", "c-env")
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "c-env", eff.Cluster)
+		assert.Equal(t, "p-y", eff.Project, "colon-less env value must not clobber the file's project axis")
+	})
+}
+
+func TestSplitContext(t *testing.T) {
+	t.Parallel()
+	t.Run("cluster and project", func(t *testing.T) {
+		cluster, project, hasProject := SplitContext("c-1:p-1")
+		assert.Equal(t, "c-1", cluster)
+		assert.Equal(t, "p-1", project)
+		assert.True(t, hasProject)
+	})
+	t.Run("bare cluster has no project", func(t *testing.T) {
+		cluster, project, hasProject := SplitContext("c-1")
+		assert.Equal(t, "c-1", cluster)
+		assert.Empty(t, project)
+		assert.False(t, hasProject)
+	})
+	t.Run("trailing colon explicitly clears the project", func(t *testing.T) {
+		cluster, project, hasProject := SplitContext("c-1:")
+		assert.Equal(t, "c-1", cluster)
+		assert.Empty(t, project)
+		assert.True(t, hasProject, "a trailing colon must still report hasProject so callers can clear the axis")
+	})
 }
 
 func TestEffectiveEnvOnlyNoFile(t *testing.T) {
@@ -140,5 +169,14 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 		eff, err := cfg.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "c-file", eff.Cluster)
+	})
+
+	t.Run("--context cluster: (trailing colon) explicitly clears the project axis", func(t *testing.T) {
+		SetContextOverride("c-flag:", "")
+		t.Cleanup(func() { SetContextOverride("", "") })
+		eff, err := cfg.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "c-flag", eff.Cluster)
+		assert.Empty(t, eff.Project, "a trailing colon must clear the project even though the file/context has one")
 	})
 }

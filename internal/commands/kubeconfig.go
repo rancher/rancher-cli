@@ -74,11 +74,14 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 
 	base := kube.BaseURL(srv.URL)
-	if strings.HasPrefix(base, "http://") {
-		// client-go silently refuses to wire exec-credential auth for plain-http
-		// servers (no error, no Authorization header) — warn so the resulting
-		// kubeconfig's silent 401s are explainable (CW-7).
-		p.Notice("server uses http://; kubectl will silently skip exec-credential auth for this kubeconfig — use https")
+	if !strings.HasPrefix(strings.ToLower(base), "https://") {
+		// client-go silently refuses to wire exec-credential auth for a non-https
+		// server (no error, no Authorization header) — warn so the resulting
+		// kubeconfig's silent 401s are explainable (CW-7). Inverted (warn on
+		// NOT-https, case-insensitive) rather than matching "http://" literally:
+		// BaseURL's error-fallback path can return a malformed or differently
+		// cased scheme that a literal "http://" prefix check would miss.
+		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth — use https")
 	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
 

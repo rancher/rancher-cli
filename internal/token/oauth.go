@@ -164,6 +164,11 @@ func oauthAuthCodeAuth(
 		return nil, clierr.New(clierr.CodeAuth, "timed out waiting for browser authentication").WithRetryable(true)
 	case <-interrupt:
 		return nil, clierr.New(clierr.CodeGeneric, "authentication interrupted by user")
+	case <-ctx.Done():
+		// Abort promptly on caller cancellation (SIGTERM, test timeout) instead
+		// of waiting for the browser callback and only then failing later at
+		// the exchange with a confusing post-callback context.Canceled.
+		return nil, ctx.Err()
 	}
 }
 

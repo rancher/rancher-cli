@@ -46,6 +46,47 @@ func TestConfigSetContextSetsBoth(t *testing.T) {
 	assert.Equal(t, "p-2", cfg.Contexts["acme"].Project)
 }
 
+// Exact reviewer repro: `rancher --project global-proj --config <dir> config
+// set-context --current --cluster c-1` must not silently write an empty
+// project — the global --project flag is shadowed by the (empty) local one.
+func TestConfigSetContextRejectsShadowedGlobalProject(t *testing.T) {
+	dir := t.TempDir()
+	writeCtxConfig(t, dir)
+	config.SetContextOverride("", "global-proj")
+	t.Cleanup(func() { config.SetContextOverride("", "") })
+
+	_, err := NewContextSet(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-1"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project, "must not overwrite with an empty project")
+}
+
+func TestConfigSetContextRejectsShadowedGlobalContext(t *testing.T) {
+	dir := t.TempDir()
+	writeCtxConfig(t, dir)
+	config.SetContextOverride("c-global:p-global", "")
+	t.Cleanup(func() { config.SetContextOverride("", "") })
+
+	_, err := NewContextSet(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"project": "p-2"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestConfigSetContextUnaffectedWithoutGlobalOverride(t *testing.T) {
+	dir := t.TempDir()
+	writeCtxConfig(t, dir)
+	_, err := NewContextSet(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-2"}}, ui.Discard())
+	require.NoError(t, err)
+}
+
 func TestConfigSetContextRequiresScopeFlag(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)

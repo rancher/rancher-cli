@@ -579,6 +579,50 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 		"Rancher login must never be reached once the caller context is cancelled")
 }
 
+func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
+	// Regression pin: cancellation while still WAITING for the browser
+	// callback (no callback ever arrives) must abort promptly via the wait
+	// select's ctx.Done() case, not surface later as a confusing exchange
+	// failure or wait for the flow timeout.
+	t.Parallel()
+
+	var rancherHits int32
+	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&rancherHits, 1)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer rancherSrv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// openBrowser stub: never drives the callback — cancels the caller ctx
+	// immediately instead, so by the time the wait select runs, ctx.Done() is
+	// already the only ready case (deterministic, no timing window).
+	openBrowserStub := func(authURL string) error {
+		cancel()
+		return nil
+	}
+
+	provider := &AzureADProvider{
+		OAuthProvider: OAuthProvider{
+			ClientID: "test-client",
+			Scopes:   []string{"openid"},
+			OAuthEndpoint: OAuthEndpoint{
+				AuthURL:  "http://127.0.0.1:0/authorize", // never reached
+				TokenURL: "http://127.0.0.1:0/token",
+			},
+		},
+	}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+
+	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&rancherHits))
+}
+
 // blockingReader never returns from Read, so readLine's scan goroutine cannot
 // win the select against a cancelled context — making the ctrl-C test deterministic.
 type blockingReader struct{}

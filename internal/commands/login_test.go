@@ -112,6 +112,38 @@ func TestLoginServerRequired(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
+// Exact reviewer repro: a global --context/--project flag with no local
+// --context on auth login must not be silently dropped from the write.
+func TestLoginRejectsShadowedGlobalOverride(t *testing.T) {
+	dir, store := filePolicyDir(t)
+	config.SetContextOverride("", "global-proj")
+	t.Cleanup(func() { config.SetContextOverride("", "") })
+
+	in := args{
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
+		b: map[string]bool{"token-stdin": true},
+	}
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).
+		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	_, statErr := config.Load(config.FilePath(dir))
+	require.NoError(t, statErr)
+}
+
+func TestLoginUnaffectedWithoutGlobalOverride(t *testing.T) {
+	dir, store := filePolicyDir(t)
+	in := args{
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
+		b: map[string]bool{"token-stdin": true},
+	}
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).
+		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+}
+
 func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 	t.Parallel()
 	// No --token-stdin and !CanPrompt (Discard) -> VALIDATION "token required".
@@ -188,6 +220,11 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 
 func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	// Non-parallel: keyring.MockInit swaps a process-global in-memory backend.
+	// Isolate from the operator's shell: RANCHER_CREDENTIAL_STORE=file (this
+	// project's own recommended hermetic-manual-run setting) would otherwise
+	// outrank both the "auto" policy under test and the explicit "keychain"
+	// argument to OpenStore below (config.EffectivePolicy: env > argument).
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "")
 	keyring.MockInit()
 	dir := t.TempDir() // no config on disk → auto policy; mock keychain is usable
 	in := args{
