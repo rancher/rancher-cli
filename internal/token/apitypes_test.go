@@ -78,3 +78,65 @@ func TestWireCompatibility(t *testing.T) {
 		var _ typedProvider = &AzureADProvider{}
 	})
 }
+
+func TestParseLoginResponse(t *testing.T) {
+	t.Parallel()
+
+	t.Run("v3 token response", func(t *testing.T) {
+		body := []byte(`{
+			"type": "token",
+			"token": "token-abc:secretxyz",
+			"expiresAt": "2026-08-01T12:00:00Z",
+			"userId": "user-123"
+		}`)
+		tok, err := parseLoginResponse(body)
+		require.NoError(t, err)
+		assert.Equal(t, "token-abc:secretxyz", tok.Token)
+		assert.Equal(t, "2026-08-01T12:00:00Z", tok.ExpiresAt)
+	})
+
+	t.Run("ext token response", func(t *testing.T) {
+		body := []byte(`{
+			"apiVersion": "ext.cattle.io/v1",
+			"kind": "Token",
+			"metadata": {"name": "token-xyz"},
+			"spec": {"userID": "user-123"},
+			"status": {
+				"bearerToken": "ext/token-xyz:secretabc",
+				"expiresAt": "2026-08-01T12:00:00Z"
+			}
+		}`)
+		tok, err := parseLoginResponse(body)
+		require.NoError(t, err)
+		assert.Equal(t, "ext/token-xyz:secretabc", tok.Token, "ext/ prefix must survive untouched (EXT-3)")
+		assert.Equal(t, "2026-08-01T12:00:00Z", tok.ExpiresAt)
+	})
+
+	t.Run("stray apiVersion with non-Token kind parses as v3", func(t *testing.T) {
+		body := []byte(`{
+			"apiVersion": "management.cattle.io/v3",
+			"kind": "somethingElse",
+			"token": "tok:sec",
+			"expiresAt": ""
+		}`)
+		tok, err := parseLoginResponse(body)
+		require.NoError(t, err)
+		assert.Equal(t, "tok:sec", tok.Token)
+	})
+
+	t.Run("ext response with empty bearer normalizes to empty Token", func(t *testing.T) {
+		body := []byte(`{
+			"apiVersion": "ext.cattle.io/v1",
+			"kind": "Token",
+			"status": {}
+		}`)
+		tok, err := parseLoginResponse(body)
+		require.NoError(t, err, "empty bearer is not a parse error; token.go's empty-token guard owns it (EXT-6)")
+		assert.Empty(t, tok.Token)
+	})
+
+	t.Run("invalid JSON errors", func(t *testing.T) {
+		_, err := parseLoginResponse([]byte(`{not json`))
+		require.Error(t, err)
+	})
+}

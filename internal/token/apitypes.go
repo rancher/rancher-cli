@@ -1,5 +1,10 @@
 package token
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Local type definitions extracted from github.com/rancher/rancher/pkg to avoid
 // pulling in norman, fleet, wrangler, lasso, and the entire operator tree.
 // These types are wire-compatible with the Rancher server API responses.
@@ -45,4 +50,46 @@ type AzureADProvider struct {
 // LocalProvider represents the local authentication provider.
 type LocalProvider struct {
 	AuthProvider `json:",inline"`
+}
+
+// extToken is the minimal wire shape of an ext.cattle.io/v1 Token login
+// response. Local definition per this file's no-rancher/rancher-import rule;
+// upstream shape: rancher/rancher pkg/apis/ext.cattle.io/v1 (see also
+// rancher/cli PR #632).
+type extToken struct {
+	Metadata struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Status struct {
+		BearerToken string `json:"bearerToken"`
+		ExpiresAt   string `json:"expiresAt"`
+	} `json:"status"`
+}
+
+// parseLoginResponse normalizes a /v1-public/login response into Token,
+// accepting both the v3 Norman shape (top-level token/expiresAt) and the
+// ext.cattle.io/v1 Token shape (status.bearerToken/status.expiresAt) for the
+// transition period while Rancher migrates session tokens. The ext bearer
+// keeps its "ext/" prefix — the server authenticator parses it back out of
+// the Bearer header, so it is opaque data here.
+func parseLoginResponse(body []byte) (Token, error) {
+	var hdr struct {
+		APIVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+	}
+	if err := json.Unmarshal(body, &hdr); err != nil {
+		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
+	}
+	if hdr.APIVersion == "ext.cattle.io/v1" && hdr.Kind == "Token" {
+		var et extToken
+		if err := json.Unmarshal(body, &et); err != nil {
+			return Token{}, fmt.Errorf("error unmarshaling ext token login response: %w", err)
+		}
+		return Token{Token: et.Status.BearerToken, ExpiresAt: et.Status.ExpiresAt}, nil
+	}
+	var tok Token
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
+	}
+	return tok, nil
 }
