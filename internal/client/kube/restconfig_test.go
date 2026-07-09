@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -23,20 +25,40 @@ func TestBaseURL(t *testing.T) {
 	}
 }
 
+const testCAPEM = "-----BEGIN CERTIFICATE-----\nPEM\n-----END CERTIFICATE-----\n"
+
 func TestRESTConfigDefaultsAndAuth(t *testing.T) {
-	t.Run("explicit cluster + CA", func(t *testing.T) {
+	t.Run("explicit cluster + inline PEM CA", func(t *testing.T) {
 		rc, err := RESTConfig(config.Effective{
-			URL: "https://r.ex/v3", Token: "id:secret", CA: "PEM", Cluster: "c-9",
+			URL: "https://r.ex/v3", Token: "id:secret", CA: testCAPEM, Cluster: "c-9",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex/k8s/clusters/c-9", rc.Host)
 		assert.Equal(t, "id:secret", rc.BearerToken)
-		assert.Equal(t, []byte("PEM"), rc.CAData)
+		assert.Equal(t, []byte(testCAPEM), rc.CAData)
 	})
 	t.Run("empty cluster defaults to local", func(t *testing.T) {
-		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: "PEM"})
+		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: testCAPEM})
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex/k8s/clusters/local", rc.Host)
+	})
+	// Round-4 repro: a stored `--cacert /path/to/ca.pem` login (a path, not
+	// inline PEM) went straight to CAData as raw bytes, so client-go tried to
+	// use the literal path string as a certificate and every cluster command
+	// failed to parse it. eff.CA must resolve through config.ResolveCA, same
+	// as kubeconfig.go/token.go already do for the identical pem-or-path value.
+	t.Run("path-valued CA is read and resolved to its PEM bytes", func(t *testing.T) {
+		dir := t.TempDir()
+		caPath := filepath.Join(dir, "ca.pem")
+		require.NoError(t, os.WriteFile(caPath, []byte(testCAPEM), 0o600))
+
+		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: caPath})
+		require.NoError(t, err)
+		assert.Equal(t, []byte(testCAPEM), rc.CAData, "path-valued CA must be read from disk, not used as raw CAData")
+	})
+	t.Run("unreadable path-valued CA surfaces an error", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: filepath.Join(t.TempDir(), "does-not-exist.pem")})
+		require.Error(t, err)
 	})
 	t.Run("no CA uses system roots (secure by default)", func(t *testing.T) {
 		rc, err := RESTConfig(config.Effective{

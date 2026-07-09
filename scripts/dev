@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Hermetic dev/verification runner: NEVER touches the operator's real
+# config or OS keychain. All manual verification runs go through this —
+# never run the binary or `go run .` directly (see ARCHITECTURE.md and the
+# deep-review incident notes for why: an env prefix lost between tool calls
+# is exactly how a real keychain got touched during review).
+dir="${RANCHER_DEV_CONFIG_DIR:-${TMPDIR:-/tmp}/rancher-dev-$(id -u)}"
+mkdir -p "$dir"
+export RANCHER_CONFIG_DIR="$dir" RANCHER_CREDENTIAL_STORE=file
+exec go run . "$@"

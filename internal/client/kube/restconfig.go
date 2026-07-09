@@ -42,12 +42,21 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	}
 	host := fmt.Sprintf("%s/k8s/clusters/%s", BaseURL(eff.URL), cluster)
 
+	// eff.CA is pem-or-path, same as kubeconfig's and get-token's --cacert:
+	// resolve through config.ResolveCA rather than using it as raw CAData, or
+	// a path-valued CA (from a stored `--cacert /path/to/ca.pem` login) never
+	// gets read and every cluster command fails to parse it as PEM.
+	caPEM, err := config.ResolveCA(eff.CA)
+	if err != nil {
+		return nil, err
+	}
+
 	rc := &rest.Config{
 		Host:        host,
 		BearerToken: eff.Token,
 	}
-	if eff.CA != "" {
-		rc.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(eff.CA)}
+	if caPEM != "" {
+		rc.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(caPEM)}
 	}
 	return rc, nil
 }

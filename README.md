@@ -227,6 +227,10 @@ disabled implicitly. HTTP(S) proxies are honored from the environment.
 A committed `.githooks/pre-commit` runs `make validate` on every commit
 (`git config core.hooksPath .githooks`, set during setup).
 
+Manual testing: `scripts/dev <args>` — never run the binary or `go run .`
+directly; it forces an isolated config dir and the file credential store so
+a manual run can never touch your real config or OS keychain.
+
 `make e2e` runs the end-to-end suite: testscript scenarios in `e2e/scripts/`
 drive the built binary against an envtest-backed proxy shim, plus the
 provider package's envtest contract tests. First run downloads the

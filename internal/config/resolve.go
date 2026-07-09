@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -54,18 +55,60 @@ func ResolveCA(s string) (string, error) {
 	return string(data), nil
 }
 
-// sameServer reports whether a and b address the same server, comparing
-// scheme+host after parsing — a trailing slash, differing path/query, or
-// scheme/host case difference is NOT divergence (RFC 3986: scheme and host
-// are case-insensitive). Falls back to exact string equality when either
-// fails to parse, so a malformed value never spuriously counts as a match.
-func sameServer(a, b string) bool {
+// SameServerURL reports whether a and b address the same server, comparing
+// scheme+host after parsing and normalizing. None of the following count as
+// divergence: a trailing slash or differing path/query, scheme/host case
+// (RFC 3986: both are case-insensitive), or an explicit default port
+// (:443 for https, :80 for http) spelled out where the other side omits it.
+// Falls back to exact string equality when either fails to parse, so a
+// malformed value never spuriously counts as a match.
+//
+// This is the one place default-port/case/trailing-slash normalization for
+// "is this the same server" lives — the third axis (after case, then
+// trailing slash) to recur here; put the next one here too rather than at a
+// caller.
+func SameServerURL(a, b string) bool {
 	ua, uaErr := url.Parse(a)
 	ub, ubErr := url.Parse(b)
 	if uaErr != nil || ubErr != nil {
 		return a == b
 	}
-	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)
+	if !strings.EqualFold(ua.Scheme, ub.Scheme) {
+		return false
+	}
+	return normalizeHostPort(ua.Scheme, ua.Host) == normalizeHostPort(ub.Scheme, ub.Host)
+}
+
+// normalizeHostPort lowercases host and drops an explicit port that matches
+// scheme's default (so "example.com" and "example.com:443" compare equal
+// under https). net.SplitHostPort handles the IPv6 bracket form ("[::1]:443")
+// correctly; a host with no port (including a bracketed IPv6 literal with no
+// port) returns SplitHostPort's "missing port" error and is compared as-is.
+func normalizeHostPort(scheme, host string) string {
+	h, port, err := net.SplitHostPort(host)
+	if err != nil {
+		// No port present. Strip IPv6 brackets too, so a bracketed literal
+		// with no port ("[::1]") compares equal to the same literal WITH its
+		// default port ("[::1]:443" -> SplitHostPort's h is bracket-free
+		// "::1") below.
+		return strings.ToLower(strings.Trim(host, "[]"))
+	}
+	if port == defaultPort(scheme) {
+		return strings.ToLower(h)
+	}
+	return strings.ToLower(h) + ":" + port
+}
+
+// defaultPort returns scheme's default port, or "" for a scheme with none.
+func defaultPort(scheme string) string {
+	switch strings.ToLower(scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	default:
+		return ""
+	}
 }
 
 // Effective is the merged connection info (file + env overrides).
@@ -105,7 +148,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 
 	// Env overrides (env > file).
 	if v := os.Getenv("RANCHER_URL"); v != "" {
-		if !sameServer(v, storedURL) {
+		if !SameServerURL(v, storedURL) {
 			// RANCHER_URL is pointing this invocation at a server other than
 			// the one eff.CA/eff.ServerName belong to — never pair a CA (or a
 			// display name) with a server it was never issued for. This is

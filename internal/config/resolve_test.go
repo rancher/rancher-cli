@@ -109,6 +109,48 @@ func TestEffectiveFromFile(t *testing.T) {
 // name into the new Effective — every command through Effective (get,
 // create, patch, delete, auth check, kubeconfig) shares this one choke
 // point, not just kubeconfig.
+// Round-4 repro: an explicit default port (:443 https, :80 http) spelled out
+// on one side and omitted on the other is the same server, not divergence —
+// the third normalization axis to recur here (after case, then trailing
+// slash), pinned in one exported matrix so a fourth lands in one place too.
+func TestSameServerURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{"identical", "https://r.ex", "https://r.ex", true},
+		{"trailing slash", "https://r.ex", "https://r.ex/", true},
+		{"scheme case", "HTTPS://r.ex", "https://r.ex", true},
+		{"host case", "https://R.EX", "https://r.ex", true},
+		{"different host", "https://r.ex", "https://other.ex", false},
+		{"different scheme", "https://r.ex", "http://r.ex", false},
+
+		{"implicit vs explicit default https port", "https://r.ex", "https://r.ex:443", true},
+		{"implicit vs explicit default http port", "http://r.ex", "http://r.ex:80", true},
+		{"explicit non-default port vs none", "https://r.ex", "https://r.ex:8443", false},
+		{"explicit default port on the wrong scheme is not default", "https://r.ex:80", "https://r.ex", false},
+		{"both explicit default port", "https://r.ex:443", "https://r.ex:443", true},
+		{"both explicit same non-default port", "https://r.ex:8443", "https://r.ex:8443", true},
+
+		{"IPv6 no port both sides", "https://[::1]", "https://[::1]", true},
+		{"IPv6 implicit vs explicit default port", "https://[::1]", "https://[::1]:443", true},
+		{"IPv6 explicit non-default port vs none", "https://[::1]", "https://[::1]:8443", false},
+		{"IPv6 both explicit same non-default port", "https://[::1]:8443", "https://[::1]:8443", true},
+
+		{"empty vs non-empty (no stored context)", "https://r.ex", "", false},
+		{"both empty", "", "", true},
+		{"malformed falls back to exact equality — mismatch", "not a url: ::", "https://r.ex", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, SameServerURL(tt.a, tt.b), "%q vs %q", tt.a, tt.b)
+		})
+	}
+}
+
 func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 	store := NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken("prod", "id:secret"))
