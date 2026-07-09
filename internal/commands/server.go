@@ -97,27 +97,7 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	if _, ok := cfg.Servers[name]; !ok {
 		return runtime.Result{}, clierr.New(clierr.CodeNotFound, "server not found: "+name)
 	}
-	// Pick the context bound to this server (by Context.Server, NOT by assuming the
-	// context key equals the server name — a config may be hand-edited). Map order
-	// is random, so choose deterministically: prefer the current context if it
-	// already targets this server, else the lexicographically first match; create
-	// one if none exist.
-	var matches []string
-	for cn, cctx := range cfg.Contexts {
-		if cctx.Server == name {
-			matches = append(matches, cn)
-		}
-	}
-	sort.Strings(matches)
-	ctxName := ""
-	if cur := cfg.CurrentContext; cur != "" {
-		if cc, ok := cfg.Contexts[cur]; ok && cc.Server == name {
-			ctxName = cur
-		}
-	}
-	if ctxName == "" && len(matches) > 0 {
-		ctxName = matches[0]
-	}
+	ctxName, matches := resolveContextForServer(cfg, name)
 	if ctxName == "" {
 		ctxName = name
 		cfg.Contexts[ctxName] = config.Context{Server: name}
@@ -137,4 +117,28 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	}
 	return runtime.Result{Kind: "ServerSwitch", Warnings: warnings,
 		Data: map[string]string{"current": name, "context": ctxName}}, nil
+}
+
+// resolveContextForServer picks the context to activate for server name: the
+// current context if it already targets the server, else the
+// lexicographically first match, else "" (caller creates one). matches is the
+// full sorted match list (for the multiple-contexts warning). Contexts are
+// matched by Context.Server, NOT by assuming the context key equals the
+// server name — a config may be hand-edited.
+func resolveContextForServer(cfg *config.Config, name string) (ctxName string, matches []string) {
+	for cn, cctx := range cfg.Contexts {
+		if cctx.Server == name {
+			matches = append(matches, cn)
+		}
+	}
+	sort.Strings(matches)
+	if cur := cfg.CurrentContext; cur != "" {
+		if cc, ok := cfg.Contexts[cur]; ok && cc.Server == name {
+			return cur, matches
+		}
+	}
+	if len(matches) > 0 {
+		return matches[0], matches
+	}
+	return "", matches
 }

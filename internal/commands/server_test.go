@@ -61,3 +61,53 @@ func TestGetServersTabular(t *testing.T) {
 	assert.Equal(t, []string{"*", "acme", "https://a"}, rows[0]) // current marked
 	assert.Equal(t, []string{"", "beta", "https://b"}, rows[1])
 }
+
+func TestResolveContextForServer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("current context preferred over lexicographic", func(t *testing.T) {
+		cfg := &config.Config{
+			CurrentContext: "z-ctx",
+			Contexts: map[string]config.Context{
+				"a-ctx": {Server: "acme"},
+				"z-ctx": {Server: "acme"},
+			},
+		}
+		ctxName, matches := resolveContextForServer(cfg, "acme")
+		assert.Equal(t, "z-ctx", ctxName)
+		assert.Equal(t, []string{"a-ctx", "z-ctx"}, matches)
+	})
+
+	t.Run("lexicographic first when current targets another server", func(t *testing.T) {
+		cfg := &config.Config{
+			CurrentContext: "other",
+			Contexts: map[string]config.Context{
+				"other": {Server: "beta"},
+				"b-ctx": {Server: "acme"},
+				"a-ctx": {Server: "acme"},
+			},
+		}
+		ctxName, matches := resolveContextForServer(cfg, "acme")
+		assert.Equal(t, "a-ctx", ctxName)
+		assert.Equal(t, []string{"a-ctx", "b-ctx"}, matches)
+	})
+
+	t.Run("empty when no matches", func(t *testing.T) {
+		cfg := &config.Config{Contexts: map[string]config.Context{"other": {Server: "beta"}}}
+		ctxName, matches := resolveContextForServer(cfg, "acme")
+		assert.Empty(t, ctxName)
+		assert.Empty(t, matches)
+	})
+
+	t.Run("matches list sorted", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: map[string]config.Context{
+				"z-ctx": {Server: "acme"},
+				"a-ctx": {Server: "acme"},
+				"m-ctx": {Server: "acme"},
+			},
+		}
+		_, matches := resolveContextForServer(cfg, "acme")
+		assert.Equal(t, []string{"a-ctx", "m-ctx", "z-ctx"}, matches)
+	})
+}
