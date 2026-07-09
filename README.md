@@ -33,6 +33,15 @@ settings land in later Phase-1 waves.
 Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 `rancher/rancher`.
 
+### Agent skill
+
+[`skills/rancher/SKILL.md`](skills/rancher/SKILL.md) teaches an AI coding agent
+to operate this CLI (auth, discovery, the dry-run/apply safety loop, structured
+errors, waits). It follows the open [Agent Skills](https://agentskills.io)
+standard: install it into any skill-supporting harness — Claude Code
+(`~/.claude/skills/rancher/`) and GitHub Copilot CLI both load it natively —
+or point any other agent's instructions file at it.
+
 ## Quickstart
 
     # Log in (token is the Rancher UI "id:secret" API key)
@@ -99,20 +108,22 @@ Every command emits one JSON document per invocation under `-o json` — an
 
 - **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
   `name` (`.metadata.name`/ids only) · any other value is a Go template over `data`.
-- **Errors** are structured, on stderr, always emitted (even under `-o name`):
+- **Errors** are structured, on stderr, with the error object under `data`
+  (JSON envelope guaranteed for the default, `json`, and `name` formats;
+  `-o yaml` renders it as YAML, a template format renders the template):
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
-    "error": { "code": "CONTEXT_NOT_SET", "message": "...",
-               "hint": "run: rancher auth login --server <url>", "retryable": false } }
+    "data": { "error": { "code": "CONTEXT_NOT_SET", "message": "...",
+              "hint": "run: rancher auth login --server <url>", "retryable": false } } }
   ```
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·
   `3` auth · `4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
   `apiVersion`, the error-code enum, the global flags, and every command with
-  its args, flags, `commandType`, and (for server ops) `tier`/`stability`.
-  `rancher schema <command>` filters to one.
+  its args, flags, `commandType`, and (for server ops) `tier`/`stability`,
+  as one document — filter client-side for the command you need.
 
 ## Safety model (exercised by `create project`; more in later waves)
 
