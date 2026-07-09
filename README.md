@@ -81,16 +81,24 @@ or point any other agent's instructions file at it.
 | `config get-servers` | List configured servers |
 | `config use-server [name]` | Switch the active server |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
-| `get <kind> [name] [--cluster --namespace]` | List a kind, or show one by name — read-only. Kinds: `cluster`, `node`, `namespace`, `project` (management); `pod`, `deployment`, `service`, `configmap`, `secret` (downstream). |
 | `create project <name> --cluster <id> [--description]` | Create a project — public tier; dry-run/apply |
-| `delete <kind> <name> [--cluster --namespace]` | Delete a kind by name — destructive; dry-run/apply. Deletable: `project`, `namespace` (management); `pod`, `deployment`, `service`, `configmap`, `secret` (downstream). |
+| `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
+| `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
+| `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
+| `top node [name] [--cluster]` | Node resource usage |
+| `images [--cluster --all-clusters]` | Running container images, fleet-wide |
+| `usage [--cluster --namespace --project]` | Resource usage composite |
+| `kubeconfig --cluster <id>` | Emit an exec-credential kubeconfig for a cluster |
 | `schema [command]` | Machine-readable capability manifest |
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
-Generic `create`/`patch`, fleet/provisioning kinds, more `config` subcommands,
-and `version` are deferred to later waves.
+
+Generated per kind from the 37-kind table: `get <kind>` (37), `patch <kind>`
+(37), `delete <kind>` (17 deletable) — 91 generated commands, ≈112 total
+together with the fixed commands above. The authoritative, always-current
+list is `rancher schema -o json`.
 
 ## Output & the agent contract
 
