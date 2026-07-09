@@ -135,15 +135,19 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
-		if legacy, ok := config.FindLegacy(); ok {
-			// FindLegacy scans the real $HOME; only auto-migrate into the DEFAULT
-			// config dir. An explicitly overridden dir gets a hint, never a
-			// silent import of the user's real cli2.json.
-			if c.String("config") != "" || os.Getenv("RANCHER_CONFIG_DIR") != "" {
-				logrus.Warnf("legacy config found at %s; not importing into an explicitly overridden config dir", legacy)
-			} else if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
-				logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
+	// FindLegacy scans the real $HOME; only auto-migrate into the DEFAULT config
+	// dir. An explicitly overridden dir (--config or RANCHER_CONFIG_DIR) is
+	// deliberately isolated — legacy import advice is irrelevant there, and
+	// even a plain-text notice would corrupt a scripted session's stderr JSON
+	// (the error envelope, when one follows, must stay the only/last JSON
+	// object on stderr), so this case stays silent.
+	explicitDir := c.String("config") != "" || os.Getenv("RANCHER_CONFIG_DIR") != ""
+	if !explicitDir {
+		if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
+			if legacy, ok := config.FindLegacy(); ok {
+				if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
+					logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
+				}
 			}
 		}
 	}

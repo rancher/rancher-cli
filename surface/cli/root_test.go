@@ -192,6 +192,41 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	assert.NotEmpty(t, data["globalFlags"])
 }
 
+// DR-005 repro: an explicitly overridden config dir with a leftover legacy
+// cli2.json must not put a plain-text notice ahead of the error envelope —
+// stderr must parse as pure JSON, exactly as a scripted session relies on.
+func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_URL", "")
+	t.Setenv("RANCHER_TOKEN", "")
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cli2.json"), []byte("{}"), 0o600))
+	t.Setenv("RANCHER_CONFIG_DIR", dir) // explicit override AND FindLegacy's scan target
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+	// The default handler calls os.Exit on a non-zero ExitCoder, which would kill
+	// the test process; keep the error as a return value instead.
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+	runErr := root.Run(context.Background(), []string{"rancher", "get", "cluster", "foo", "-o", "json"})
+	require.Error(t, runErr)
+
+	stderr := errOut.Bytes()
+	require.NotEmpty(t, stderr)
+	var env map[string]any
+	require.NoError(t, json.Unmarshal(stderr, &env), "stderr must be pure JSON, got %q", stderr)
+	data := env["data"].(map[string]any)
+	errObj := data["error"].(map[string]any)
+	assert.Equal(t, "CONTEXT_NOT_SET", errObj["code"])
+
+	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "must not migrate into an explicitly overridden config dir")
+}
+
 func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()

@@ -84,8 +84,7 @@ func TestResolveDepsGuardsMigrationForOverriddenDir(t *testing.T) {
 	assert.Equal(t, freshDir, dir)
 	_, statErr := os.Stat(filepath.Join(freshDir, "config.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "must not migrate into an explicitly overridden config dir")
-	assert.Contains(t, buf.String(), "not importing")
-	assert.Contains(t, buf.String(), filepath.Join(legacyDir, "cli2.json"))
+	assert.Empty(t, buf.String(), "an explicitly overridden config dir must stay silent — no notice to corrupt a scripted session's stderr JSON")
 }
 
 func TestResolveDepsMigratesIntoDefaultDir(t *testing.T) {
