@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -42,7 +43,7 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(c.dir))
 	if err != nil {
 		return runtime.Result{}, err
@@ -73,6 +74,12 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	}
 
 	base := kube.BaseURL(srv.URL)
+	if strings.HasPrefix(base, "http://") {
+		// client-go silently refuses to wire exec-credential auth for plain-http
+		// servers (no error, no Authorization header) — warn so the resulting
+		// kubeconfig's silent 401s are explainable (CW-7).
+		p.Notice("server uses http://; kubectl will silently skip exec-credential auth for this kubeconfig — use https")
+	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
 
 	cluster := &clientcmdapi.Cluster{Server: base + "/k8s/clusters/" + id}

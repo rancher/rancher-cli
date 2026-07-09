@@ -1,13 +1,16 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/tools/clientcmd"
@@ -108,6 +111,41 @@ func TestKubeconfigFallsBackToContextCluster(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]config.Context{"prod": {Server: "prod", Cluster: "c-ctx"}},
+		Servers:        map[string]config.Server{"prod": {URL: "http://r.example.com"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	var errBuf bytes.Buffer
+	p := ui.New(&errBuf, strings.NewReader(""), true, false)
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "http://",
+		"the http:// server notice must reach the prompter's stderr writer")
+
+	kc, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	assert.NotEmpty(t, kc.CurrentContext, "stdout must still be exactly the bare kubeconfig YAML")
+}
+
+func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	var errBuf bytes.Buffer
+	p := ui.New(&errBuf, strings.NewReader(""), true, false)
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
+	require.NoError(t, err)
+	assert.Empty(t, errBuf.String())
 }
 
 func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
