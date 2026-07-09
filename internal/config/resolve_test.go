@@ -104,6 +104,61 @@ func TestEffectiveFromFile(t *testing.T) {
 	})
 }
 
+// Round-3 repro: a RANCHER_URL override pointing at a DIFFERENT server than
+// the stored context's must never carry that stored server's CA or display
+// name into the new Effective — every command through Effective (get,
+// create, patch, delete, auth check, kubeconfig) shares this one choke
+// point, not just kubeconfig.
+func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken("prod", "id:secret"))
+	c := &Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]Context{"prod": {Server: "prod"}},
+		Servers:        map[string]Server{"prod": {URL: "https://prod.example.com", CA: "PROD-CA"}},
+	}
+
+	t.Run("divergent RANCHER_URL clears the stored CA and server name", func(t *testing.T) {
+		t.Setenv("RANCHER_URL", "https://staging.example.com")
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "https://staging.example.com", eff.URL)
+		assert.Empty(t, eff.CA, "must never pair the stored CA with a server it was never issued for")
+		assert.Empty(t, eff.ServerName, "must not carry the stored display name to a different server")
+	})
+
+	t.Run("RANCHER_CACERT still applies after a divergent RANCHER_URL clears the stored CA", func(t *testing.T) {
+		t.Setenv("RANCHER_URL", "https://staging.example.com")
+		t.Setenv("RANCHER_CACERT", "STAGING-CA")
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "STAGING-CA", eff.CA)
+	})
+
+	t.Run("trailing slash on the same server is not divergence", func(t *testing.T) {
+		t.Setenv("RANCHER_URL", "https://prod.example.com/")
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "PROD-CA", eff.CA, "same server (trailing slash) must keep the stored CA")
+		assert.Equal(t, "prod", eff.ServerName)
+	})
+
+	t.Run("case-different scheme/host on the same server is not divergence", func(t *testing.T) {
+		t.Setenv("RANCHER_URL", "HTTPS://PROD.example.com")
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "PROD-CA", eff.CA)
+		assert.Equal(t, "prod", eff.ServerName)
+	})
+
+	t.Run("no RANCHER_URL at all is unaffected", func(t *testing.T) {
+		eff, err := c.Effective(store)
+		require.NoError(t, err)
+		assert.Equal(t, "PROD-CA", eff.CA)
+		assert.Equal(t, "prod", eff.ServerName)
+	})
+}
+
 func TestSplitContext(t *testing.T) {
 	t.Parallel()
 	t.Run("cluster and project", func(t *testing.T) {

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,20 @@ func ResolveCA(s string) (string, error) {
 	return string(data), nil
 }
 
+// sameServer reports whether a and b address the same server, comparing
+// scheme+host after parsing — a trailing slash, differing path/query, or
+// scheme/host case difference is NOT divergence (RFC 3986: scheme and host
+// are case-insensitive). Falls back to exact string equality when either
+// fails to parse, so a malformed value never spuriously counts as a match.
+func sameServer(a, b string) bool {
+	ua, uaErr := url.Parse(a)
+	ub, ubErr := url.Parse(b)
+	if uaErr != nil || ubErr != nil {
+		return a == b
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)
+}
+
 // Effective is the merged connection info (file + env overrides).
 type Effective struct {
 	ServerName string
@@ -67,6 +82,7 @@ type Effective struct {
 // RANCHER_TOKEN is used directly and never read from the store.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	var eff Effective
+	storedURL := ""
 
 	// Start from file if a current context resolves.
 	if name, s, err := c.CurrentServer(); err == nil {
@@ -75,6 +91,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 			ServerName: name, URL: s.URL, CA: s.CA,
 			Cluster: ctx.Cluster, Project: ctx.Project,
 		}
+		storedURL = s.URL
 		tok, terr := store.GetToken(name)
 		switch {
 		case terr == nil:
@@ -88,6 +105,18 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 
 	// Env overrides (env > file).
 	if v := os.Getenv("RANCHER_URL"); v != "" {
+		if !sameServer(v, storedURL) {
+			// RANCHER_URL is pointing this invocation at a server other than
+			// the one eff.CA/eff.ServerName belong to — never pair a CA (or a
+			// display name) with a server it was never issued for. This is
+			// the choke point every command shares (get/create/patch/delete,
+			// auth check, kubeconfig): clear both here, once, rather than at
+			// each caller. RANCHER_CACERT, checked next, still applies
+			// normally, exactly like a pure env-only session with no stored
+			// context at all.
+			eff.CA = ""
+			eff.ServerName = ""
+		}
 		eff.URL = v
 	}
 	if v := os.Getenv("RANCHER_CACERT"); v != "" {

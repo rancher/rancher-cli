@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -76,23 +75,11 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			WithHint("pass --cluster <id|name> or set a context")
 	}
 
-	// eff.CA/eff.ServerName come from the STORED context regardless of
-	// whether RANCHER_URL just moved eff.URL to a different server — pairing
-	// a stored CA (or name) with a different server's URL is exactly the
-	// legacy-migration lesson never to repeat. When RANCHER_URL is set and
-	// differs from the stored server's URL, fall back to RANCHER_CACERT
-	// alone (or none) and a host-derived name, exactly like a pure env-only
-	// session with no stored context at all.
-	storedURL := ""
-	if _, srv, cerr := cfg.CurrentServer(); cerr == nil {
-		storedURL = srv.URL
-	}
-	caSource, nameSource := eff.CA, eff.ServerName
-	if envURL := os.Getenv("RANCHER_URL"); envURL != "" && envURL != storedURL {
-		caSource, nameSource = os.Getenv("RANCHER_CACERT"), ""
-	}
-
-	caPEM, err := config.ResolveCA(caSource)
+	// Effective already cleared eff.CA/eff.ServerName if RANCHER_URL diverged
+	// from the stored server — every command sharing this choke point, not
+	// just kubeconfig, so there is nothing kubeconfig-specific left to check
+	// here.
+	caPEM, err := config.ResolveCA(eff.CA)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -107,10 +94,10 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		// cased scheme that a literal "http://" prefix check would miss.
 		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth — use https")
 	}
-	// nameSource is empty for an env-only session, or when the env override
-	// just moved the URL away from the stored server — synthesize a stable
-	// entry name from the server host instead.
-	serverName := nameSource
+	// eff.ServerName is empty for an env-only session, or when the env
+	// override just moved the URL away from the stored server — synthesize a
+	// stable entry name from the server host instead.
+	serverName := eff.ServerName
 	if serverName == "" {
 		serverName = config.ServerHost(base)
 	}

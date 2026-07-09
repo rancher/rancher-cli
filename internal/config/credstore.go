@@ -327,14 +327,14 @@ func (k *keyringStore) DeleteCachedCred(key string) error          { return k.ca
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
-// DrainToken is logout's single drain point (ARCHITECTURE.md): it deletes a
-// server's login token from BOTH backends, unconditionally and independently
-// of policy — read-through made the file store part of the effective read
-// path under every policy, so every logout must drain it, and the keychain
-// may still hold a token from before a backend flip — AND drains every
-// exec-credential cache entry cached against serverURL's host (the cache is
-// file-backed regardless of policy, CS-5). No backend's failure
-// short-circuits another; per-backend errors are joined so a live
+// DrainToken is single-server logout's drain point (ARCHITECTURE.md): it
+// deletes a server's login token from BOTH backends, unconditionally and
+// independently of policy — read-through made the file store part of the
+// effective read path under every policy, so every logout must drain it, and
+// the keychain may still hold a token from before a backend flip — AND
+// drains every exec-credential cache entry cached against serverURL's host
+// (the cache is file-backed regardless of policy, CS-5). No backend's
+// failure short-circuits another; per-backend errors are joined so a live
 // token/cache entry is never left behind unreported. fromBackends lists the
 // login-token backends actually drained; drainedCache lists the cache keys
 // actually removed.
@@ -347,10 +347,34 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // (the exec plugin re-mints transparently) — under-draining leaves a live
 // credential behind after the user asked to log out, the exact failure this
 // function exists to prevent.
+//
+// `logout --all` does NOT loop this per server: draining N servers' worth of
+// host-scoped cache entries one at a time costs O(servers × cache entries)
+// of the same file, and — unlike a single-server logout, which has no other
+// way to reach a cache entry cached against a server no longer configured —
+// still misses orphaned/bare entries that match no configured server. See
+// DrainAllExecCache, which `--all` calls once instead.
 func DrainToken(dir, server, serverURL string) (fromBackends, drainedCache []string, err error) {
-	var errs []error
+	fromBackends, err = DrainLoginToken(dir, server)
+	drainedCache, cerr := DrainExecCacheForServer(NewFileStore(dir), serverURL)
+	if cerr != nil {
+		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
+	}
+	return fromBackends, drainedCache, err
+}
+
+// DrainLoginToken deletes a server's login token from both backends,
+// unconditionally and independently of policy (see DrainToken). Used
+// directly by DrainToken (single-server logout) and by `logout --all`
+// (which drains every configured server's token this way, then wipes the
+// exec-credential cache once via DrainAllExecCache instead of per server).
+func DrainLoginToken(dir, server string) ([]string, error) {
+	var (
+		from []string
+		errs []error
+	)
 	if kerr := keyring.Delete(keyringService, server); kerr == nil {
-		fromBackends = append(fromBackends, "keychain")
+		from = append(from, "keychain")
 	} else if !errors.Is(kerr, keyring.ErrNotFound) {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, kerr))
 	}
@@ -360,7 +384,7 @@ func DrainToken(dir, server, serverURL string) (fromBackends, drainedCache []str
 		if derr := fs.DeleteToken(server); derr != nil {
 			errs = append(errs, fmt.Errorf("file credential store: %w", derr))
 		} else {
-			fromBackends = append(fromBackends, "file")
+			from = append(from, "file")
 		}
 	case errors.Is(terr, ErrNoToken):
 		// nothing stored in the file backend — fine
@@ -369,11 +393,32 @@ func DrainToken(dir, server, serverURL string) (fromBackends, drainedCache []str
 		// unreadable/corrupt: a live plaintext token may remain.
 		errs = append(errs, fmt.Errorf("file credential store: %w", terr))
 	}
-	drainedCache, cerr := DrainExecCacheForServer(fs, serverURL)
-	if cerr != nil {
-		errs = append(errs, fmt.Errorf("exec-credential cache: %w", cerr))
+	return from, errors.Join(errs...)
+}
+
+// DrainAllExecCache wipes the ENTIRE exec-credential cache file in one
+// operation and returns the keys it removed — the cheap, complete
+// counterpart to DrainToken's per-server host-scoped drain, used by `logout
+// --all`. A single full-file wipe, rather than N per-server host-scoped
+// drains, is both cheaper (one read-and-truncate instead of
+// O(servers × cache entries)) and more complete: it also catches orphaned
+// entries (a legacy bare entry with no Server field, or one cached against a
+// server later removed from config.yaml) that no per-server drain — keyed to
+// a currently-configured server's host — could ever reach.
+func DrainAllExecCache(dir string) ([]string, error) {
+	fs := NewFileStore(dir)
+	cached, err := fs.ListCachedCreds()
+	if err != nil {
+		return nil, err
 	}
-	return fromBackends, drainedCache, errors.Join(errs...)
+	if err := fs.DeleteAllCachedCreds(); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(cached))
+	for _, c := range cached {
+		keys = append(keys, c.Key)
+	}
+	return keys, nil
 }
 
 // DrainExecCacheForServer deletes every exec-credential cache entry whose

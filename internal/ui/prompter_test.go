@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +70,27 @@ func TestNoticeWritesToErr(t *testing.T) {
 	var errw bytes.Buffer
 	New(&errw, nil, false, false).Notice("heads up")
 	assert.Equal(t, "heads up\n", errw.String())
+}
+
+// Round-3 repro: a background goroutine (the OAuth loopback callback
+// handler) calling Notice concurrently with the main goroutine's own
+// Notice/Prompt calls raced on the shared writer with no synchronization.
+// Run with -race; fails on the unguarded implementation.
+func TestNoticeIsSafeForConcurrentUse(t *testing.T) {
+	var errw bytes.Buffer
+	p := New(&errw, strings.NewReader(""), true, false)
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				p.Notice("concurrent notice")
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestDiscardRefuses(t *testing.T) {

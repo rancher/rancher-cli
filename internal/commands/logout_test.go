@@ -144,6 +144,35 @@ func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
 	assert.Empty(t, creds, "--all clears the whole cache")
 }
 
+// Round-3 repro: --all's per-server host-scoped drain (round 2) missed a
+// legacy bare entry (no Server field) and an entry cached against a server
+// no longer in config.yaml — neither is reachable by any per-server drain.
+// --all must catch both via the full-cache wipe.
+func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
+	dir, store := seedLogout(t, "acme", "acme")
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	// Orphaned: no Server field at all (legacy bare entry).
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+	// Orphaned: cached against a host with no matching entry in cfg.Servers.
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1"))
+
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	deletedCache, ok := data["deletedCache"].([]string)
+	require.True(t, ok)
+	assert.ElementsMatch(t, []string{
+		config.CacheKey("kubeuser", "acme.ex", "c-1"),
+		"legacy-bare",
+		config.CacheKey("kubeuser", "removed.ex", "c-1"),
+	}, deletedCache, "--all must catch orphaned entries no per-server drain can reach")
+
+	creds, err := store.ListCachedCreds()
+	require.NoError(t, err)
+	assert.Empty(t, creds, "no orphaned live tokens after --all")
+}
+
 func TestLogoutNameAndAllIsValidation(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme")
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),

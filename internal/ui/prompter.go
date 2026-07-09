@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/term"
 )
@@ -20,8 +21,12 @@ import (
 // (no TTY, or --no-input). Callers map it to the appropriate clierr.Error.
 var ErrNoInput = errors.New("input required but interaction is disabled")
 
-// Prompter carries the resolved streams and interactivity flags.
+// Prompter carries the resolved streams and interactivity flags. mu guards
+// every write to err: a background goroutine (e.g. the OAuth loopback
+// callback handler) can call Notice concurrently with the main goroutine's
+// own prompts/notices to the same writer.
 type Prompter struct {
+	mu      sync.Mutex
 	err     io.Writer
 	in      io.Reader
 	noInput bool
@@ -50,14 +55,18 @@ func (p *Prompter) CanPrompt() bool { return p.isTTY && !p.noInput }
 func (p *Prompter) NoInput() bool { return p.noInput }
 
 // Notice writes an informational/warning line to Err (never Out).
-func (p *Prompter) Notice(msg string) { _, _ = fmt.Fprintln(p.err, msg) }
+func (p *Prompter) Notice(msg string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, _ = fmt.Fprintln(p.err, msg)
+}
 
 // Prompt writes label to Err and reads one line from In, honoring ctx.
 func (p *Prompter) Prompt(ctx context.Context, label string) (string, error) {
 	if !p.CanPrompt() {
 		return "", ErrNoInput
 	}
-	_, _ = fmt.Fprint(p.err, label)
+	p.writeErr(label)
 	return p.readLine(ctx)
 }
 
@@ -67,16 +76,25 @@ func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, erro
 	if !p.CanPrompt() {
 		return "", ErrNoInput
 	}
-	_, _ = fmt.Fprint(p.err, label)
+	p.writeErr(label)
 	if f, ok := p.in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 		data, err := term.ReadPassword(int(f.Fd()))
-		_, _ = fmt.Fprintln(p.err)
+		p.writeErr("\n")
 		if err != nil {
 			return "", err
 		}
 		return string(data), nil
 	}
 	return p.readLine(ctx)
+}
+
+// writeErr writes s to err under mu — held only for the write itself, never
+// across a blocking read, so a concurrent Notice (e.g. from a background
+// callback handler) is never blocked behind a pending prompt.
+func (p *Prompter) writeErr(s string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, _ = fmt.Fprint(p.err, s)
 }
 
 // ReadLine reads a single line from In, honoring ctx, with NO TTY/NoInput gating.
