@@ -57,9 +57,6 @@ type LocalProvider struct {
 // upstream shape: rancher/rancher pkg/apis/ext.cattle.io/v1 (see also
 // rancher/cli PR #632).
 type extToken struct {
-	Metadata struct {
-		Name string `json:"name"`
-	} `json:"metadata"`
 	Status struct {
 		BearerToken string `json:"bearerToken"`
 		ExpiresAt   string `json:"expiresAt"`
@@ -90,6 +87,9 @@ func parseLoginResponse(body []byte) (Token, error) {
 	var tok Token
 	if err := json.Unmarshal(body, &tok); err != nil {
 		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
+	}
+	if tok.Token == "" && hdr.APIVersion != "" {
+		return Token{}, fmt.Errorf("unsupported token API version %q (kind %q) in login response", hdr.APIVersion, hdr.Kind)
 	}
 	return tok, nil
 }

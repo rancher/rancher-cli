@@ -517,7 +517,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 		}
 	}
 
-	return supportedProviders, err
+	return supportedProviders, nil
 }
 
 func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p runtime.Prompter) (typedProvider, error) {

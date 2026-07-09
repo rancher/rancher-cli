@@ -150,11 +150,11 @@ func oauthAuthCodeAuth(
 			return nil, result.err
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), oauthCodeExchangeTimeout)
+		exchangeCtx, cancel := context.WithTimeout(context.Background(), oauthCodeExchangeTimeout)
 		defer cancel()
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
+		exchangeCtx = context.WithValue(exchangeCtx, oauth2.HTTPClient, client)
 
-		oauthToken, err := oauthConfig.Exchange(ctx, result.code, oauth2.VerifierOption(verifier))
+		oauthToken, err := oauthConfig.Exchange(exchangeCtx, result.code, oauth2.VerifierOption(verifier))
 		if err != nil {
 			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", err)
 		}

@@ -112,6 +112,18 @@ func TestParseLoginResponse(t *testing.T) {
 		assert.Equal(t, "2026-08-01T12:00:00Z", tok.ExpiresAt)
 	})
 
+	t.Run("unrecognized apiVersion with empty token is a descriptive error", func(t *testing.T) {
+		body := []byte(`{
+			"apiVersion": "ext.cattle.io/v2",
+			"kind": "Token",
+			"status": {}
+		}`)
+		_, err := parseLoginResponse(body)
+		require.Error(t, err, "an unrecognized versioned response must not silently look like an empty-token auth failure")
+		assert.Contains(t, err.Error(), "ext.cattle.io/v2")
+		assert.Contains(t, err.Error(), "Token")
+	})
+
 	t.Run("stray apiVersion with non-Token kind parses as v3", func(t *testing.T) {
 		body := []byte(`{
 			"apiVersion": "management.cattle.io/v3",
