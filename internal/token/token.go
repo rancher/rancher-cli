@@ -628,6 +628,12 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 	cluster = in.String("cluster")
 	caIn := in.String("cacert")
 	explicitServer := server != ""
+	// Normalize the flag value's scheme here, once: it must happen before
+	// caForServer below, and a config-sourced server (from eff.URL) is always
+	// already scheme-qualified (login rejects a schemeless --server), so
+	// there is no second site left needing this. Guarded on explicitServer —
+	// an empty server must stay "" for the fallback-to-config check below,
+	// not become the bogus non-empty "https://".
 	if explicitServer {
 		if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
 			server = "https://" + server
@@ -661,9 +667,6 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 	if server == "" {
 		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
 			WithHint("pass --server or set a current context")
-	}
-	if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
-		server = "https://" + server
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
