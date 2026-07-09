@@ -6,3 +6,12 @@ jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
 jsonquery schema.json 'data.errorCodes.#' 11
+
+# CW-2: per-command filter
+exec rancher schema get pod -o json
+cp stdout one.json
+jsonquery one.json 'data.commands.#' 1
+jsonquery one.json data.commands.0.name 'get pod'
+
+! exec rancher schema get nonsense -o json
+jsonquery stderr data.error.code VALIDATION

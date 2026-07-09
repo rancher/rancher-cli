@@ -4473,15 +4473,22 @@
       "usage": "Patch a user with an RFC 6902 JSON patch"
     },
     {
+      "args": [
+        {
+          "name": "command",
+          "type": "string"
+        }
+      ],
       "auth": false,
       "commandType": "readOnly",
       "examples": [
-        "rancher schema -o json"
+        "rancher schema -o json",
+        "rancher schema get pod -o json"
       ],
       "name": "schema",
       "network": false,
       "toolset": "core",
-      "usage": "Print the machine-readable capability manifest"
+      "usage": "Print the machine-readable capability manifest, optionally filtered to one command"
     },
     {
       "args": [

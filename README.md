@@ -122,7 +122,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
   `apiVersion`, the error-code enum, the global flags, and every command with
   its args, flags, `commandType`, and (for server ops) `tier`/`stability`,
-  as one document — filter client-side for the command you need.
+  as one document. `rancher schema <command>` (e.g. `rancher schema get pod`)
+  filters the manifest to that command.
 
 ## Safety model (exercised by `create project`; more in later waves)
 

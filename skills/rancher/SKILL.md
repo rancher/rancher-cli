@@ -33,10 +33,10 @@ If it fails with `AUTH` or `CONTEXT_NOT_SET`, establish a session:
 
 ```
 rancher schema -o json              # every command: args, flags, aliases, destructive markers, tier/stability, error-code enum
+rancher schema get pod -o json      # one command's contract
 ```
 
-One JSON document for the whole surface — there is no per-command filter form,
-so extract the command you need client-side rather than reading it whole.
+One JSON document for the whole surface, or extract client-side for bulk work.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Kind names have kubectl-style aliases (e.g. `get pods`,
