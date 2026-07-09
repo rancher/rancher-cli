@@ -335,3 +335,29 @@ func TestQuietErrorStillRendersJSON(t *testing.T) {
 	data := env["data"].(map[string]any)
 	assert.NotEmpty(t, data["error"], "error envelope must contain error details")
 }
+
+func TestRenderErrAlwaysJSON(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"", "json", "yaml", "name", "table", "{{.error.code}}"} {
+		t.Run("format="+format, func(t *testing.T) {
+			var errBuf bytes.Buffer
+			ce := clierr.New(clierr.CodeNotFound, "nope").WithHint("look elsewhere")
+			_ = renderErr(IO{Err: &errBuf, Format: format}, ce)
+
+			var env struct {
+				Kind string `json:"kind"`
+				Data struct {
+					Error struct {
+						Code string `json:"code"`
+						Hint string `json:"hint"`
+					} `json:"error"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env),
+				"stderr must be the JSON envelope regardless of -o (CW-1)")
+			assert.Equal(t, "Error", env.Kind)
+			assert.Equal(t, clierr.CodeNotFound, env.Data.Error.Code)
+			assert.Equal(t, "look elsewhere", env.Data.Error.Hint)
+		})
+	}
+}

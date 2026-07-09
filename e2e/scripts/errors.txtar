@@ -17,3 +17,10 @@ jsonquery stderr data.error.code NOT_FOUND
 
 # unknown command: urfave's own error path, not our envelope
 ! exec rancher bogus-command-xyz
+
+# CW-1: the stderr error envelope is JSON even under -o yaml / -o table
+! exec rancher get project definitely-absent --cluster testcluster -o yaml
+jsonquery stderr data.error.code NOT_FOUND
+
+! exec rancher get project definitely-absent --cluster testcluster -o table
+jsonquery stderr data.error.code NOT_FOUND

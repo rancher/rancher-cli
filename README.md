@@ -108,9 +108,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 
 - **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
   `name` (`.metadata.name`/ids only) · any other value is a Go template over `data`.
-- **Errors** are structured, on stderr, with the error object under `data`
-  (JSON envelope guaranteed for the default, `json`, and `name` formats;
-  `-o yaml` renders it as YAML, a template format renders the template):
+- **Errors** are structured, on stderr, always the JSON envelope regardless of
+  `-o`, with the error object under `data`:
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",

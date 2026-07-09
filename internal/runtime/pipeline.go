@@ -222,12 +222,11 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	return nil
 }
 
+// renderErr writes the structured error envelope to stderr. Errors are ALWAYS
+// rendered as JSON regardless of -o: the output format governs stdout data
+// only, so scripts and agents never lose the machine-readable code/hint (CW-1).
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
-	errFmt := streams.Format
-	if errFmt == "name" || errFmt == "" {
-		errFmt = "json"
-	}
-	_ = output.Render(streams.Err, errFmt, output.ErrorEnvelope(ce))
+	_ = output.Render(streams.Err, "json", output.ErrorEnvelope(ce))
 	return ce
 }
 

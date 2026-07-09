@@ -84,10 +84,8 @@ Errors land on stderr as an envelope with the error object under `data`:
   "data": { "error": { "code": "NOT_FOUND", "message": "...", "hint": "...", "retryable": false } } }
 ```
 
-Read `data.error.code` / `data.error.hint`. The JSON envelope is guaranteed for
-the default, `-o json`, and `-o name` formats; `-o yaml` renders it as YAML and
-a Go-template format renders the template (possibly empty) — so when you need
-machine-readable errors, invoke with `-o json`.
+Read `data.error.code` / `data.error.hint`. The JSON envelope appears on
+stderr regardless of the `-o` format.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
