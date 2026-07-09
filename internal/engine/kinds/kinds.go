@@ -121,7 +121,7 @@ var table = []Kind{
 	{
 		Key: "secret", Name: "secret", Aliases: []string{"secrets"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"},
-		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true,
+		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 

@@ -69,6 +69,8 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   error's `hint` names the exact flags to add. Relay the dry-run Effect (action,
   diff, tier) to the user before applying anything non-trivial.
 - Patch previews include a field-level diff (`data.diff`) — show it.
+- `secret` diffs are redacted by design: `data`/`stringData` entries show the
+  changed path but `from`/`to` are `<redacted>`, never the raw value.
 - `--allow-deprecated` is required to write through a deprecated-tier API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too.

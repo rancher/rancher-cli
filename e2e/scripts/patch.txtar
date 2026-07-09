@@ -20,6 +20,29 @@ jsonquery stdout data.data.key new
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH -f cm.yaml
 jsonquery stderr data.error.code VALIDATION
 
+env SECRET_PATCH='[{"op":"replace","path":"/data/password","value":"bmV3"}]'
+
+exec rancher create resource -f secret.yaml --cluster testcluster --apply --yes
+
+# secret diffs are redacted: path stays, raw values never appear
+exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --dry-run -o json
+cp stdout secret-eff.json
+jsonquery secret-eff.json data.diff.0.path /data/password
+jsonquery secret-eff.json data.diff.0.from '<redacted>'
+jsonquery secret-eff.json data.diff.0.to '<redacted>'
+! stdout b2xk
+! stdout bmV3
+
+# secret is now a Sensitive kind: patch --apply alone is refused
+! exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --yes'
+
+exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply --yes -o json
+
+exec rancher get secret patch-secret --cluster testcluster --namespace default -o json
+jsonquery stdout data.data.password bmV3
+
 -- cm.yaml --
 apiVersion: v1
 kind: ConfigMap
@@ -28,3 +51,11 @@ metadata:
   namespace: default
 data:
   key: old
+-- secret.yaml --
+apiVersion: v1
+kind: Secret
+metadata:
+  name: patch-secret
+  namespace: default
+data:
+  password: b2xk

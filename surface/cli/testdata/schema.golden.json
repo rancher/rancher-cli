@@ -4170,7 +4170,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
-      "destructive": "false",
+      "destructive": "true",
       "flags": [
         {
           "name": "cluster",

@@ -119,6 +119,33 @@ func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	assert.True(t, eff.Destructive, "patching a sensitive kind must be destructive")
 }
 
+func TestPatchSecretDiffIsRedacted(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db-creds","namespace":"default","resourceVersion":"5"},"data":{"password":"b2xk"}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "secret"), fac, nil)
+
+	eff, _, err := planPatch(t, cmd, input{args: []string{"db-creds"}, s: map[string]string{
+		"cluster": "prod", "namespace": "default",
+		"patch": `[{"op":"replace","path":"/data/password","value":"bmV3"}]`,
+	}})
+	require.NoError(t, err)
+	assert.True(t, eff.Destructive, "patching a secret must be destructive")
+
+	var found bool
+	for _, d := range eff.Diff {
+		if d.Path == "/data/password" {
+			found = true
+			assert.Equal(t, "<redacted>", d.From)
+			assert.Equal(t, "<redacted>", d.To)
+		}
+		assert.NotEqual(t, "b2xk", d.From, "raw secret value must never reach the Effect")
+		assert.NotEqual(t, "bmV3", d.To, "raw secret value must never reach the Effect")
+	}
+	assert.True(t, found, "diff must contain the password path, got %+v", eff.Diff)
+}
+
 func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c1","resourceVersion":"1"},"spec":{"a":"x"}}`)

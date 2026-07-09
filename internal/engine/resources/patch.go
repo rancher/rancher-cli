@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -106,6 +107,9 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
 	diff := diffObjects("", orig.Object, patched.Object)
+	if c.k.Key == "secret" {
+		redactSecretDiff(diff)
+	}
 
 	patched.SetResourceVersion(rv)
 	// PlanUpdate dry-runs the update for an admission preview and returns the
@@ -187,6 +191,23 @@ func diffObjects(prefix string, a, b any) []safety.DiffEntry {
 		}
 		return nil
 	}
+}
+
+// redactSecretDiff blanks From/To for diff entries under /data or
+// /stringData in place — the JSON path stays visible (so a caller can see
+// which keys changed) but the raw secret values never reach the Effect.
+func redactSecretDiff(diff []safety.DiffEntry) {
+	for i, e := range diff {
+		if isSecretDataPath(e.Path) {
+			diff[i].From = "<redacted>"
+			diff[i].To = "<redacted>"
+		}
+	}
+}
+
+func isSecretDataPath(path string) bool {
+	return path == "/data" || strings.HasPrefix(path, "/data/") ||
+		path == "/stringData" || strings.HasPrefix(path, "/stringData/")
 }
 
 // unionKeys returns the sorted union of two maps' keys, for deterministic diffs.
