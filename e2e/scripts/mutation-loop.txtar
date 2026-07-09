@@ -1,0 +1,32 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# dry-run renders the Effect and stops
+exec rancher create project e2e-loop --cluster testcluster --dry-run -o json
+cp stdout eff.json
+jsonquery eff.json data.action create
+jsonquery eff.json data.cluster c-test
+jsonquery eff.json data.tier public
+
+# gate: no --apply → confirmation required
+! exec rancher create project e2e-loop --cluster testcluster -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --apply'
+
+# apply
+exec rancher create project e2e-loop --cluster testcluster --apply -o json
+jsonquery stdout data.metadata.name e2e-loop
+
+# visible via get
+exec rancher get project e2e-loop --cluster testcluster -o json
+
+# delete: destructive → --apply alone refused
+! exec rancher delete project e2e-loop --cluster testcluster --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --yes'
+
+exec rancher delete project e2e-loop --cluster testcluster --apply --yes
+
+# gone
+! exec rancher get project e2e-loop --cluster testcluster -o json
+jsonquery stderr data.error.code NOT_FOUND

@@ -1,0 +1,26 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create resource -f cm.yaml --cluster testcluster --apply
+
+exec rancher get configmaps --cluster testcluster --namespace default
+stdout basics-cm
+
+exec rancher get configmaps --cluster testcluster --namespace default -o name
+stdout basics-cm
+
+exec rancher get configmap basics-cm --cluster testcluster --namespace default -o yaml
+cp stdout cm.out.yaml
+jsonquery -yaml cm.out.yaml data.metadata.name basics-cm
+
+exec rancher get cm basics-cm --cluster testcluster --namespace default -o json
+jsonquery stdout data.metadata.name basics-cm
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: basics-cm
+  namespace: default
+data:
+  foo: bar

@@ -1,0 +1,18 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# --for without --wait
+! exec rancher get pod whatever --for state=x
+jsonquery stderr data.error.code VALIDATION
+
+# --wait on a list (no name)
+! exec rancher get statefulset --wait --cluster testcluster --namespace default
+jsonquery stderr data.error.code VALIDATION
+
+# bare --wait on a kind with no default wait condition
+! exec rancher get statefulset whatever --wait --cluster testcluster --namespace default
+jsonquery stderr data.error.code VALIDATION
+
+# --for grammar is rejected (not JSONPath, not a bare word)
+! exec rancher get pod whatever --wait --for garbage --cluster testcluster --namespace default
+jsonquery stderr data.error.code VALIDATION

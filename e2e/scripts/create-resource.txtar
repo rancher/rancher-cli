@@ -1,0 +1,66 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# -f <file>
+exec rancher create resource -f cm.yaml --cluster testcluster --apply -o json
+jsonquery stdout data.metadata.name from-file
+
+# -f - (stdin)
+stdin cm-stdin.yaml
+exec rancher create resource -f - --cluster testcluster --apply -o json
+jsonquery stdout data.metadata.name from-stdin
+
+# unknown kind is rejected offline, before any server object exists
+! exec rancher create resource -f bogus.yaml
+jsonquery stderr data.error.code VALIDATION
+stderr 'supported kinds:'
+
+# manifest/flag namespace conflict
+! exec rancher create resource -f cm-conflict.yaml --cluster testcluster --namespace team-a
+jsonquery stderr data.error.code VALIDATION
+
+# a Sensitive kind's create is destructive: --apply alone is refused
+! exec rancher create resource -f grb.yaml --apply
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --yes'
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-file
+  namespace: default
+data:
+  foo: bar
+
+-- cm-stdin.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-stdin
+  namespace: default
+data:
+  foo: bar
+
+-- bogus.yaml --
+apiVersion: bogus.example.io/v1
+kind: Frobnicator
+metadata:
+  name: nope
+
+-- cm-conflict.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: conflict-cm
+  namespace: default
+data:
+  foo: bar
+
+-- grb.yaml --
+apiVersion: management.cattle.io/v3
+kind: GlobalRoleBinding
+metadata:
+  name: e2e-grb
+globalRoleName: e2e-role
+userName: e2e-user

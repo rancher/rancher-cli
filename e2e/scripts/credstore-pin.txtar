@@ -1,0 +1,21 @@
+# The keychain probe below can hang indefinitely under testscript's sandboxed
+# HOME on macOS (no usable keychain session for `security` to talk to).
+# Skipping here keeps coverage on Linux/CI, where an unusable keyring fails
+# fast instead of hanging.
+[darwin] skip 'keychain probe hangs under the testscript HOME sandbox'
+
+# E2E-A-003: clears Setup's RANCHER_CREDENTIAL_STORE=file default so the
+# "auto" pin path actually runs — a script-side exemption since
+# testscript.Env carries no script name for Setup to special-case.
+env RANCHER_CREDENTIAL_STORE=
+
+stdin token.txt
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --name e2e
+stderr 'pinned credential store:'
+exists $RANCHER_CONFIG_DIR/credstore-pin
+
+exec rancher config current-context
+! stderr 'pinned credential store:'
+
+-- token.txt --
+e2e:secret

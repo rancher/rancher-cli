@@ -1,0 +1,30 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env PATCH='[{"op":"replace","path":"/data/key","value":"new"}]'
+
+exec rancher create resource -f cm.yaml --cluster testcluster --apply
+
+# dry-run Effect carries the per-field diff
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH --dry-run -o json
+cp stdout eff.json
+jsonquery eff.json data.diff.0.path /data/key
+jsonquery eff.json data.diff.0.from old
+jsonquery eff.json data.diff.0.to new
+
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH --apply -o json
+
+exec rancher get configmap patch-cm --cluster testcluster --namespace default -o json
+jsonquery stdout data.data.key new
+
+# exactly one of --patch/-f
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH -f cm.yaml
+jsonquery stderr data.error.code VALIDATION
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patch-cm
+  namespace: default
+data:
+  key: old

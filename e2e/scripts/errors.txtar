@@ -1,0 +1,19 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# VALIDATION: missing required arg
+! exec rancher create project -o json
+jsonquery stderr data.error.code VALIDATION
+
+# AUTH: wrong token
+env RANCHER_TOKEN=bad-token
+! exec rancher get project nope --cluster testcluster -o json
+jsonquery stderr data.error.code AUTH
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# NOT_FOUND: absent resource
+! exec rancher get project does-not-exist --cluster testcluster -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# unknown command: urfave's own error path, not our envelope
+! exec rancher bogus-command-xyz

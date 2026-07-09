@@ -1,0 +1,28 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# no --namespace on create → the kind's default (fleet-default)
+exec rancher create resource -f gitrepo-default.yaml --apply
+exec rancher get gitrepo routed-default -o json
+jsonquery stdout data.metadata.namespace fleet-default
+
+# explicit --namespace override on both create and get
+exec rancher create resource -f gitrepo-team-a.yaml --namespace team-a --apply
+exec rancher get gitrepo routed-team-a --namespace team-a -o json
+jsonquery stdout data.metadata.namespace team-a
+
+-- gitrepo-default.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: routed-default
+spec:
+  repo: https://example.com/default.git
+
+-- gitrepo-team-a.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: routed-team-a
+spec:
+  repo: https://example.com/team-a.git
