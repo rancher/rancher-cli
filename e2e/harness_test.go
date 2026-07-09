@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
+	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -54,17 +55,31 @@ func TestMain(m *testing.M) {
 		panic("creating temp dir: " + err.Error())
 	}
 	binPath = filepath.Join(tmp, "rancher")
-	// cwd during `go test` is this package directory (e2e/); the module root
-	// with the main package is one level up.
-	if out, err := exec.Command("go", "build", "-o", binPath, "..").CombinedOutput(); err != nil {
-		panic("building rancher: " + string(out))
-	}
 
+	// Building the binary and starting envtest have no data dependency on
+	// each other — run them concurrently so `make e2e` pays max(build,
+	// envtest-start) instead of their sum.
 	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
-	cfg, err := env.Start()
-	if err != nil {
-		panic("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run " +
-			"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use -p path` and export it): " + err.Error())
+	var cfg *rest.Config
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		// cwd during `go test` is this package directory (e2e/); the module
+		// root with the main package is one level up.
+		if out, err := exec.Command("go", "build", "-o", binPath, "..").CombinedOutput(); err != nil {
+			return fmt.Errorf("building rancher: %s", out)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		if cfg, err = env.Start(); err != nil {
+			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
+				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use -p path` and export it): %w", err)
+		}
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		panic(err.Error())
 	}
 
 	transport, err := rest.TransportFor(cfg)
@@ -202,6 +217,12 @@ func handleStatusLever(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	group, version, resource, ns, name := parts[1], parts[2], parts[3], parts[4], parts[5]
+	// "core" is a sentinel for the empty API group (a bare group segment can't
+	// round-trip through the URL path unambiguously): flipstatus local
+	// core/v1/pods ... targets the core/v1 pods resource.
+	if group == "core" {
+		group = ""
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

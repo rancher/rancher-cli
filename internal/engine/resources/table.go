@@ -2,6 +2,7 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,8 +29,8 @@ func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) tabl
 // this fixes -o yaml too; no separate MarshalYAML is needed.
 func (t table) MarshalJSON() ([]byte, error) {
 	if t.single {
-		if len(t.items) == 0 {
-			return []byte("null"), nil
+		if len(t.items) != 1 {
+			return nil, fmt.Errorf("table: a single result must have exactly 1 item, got %d", len(t.items))
 		}
 		return json.Marshal(t.items[0].Object)
 	}
