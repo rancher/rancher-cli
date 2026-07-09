@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Tier-A end-to-end gate: testscript scenarios against an envtest-backed fake
+# Rancher proxy, plus the provider envtest contract tests. Both suites need
+# kube-apiserver/etcd binaries; setup-envtest downloads them once and caches.
+ENVTEST_K8S_VERSION="1.34.0"
+
+echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
+KUBEBUILDER_ASSETS="$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use "${ENVTEST_K8S_VERSION}" -p path)"
+export KUBEBUILDER_ASSETS
+echo "==> assets: ${KUBEBUILDER_ASSETS}"
+
+echo "==> provider envtest suite"
+go test -tags envtest -count=1 ./internal/client/provider/
+
+echo "==> e2e scenario suite"
+go test -tags e2e -count=1 ./e2e/...
