@@ -729,6 +729,40 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	require.NotNil(t, tok)
 }
 
+// DR-010 repro: samlAuth's poll select had no ctx.Done() case, unlike the
+// OAuth authcode flow's equivalent select — SIGTERM/caller cancellation was
+// only honored on the next poll tick instead of promptly. Shrinking the poll
+// interval and cancelling well before the first tick proves the fix: without
+// the ctx.Done() case, samlAuth would not return until that first tick fired.
+func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
+	origTimeout, origPoll := samlAuthTimeout, samlPollInterval
+	samlAuthTimeout = time.Minute
+	samlPollInterval = 500 * time.Millisecond
+	defer func() { samlAuthTimeout, samlPollInterval = origTimeout, origPoll }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // token never ready — keeps polling
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	input := &loginInput{server: srv.URL}
+
+	go func() {
+		time.Sleep(50 * time.Millisecond) // well before the first 500ms poll tick
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := samlAuth(ctx, http.DefaultClient, input, ui.Discard())
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+	assert.Less(t, elapsed, 300*time.Millisecond,
+		"must abort promptly on ctx cancellation, not wait for the next poll tick (500ms away)")
+}
+
 // blockingReader never returns from Read, so readLine's scan goroutine cannot
 // win the select against a cancelled context — making the ctrl-C test deterministic.
 type blockingReader struct{}

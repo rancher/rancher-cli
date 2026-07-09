@@ -348,6 +348,14 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	return parseLoginResponse(respBody)
 }
 
+// samlAuthTimeout and samlPollInterval are package vars so tests can shrink
+// the poll interval to exercise the ctx.Done() case deterministically without
+// waiting out a real 10s tick.
+var (
+	samlAuthTimeout  = 15 * time.Minute
+	samlPollInterval = 10 * time.Second
+)
+
 func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
 	token := Token{}
 
@@ -408,9 +416,9 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	signal.Notify(interrupt, os.Interrupt)
 	defer signal.Stop(interrupt)
 
-	timeout := time.NewTimer(15 * time.Minute)
+	timeout := time.NewTimer(samlAuthTimeout)
 	defer timeout.Stop()
-	poll := time.NewTicker(10 * time.Second)
+	poll := time.NewTicker(samlPollInterval)
 	defer poll.Stop()
 
 	for {
@@ -463,6 +471,10 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 			return token, clierr.New(clierr.CodeAuth, "timed out waiting for the auth token").WithRetryable(true)
 		case <-interrupt:
 			return token, clierr.New(clierr.CodeGeneric, "interrupted waiting for the auth token")
+		case <-ctx.Done():
+			// Abort promptly on caller cancellation (SIGTERM, test timeout) instead
+			// of waiting for the next poll tick, mirroring oauthAuthCodeAuth's wait.
+			return token, ctx.Err()
 		}
 	}
 }
