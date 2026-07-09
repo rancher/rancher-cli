@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,28 +84,24 @@ func conditionObj(t, status string) *unstructured.Unstructured {
 
 func TestParseWaitCondition(t *testing.T) {
 	t.Parallel()
-	mgmt := kinds.Kind{Scope: kinds.Management}
-	down := kinds.Kind{Scope: kinds.Downstream}
 	tests := []struct {
 		expr    string
-		k       kinds.Kind
 		want    waitCond
 		wantErr bool
 	}{
-		{"", mgmt, waitCond{kind: "state", name: "active"}, false},
-		{"", down, waitCond{kind: "condition", name: "Ready", status: "True"}, false},
-		{"state=migrating", mgmt, waitCond{kind: "state", name: "migrating"}, false},
-		{"condition=Ready", down, waitCond{kind: "condition", name: "Ready", status: "True"}, false},
-		{"condition=Synced=False", down, waitCond{kind: "condition", name: "Synced", status: "False"}, false},
-		{"condition=Ready=", down, waitCond{}, true},
-		{"jsonpath={.foo}", down, waitCond{}, true},
-		{"garbage", down, waitCond{}, true},
+		{"state=migrating", waitCond{kind: "state", name: "migrating"}, false},
+		{"condition=Ready", waitCond{kind: "condition", name: "Ready", status: "True"}, false},
+		{"condition=Synced=False", waitCond{kind: "condition", name: "Synced", status: "False"}, false},
+		{"condition=Ready=", waitCond{}, true},
+		{"jsonpath={.foo}", waitCond{}, true},
+		{"garbage", waitCond{}, true},
+		{"", waitCond{}, true}, // empty is the caller's job to default via kinds.Kind.WaitDefault
 	}
 	for _, tt := range tests {
 		tt := tt
-		t.Run(tt.expr+"/"+string(tt.k.Scope), func(t *testing.T) {
+		t.Run(tt.expr, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseWaitCondition(tt.expr, tt.k)
+			got, err := parseWaitCondition(tt.expr)
 			if tt.wantErr {
 				var ce *clierr.Error
 				require.ErrorAs(t, err, &ce)
@@ -260,18 +255,52 @@ func TestGetForWithoutWait(t *testing.T) {
 func TestGetWaitRejectsNonWaitableKindWithoutFor(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "secret")
-	require.False(t, k.Waitable, "secret must stay non-waitable for this test to mean anything")
+	require.Empty(t, k.WaitDefault, "secret must stay defaultless for this test to mean anything")
 	cmd := NewGet(k, &recFactory{}).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "ns"}, b: map[string]bool{"wait": true}}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "no status.state or status.conditions")
+	assert.Contains(t, ce.Error(), "no default wait condition")
 }
 
 func TestGetWaitOnNonWaitableKindHonorsExplicitFor(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "secret")
+	client := &memClient{items: []unstructured.Unstructured{*stateObj("active", "")}}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns", "for": "state=active",
+	}, b: map[string]bool{"wait": true}}, nil)
+	require.NoError(t, err)
+}
+
+func TestGetWaitJobBareUsesConditionComplete(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "job")
+	require.Equal(t, "condition=Complete", k.WaitDefault)
+	client := &memClient{items: []unstructured.Unstructured{*conditionObj("Complete", "True")}}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns",
+	}, b: map[string]bool{"wait": true}}, nil)
+	require.NoError(t, err)
+}
+
+func TestGetWaitStatefulSetBareRejectsWithoutFor(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "statefulset")
+	require.Empty(t, k.WaitDefault, "statefulset has no established condition/state convention")
+	cmd := NewGet(k, &recFactory{}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "ns"}, b: map[string]bool{"wait": true}}, nil)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestGetWaitStatefulSetExplicitForProceeds(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "statefulset")
 	client := &memClient{items: []unstructured.Unstructured{*stateObj("active", "")}}
 	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
 	_, err := cmd.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{

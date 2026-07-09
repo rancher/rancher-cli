@@ -103,9 +103,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name").
 			WithHint("pass a name argument")
 	}
-	if wait && !c.k.Waitable && forExpr == "" {
+	if wait && c.k.WaitDefault == "" && forExpr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s has no status.state or status.conditions to wait on", c.k.Name)).
+			fmt.Sprintf("%s has no default wait condition", c.k.Name)).
 			WithHint("pass --for state=<value> or --for condition=<Type>[=<Status>] to specify a custom signal")
 	}
 
@@ -122,7 +122,11 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		name := in.Args()[0]
 		var one *unstructured.Unstructured
 		if wait {
-			cond, cerr := parseWaitCondition(forExpr, c.k)
+			expr := forExpr
+			if expr == "" {
+				expr = c.k.WaitDefault
+			}
+			cond, cerr := parseWaitCondition(expr)
 			if cerr != nil {
 				return runtime.Result{}, cerr
 			}

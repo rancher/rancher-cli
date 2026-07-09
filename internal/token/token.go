@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -617,11 +618,21 @@ func cacheServerHost(server string) string {
 }
 
 // resolveConn fills server/CA/cluster from flags, falling back to the CLI config
-// (which already merges env over the file). Flags win over config.
+// (which already merges env over the file). Flags win over config. An explicit
+// --server with no --cacert never inherits the CURRENT context's CA — that CA
+// belongs to whatever server the context happens to point at, which may differ
+// from the server just named; instead it borrows the CA of the configured
+// server entry whose URL actually matches (see caForServer).
 func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, err error) {
 	server = in.String("server")
 	cluster = in.String("cluster")
 	caIn := in.String("cacert")
+	explicitServer := server != ""
+	if explicitServer {
+		if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
+			server = "https://" + server
+		}
+	}
 
 	if server == "" || cluster == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
@@ -639,7 +650,11 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 			cluster = eff.Cluster
 		}
 		if caIn == "" {
-			caIn = eff.CA
+			if explicitServer {
+				caIn = caForServer(cfg, server)
+			} else {
+				caIn = eff.CA
+			}
 		}
 	}
 
@@ -655,6 +670,20 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}
 	return server, caPEM, cluster, nil
+}
+
+// caForServer returns the CA of the configured server entry whose URL
+// matches server (compared by scheme+host via kube.BaseURL), or "" if none
+// matches — so an explicit --server with no --cacert never silently borrows
+// a different server's trust root.
+func caForServer(cfg *config.Config, server string) string {
+	target := kube.BaseURL(server)
+	for _, s := range cfg.Servers {
+		if kube.BaseURL(s.URL) == target {
+			return s.CA
+		}
+	}
+	return ""
 }
 
 func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, error) {

@@ -110,6 +110,7 @@ graph TD
     token --> runtime
     token --> config
     token --> httpx
+    token --> kube
     token --> ui
     token --> clierr
 

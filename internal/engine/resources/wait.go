@@ -9,7 +9,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -24,18 +23,12 @@ type waitCond struct {
 	status string // conditions only; default "True"
 }
 
-// parseWaitCondition parses --for into a waitCond. An empty expr applies the
-// scope default: state=active for Management kinds (legacy semantics),
-// condition=Ready for Downstream kinds (kubectl semantics). JSONPath is
-// deliberately unsupported — that grammar belongs to `kubectl wait` via
-// `rancher kubeconfig`.
-func parseWaitCondition(forExpr string, k kinds.Kind) (waitCond, error) {
-	if forExpr == "" {
-		if k.Scope == kinds.Downstream {
-			return waitCond{kind: "condition", name: "Ready", status: "True"}, nil
-		}
-		return waitCond{kind: "state", name: "active"}, nil
-	}
+// parseWaitCondition parses a --for expression (either the user's explicit
+// flag or a kind's WaitDefault) into a waitCond. JSONPath is deliberately
+// unsupported — that grammar belongs to `kubectl wait` via `rancher
+// kubeconfig`. Callers resolve the empty-expression default (if any) via
+// kinds.Kind.WaitDefault before calling; an empty expr here is invalid.
+func parseWaitCondition(forExpr string) (waitCond, error) {
 	if rest, ok := strings.CutPrefix(forExpr, "state="); ok && rest != "" {
 		return waitCond{kind: "state", name: rest}, nil
 	}

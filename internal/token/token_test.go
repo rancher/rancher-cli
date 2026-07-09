@@ -276,11 +276,15 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	caPEM := "-----BEGIN CERTIFICATE-----\nMIICertData\n-----END CERTIFICATE-----\n"
+	acmeCA := "-----BEGIN CERTIFICATE-----\nMIICertDataAcme\n-----END CERTIFICATE-----\n"
+	otherCA := "-----BEGIN CERTIFICATE-----\nMIICertDataOther\n-----END CERTIFICATE-----\n"
 	cfg := &config.Config{
 		CurrentContext: "acme",
 		Contexts:       map[string]config.Context{"acme": {Server: "acme", Cluster: "local"}},
-		Servers:        map[string]config.Server{"acme": {URL: "https://config.example", CA: caPEM}},
+		Servers: map[string]config.Server{
+			"acme":  {URL: "https://config.example", CA: acmeCA},
+			"other": {URL: "https://other.example", CA: otherCA},
+		},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -292,15 +296,23 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "https://config.example", server)
 		assert.Equal(t, "local", cluster)
-		assert.Equal(t, caPEM, ca, "inline PEM passes through resolveCA")
+		assert.Equal(t, acmeCA, ca, "inline PEM passes through resolveCA")
 	})
 
-	t.Run("flag override while config fills remaining", func(t *testing.T) {
+	t.Run("explicit --server matching another configured entry uses that entry's CA, not the current context's", func(t *testing.T) {
+		server, ca, cluster, err := cmd.resolveConn(tin{s: map[string]string{"server": "https://other.example"}})
+		require.NoError(t, err)
+		assert.Equal(t, "https://other.example", server)
+		assert.Equal(t, "local", cluster, "cluster still from config")
+		assert.Equal(t, otherCA, ca, "CA comes from the entry matching the requested server")
+	})
+
+	t.Run("explicit --server matching no configured entry gets no custom CA", func(t *testing.T) {
 		server, ca, cluster, err := cmd.resolveConn(tin{s: map[string]string{"server": "https://flag.example"}})
 		require.NoError(t, err)
 		assert.Equal(t, "https://flag.example", server)
 		assert.Equal(t, "local", cluster, "cluster still from config")
-		assert.Equal(t, caPEM, ca, "CA still from config")
+		assert.Empty(t, ca, "no configured entry matches — never borrow the current context's CA for a different server")
 	})
 }
 
