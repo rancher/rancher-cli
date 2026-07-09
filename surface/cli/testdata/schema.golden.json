@@ -1879,6 +1879,23 @@
       "usage": "Inspect a pod: owners, metrics, and container logs"
     },
     {
+      "auth": true,
+      "commandType": "local",
+      "examples": [
+        "rancher kubeconfig --cluster prod \u003e prod.yaml"
+      ],
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "kubeconfig",
+      "network": true,
+      "toolset": "core",
+      "usage": "Emit an exec-credential kubeconfig for a cluster"
+    },
+    {
       "aliases": [
         "bundles"
       ],

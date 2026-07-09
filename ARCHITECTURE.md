@@ -22,9 +22,12 @@ the reserved `RancherClient` port (see [Key design decisions](#key-design-decisi
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
 `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `DRY_RUN_NOT_APPLICABLE`, `AMBIGUOUS_SELECTION`,
-`NOT_IMPLEMENTED`, `CONTEXT_NOT_SET`, `GENERIC`) — **except `auth get-token`**, whose
-stdout is a bare `ExecCredential` JSON object for kubectl to parse. That command sets
-`runtime.Result.Raw`, which tells the pipeline to emit `Data` with no envelope.
+`NOT_IMPLEMENTED`, `CONTEXT_NOT_SET`, `GENERIC`) — with two raw exceptions. `auth
+get-token`'s stdout is a bare `ExecCredential` JSON object for kubectl to parse; that
+command sets `runtime.Result.Raw`, which tells the pipeline to emit `Data` with no
+envelope. `kubeconfig`'s stdout is a bare kubeconfig YAML document; that command sets
+`runtime.Result.RawBytes`, which tells the pipeline to write the bytes verbatim with no
+envelope and no encoding.
 
 ## Layer map
 
@@ -38,7 +41,7 @@ what drifted the previous revision of this doc).
 |---|---|
 | `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
 | `surface/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
-| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `config purge-legacy`. |
+| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `config purge-legacy`, `kubeconfig`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
@@ -100,6 +103,7 @@ graph TD
     commands --> runtime
     commands --> config
     commands --> provider
+    commands --> engine
     commands --> clierr
 
     token --> runtime

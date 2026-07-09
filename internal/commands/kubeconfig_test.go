@@ -1,0 +1,107 @@
+package commands
+
+import (
+	"context"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+// stubFactory is a minimal engine.ClusterClientFactory for kubeconfig tests:
+// only ResolveCluster/ContextCluster are exercised (kubeconfig never opens a
+// ClusterClient).
+type stubFactory struct {
+	resolved   map[string]string
+	resolveErr error
+	ctxCluster string
+	ctxErr     error
+}
+
+func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return nil, nil }
+func (f stubFactory) ContextCluster() (string, error)                               { return f.ctxCluster, f.ctxErr }
+func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
+	if f.resolveErr != nil {
+		return "", f.resolveErr
+	}
+	if id, ok := f.resolved[nameOrID]; ok {
+		return id, nil
+	}
+	return nameOrID, nil
+}
+
+var _ engine.ClusterClientFactory = stubFactory{}
+
+// writeTestConfig writes a config.yaml with server "prod" -> https://r.example.com
+// (optionally with a CA) and current context cluster "c-ctx".
+func writeTestConfig(t *testing.T, ca string) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]config.Context{"prod": {Server: "prod", Cluster: "c-ctx"}},
+		Servers:        map[string]config.Server{"prod": {URL: "https://r.example.com", CA: ca}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	return dir
+}
+
+func TestKubeconfigEmitsExecStanza(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n")
+	cmd := NewKubeconfig(dir, stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "webprod"}}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res.RawBytes)
+
+	cfg, err := clientcmd.Load(res.RawBytes) // NEVER string-match the YAML
+	require.NoError(t, err)
+	cluster := cfg.Clusters["prod-c-abc"]
+	require.NotNil(t, cluster)
+	assert.Equal(t, "https://r.example.com/k8s/clusters/c-abc", cluster.Server)
+	assert.NotEmpty(t, cluster.CertificateAuthorityData)
+	user := cfg.AuthInfos["prod-c-abc"]
+	require.NotNil(t, user)
+	require.NotNil(t, user.Exec)
+	assert.Equal(t, "client.authentication.k8s.io/v1beta1", user.Exec.APIVersion)
+	assert.Equal(t, "rancher", user.Exec.Command)
+	assert.Equal(t, []string{"auth", "get-token", "--server", "https://r.example.com", "--cluster", "c-abc", "--name", "prod-c-abc"}, user.Exec.Args)
+	assert.Equal(t, "prod-c-abc", cfg.CurrentContext)
+}
+
+func TestKubeconfigFallsBackToContextCluster(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+	cfg, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Clusters["prod-c-ctx"])
+
+	cmd = NewKubeconfig(dir, stubFactory{})
+	_, err = cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+	cfg, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	cluster := cfg.Clusters["prod-c-ctx"]
+	require.NotNil(t, cluster)
+	assert.Empty(t, cluster.CertificateAuthorityData)
+	assert.False(t, cluster.InsecureSkipTLSVerify)
+}

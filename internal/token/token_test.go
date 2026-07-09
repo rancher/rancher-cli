@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -125,25 +124,6 @@ func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
 	status := got["status"].(map[string]any)
 	_, hasTok := status["token"]
 	assert.False(t, hasTok, "empty token must be omitted, not emitted as empty string")
-}
-
-func TestResolveCA(t *testing.T) {
-	t.Parallel()
-	pem := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
-	got, err := resolveCA(pem)
-	require.NoError(t, err)
-	assert.Equal(t, pem, got, "inline PEM passes through")
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(path, []byte(pem), 0600))
-	got, err = resolveCA(path)
-	require.NoError(t, err)
-	assert.Equal(t, pem, got, "path is read to PEM")
-
-	got, err = resolveCA("")
-	require.NoError(t, err)
-	assert.Empty(t, got)
 }
 
 func TestGetTokenServerRequired(t *testing.T) {

@@ -2,12 +2,33 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestResolveCA(t *testing.T) {
+	t.Parallel()
+	pem := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+	got, err := ResolveCA(pem)
+	require.NoError(t, err)
+	assert.Equal(t, pem, got, "inline PEM passes through")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ca.pem")
+	require.NoError(t, os.WriteFile(path, []byte(pem), 0600))
+	got, err = ResolveCA(path)
+	require.NoError(t, err)
+	assert.Equal(t, pem, got, "path is read to PEM")
+
+	got, err = ResolveCA("")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
 
 // stubStore is a CredStore whose GetToken returns a fixed token/error, for
 // exercising Effective's credential-store error handling.

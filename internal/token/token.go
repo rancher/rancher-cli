@@ -607,22 +607,6 @@ func generateKey() (string, error) {
 	return string(token), nil
 }
 
-// resolveCA turns a --cacert value or config CA (pem-or-path) into a PEM string.
-// An inline PEM (has a BEGIN header) passes through; anything else is a file path.
-func resolveCA(s string) (string, error) {
-	if s == "" {
-		return "", nil
-	}
-	if strings.Contains(s, "-----BEGIN") {
-		return s, nil
-	}
-	data, err := os.ReadFile(s)
-	if err != nil {
-		return "", fmt.Errorf("reading CA file %q: %w", s, err)
-	}
-	return string(data), nil
-}
-
 // cacheServerHost reduces a server URL to its host for the cache key, falling
 // back to the raw string when it does not parse to a host.
 func cacheServerHost(server string) string {
@@ -666,7 +650,7 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 	if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
 		server = "https://" + server
 	}
-	caPEM, err = resolveCA(caIn)
+	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
 		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}

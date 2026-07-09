@@ -27,6 +27,23 @@ func ResolveDir(flagDir string) (string, error) {
 	return filepath.Join(home, ".config", "rancher"), nil
 }
 
+// ResolveCA turns a --cacert value or config CA (pem-or-path) into a PEM
+// string. An inline PEM (has a BEGIN header) passes through; anything else is
+// a file path.
+func ResolveCA(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	if strings.Contains(s, "-----BEGIN") {
+		return s, nil
+	}
+	data, err := os.ReadFile(s)
+	if err != nil {
+		return "", fmt.Errorf("reading CA file %q: %w", s, err)
+	}
+	return string(data), nil
+}
+
 // Effective is the merged connection info (file + env overrides).
 type Effective struct {
 	ServerName string
