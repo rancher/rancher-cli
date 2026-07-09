@@ -272,8 +272,6 @@ type keyringStore struct {
 	pinHint string // non-empty when selected via the auto pin (Task 2 uses it)
 }
 
-func NewKeyringStore(dir string) CredStore { return newPinnedKeyringStore(dir, false) }
-
 // newPinnedKeyringStore builds a keyring-backed store. When pinned is true the
 // store carries a remediation hint appended to every keyring error, so a
 // pinned-but-unusable keychain fails loudly with a way out instead of silently.

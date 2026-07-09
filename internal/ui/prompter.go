@@ -33,8 +33,9 @@ func New(errw io.Writer, in io.Reader, noInput, isTTY bool) *Prompter {
 	return &Prompter{err: errw, in: in, noInput: noInput, isTTY: isTTY}
 }
 
-// Discard is a non-interactive Prompter for tests and non-interactive callers:
-// output is dropped and any prompt returns ErrNoInput.
+// Discard is a Prompter for tests and non-interactive plumbing: prompts fail,
+// notices vanish. Kept deliberately despite no production callers — it is the
+// test suite's standard fixture.
 func Discard() *Prompter {
 	return &Prompter{err: io.Discard, in: strings.NewReader(""), noInput: true}
 }

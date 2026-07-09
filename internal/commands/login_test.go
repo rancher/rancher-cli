@@ -203,7 +203,9 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	if got := config.ReadPin(dir); got != "keychain" {
 		t.Fatalf("pin after auto login = %q, want keychain", got)
 	}
-	tok, err := config.NewKeyringStore(dir).GetToken("acme")
+	ks, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	tok, err := ks.GetToken("acme")
 	require.NoError(t, err)
 	assert.Equal(t, "id:sec", tok)
 	if _, ferr := config.NewFileStore(dir).GetToken("acme"); !errors.Is(ferr, config.ErrNoToken) {

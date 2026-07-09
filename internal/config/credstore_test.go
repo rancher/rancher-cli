@@ -230,7 +230,7 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	// No keyring.MockInit needed: the exec-cred cache methods forward to the file
 	// store and never touch the OS keychain backend (only GetToken/SetToken do).
 	dir := t.TempDir()
-	s := NewKeyringStore(dir)
+	s := newPinnedKeyringStore(dir, false)
 	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour), "", "", ""))
 
 	list, err := s.ListCachedCreds()
@@ -250,7 +250,7 @@ func TestKeyringGetTokenReadsThroughToFile(t *testing.T) {
 	if err := NewFileStore(dir).SetToken("prod", "id:secret"); err != nil {
 		t.Fatal(err)
 	}
-	s := NewKeyringStore(dir)
+	s := newPinnedKeyringStore(dir, false)
 	tok, err := s.GetToken("prod")
 	if err != nil || tok != "id:secret" {
 		t.Fatalf("read-through: got %q, %v", tok, err)
@@ -295,7 +295,7 @@ func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
 	dir := t.TempDir()
 	// Token lives only in the file store (e.g. written under an earlier file pin).
 	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
-	s := NewKeyringStore(dir)
+	s := newPinnedKeyringStore(dir, false)
 	require.NoError(t, s.DeleteToken("prod"))
 	_, err := NewFileStore(dir).GetToken("prod")
 	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also drain the file store")
