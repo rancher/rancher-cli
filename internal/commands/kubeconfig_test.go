@@ -59,7 +59,7 @@ func TestKubeconfigEmitsExecStanza(t *testing.T) {
 	t.Parallel()
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, caPEM)
-	cmd := NewKubeconfig(dir, stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "webprod"}}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
@@ -85,7 +85,7 @@ func TestKubeconfigEmitsExecStanza(t *testing.T) {
 func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
@@ -99,18 +99,42 @@ func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 func TestKubeconfigFallsBackToContextCluster(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
 	require.NoError(t, err)
 	require.NotNil(t, cfg.Clusters["prod-c-ctx"])
 
-	cmd = NewKubeconfig(dir, stubFactory{})
+	cmd = NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
 	_, err = cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// DR-007 repro: kubeconfig used to call cfg.CurrentServer() directly, so an
+// env-only session (RANCHER_URL/RANCHER_CACERT, no stored context) failed
+// with CONTEXT_NOT_SET even though every other command works from env alone.
+// It must now resolve via Effective like everything else, and synthesize an
+// entry name from the server host since no stored server name exists.
+func TestKubeconfigEnvOnlySession(t *testing.T) {
+	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+	t.Setenv("RANCHER_URL", "https://env.example.com")
+	t.Setenv("RANCHER_CACERT", caPEM)
+	dir := t.TempDir() // no config.yaml at all — no stored context, no stored server
+
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-env"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+
+	kc, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	cluster := kc.Clusters["env.example.com-c-env"]
+	require.NotNil(t, cluster, "entry name must synthesize from the server host, got %v", kc.Clusters)
+	assert.Equal(t, "https://env.example.com/k8s/clusters/c-env", cluster.Server)
+	assert.Equal(t, []byte(caPEM), cluster.CertificateAuthorityData, "RANCHER_CACERT must be baked in for an env-only session")
+	assert.Equal(t, "env.example.com-c-env", kc.CurrentContext)
 }
 
 func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
@@ -126,7 +150,7 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https",
@@ -154,7 +178,7 @@ func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https")
@@ -165,7 +189,7 @@ func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 	dir := writeTestConfig(t, "")
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, p)
 	require.NoError(t, err)
 	assert.Empty(t, errBuf.String())
@@ -174,7 +198,7 @@ func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewKubeconfig(dir, stubFactory{ctxCluster: "c-ctx"})
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)

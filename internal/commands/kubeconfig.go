@@ -16,14 +16,15 @@ import (
 
 type kubeconfigCmd struct {
 	dir     string
+	store   config.CredStore
 	clients engine.ClusterClientFactory
 }
 
 // NewKubeconfig builds the top-level `kubeconfig` command (local): it emits an
 // exec-credential kubeconfig on stdout, delegating token minting to `auth
 // get-token` rather than embedding a long-lived credential.
-func NewKubeconfig(dir string, clients engine.ClusterClientFactory) runtime.Command {
-	return &kubeconfigCmd{dir: dir, clients: clients}
+func NewKubeconfig(dir string, store config.CredStore, clients engine.ClusterClientFactory) runtime.Command {
+	return &kubeconfigCmd{dir: dir, store: store, clients: clients}
 }
 
 func (kubeconfigCmd) Describe() runtime.Descriptor {
@@ -48,9 +49,16 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	serverName, srv, err := cfg.CurrentServer()
+	// Effective (not CurrentServer) so an env-only session (RANCHER_URL/
+	// RANCHER_TOKEN, no stored context) works exactly like every other
+	// command — kubeconfig used to be the one command that didn't.
+	eff, err := cfg.Effective(c.store)
 	if err != nil {
 		return runtime.Result{}, err
+	}
+	if eff.URL == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet,
+			"no current context and no RANCHER_URL set").WithHint(config.LoginOrEnvHint)
 	}
 
 	id := in.String("cluster")
@@ -68,12 +76,14 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			WithHint("pass --cluster <id|name> or set a context")
 	}
 
-	caPEM, err := config.ResolveCA(srv.CA)
+	// eff.CA already layers RANCHER_CACERT over the stored server's CA (env
+	// wins) — an env-only session gets the CA-by-server rule for free.
+	caPEM, err := config.ResolveCA(eff.CA)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
-	base := kube.BaseURL(srv.URL)
+	base := kube.BaseURL(eff.URL)
 	if !strings.HasPrefix(strings.ToLower(base), "https://") {
 		// client-go silently refuses to wire exec-credential auth for a non-https
 		// server (no error, no Authorization header) — warn so the resulting
@@ -82,6 +92,15 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		// BaseURL's error-fallback path can return a malformed or differently
 		// cased scheme that a literal "http://" prefix check would miss.
 		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth — use https")
+	}
+	// eff.ServerName is empty for an env-only session (no stored context) —
+	// synthesize a stable entry name from the server host instead.
+	serverName := eff.ServerName
+	if serverName == "" {
+		serverName = base
+		if i := strings.Index(base, "://"); i >= 0 {
+			serverName = base[i+3:]
+		}
 	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
 
