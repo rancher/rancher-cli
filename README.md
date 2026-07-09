@@ -192,9 +192,16 @@ disabled implicitly. HTTP(S) proxies are honored from the environment.
     make lint         # golangci-lint
     make validate     # gofmt + go vet + lint + race tests (the commit gate)
     make ci           # build + validate
+    make e2e          # end-to-end suite against a fake, envtest-backed Rancher
 
 A committed `.githooks/pre-commit` runs `make validate` on every commit
 (`git config core.hooksPath .githooks`, set during setup).
+
+`make e2e` runs the end-to-end suite: testscript scenarios in `e2e/scripts/`
+drive the built binary against an envtest-backed proxy shim, plus the
+provider package's envtest contract tests. First run downloads the
+envtest kube-apiserver/etcd binaries (~80MB, cached after that). kubectl on
+PATH enables the kubectl-interop scenario; otherwise it skips.
 
 **Layout**
 
