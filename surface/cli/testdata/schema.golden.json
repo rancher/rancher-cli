@@ -319,6 +319,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete configmap",
@@ -350,6 +362,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -384,6 +408,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete daemonset",
@@ -417,6 +453,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete deployment",
@@ -443,6 +491,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -477,6 +537,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete ingress",
@@ -508,6 +580,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -541,6 +625,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete k3k-cluster",
@@ -568,6 +664,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -602,6 +710,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete persistentvolumeclaim",
@@ -635,6 +755,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete pod",
@@ -662,6 +794,18 @@
         {
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -696,6 +840,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete replicaset",
@@ -727,6 +883,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -761,6 +929,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete service",
@@ -793,6 +973,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -827,6 +1019,18 @@
           "name": "namespace",
           "required": true,
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "delete statefulset",
@@ -851,6 +1055,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -877,6 +1093,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get bundledeployment",
@@ -902,6 +1130,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get capi-cluster",
@@ -923,6 +1163,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get cluster",
       "network": true,
       "stability": "beta",
@@ -945,6 +1199,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -970,6 +1236,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1001,6 +1279,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get configmap",
@@ -1029,6 +1319,18 @@
         },
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1060,6 +1362,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get daemonset",
@@ -1089,6 +1403,18 @@
         },
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1120,6 +1446,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get event",
@@ -1144,6 +1482,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1170,6 +1520,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get gitrepo",
@@ -1191,6 +1553,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get globalrole",
       "network": true,
       "stability": "beta",
@@ -1210,6 +1586,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get globalrolebinding",
       "network": true,
       "stability": "beta",
@@ -1237,6 +1627,18 @@
         },
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1267,6 +1669,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get job",
@@ -1296,6 +1710,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get k3k-cluster",
@@ -1320,6 +1746,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1346,6 +1784,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get machinedeployment",
@@ -1370,6 +1820,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1397,6 +1859,18 @@
         {
           "name": "cluster",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get namespace",
@@ -1421,6 +1895,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1447,6 +1933,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1478,6 +1976,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get persistentvolumeclaim",
@@ -1508,6 +2018,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get pod",
@@ -1532,6 +2054,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1558,6 +2092,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get projectroletemplatebinding",
@@ -1582,6 +2128,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1613,6 +2171,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get replicaset",
@@ -1634,6 +2204,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get roletemplate",
       "network": true,
       "stability": "beta",
@@ -1660,6 +2244,18 @@
         },
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1691,6 +2287,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get service",
@@ -1721,6 +2329,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get serviceaccount",
@@ -1742,6 +2362,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get setting",
       "network": true,
       "stability": "beta",
@@ -1770,6 +2404,18 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         }
       ],
       "name": "get statefulset",
@@ -1791,6 +2437,20 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "name": "get user",
       "network": true,
       "stability": "beta",
@@ -1915,6 +2575,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -1950,6 +2622,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -1991,6 +2675,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2024,6 +2720,18 @@
       "commandType": "mutating",
       "destructive": "false",
       "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
         {
           "name": "patch",
           "type": "string"
@@ -2063,6 +2771,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2099,6 +2819,18 @@
         {
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2146,6 +2878,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2186,6 +2930,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2233,6 +2989,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2274,6 +3042,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2321,6 +3101,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2356,6 +3148,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2397,6 +3201,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2431,6 +3247,18 @@
       "destructive": "true",
       "flags": [
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2464,6 +3292,18 @@
       "commandType": "mutating",
       "destructive": "true",
       "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
         {
           "name": "patch",
           "type": "string"
@@ -2506,6 +3346,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2552,6 +3404,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2595,6 +3459,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2630,6 +3506,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2671,6 +3559,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2706,6 +3606,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2748,6 +3660,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2783,6 +3707,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2822,6 +3758,18 @@
       "flags": [
         {
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2869,6 +3817,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2913,6 +3873,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -2949,6 +3921,18 @@
         {
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -2991,6 +3975,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -3026,6 +4022,18 @@
       "flags": [
         {
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -3073,6 +4081,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -3106,6 +4126,18 @@
       "commandType": "mutating",
       "destructive": "true",
       "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
         {
           "name": "patch",
           "type": "string"
@@ -3147,6 +4179,18 @@
         {
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -3194,6 +4238,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -3238,6 +4294,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -3271,6 +4339,18 @@
       "commandType": "mutating",
       "destructive": "true",
       "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
         {
           "name": "patch",
           "type": "string"
@@ -3316,6 +4396,18 @@
           "type": "string"
         },
         {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "patch",
           "type": "string"
         },
@@ -3349,6 +4441,18 @@
       "commandType": "mutating",
       "destructive": "true",
       "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
         {
           "name": "patch",
           "type": "string"

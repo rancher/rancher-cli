@@ -77,10 +77,11 @@ func (f *recFactory) ResolveCluster(_ context.Context, s string) (string, error)
 type input struct {
 	args []string
 	s    map[string]string
+	b    map[string]bool
 }
 
 func (i input) String(k string) string { return i.s[k] }
-func (i input) Bool(string) bool       { return false }
+func (i input) Bool(k string) bool     { return i.b[k] }
 func (i input) Args() []string         { return i.args }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {

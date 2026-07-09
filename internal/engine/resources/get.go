@@ -4,7 +4,9 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -21,7 +23,12 @@ const (
 	FlagNamespace = "namespace"
 	flagFilename  = "filename"
 	flagPatch     = "patch"
+	flagWait      = "wait"
+	flagFor       = "for"
+	flagTimeout   = "timeout"
 )
+
+const defaultWaitTimeout = 120 * time.Second
 
 type getCmd struct {
 	k       kinds.Kind
@@ -54,27 +61,50 @@ func (c getCmd) Describe() runtime.Descriptor {
 //   - NSWorkspace: --namespace only (client is always management).
 //   - NSPlain: --namespace, plus --cluster when the kind is Downstream.
 //   - NSNone: --cluster only when the kind is Downstream; nothing otherwise.
+//
+// Every kind additionally gains --wait/--for/--timeout (named-get only; see
+// Execute).
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
+	var flags []runtime.ArgSpec
 	switch k.Policy {
 	case kinds.NSCluster:
-		return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
+		flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
 	case kinds.NSWorkspace:
-		return []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
+		flags = []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}, {Name: FlagNamespace, Type: "string"}}
+			flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}, {Name: FlagNamespace, Type: "string"}}
+		} else {
+			flags = []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
 		}
-		return []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			return []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
+			flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
 		}
-		return nil
 	}
+	return append(flags,
+		runtime.ArgSpec{Name: flagWait, Type: "bool"},
+		runtime.ArgSpec{Name: flagFor, Type: "string"},
+		runtime.ArgSpec{Name: flagTimeout, Type: "string"},
+	)
 }
 
 func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, ns, _, err := Route(ctx, c.clients, c.k, in, hasName(in))
+	wait := in.Bool(flagWait)
+	forExpr := in.String(flagFor)
+	timeoutStr := in.String(flagTimeout)
+	named := hasName(in)
+
+	if !wait && (forExpr != "" || timeoutStr != "") {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait").
+			WithHint("pass --wait")
+	}
+	if wait && !named {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name").
+			WithHint("pass a name argument")
+	}
+
+	clusterID, ns, _, err := Route(ctx, c.clients, c.k, in, named)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -83,10 +113,24 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, err
 	}
 	title := kindTitle(c.k.Name)
-	if hasName(in) {
-		one, gerr := client.Get(ctx, c.k.GVR, ns, in.Args()[0])
-		if gerr != nil {
-			return runtime.Result{}, gerr
+	if named {
+		name := in.Args()[0]
+		var one *unstructured.Unstructured
+		if wait {
+			cond, cerr := parseWaitCondition(forExpr, c.k)
+			if cerr != nil {
+				return runtime.Result{}, cerr
+			}
+			timeout, terr := parseWaitTimeout(timeoutStr)
+			if terr != nil {
+				return runtime.Result{}, terr
+			}
+			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout)
+		} else {
+			one, err = client.Get(ctx, c.k.GVR, ns, name)
+		}
+		if err != nil {
+			return runtime.Result{}, err
 		}
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one})}, nil
 	}
@@ -95,6 +139,20 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, lerr
 	}
 	return runtime.Result{Kind: title + "List", Data: newTable(c.k, list.Items)}, nil
+}
+
+// parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable
+// duration is a VALIDATION error rather than falling back to the default.
+func parseWaitTimeout(s string) (time.Duration, error) {
+	if s == "" {
+		return defaultWaitTimeout, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration", s)).
+			WithHint("pass e.g. --timeout 5m")
+	}
+	return d, nil
 }
 
 func hasName(in runtime.Input) bool {
