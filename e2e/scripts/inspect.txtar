@@ -1,0 +1,25 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create resource -f pod.yaml --cluster testcluster --apply
+
+# envtest has no scheduler/kubelet: the pod never binds to a node, so
+# metrics degrades to a warning; log fetch against an unbound pod succeeds
+# with an empty body rather than erroring (no warning for it).
+exec rancher inspect pod bare-pod --cluster testcluster --namespace default -o json
+jsonquery stdout data.owners ''
+jsonquery stdout data.metrics ''
+jsonquery stdout 'data.logs.app' ''
+jsonquery stdout warnings.0 'metrics.k8s.io unavailable on cluster c-test'
+jsonquery stdout 'warnings.#' 1
+
+-- pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-pod
+  namespace: default
+spec:
+  containers:
+    - name: app
+      image: busybox

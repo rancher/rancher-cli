@@ -1,0 +1,69 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create resource -f deployment.yaml --cluster testcluster --apply
+exec rancher create resource -f pod-web-1.yaml --cluster testcluster --apply
+exec rancher create resource -f pod-web-2.yaml --cluster testcluster --apply
+exec rancher create resource -f pod-other.yaml --cluster testcluster --apply
+
+exec rancher inspect deployment web --cluster testcluster --namespace default -o json
+jsonquery stdout 'data.pods.#' 2
+
+-- deployment.yaml --
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: app
+          image: busybox
+
+-- pod-web-1.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+  namespace: default
+  labels:
+    app: web
+spec:
+  containers:
+    - name: app
+      image: busybox
+
+-- pod-web-2.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-2
+  namespace: default
+  labels:
+    app: web
+spec:
+  containers:
+    - name: app
+      image: busybox
+
+-- pod-other.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: other-1
+  namespace: default
+  labels:
+    app: other
+spec:
+  containers:
+    - name: app
+      image: busybox

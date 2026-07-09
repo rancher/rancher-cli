@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,7 +30,18 @@ import (
 var (
 	binPath string
 	shimURL string
-	dynCli  dynamic.Interface
+	// shimCACertPEM is the shim's TLS certificate, PEM-encoded: client-go's
+	// exec-credential plugin (kubectl, `rancher auth get-token`) refuses to
+	// wire in exec auth over a plaintext http:// server (the same
+	// credential-hygiene rule that keeps bearer tokens off http), so the shim
+	// must be TLS and scripts must be able to trust it. Scripts get this as
+	// INLINE PEM, not a file path: config.Effective's CA and kube.RESTConfig
+	// consume eff.CA as raw PEM bytes directly (only auth get-token's and
+	// kubeconfig's own --cacert handling resolve a path via ResolveCA), so a
+	// path here would break every other command.
+	shimCACertPEM string
+	shimClient    *http.Client // trusts the shim's cert; use for Go-side HTTP calls to shimURL
+	dynCli        dynamic.Interface
 )
 
 // testToken must satisfy BOTH the shim bearer check AND auth login's
@@ -89,8 +101,12 @@ func TestMain(m *testing.M) {
 		proxy.ServeHTTP(w, r)
 	})
 	mux.HandleFunc("PUT /_test/status/", handleStatusLever)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewTLSServer(mux)
 	shimURL = srv.URL
+	shimClient = srv.Client()
+
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	shimCACertPEM = string(caPEM)
 
 	dynCli, err = dynamic.NewForConfig(cfg)
 	if err != nil {
@@ -113,6 +129,13 @@ func TestScenarios(t *testing.T) {
 			e.Setenv("PATH", filepath.Dir(binPath)+string(os.PathListSeparator)+e.Getenv("PATH"))
 			e.Setenv("TEST_RANCHER_URL", shimURL)
 			e.Setenv("TEST_RANCHER_TOKEN", testToken)
+			e.Setenv("TEST_RANCHER_CACERT", shimCACertPEM)
+			// Global CA trust for every script (env-only and config-flow alike):
+			// RANCHER_CACERT is env-effective everywhere Effective() is consulted.
+			// It does NOT reach `rancher kubeconfig`'s embedded CA, which reads
+			// only the config FILE's server entry — config-flow scripts pass
+			// --cacert on login for that.
+			e.Setenv("RANCHER_CACERT", shimCACertPEM)
 			e.Setenv("RANCHER_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
 			// E2E-A-003: credstore-pin.txtar clears this itself as its first
 			// line (`env RANCHER_CREDENTIAL_STORE=`) — testscript.Env carries
@@ -128,8 +151,9 @@ func TestScenarios(t *testing.T) {
 			return false, fmt.Errorf("unknown condition %q", cond)
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-			"jsonquery":  cmdJSONQuery,
-			"flipstatus": cmdFlipStatus,
+			"jsonquery":     cmdJSONQuery,
+			"flipstatus":    cmdFlipStatus,
+			"seedexeccache": cmdSeedExecCache,
 		},
 	})
 }

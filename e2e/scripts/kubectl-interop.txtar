@@ -1,0 +1,20 @@
+# Tier A cannot exercise get-token's live login path (it needs Rancher's
+# /v1-public/authproviders + /v1-public/login, which the shim — a router,
+# not a Rancher emulator — must not grow). seedexeccache pre-warms the
+# exec-credential cache through the real config store API, so get-token
+# takes its cache fast-path; only the login half stays uncovered (Tier B).
+[!kubectl] skip 'kubectl not on PATH'
+
+stdin token.txt
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+
+seedexeccache e2e-c-test c-test
+
+exec rancher kubeconfig --cluster testcluster
+cp stdout kc.yaml
+
+exec kubectl --kubeconfig kc.yaml get namespaces
+stdout default
+
+-- token.txt --
+e2e:secret

@@ -10,7 +10,7 @@
 env RANCHER_CREDENTIAL_STORE=
 
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --name e2e
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 stderr 'pinned credential store:'
 exists $RANCHER_CONFIG_DIR/credstore-pin
 
