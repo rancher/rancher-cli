@@ -150,7 +150,7 @@ func oauthAuthCodeAuth(
 			return nil, result.err
 		}
 
-		exchangeCtx, cancel := context.WithTimeout(context.Background(), oauthCodeExchangeTimeout)
+		exchangeCtx, cancel := context.WithTimeout(ctx, oauthCodeExchangeTimeout)
 		defer cancel()
 		exchangeCtx = context.WithValue(exchangeCtx, oauth2.HTTPClient, client)
 
