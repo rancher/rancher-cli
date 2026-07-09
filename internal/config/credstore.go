@@ -401,13 +401,37 @@ func OpenStore(policy, dir string) (CredStore, error) {
 	}
 }
 
-// keyringUsable probes the keyring with a harmless set/delete of a marker
-// key. Package var so tests can count/stub probes.
-var keyringUsable = func() bool {
+// keyringProbeTimeout bounds keyringUsable: on macOS the underlying `security`
+// exec can block indefinitely without a usable keychain session (headless/SSH/
+// sandbox), and a hung probe must degrade to the file store, not hang login.
+// Package var so tests can shrink it.
+var keyringProbeTimeout = 5 * time.Second
+
+// keyringProbe does the harmless set/delete of a marker key. Package var so
+// tests can stub it with a never-returning body to exercise the timeout.
+var keyringProbe = func() bool {
 	const probe = "__rancher_cli_probe__"
 	if err := keyring.Set(keyringService, probe, "1"); err != nil {
 		return false
 	}
 	_ = keyring.Delete(keyringService, probe)
 	return true
+}
+
+// keyringUsable runs keyringProbe bounded to keyringProbeTimeout, treating a
+// timeout as unusable. The probe goroutine may outlive the timeout (the exec
+// is not cancellable) — acceptable for a once-per-login probe. probe/timeout
+// are snapshotted before the goroutine starts so a test restoring the package
+// vars right after the timeout fires never races with the leaked goroutine's
+// read of them. Package var so tests can count/stub probes.
+var keyringUsable = func() bool {
+	probe, timeout := keyringProbe, keyringProbeTimeout
+	done := make(chan bool, 1)
+	go func() { done <- probe() }()
+	select {
+	case ok := <-done:
+		return ok
+	case <-time.After(timeout):
+		return false
+	}
 }

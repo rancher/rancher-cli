@@ -72,6 +72,23 @@ func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
 	}
 }
 
+func TestKeyringUsableDegradesOnHungProbe(t *testing.T) {
+	origProbe, origTimeout := keyringProbe, keyringProbeTimeout
+	keyringProbe = func() bool { select {} } // never returns
+	keyringProbeTimeout = 50 * time.Millisecond
+	defer func() { keyringProbe, keyringProbeTimeout = origProbe, origTimeout }()
+
+	done := make(chan bool, 1)
+	go func() { done <- keyringUsable() }()
+
+	select {
+	case ok := <-done:
+		assert.False(t, ok, "a hung probe must degrade to unusable")
+	case <-time.After(time.Second):
+		t.Fatal("keyringUsable did not honor keyringProbeTimeout")
+	}
+}
+
 func TestOpenStoreExplicitPolicySkipsPin(t *testing.T) {
 	dir := t.TempDir()
 	if err := WritePin(dir, "keychain"); err != nil {
