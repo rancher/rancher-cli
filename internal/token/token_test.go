@@ -623,6 +623,112 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	assert.Equal(t, int32(0), atomic.LoadInt32(&rancherHits))
 }
 
+// DR-009 repro: the loopback callback used to reflect error/error_description
+// query params into its HTML response unescaped. A malicious redirect to the
+// callback URL (or a compromised IdP) must not get its markup executed.
+func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
+	t.Parallel()
+
+	var body []byte
+	openBrowserStub := func(authURL string) error {
+		u, err := url.Parse(authURL)
+		if err != nil {
+			return err
+		}
+		q := u.Query()
+		cbURL := q.Get("redirect_uri") + "?state=" + url.QueryEscape(q.Get("state")) +
+			"&error=" + url.QueryEscape("bad<script>alert(1)</script>") +
+			"&error_description=" + url.QueryEscape("<img src=x onerror=alert(2)>")
+		resp, err := http.Get(cbURL)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err = io.ReadAll(resp.Body)
+		return err
+	}
+
+	provider := &AzureADProvider{
+		OAuthProvider: OAuthProvider{
+			ClientID: "test-client",
+			Scopes:   []string{"openid"},
+			OAuthEndpoint: OAuthEndpoint{
+				AuthURL:  "http://127.0.0.1:0/authorize", // never reached
+				TokenURL: "http://127.0.0.1:0/token",
+			},
+		},
+	}
+	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider"}
+
+	_, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	require.Error(t, err)
+	assert.NotContains(t, string(body), "<script>", "reflected markup must be escaped, got %q", body)
+	assert.NotContains(t, string(body), "<img", "reflected markup must be escaped, got %q", body)
+	assert.Contains(t, string(body), "&lt;script&gt;")
+}
+
+// DR-009 repro: an unsolicited request with the wrong (or no) state must not
+// consume the callback's one-shot handler — otherwise the real IdP redirect
+// that arrives afterward gets no response at all.
+func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
+	t.Parallel()
+
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"fake-access-token","token_type":"bearer","expires_in":3600}`))
+	}))
+	defer idp.Close()
+
+	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer rancherSrv.Close()
+
+	openBrowserStub := func(authURL string) error {
+		u, err := url.Parse(authURL)
+		if err != nil {
+			return err
+		}
+		q := u.Query()
+		redirect := q.Get("redirect_uri")
+
+		attackURL := redirect + "?state=wrong-state&error=access_denied&error_description=nope"
+		attackResp, err := http.Get(attackURL)
+		if err != nil {
+			return err
+		}
+		_ = attackResp.Body.Close()
+		if attackResp.StatusCode != http.StatusBadRequest {
+			return errors.New("forged wrong-state request did not get 400 Bad Request")
+		}
+
+		cbURL := redirect + "?code=fake-code&state=" + url.QueryEscape(q.Get("state"))
+		resp, err := http.Get(cbURL)
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		return nil
+	}
+
+	provider := &AzureADProvider{
+		OAuthProvider: OAuthProvider{
+			ClientID: "test-client",
+			Scopes:   []string{"openid"},
+			OAuthEndpoint: OAuthEndpoint{
+				AuthURL:  idp.URL + "/authorize",
+				TokenURL: idp.URL + "/token",
+			},
+		},
+	}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+
+	tok, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	require.NoError(t, err, "the real redirect must still be processed after a forged wrong-state request")
+	require.NotNil(t, tok)
+}
+
 // blockingReader never returns from Read, so readLine's scan goroutine cannot
 // win the select against a cancelled context — making the ctrl-C test deterministic.
 type blockingReader struct{}

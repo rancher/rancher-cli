@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +31,9 @@ const (
 	oauthCodeFlowTimeout          = 5 * time.Minute
 	oauthCodeExchangeTimeout      = 30 * time.Second
 	callbackServerShutdownTimeout = time.Second
+	// maxCallbackParamLen bounds an untrusted callback query param before it
+	// reaches the HTML response or the CLI's own error message.
+	maxCallbackParamLen = 200
 )
 
 type openBrowserFunc func(url string) error
@@ -172,6 +176,14 @@ func oauthAuthCodeAuth(
 	}
 }
 
+// truncateParam bounds an untrusted OAuth callback query param.
+func truncateParam(s string) string {
+	if len(s) > maxCallbackParamLen {
+		return s[:maxCallbackParamLen]
+	}
+	return s
+}
+
 func generateState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -228,20 +240,25 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 			}
 		}()
 
+		// The state check gates entry into the one-shot handler itself, not
+		// just the error branch: an unsolicited/forged request (wrong or
+		// missing state) must get its own error response WITHOUT consuming
+		// once — otherwise the real IdP redirect that arrives afterward
+		// finds once already fired and gets no response at all.
+		query := r.URL.Query()
+		state := query.Get("state")
+		if state != expectedState {
+			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			return
+		}
+
 		once.Do(func() {
-			query := r.URL.Query()
-
 			if errCode := query.Get("error"); errCode != "" {
-				errDesc := query.Get("error_description")
-				_, _ = fmt.Fprintf(w, "<html><body><h1>Authentication Failed</h1><p>%s: %s</p><p>You can close this window.</p></body></html>", errCode, errDesc)
+				errCode = truncateParam(errCode)
+				errDesc := truncateParam(query.Get("error_description"))
+				_, _ = fmt.Fprintf(w, "<html><body><h1>Authentication Failed</h1><p>%s: %s</p><p>You can close this window.</p></body></html>",
+					html.EscapeString(errCode), html.EscapeString(errDesc))
 				resultCh <- callbackResult{err: fmt.Errorf("authentication error: %s: %s", errCode, errDesc)}
-				return
-			}
-
-			state := query.Get("state")
-			if state != expectedState {
-				http.Error(w, "Invalid state parameter", http.StatusBadRequest)
-				resultCh <- callbackResult{err: errors.New("invalid state parameter in callback (possible CSRF attack)")}
 				return
 			}
 
