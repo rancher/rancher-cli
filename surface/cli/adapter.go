@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
@@ -157,4 +159,19 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 // exit converts a structured error into a urfave exit with the right code.
 func exit(ce *clierr.Error) error {
 	return ucli.Exit("", ce.ExitCode())
+}
+
+// commandNotFound is urfave/cli's seam for an unmatched command/subcommand
+// name (registered as root's and every group's CommandNotFound). Without it,
+// urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
+// for '<name>'" on stderr and exits 3 — indistinguishable from the AUTH exit
+// code documented for exit 3, and with no JSON envelope for a script to
+// parse. CommandNotFoundFunc has no error return, so the VALIDATION envelope
+// and the process exit both happen here directly, mirroring how urfave's own
+// ShowRootCommandHelpAndExit calls OsExiter.
+func commandNotFound(_ context.Context, c *ucli.Command, name string) {
+	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
+		WithHint("run: rancher schema")
+	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+	ucli.OsExiter(ce.ExitCode())
 }

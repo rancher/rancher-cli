@@ -192,6 +192,38 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	assert.NotEmpty(t, data["globalFlags"])
 }
 
+// DR-006 repro: an unknown top-level command or an unknown kind under a group
+// must surface the standard VALIDATION envelope at exit 2, not urfave's own
+// unhinted "No help topic" text at exit 3 (indistinguishable from the AUTH
+// exit code).
+func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
+	origExiter := ucli.OsExiter
+	var gotCode int
+	ucli.OsExiter = func(code int) { gotCode = code }
+	defer func() { ucli.OsExiter = origExiter }()
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "bogus-command-xyz"}))
+	assert.Equal(t, 2, gotCode)
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, "bogus-command-xyz")
+
+	gotCode, errOut = 0, bytes.Buffer{}
+	root.ErrWriter = &errOut
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "get", "bogus-kind-xyz"}))
+	assert.Equal(t, 2, gotCode)
+	var env2 errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
+	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
+}
+
 // DR-005 repro: an explicitly overridden config dir with a leftover legacy
 // cli2.json must not put a plain-text notice ahead of the error envelope —
 // stderr must parse as pure JSON, exactly as a scripted session relies on.

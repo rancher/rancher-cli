@@ -99,6 +99,7 @@ graph TD
     cli --> kube
     cli --> config
     cli --> clierr
+    cli --> output
 
     commands --> runtime
     commands --> config

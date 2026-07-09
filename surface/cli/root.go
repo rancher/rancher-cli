@@ -132,7 +132,7 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 			out = append(out, leaves...)
 			continue
 		}
-		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves})
+		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, CommandNotFound: commandNotFound})
 	}
 	return out
 }
@@ -184,6 +184,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to rancher config dir",
 				Sources: ucli.EnvVars("RANCHER_CONFIG_DIR")},
 		}, GlobalFlags()...),
+		CommandNotFound: commandNotFound,
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
 			if c.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)

@@ -15,8 +15,16 @@ env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
 ! exec rancher get project does-not-exist --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND
 
-# unknown command: urfave's own error path, not our envelope
-! exec rancher bogus-command-xyz
+# VALIDATION: unknown top-level command, via our CommandNotFound hook, not
+# urfave's own unhinted "No help topic" exit 3
+! exec rancher bogus-command-xyz -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'rancher schema'
+
+# VALIDATION: unknown kind under a group, same hook, same exit code
+! exec rancher get bogus-kind-xyz -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'rancher schema'
 
 # CW-1: the stderr error envelope is JSON even under -o yaml / -o table
 ! exec rancher get project definitely-absent --cluster testcluster -o yaml
