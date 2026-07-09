@@ -313,6 +313,15 @@ instead — so a run against a throwaway dir cannot silently pull in the real
 
 ## Key design decisions
 
+**Global `--project` removed; project scoping is backlog.** The global `--project`
+flag was fully resolved through file/env/flag precedence but never consumed by any
+routing or API-call code — every namespace/cluster in scope was returned/affected
+regardless of `--project`, a false sense of narrower blast radius on destructive
+commands. The flag is removed; `--context cluster[:project]` stays, but its project
+axis is informational only (surfaced by `config current-context`/`auth check`), never
+consumed for scoping. **Backlog: project scoping** — real namespace→project
+resolution, so a project flag only returns once it actually does something.
+
 **Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
 is a port; the concrete `clientFactory` (in `surface/cli`) loads config and computes the
 effective connection **once per invocation** under a `sync.Once`. `Cluster(id)` builds

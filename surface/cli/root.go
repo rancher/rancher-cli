@@ -188,7 +188,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			if c.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
-			config.SetContextOverride(c.String("context"), c.String("project"))
+			config.SetContextOverride(c.String("context"))
 			return ctx, nil
 		},
 		Commands: commandsList,

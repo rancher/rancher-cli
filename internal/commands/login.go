@@ -42,16 +42,16 @@ func (loginCmd) Describe() runtime.Descriptor {
 }
 
 func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
-	// Guard the CW-3 footgun: the global --context/--project flags and this
-	// command's local --context are separate, unsynchronized urfave/cli Flag
-	// objects sharing a name. If the caller supplied a global override but
-	// login's own --context is empty, the override would otherwise be
-	// silently dropped from the written config — the global flags scope
-	// server reads, not config writes.
+	// Guard the CW-3 footgun: the global --context flag and this command's
+	// local --context are separate, unsynchronized urfave/cli Flag objects
+	// sharing a name. If the caller supplied a global override but login's
+	// own --context is empty, the override would otherwise be silently
+	// dropped from the written config — the global flag scopes server reads,
+	// not config writes.
 	if in.String("context") == "" {
-		if ctxVal, projVal := config.ContextOverride(); ctxVal != "" || projVal != "" {
+		if ctxVal := config.ContextOverride(); ctxVal != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--context/--project at the root scope server operations, not config writes").
+				"--context at the root scopes server operations, not config writes").
 				WithHint("pass --context explicitly: rancher auth login --context <cluster[:project]>")
 		}
 	}

@@ -112,12 +112,12 @@ func TestLoginServerRequired(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// Exact reviewer repro: a global --context/--project flag with no local
-// --context on auth login must not be silently dropped from the write.
+// Exact reviewer repro: a global --context flag with no local --context on
+// auth login must not be silently dropped from the write.
 func TestLoginRejectsShadowedGlobalOverride(t *testing.T) {
 	dir, store := filePolicyDir(t)
-	config.SetContextOverride("", "global-proj")
-	t.Cleanup(func() { config.SetContextOverride("", "") })
+	config.SetContextOverride("c-global:p-global")
+	t.Cleanup(func() { config.SetContextOverride("") })
 
 	in := args{
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},

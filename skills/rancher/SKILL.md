@@ -142,8 +142,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   namespaced kinds. Contexts carry cluster+project defaults: switch persistently
   with `rancher config use-context` / `set-context`, or override for a single
   invocation with the `RANCHER_CONTEXT` env var (`cluster[:project]`) or the
-  global `--context cluster[:project]` / `--project` flags (flag > `RANCHER_CONTEXT`
-  env > current context). Fleet kinds default to the `fleet-default` workspace.
+  global `--context cluster[:project]` flag (flag > `RANCHER_CONTEXT` env >
+  current context). The project axis is informational only — it is not
+  consumed for scoping; pass `--cluster`/`--namespace` for actual routing.
+  Fleet kinds default to the `fleet-default` workspace.
 - **Isolation for scripted sessions:** point `RANCHER_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain.

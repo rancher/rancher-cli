@@ -145,26 +145,16 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 
 	t.Run("flag beats env and file", func(t *testing.T) {
 		t.Setenv("RANCHER_CONTEXT", "c-env:p-env")
-		SetContextOverride("c-flag:p-flag", "")
-		t.Cleanup(func() { SetContextOverride("", "") })
+		SetContextOverride("c-flag:p-flag")
+		t.Cleanup(func() { SetContextOverride("") })
 		eff, err := cfg.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "c-flag", eff.Cluster)
 		assert.Equal(t, "p-flag", eff.Project)
 	})
 
-	t.Run("project-only override keeps cluster resolution", func(t *testing.T) {
-		t.Setenv("RANCHER_CONTEXT", "c-env")
-		SetContextOverride("", "p-flag")
-		t.Cleanup(func() { SetContextOverride("", "") })
-		eff, err := cfg.Effective(store)
-		require.NoError(t, err)
-		assert.Equal(t, "c-env", eff.Cluster, "env still supplies the cluster axis")
-		assert.Equal(t, "p-flag", eff.Project)
-	})
-
 	t.Run("no override falls back to env then file", func(t *testing.T) {
-		SetContextOverride("", "")
+		SetContextOverride("")
 		t.Setenv("RANCHER_CONTEXT", "")
 		eff, err := cfg.Effective(store)
 		require.NoError(t, err)
@@ -172,8 +162,8 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 	})
 
 	t.Run("--context cluster: (trailing colon) explicitly clears the project axis", func(t *testing.T) {
-		SetContextOverride("c-flag:", "")
-		t.Cleanup(func() { SetContextOverride("", "") })
+		SetContextOverride("c-flag:")
+		t.Cleanup(func() { SetContextOverride("") })
 		eff, err := cfg.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "c-flag", eff.Cluster)

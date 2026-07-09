@@ -181,10 +181,11 @@ Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
   | `RANCHER_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` |
   | `RANCHER_CONFIG_DIR` | config directory |
 
-  The global `--context cluster[:project]` and `--project` flags override
-  `RANCHER_CONTEXT` for a single invocation, resolved per axis (a bare
-  `--project` keeps whatever cluster env/config supplies). `--context c:`
-  (trailing colon, no project) clears the project for this invocation.
+  The global `--context cluster[:project]` flag overrides `RANCHER_CONTEXT`
+  for a single invocation. `--context c:` (trailing colon, no project) clears
+  the project for this invocation. The project axis is informational only
+  (shown by `config current-context`/`auth check`) — no routing or API call
+  scopes by it.
 
 - **Migration:** on first run the CLI imports a legacy
   `~/.rancher/cli2.json` (also `$RANCHER_CONFIG_DIR/cli2.json`) into the new

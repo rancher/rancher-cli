@@ -104,37 +104,35 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		}
 	}
 
-	// Flag overrides (flag > env > file).
-	if v := contextOverride.context; v != "" {
+	// Flag override (flag > env > file).
+	if v := contextOverride; v != "" {
 		cl, pr, hasProject := SplitContext(v)
 		eff.Cluster = cl
 		if hasProject {
 			eff.Project = pr
 		}
 	}
-	if v := contextOverride.project; v != "" {
-		eff.Project = v
-	}
 	return eff, nil
 }
 
-// contextOverride carries the global --context/--project flag values, set once
-// by the CLI adapter before dispatch. Flags outrank RANCHER_CONTEXT (env),
-// which outranks the config file — the same env-over-file rule this block
-// already applies, extended one level up.
-var contextOverride struct{ context, project string }
+// contextOverride carries the global --context flag value, set once by the
+// CLI adapter before dispatch. The flag outranks RANCHER_CONTEXT (env), which
+// outranks the config file — the same env-over-file rule this block already
+// applies, extended one level up. eff.Project is informational only (display,
+// e.g. `config current-context`) — no routing or API-call code consumes it.
+var contextOverride string
 
-// SetContextOverride records the global --context (cluster[:project]) and
-// --project flag values for this process. Empty strings clear/skip an axis.
-func SetContextOverride(contextVal, project string) {
-	contextOverride.context, contextOverride.project = contextVal, project
+// SetContextOverride records the global --context (cluster[:project]) flag
+// value for this process. An empty string clears/skips the override.
+func SetContextOverride(contextVal string) {
+	contextOverride = contextVal
 }
 
-// ContextOverride returns the currently recorded global --context/--project
-// flag values (see SetContextOverride). Write-commands whose own local flag
-// of the same name is empty must not silently ignore a non-empty value here —
-// the global flags scope reads, not writes, and the two are easy to conflate
-// since they share a name with a command's local write flag.
-func ContextOverride() (contextVal, project string) {
-	return contextOverride.context, contextOverride.project
+// ContextOverride returns the currently recorded global --context flag value
+// (see SetContextOverride). Write-commands whose own local --cluster flag is
+// empty must not silently ignore a non-empty value here — the global flag
+// scopes reads, not writes, and the two are easy to conflate since they share
+// a name with a command's local write flag.
+func ContextOverride() string {
+	return contextOverride
 }

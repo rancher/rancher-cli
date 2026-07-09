@@ -4661,14 +4661,8 @@
     },
     {
       "appliesTo": "all",
-      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CONTEXT \u003e config",
+      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CONTEXT \u003e config; project axis is informational only",
       "name": "--context",
-      "type": "string"
-    },
-    {
-      "appliesTo": "all",
-      "desc": "scope: project axis only",
-      "name": "--project",
       "type": "string"
     }
   ],
