@@ -113,6 +113,47 @@ func TestKubeconfigFallsBackToContextCluster(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
+// Round-2 repro: RANCHER_URL overriding a stored context's server used to
+// keep pairing the NEW url with the STORED server's CA and entry name.
+// Overriding only RANCHER_URL against a stored context must fall back to
+// RANCHER_CACERT (or none) and a host-derived name — never a stored CA
+// against a URL it was never issued for.
+func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
+	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
+	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
+	t.Setenv("RANCHER_URL", "https://staging.example.com")
+
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+
+	kc, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	cluster := kc.Clusters["staging.example.com-c-ctx"]
+	require.NotNil(t, cluster, "entry name must derive from the override host, not the stored server name, got %v", kc.Clusters)
+	assert.Equal(t, "https://staging.example.com/k8s/clusters/c-ctx", cluster.Server)
+	assert.Empty(t, cluster.CertificateAuthorityData, "must never pair the stored CA with a different server's URL")
+	assert.Equal(t, "staging.example.com-c-ctx", kc.CurrentContext)
+}
+
+// The env override matching the stored server's own URL exactly is not a
+// mismatch — the stored CA/name still apply.
+func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) {
+	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
+	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
+	t.Setenv("RANCHER_URL", "https://r.example.com")
+
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
+	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	require.NoError(t, err)
+
+	kc, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	cluster := kc.Clusters["prod-c-ctx"]
+	require.NotNil(t, cluster, "got %v", kc.Clusters)
+	assert.Equal(t, []byte(prodCA), cluster.CertificateAuthorityData, "same URL is not a mismatch — the stored CA still applies")
+}
+
 // DR-007 repro: kubeconfig used to call cfg.CurrentServer() directly, so an
 // env-only session (RANCHER_URL/RANCHER_CACERT, no stored context) failed
 // with CONTEXT_NOT_SET even though every other command works from env alone.

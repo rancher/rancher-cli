@@ -117,6 +117,21 @@ func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive, "patching a sensitive kind must be destructive")
+
+	// Round-2: redaction is now gated on Sensitive (same flag as the --yes
+	// gate above), not the literal "secret" kind — but a Sensitive kind
+	// whose payload isn't under /data or /stringData must see no behavior
+	// change: the redaction condition fires, the path-shape check just never
+	// matches, so the real values still reach the Effect.
+	var found bool
+	for _, d := range eff.Diff {
+		if d.Path == "/value" {
+			found = true
+			assert.EqualValues(t, "old", d.From)
+			assert.EqualValues(t, "new", d.To)
+		}
+	}
+	assert.True(t, found, "diff must contain the value change, got %+v", eff.Diff)
 }
 
 func TestPatchSecretDiffIsRedacted(t *testing.T) {

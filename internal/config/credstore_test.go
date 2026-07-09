@@ -290,7 +290,7 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
 	_ = NewFileStore(dir).SetToken("prod", "in-file")
-	from, err := DrainToken(dir, "prod")
+	from, _, err := DrainToken(dir, "prod", "https://prod.ex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,6 +305,21 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	}
 }
 
+func TestDrainTokenAlsoDrainsExecCache(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "in-file"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+
+	_, drainedCache, err := DrainToken(dir, "prod", "https://prod.ex")
+	require.NoError(t, err)
+	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, drainedCache)
+
+	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"))
+	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single drain point must also drain the exec-credential cache")
+}
+
 func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
@@ -312,7 +327,7 @@ func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := DrainToken(dir, "prod")
+	_, _, err := DrainToken(dir, "prod", "https://prod.ex")
 	if err == nil {
 		t.Fatal("DrainToken must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
@@ -335,6 +350,31 @@ func TestDrainExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 	assert.NoError(t, err, "non-matching entry must be kept")
 	_, _, err = store.GetCachedCred("legacy-bare")
 	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
+}
+
+// Round-2 pin: two config entries with different --name values ("acme-admin",
+// "acme-viewer") that both point at the same host each cache their own
+// exec-credential entry. Logging out one drains BOTH — deliberately, not a
+// bug: matching by config-entry name is structurally unreliable (a cache
+// entry embeds the name only by kubeconfig naming convention), so
+// host-wide drain is the safe direction. See DrainToken's doc comment.
+func TestDrainExecCacheForServerDrainsAllNamesSharingOneHost(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), "tok-admin", time.Time{}, "acme-admin", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), "tok-viewer", time.Time{}, "acme-viewer", "acme.ex", "c-1"))
+
+	deleted, err := DrainExecCacheForServer(store, "https://acme.ex")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{
+		CacheKey("acme-admin", "acme.ex", "c-1"),
+		CacheKey("acme-viewer", "acme.ex", "c-1"),
+	}, deleted, "both names sharing one host must be drained together")
+
+	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"))
+	assert.ErrorIs(t, err, ErrNoToken)
+	_, _, err = store.GetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"))
+	assert.ErrorIs(t, err, ErrNoToken)
 }
 
 func TestDrainExecCacheForServerEmptyHostIsNoop(t *testing.T) {
@@ -367,7 +407,7 @@ func TestDrainTokenJoinsKeychainErrorButStillDrainsFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
 
-	from, err := DrainToken(dir, "prod")
+	from, _, err := DrainToken(dir, "prod", "https://prod.ex")
 	require.Error(t, err, "a keychain delete error must surface, not be swallowed")
 	assert.Contains(t, from, "file", "file backend must still be drained despite the keychain error")
 	_, gerr := NewFileStore(dir).GetToken("prod")

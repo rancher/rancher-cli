@@ -59,6 +59,29 @@ func TestConfigSetContextRejectsShadowedGlobalContext(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
+// Round-2 repro (confirmed live): `rancher --context c-global:p-global config
+// set-context --current --cluster c-9` must not silently drop p-global — the
+// standalone --project flag is gone, but --context's ":project" half still
+// carries a live project value that a local --cluster-only call would
+// otherwise discard unnoticed.
+func TestConfigSetContextRejectsShadowedGlobalContextProjectHalf(t *testing.T) {
+	dir := t.TempDir()
+	writeCtxConfig(t, dir)
+	config.SetContextOverride("c-global:p-global")
+	t.Cleanup(func() { config.SetContextOverride("") })
+
+	_, err := NewContextSet(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"current": true}, s: map[string]string{"cluster": "c-9"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster, "must not write anything on rejection")
+	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project, "must not silently drop p-global's shadowed value")
+}
+
 func TestConfigSetContextUnaffectedWithoutGlobalOverride(t *testing.T) {
 	dir := t.TempDir()
 	writeCtxConfig(t, dir)

@@ -327,39 +327,53 @@ func (k *keyringStore) DeleteCachedCred(key string) error          { return k.ca
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
-// DrainToken deletes a server's login token from BOTH backends, unconditionally
-// and independently of policy: read-through made the file store part of the
-// effective read path under every policy, so every logout must drain it, and
-// the keychain may still hold a token from before a backend flip. Neither
-// backend's failure short-circuits the other; per-backend errors are joined so
-// a live token is never left behind unreported. deletedFrom lists the backends
-// a token was actually removed from.
-func DrainToken(dir, server string) ([]string, error) {
-	var (
-		from []string
-		errs []error
-	)
-	if err := keyring.Delete(keyringService, server); err == nil {
-		from = append(from, "keychain")
-	} else if !errors.Is(err, keyring.ErrNotFound) {
-		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, err))
+// DrainToken is logout's single drain point (ARCHITECTURE.md): it deletes a
+// server's login token from BOTH backends, unconditionally and independently
+// of policy — read-through made the file store part of the effective read
+// path under every policy, so every logout must drain it, and the keychain
+// may still hold a token from before a backend flip — AND drains every
+// exec-credential cache entry cached against serverURL's host (the cache is
+// file-backed regardless of policy, CS-5). No backend's failure
+// short-circuits another; per-backend errors are joined so a live
+// token/cache entry is never left behind unreported. fromBackends lists the
+// login-token backends actually drained; drainedCache lists the cache keys
+// actually removed.
+//
+// Draining the WHOLE host's cache (not just entries matching server's own
+// name) is deliberate fail-safe behavior, not an oversight: a cache entry
+// embeds the config-entry name only by kubeconfig naming convention, so
+// matching by name is structurally unreliable, while over-draining a
+// neighbor account on the same host costs it one silent re-auth on next use
+// (the exec plugin re-mints transparently) — under-draining leaves a live
+// credential behind after the user asked to log out, the exact failure this
+// function exists to prevent.
+func DrainToken(dir, server, serverURL string) (fromBackends, drainedCache []string, err error) {
+	var errs []error
+	if kerr := keyring.Delete(keyringService, server); kerr == nil {
+		fromBackends = append(fromBackends, "keychain")
+	} else if !errors.Is(kerr, keyring.ErrNotFound) {
+		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, kerr))
 	}
 	fs := NewFileStore(dir)
-	switch _, err := fs.GetToken(server); {
-	case err == nil:
+	switch _, terr := fs.GetToken(server); {
+	case terr == nil:
 		if derr := fs.DeleteToken(server); derr != nil {
 			errs = append(errs, fmt.Errorf("file credential store: %w", derr))
 		} else {
-			from = append(from, "file")
+			fromBackends = append(fromBackends, "file")
 		}
-	case errors.Is(err, ErrNoToken):
+	case errors.Is(terr, ErrNoToken):
 		// nothing stored in the file backend — fine
 	default:
 		// NEVER report a successful drain when the file store is
 		// unreadable/corrupt: a live plaintext token may remain.
-		errs = append(errs, fmt.Errorf("file credential store: %w", err))
+		errs = append(errs, fmt.Errorf("file credential store: %w", terr))
 	}
-	return from, errors.Join(errs...)
+	drainedCache, cerr := DrainExecCacheForServer(fs, serverURL)
+	if cerr != nil {
+		errs = append(errs, fmt.Errorf("exec-credential cache: %w", cerr))
+	}
+	return fromBackends, drainedCache, errors.Join(errs...)
 }
 
 // DrainExecCacheForServer deletes every exec-credential cache entry whose
@@ -367,7 +381,7 @@ func DrainToken(dir, server string) ([]string, error) {
 // entry was cached — and returns the deleted entries' keys. Entries cached
 // against a different server are left alone.
 func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
-	host := serverURLHost(serverURL)
+	host := ServerHost(serverURL)
 	if host == "" {
 		return nil, nil
 	}
@@ -388,10 +402,13 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 	return deleted, nil
 }
 
-// serverURLHost reduces a server URL to its host, matching CacheKey's
+// ServerHost reduces a server URL to its host, matching CacheKey's
 // composition; it falls back to the raw string when it does not parse to a
-// host.
-func serverURLHost(raw string) string {
+// host. Shared by every "extract host from a server URL" need (the
+// exec-credential cache key, get-token's cache key, kubeconfig's
+// env-only entry name) so a future host-extraction rule change (e.g. IPv6
+// handling) lands in one place.
+func ServerHost(raw string) string {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
 		return u.Host
 	}

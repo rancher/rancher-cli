@@ -263,13 +263,20 @@ fallback. `auth check` surfaces `credentialStore: {policy, pinned}`.
 
 **Keyring read-through and logout drain.** With the keychain backend, `GetToken` falls
 through to the file store on a keychain miss, so tokens written before an upgrade re-pin
-keep working. `config.DrainToken` (logout) drains **both** backends unconditionally —
-because read-through makes the file store part of the effective read path under every
-policy — aggregating per-backend errors with `errors.Join` and reporting which backends a
-token was `deletedFrom`. Logout also drains the exec-credential cache: entries whose
-`Server` matches a logged-out server's host are deleted (`--all` clears every cached
-entry), reported as `deletedCache` in the result. No orphaned live tokens.
-`auth delete-token` remains available for clearing cache entries outside a logout.
+keep working. `config.DrainToken` is logout's **single drain point**: it drains the login
+token from **both** backends unconditionally — because read-through makes the file store
+part of the effective read path under every policy — aggregating per-backend errors with
+`errors.Join` and reporting which backends a token was `deletedFrom`, AND drains every
+exec-credential cache entry whose `Server` matches the logged-out server's host (reported
+as `deletedCache`). `--all` calls `DrainToken` once per configured server, so both drains
+happen per server; no separate cache-only code path exists. Draining by HOST rather than
+by config-entry name is deliberate fail-safe behavior, not an oversight: a cache entry
+embeds the entry name only by kubeconfig naming convention (structurally unreliable to
+match on), while over-draining a neighbor account on the same host costs it one silent
+re-auth on next use (the exec plugin re-mints transparently) — under-draining leaves a
+live credential behind after the user asked to log out, the exact failure this exists to
+prevent. No orphaned live tokens. `auth delete-token` remains available for clearing
+cache entries outside a logout.
 
 **Exec-credential cache.** `auth get-token` caches short-lived bearer tokens as records
 (`{Name, Server, Cluster, Token, Expiry}`) keyed `<name>@<serverHost>/<cluster>` in

@@ -724,9 +724,14 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	}
 	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
 
-	tok, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	var noticeBuf strings.Builder
+	p := ui.New(&noticeBuf, strings.NewReader(""), true, false)
+
+	tok, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, p)
 	require.NoError(t, err, "the real redirect must still be processed after a forged wrong-state request")
 	require.NotNil(t, tok)
+	assert.Contains(t, noticeBuf.String(), "invalid state",
+		"a forged-only callback must not hang silently — the user must see why the wait continues")
 }
 
 // DR-010 repro: samlAuth's poll select had no ctx.Done() case, unlike the

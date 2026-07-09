@@ -27,11 +27,14 @@ func BaseURL(serverURL string) string {
 // endpoint for the effective cluster (default "local").
 func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	if eff.URL == "" {
-		return nil, clierr.New(clierr.CodeContextNotSet,
-			"no current context and no RANCHER_URL set").WithHint(config.LoginOrEnvHint)
+		return nil, config.ErrContextNotSet()
 	}
 	if eff.Token == "" {
-		return nil, fmt.Errorf("no token for server")
+		// eff.URL is resolved (a context or RANCHER_URL exists) but no token —
+		// a stored-but-tokenless context (never logged in, or a lost/expired
+		// token) rather than a missing context, so this is an auth gap, not a
+		// CONTEXT_NOT_SET one.
+		return nil, clierr.New(clierr.CodeAuth, "no token for server").WithHint(config.LoginOrEnvHint)
 	}
 	cluster := eff.Cluster
 	if cluster == "" {

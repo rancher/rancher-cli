@@ -11,16 +11,16 @@ import (
 )
 
 type logoutCmd struct {
-	dir   string
-	store config.CredStore
+	dir string
 }
 
 // NewLogout builds `auth logout` (local): clear the stored login token for a
-// server and drain matching exec-credential cache entries. Keeps the
+// server and drain matching exec-credential cache entries via
+// config.DrainToken — the single drain point (ARCHITECTURE.md). Keeps the
 // server/context config entries; `auth delete-token` remains for clearing
 // cache entries outside a logout.
-func NewLogout(dir string, store config.CredStore) runtime.Command {
-	return &logoutCmd{dir: dir, store: store}
+func NewLogout(dir string) runtime.Command {
+	return &logoutCmd{dir: dir}
 }
 
 func (logoutCmd) Describe() runtime.Descriptor {
@@ -61,12 +61,7 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 		return runtime.Result{}, err
 	}
 
-	deletedFrom, err := l.drainTargets(targets)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
-	deletedCache, err := l.drainExecCache(cfg, all, targets)
+	deletedFrom, deletedCache, err := l.drainTargets(cfg, targets)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -114,54 +109,27 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 	}
 }
 
-// drainTargets removes each target's token from both backends, reporting the
-// backends touched per server so a partial failure names what was already
-// drained.
-func (l logoutCmd) drainTargets(targets []string) (map[string][]string, error) {
+// drainTargets removes each target's login token from both backends AND its
+// exec-credential cache entries via config.DrainToken (the single drain
+// point), reporting the token backends touched per server so a partial
+// failure names what was already drained, plus every cache key removed
+// across all targets.
+func (l logoutCmd) drainTargets(cfg *config.Config, targets []string) (map[string][]string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
+	var deletedCache []string
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, derr := config.DrainToken(l.dir, s)
+		from, cache, derr := config.DrainToken(l.dir, s, cfg.Servers[s].URL)
 		if derr != nil {
-			return nil, clierr.New(clierr.CodeGeneric,
+			return nil, nil, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("failed to log out %q: %v", s, derr)).
 				WithHint(fmt.Sprintf("already logged out: %v", done))
 		}
 		deletedFrom[s] = from
+		deletedCache = append(deletedCache, cache...)
 		done = append(done, s)
 	}
-	return deletedFrom, nil
-}
-
-// drainExecCache removes exec-credential cache entries for the servers being
-// logged out: --all clears the whole cache (no live token survives a full
-// logout, regardless of which server cached it); otherwise only entries
-// whose Server host matches one of targets are removed. Returns the deleted
-// cache keys.
-func (l logoutCmd) drainExecCache(cfg *config.Config, all bool, targets []string) ([]string, error) {
-	if all {
-		cached, err := l.store.ListCachedCreds()
-		if err != nil {
-			return nil, err
-		}
-		if err := l.store.DeleteAllCachedCreds(); err != nil {
-			return nil, err
-		}
-		keys := make([]string, 0, len(cached))
-		for _, c := range cached {
-			keys = append(keys, c.Key)
-		}
-		return keys, nil
-	}
-	var deleted []string
-	for _, s := range targets {
-		drained, err := config.DrainExecCacheForServer(l.store, cfg.Servers[s].URL)
-		if err != nil {
-			return deleted, err
-		}
-		deleted = append(deleted, drained...)
-	}
-	return deleted, nil
+	return deletedFrom, deletedCache, nil
 }
 
 // clearCurrentContext unsets the current context when it no longer resolves to

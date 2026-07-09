@@ -119,7 +119,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	flagServer := in.String("server")
 	flagKey := ""
 	if name != "" && flagServer != "" {
-		flagKey = config.CacheKey(name, cacheServerHost(flagServer), in.String("cluster"))
+		flagKey = config.CacheKey(name, config.ServerHost(flagServer), in.String("cluster"))
 		if r, hit := t.cachedResult(flagKey, p); hit {
 			return r, nil
 		}
@@ -131,7 +131,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	serverHost := cacheServerHost(server)
+	serverHost := config.ServerHost(server)
 	cacheKey := config.CacheKey(name, serverHost, clusterID)
 
 	switch {
@@ -592,15 +592,6 @@ func generateKey() (string, error) {
 	}
 
 	return string(token), nil
-}
-
-// cacheServerHost reduces a server URL to its host for the cache key, falling
-// back to the raw string when it does not parse to a host.
-func cacheServerHost(server string) string {
-	if u, err := url.Parse(server); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return server
 }
 
 // resolveConn fills server/CA/cluster from flags, falling back to the CLI config

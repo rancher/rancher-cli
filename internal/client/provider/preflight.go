@@ -22,6 +22,15 @@ import (
 func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	rc, err := kube.RESTConfig(eff)
 	if err != nil {
+		// RESTConfig already returns a typed *clierr.Error (CONTEXT_NOT_SET,
+		// AUTH) with the right code and hint for its own choke points — pass
+		// it through unchanged so `auth check` reports the same code/exit as
+		// every other command for the identical state, instead of relabeling
+		// everything AUTH here.
+		var ce *clierr.Error
+		if errors.As(err, &ce) {
+			return "", ce
+		}
 		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(config.LoginHint)
 	}
 	disc, err := kube.Discovery(discoveryConfig(rc))

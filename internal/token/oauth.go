@@ -126,7 +126,7 @@ func oauthAuthCodeAuth(
 	authURL := oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 
 	resultCh := make(chan callbackResult, 1)
-	srv := startCallbackServer(listener, state, resultCh)
+	srv := startCallbackServer(listener, state, resultCh, p)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), callbackServerShutdownTimeout)
 		defer cancel()
@@ -222,7 +222,7 @@ func openBrowser(openURL string) error {
 	return exec.Command(cmd, args...).Start()
 }
 
-func startCallbackServer(listener net.Listener, expectedState string, resultCh chan<- callbackResult) *http.Server {
+func startCallbackServer(listener net.Listener, expectedState string, resultCh chan<- callbackResult, p iruntime.Prompter) *http.Server {
 	mux := http.NewServeMux()
 	srv := &http.Server{
 		Handler:      mux,
@@ -249,6 +249,11 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 		state := query.Get("state")
 		if state != expectedState {
 			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			// No resultCh signal (the one-shot handler must stay armed for the
+			// real redirect) — but a forged/stray request as the ONLY request
+			// this server ever sees would otherwise hang the flow silently for
+			// the full timeout. Tell the user why the wait continues.
+			p.Notice("ignored a callback with an invalid state; still waiting for the identity provider redirect")
 			return
 		}
 

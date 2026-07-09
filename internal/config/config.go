@@ -18,6 +18,15 @@ const LoginHint = "run: rancher auth login --server <url>"
 // also accepts an env-only session (no stored context needed).
 const LoginOrEnvHint = "run: rancher auth login --server <url>, or set RANCHER_URL and RANCHER_TOKEN"
 
+// ErrContextNotSet builds the standard error for the choke point where
+// connection resolution found no effective server URL at all — no stored
+// context and no RANCHER_URL. Every caller of Effective that reaches this
+// point (kube.RESTConfig, kubeconfig) shares one error so a future wording
+// change lands once. Returns a fresh *clierr.Error each call.
+func ErrContextNotSet() *clierr.Error {
+	return clierr.New(clierr.CodeContextNotSet, "no current context and no RANCHER_URL set").WithHint(LoginOrEnvHint)
+}
+
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
 type Server struct {
 	URL string `json:"url"`

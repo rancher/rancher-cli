@@ -53,8 +53,11 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
 		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
 	})
-	t.Run("empty token returns error", func(t *testing.T) {
+	t.Run("empty token returns AUTH with a login-or-env hint", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"})
-		assert.ErrorContains(t, err, "no token")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
 	})
 }

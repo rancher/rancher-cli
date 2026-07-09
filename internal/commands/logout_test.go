@@ -38,7 +38,7 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 
 func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "LogoutResult", res.Kind)
 
@@ -62,7 +62,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 
 func TestLogoutByName(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken("other")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -74,8 +74,8 @@ func TestLogoutByName(t *testing.T) {
 }
 
 func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
-	dir, store := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
+	dir, _ := seedLogout(t, "acme", "acme")
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -88,7 +88,7 @@ func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 
 func TestLogoutAll(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken("acme")
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -107,7 +107,7 @@ func TestLogoutDrainsMatchingExecCache(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
 
-	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -128,7 +128,7 @@ func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
 
-	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -145,8 +145,8 @@ func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
 }
 
 func TestLogoutNameAndAllIsValidation(t *testing.T) {
-	dir, store := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(),
+	dir, _ := seedLogout(t, "acme", "acme")
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
 		args{a: []string{"acme"}, b: map[string]bool{"all": true}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -154,16 +154,16 @@ func TestLogoutNameAndAllIsValidation(t *testing.T) {
 }
 
 func TestLogoutNoCurrentContext(t *testing.T) {
-	dir, store := seedLogout(t, "", "acme") // no current context
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	dir, _ := seedLogout(t, "", "acme") // no current context
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
 }
 
 func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
-	dir, store := seedLogout(t, "ghost", "acme") // CurrentContext points at a missing key
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	dir, _ := seedLogout(t, "ghost", "acme") // CurrentContext points at a missing key
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -172,7 +172,6 @@ func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
 func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	store := config.NewFileStore(dir)
 	cfg := &config.Config{
 		CurrentContext: "acme",
 		Servers:        map[string]config.Server{}, // server missing
@@ -180,7 +179,7 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
@@ -200,7 +199,7 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	require.NoError(t, store.SetToken("acme", "id:sec"))
 
-	_, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)

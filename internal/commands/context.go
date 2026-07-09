@@ -61,7 +61,7 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 }
 func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cluster, project := in.String("cluster"), in.String("project")
-	if ce := rejectShadowedGlobalOverride(cluster); ce != nil {
+	if ce := rejectShadowedGlobalOverride(cluster, project); ce != nil {
 		return runtime.Result{}, ce
 	}
 	// Require at least one scope flag so a bare `set-context [--current]` is a
@@ -144,22 +144,28 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 }
 
 // rejectShadowedGlobalOverride guards against the CW-3 footgun: the global
-// --context flag and this command's local --cluster flag are separate,
-// unsynchronized urfave/cli Flag objects that happen to share a name axis. If
-// the caller supplied a global --context cluster but this command's own
-// --cluster is empty, the global value would otherwise be silently dropped
-// from the write with no error — the global flag scopes server reads, not
-// config writes. localCluster is this command's own (possibly empty)
-// --cluster value.
-func rejectShadowedGlobalOverride(localCluster string) *clierr.Error {
-	var globalCluster string
+// --context flag and this command's local --cluster/--project flags are
+// separate, unsynchronized urfave/cli Flag objects that happen to share a
+// name axis. If the caller supplied a global --context cluster and/or
+// project but this command's own matching local flag is empty, the global
+// value would otherwise be silently dropped from the write with no error —
+// the global flag scopes server reads, not config writes. localCluster/
+// localProject are this command's own (possibly empty) --cluster/--project
+// values.
+func rejectShadowedGlobalOverride(localCluster, localProject string) *clierr.Error {
+	var globalCluster, globalProject string
 	if ctxVal := config.ContextOverride(); ctxVal != "" {
-		globalCluster, _, _ = config.SplitContext(ctxVal)
+		globalCluster, globalProject, _ = config.SplitContext(ctxVal)
 	}
 	if localCluster == "" && globalCluster != "" {
 		return clierr.New(clierr.CodeValidation,
 			"--context at the root scopes server operations, not config writes").
 			WithHint("pass --cluster explicitly: rancher config set-context --current --cluster <c>")
+	}
+	if localProject == "" && globalProject != "" {
+		return clierr.New(clierr.CodeValidation,
+			"--context at the root scopes server operations, not config writes").
+			WithHint("pass --project explicitly: rancher config set-context --current --project <p>")
 	}
 	return nil
 }

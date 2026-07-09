@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -57,8 +58,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		return runtime.Result{}, err
 	}
 	if eff.URL == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet,
-			"no current context and no RANCHER_URL set").WithHint(config.LoginOrEnvHint)
+		return runtime.Result{}, config.ErrContextNotSet()
 	}
 
 	id := in.String("cluster")
@@ -76,9 +76,23 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			WithHint("pass --cluster <id|name> or set a context")
 	}
 
-	// eff.CA already layers RANCHER_CACERT over the stored server's CA (env
-	// wins) — an env-only session gets the CA-by-server rule for free.
-	caPEM, err := config.ResolveCA(eff.CA)
+	// eff.CA/eff.ServerName come from the STORED context regardless of
+	// whether RANCHER_URL just moved eff.URL to a different server — pairing
+	// a stored CA (or name) with a different server's URL is exactly the
+	// legacy-migration lesson never to repeat. When RANCHER_URL is set and
+	// differs from the stored server's URL, fall back to RANCHER_CACERT
+	// alone (or none) and a host-derived name, exactly like a pure env-only
+	// session with no stored context at all.
+	storedURL := ""
+	if _, srv, cerr := cfg.CurrentServer(); cerr == nil {
+		storedURL = srv.URL
+	}
+	caSource, nameSource := eff.CA, eff.ServerName
+	if envURL := os.Getenv("RANCHER_URL"); envURL != "" && envURL != storedURL {
+		caSource, nameSource = os.Getenv("RANCHER_CACERT"), ""
+	}
+
+	caPEM, err := config.ResolveCA(caSource)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -93,14 +107,12 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		// cased scheme that a literal "http://" prefix check would miss.
 		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth — use https")
 	}
-	// eff.ServerName is empty for an env-only session (no stored context) —
-	// synthesize a stable entry name from the server host instead.
-	serverName := eff.ServerName
+	// nameSource is empty for an env-only session, or when the env override
+	// just moved the URL away from the stored server — synthesize a stable
+	// entry name from the server host instead.
+	serverName := nameSource
 	if serverName == "" {
-		serverName = base
-		if i := strings.Index(base, "://"); i >= 0 {
-			serverName = base[i+3:]
-		}
+		serverName = config.ServerHost(base)
 	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
 

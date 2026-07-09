@@ -107,8 +107,8 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
 	diff := diffObjects("", orig.Object, patched.Object)
-	if c.k.Key == "secret" {
-		redactSecretDiff(diff)
+	if c.k.Sensitive {
+		redactSensitiveDiff(diff)
 	}
 
 	patched.SetResourceVersion(rv)
@@ -193,10 +193,14 @@ func diffObjects(prefix string, a, b any) []safety.DiffEntry {
 	}
 }
 
-// redactSecretDiff blanks From/To for diff entries under /data or
+// redactSensitiveDiff blanks From/To for diff entries under /data or
 // /stringData in place — the JSON path stays visible (so a caller can see
-// which keys changed) but the raw secret values never reach the Effect.
-func redactSecretDiff(diff []safety.DiffEntry) {
+// which keys changed) but the raw value never reaches the Effect. Gated on
+// c.k.Sensitive (the same flag that gates the --yes destructive gate on this
+// same command), not the literal "secret" kind, so redaction stays correct
+// by construction for any future Sensitive kind with a confidential payload
+// under these paths — today only `secret` has one.
+func redactSensitiveDiff(diff []safety.DiffEntry) {
 	for i, e := range diff {
 		if isSecretDataPath(e.Path) {
 			diff[i].From = "<redacted>"
