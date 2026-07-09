@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -514,6 +516,67 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate")
 	assert.Contains(t, err.Error(), "callback port", "should fail past the gate on the forced port error")
+}
+
+func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
+	// Regression pin for the exchange-ctx/rancherLogin-ctx shadowing bug: the
+	// caller's context must still govern the flow after the code exchange,
+	// with zero timing sensitivity (no slow-IdP race).
+	t.Parallel()
+
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"fake-access-token","token_type":"bearer","expires_in":3600}`))
+	}))
+	defer idp.Close()
+
+	var rancherHits int32
+	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&rancherHits, 1)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer rancherSrv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// openBrowser stub: drives the local callback synchronously (queuing the
+	// buffered resultCh before the select ever runs), then cancels the caller
+	// ctx. Ordering is deterministic — no goroutine race, no timing window.
+	openBrowserStub := func(authURL string) error {
+		u, err := url.Parse(authURL)
+		if err != nil {
+			return err
+		}
+		q := u.Query()
+		cbURL := q.Get("redirect_uri") + "?code=fake-code&state=" + url.QueryEscape(q.Get("state"))
+		resp, err := http.Get(cbURL)
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		cancel()
+		return nil
+	}
+
+	provider := &AzureADProvider{
+		OAuthProvider: OAuthProvider{
+			ClientID: "test-client",
+			Scopes:   []string{"openid"},
+			OAuthEndpoint: OAuthEndpoint{
+				AuthURL:  idp.URL + "/authorize",
+				TokenURL: idp.URL + "/token",
+			},
+		},
+	}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+
+	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&rancherHits),
+		"Rancher login must never be reached once the caller context is cancelled")
 }
 
 // blockingReader never returns from Read, so readLine's scan goroutine cannot
