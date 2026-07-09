@@ -14,10 +14,10 @@ clusters. There is no Norman/`v3` code on the resource path.
 
 **One documented exception: interactive auth-provider login.** `auth get-token` (the
 kubectl exec-credential plugin) authenticates against Rancher's legacy public
-endpoints — `/v1-public/authproviders`, falling back to `/v3-public/authProviders` on
-404 — because no Kubernetes-native login equivalent exists yet. This is the only
-subsystem that talks to Rancher's non-k8s API; migrating it is the intended first job of
-the reserved `RancherClient` port (see [Key design decisions](#key-design-decisions)).
+endpoints — `/v1-public/authproviders` — because no Kubernetes-native login equivalent
+exists yet. This is the only subsystem that talks to Rancher's non-k8s API; migrating
+it is the intended first job of the reserved `RancherClient` port (see [Key design
+decisions](#key-design-decisions)).
 
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
@@ -281,11 +281,11 @@ OS keychain has no list API, and `auth list-tokens` needs enumeration, so the ca
 file-backed regardless of policy. Accepted trade-off.
 
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
-`/v1-public/authproviders` (falling back to `/v3-public/authProviders` on 404) and then
-runs the matching flow: **basic** (username/password), **SAML** (generates an RSA-2048
-keypair, sends the public key, polls the auth-token URL every 10s up to 15 min, and
-decrypts the returned token with RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code
-by default, or PKCE auth-code with a `127.0.0.1` callback). All of this HTTP goes through
+`/v1-public/authproviders` and then runs the matching flow: **basic**
+(username/password), **SAML** (generates an RSA-2048 keypair, sends the public key,
+polls the auth-token URL every 10s up to 15 min, and decrypts the returned token with
+RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code by default, or PKCE auth-code
+with a `127.0.0.1` callback). All of this HTTP goes through
 `internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts;
 `--skip-verify` on `auth get-token` sets `InsecureSkipVerify` for that client only.
 

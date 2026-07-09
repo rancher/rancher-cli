@@ -40,7 +40,7 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p iruntime.Prompter) (*Token, error) {
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
 	if input.authFlow == "" {
 		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
 	}
@@ -53,9 +53,9 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 
 	switch input.authFlow {
 	case authCodeFlow:
-		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, useV1Public, openBrowser, p)
+		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, openBrowser, p)
 	case deviceAuthFlow, "":
-		return oauthDeviceCodeAuth(ctx, client, input, provider, useV1Public, p)
+		return oauthDeviceCodeAuth(ctx, client, input, provider, p)
 	default:
 		return nil, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
 	}
@@ -87,7 +87,6 @@ func oauthAuthCodeAuth(
 	input *loginInput,
 	provider typedProvider,
 	timeoutAfter time.Duration,
-	useV1Public bool,
 	openBrowser openBrowserFunc,
 	p iruntime.Prompter,
 ) (*Token, error) {
@@ -160,7 +159,7 @@ func oauthAuthCodeAuth(
 			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", err)
 		}
 
-		return rancherLogin(ctx, client, input, oauthToken, useV1Public)
+		return rancherLogin(ctx, client, input, oauthToken)
 	case <-timeout.C:
 		return nil, clierr.New(clierr.CodeAuth, "timed out waiting for browser authentication").WithRetryable(true)
 	case <-interrupt:
@@ -258,7 +257,7 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, useV1Public bool, p iruntime.Prompter) (*Token, error) {
+func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
@@ -282,7 +281,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 		return nil, fmt.Errorf("failed to retrieve access token: %w", err)
 	}
 
-	token, err := rancherLogin(ctx, client, input, oauthToken, useV1Public)
+	token, err := rancherLogin(ctx, client, input, oauthToken)
 	if err != nil {
 		return nil, fmt.Errorf("error during auth login: %w", err)
 	}
@@ -311,12 +310,8 @@ func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
 	}, nil
 }
 
-func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token, useV1Public bool) (*Token, error) {
+func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token) (*Token, error) {
 	reqURL := fmt.Sprintf(loginURL, input.server)
-	if !useV1Public {
-		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
-		reqURL = fmt.Sprintf(loginURLv3, input.server, input.authProvider, providerName)
-	}
 
 	responseType := "kubeconfig"
 	if input.clusterID != "" {

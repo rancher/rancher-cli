@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,7 +108,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 func TestBasicAuthNonInteractiveIsAuthError(t *testing.T) {
 	t.Parallel()
 	input := &loginInput{server: "https://test.example.com", authProvider: "localProvider"}
-	_, err := basicAuth(context.Background(), nil, input, true, ui.Discard())
+	_, err := basicAuth(context.Background(), nil, input, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -533,4 +534,36 @@ func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	_, err := selectAuthProvider(ctx, providers, "", p)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled), "cancelled context must return context.Canceled, not AMBIGUOUS_SELECTION")
+}
+
+func TestGetAuthProviders404IsError(t *testing.T) {
+	t.Parallel()
+	// Record every request path: the assertion below must FAIL if the old
+	// 404→/v3-public fallback somehow survives, not just when the error text
+	// changes (a surviving fallback would also 404 and produce the same error).
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, newLineReader(), false, true)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404", "a 404 from /v1-public/authproviders must surface as an error")
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, paths)
+	for _, p := range paths {
+		assert.NotContains(t, p, "v3-public", "no request may fall back to the removed /v3-public API")
+	}
 }

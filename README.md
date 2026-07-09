@@ -14,7 +14,7 @@ Users get the same commands with readable table output.
 management, the exec-credential token plugin, and the self-description surface
 (`schema`). Kube-native: resource operations go through Rancher's Kubernetes
 API, with one exception — interactive auth-provider login (`auth get-token`)
-uses Rancher's legacy `/v1-public` / `/v3-public` endpoints. The command surface
+uses Rancher's legacy `/v1-public` endpoints. The command surface
 is verb-first (kubectl-style): `auth …`, `config …`, `get …`, `create …`.
 
 **Phase 1 Wave 1 — implemented.** The engine/provider layer plus generic,

@@ -30,12 +30,9 @@ import (
 )
 
 const (
-	loginURL          = "%s/v1-public/login"
-	authProviderURL   = "%s/v1-public/authproviders"
-	authTokenURL      = "%s/v1-public/authtokens/%s"
-	loginURLv3        = "%s/v3-public/%ss/%s?action=login"
-	authProviderURLv3 = "%s/v3-public/authProviders"
-	authTokenURLv3    = "%s/v3-public/authTokens/%s"
+	loginURL        = "%s/v1-public/login"
+	authProviderURL = "%s/v1-public/authproviders"
+	authTokenURL    = "%s/v1-public/authtokens/%s"
 )
 
 const (
@@ -271,7 +268,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 }
 
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
-	authProviders, useV1Public, err := getAuthProviders(ctx, client, input.server, true)
+	authProviders, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {
 		return Token{}, err
 	}
@@ -287,15 +284,15 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
 				WithHint("run without --no-input, or use a cached --name")
 		}
-		token, err = samlAuth(ctx, client, input, useV1Public, p)
+		token, err = samlAuth(ctx, client, input, p)
 	} else if oauthProviders[input.authProvider] {
 		var tokenPtr *Token
-		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, useV1Public, p)
+		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, p)
 		if err == nil {
 			token = *tokenPtr
 		}
 	} else {
-		token, err = basicAuth(ctx, client, input, useV1Public, p)
+		token, err = basicAuth(ctx, client, input, p)
 	}
 	if err != nil {
 		return Token{}, err
@@ -303,7 +300,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	return token, nil
 }
 
-func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p runtime.Prompter) (Token, error) {
+func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
 	username, err := p.Prompt(ctx, "Enter username: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
@@ -334,10 +331,6 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV
 	}
 
 	reqURL := fmt.Sprintf(loginURL, input.server)
-	if !useV1Public {
-		providerName := strings.ToLower(strings.TrimSuffix(input.authProvider, "Provider"))
-		reqURL = fmt.Sprintf(loginURLv3, input.server, input.authProvider, providerName)
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return Token{}, fmt.Errorf("error creating request: %w", err)
@@ -355,7 +348,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV
 	return parseLoginResponse(respBody)
 }
 
-func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p runtime.Prompter) (Token, error) {
+func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
 	token := Token{}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -381,9 +374,6 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1
 	}
 
 	tokenURL := fmt.Sprintf(authTokenURL, input.server, id)
-	if !useV1Public {
-		tokenURL = fmt.Sprintf(authTokenURLv3, input.server, id)
-	}
 
 	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, bytes.NewBuffer(nil))
 	if err != nil {
@@ -477,36 +467,24 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1
 	}
 }
 
-func getAuthProviders(ctx context.Context, client *http.Client, server string, useV1Public bool) ([]typedProvider, bool, error) {
+func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, error) {
 	authProvidersURL := fmt.Sprintf(authProviderURL, server)
-	if !useV1Public {
-		authProvidersURL = fmt.Sprintf(authProviderURLv3, server)
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authProvidersURL, nil)
 	if err != nil {
-		return nil, false, fmt.Errorf("error creating request: %w", err)
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	resp, respBody, err := doRequest(client, req)
-	if err == nil {
-		switch resp.StatusCode {
-		case http.StatusOK:
-		case http.StatusNotFound:
-			if useV1Public {
-				return getAuthProviders(ctx, client, server, !useV1Public)
-			}
-			fallthrough
-		default:
-			err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-		}
+	if err == nil && resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("error listing auth providers: %w", err)
+		return nil, fmt.Errorf("error listing auth providers: %w", err)
 	}
 
 	if !gjson.ValidBytes(respBody) {
-		return nil, false, errors.New("invalid JSON response")
+		return nil, errors.New("invalid JSON response")
 	}
 	data := gjson.GetBytes(respBody, "data").Array()
 
@@ -528,7 +506,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string, u
 
 			err = json.Unmarshal([]byte(provider.Raw), tp)
 			if err != nil {
-				return nil, false, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
+				return nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
 			}
 
 			if tp.GetType() == "localProvider" {
@@ -539,7 +517,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string, u
 		}
 	}
 
-	return supportedProviders, useV1Public, err
+	return supportedProviders, err
 }
 
 func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p runtime.Prompter) (typedProvider, error) {
