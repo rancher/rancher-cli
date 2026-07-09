@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -359,6 +360,42 @@ func DrainToken(dir, server string) ([]string, error) {
 		errs = append(errs, fmt.Errorf("file credential store: %w", err))
 	}
 	return from, errors.Join(errs...)
+}
+
+// DrainExecCacheForServer deletes every exec-credential cache entry whose
+// Server matches serverURL's host — the same host CacheKey embeds when the
+// entry was cached — and returns the deleted entries' keys. Entries cached
+// against a different server are left alone.
+func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
+	host := serverURLHost(serverURL)
+	if host == "" {
+		return nil, nil
+	}
+	creds, err := store.ListCachedCreds()
+	if err != nil {
+		return nil, err
+	}
+	var deleted []string
+	for _, c := range creds {
+		if c.Server != host {
+			continue
+		}
+		if err := store.DeleteCachedCred(c.Key); err != nil {
+			return deleted, err
+		}
+		deleted = append(deleted, c.Key)
+	}
+	return deleted, nil
+}
+
+// serverURLHost reduces a server URL to its host, matching CacheKey's
+// composition; it falls back to the raw string when it does not parse to a
+// host.
+func serverURLHost(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return raw
 }
 
 // OpenStore selects a store by policy. policy is the config-file-level

@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -96,6 +97,51 @@ func TestLogoutAll(t *testing.T) {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, "", cfg.CurrentContext)
+}
+
+func TestLogoutDrainsMatchingExecCache(t *testing.T) {
+	dir, store := seedLogout(t, "acme", "acme", "other")
+	// acme.ex and other.ex per seedLogout; cache two entries, one per host,
+	// plus a legacy bare entry (no Server) that must never be touched.
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+
+	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	deletedCache, ok := data["deletedCache"].([]string)
+	require.True(t, ok, "Result carries deletedCache")
+	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, deletedCache)
+
+	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
+	assert.ErrorIs(t, err, config.ErrNoToken, "matching entry drained")
+	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"))
+	require.NoError(t, err, "non-matching entry kept")
+	_, _, err = store.GetCachedCred("legacy-bare")
+	require.NoError(t, err, "legacy bare entry (no Server) kept")
+}
+
+func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
+	dir, store := seedLogout(t, "acme", "acme", "other")
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
+
+	res, err := NewLogout(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	deletedCache, ok := data["deletedCache"].([]string)
+	require.True(t, ok, "Result carries deletedCache")
+	assert.ElementsMatch(t, []string{
+		config.CacheKey("kubeuser", "acme.ex", "c-1"),
+		config.CacheKey("kubeuser", "other.ex", "c-1"),
+	}, deletedCache)
+
+	creds, err := store.ListCachedCreds()
+	require.NoError(t, err)
+	assert.Empty(t, creds, "--all clears the whole cache")
 }
 
 func TestLogoutNameAndAllIsValidation(t *testing.T) {

@@ -318,6 +318,38 @@ func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
 	}
 }
 
+func TestDrainExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+
+	deleted, err := DrainExecCacheForServer(store, "https://acme.ex")
+	require.NoError(t, err)
+	assert.Equal(t, []string{CacheKey("kubeuser", "acme.ex", "c-1")}, deleted)
+
+	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"))
+	assert.ErrorIs(t, err, ErrNoToken, "matching entry must be drained")
+	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"))
+	assert.NoError(t, err, "non-matching entry must be kept")
+	_, _, err = store.GetCachedCred("legacy-bare")
+	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
+}
+
+func TestDrainExecCacheForServerEmptyHostIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok", time.Time{}, "", "", ""))
+
+	deleted, err := DrainExecCacheForServer(store, "")
+	require.NoError(t, err)
+	assert.Nil(t, deleted)
+
+	_, _, err = store.GetCachedCred("legacy-bare")
+	assert.NoError(t, err, "empty host must not touch the cache")
+}
+
 func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()

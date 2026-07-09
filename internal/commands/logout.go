@@ -16,8 +16,9 @@ type logoutCmd struct {
 }
 
 // NewLogout builds `auth logout` (local): clear the stored login token for a
-// server. Keeps the server/context config entries and never touches the exec-cred
-// cache (that is `auth delete-token`'s domain).
+// server and drain matching exec-credential cache entries. Keeps the
+// server/context config entries; `auth delete-token` remains for clearing
+// cache entries outside a logout.
 func NewLogout(dir string, store config.CredStore) runtime.Command {
 	return &logoutCmd{dir: dir, store: store}
 }
@@ -65,13 +66,19 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 		return runtime.Result{}, err
 	}
 
+	deletedCache, err := l.drainExecCache(cfg, all, targets)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	if err := clearCurrentContext(cfg, all, targets); err != nil {
 		return runtime.Result{}, err
 	}
 
 	sort.Strings(targets)
+	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
-		"loggedOut": targets, "deletedFrom": deletedFrom,
+		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
 	}}, nil
 }
 
@@ -124,6 +131,37 @@ func (l logoutCmd) drainTargets(targets []string) (map[string][]string, error) {
 		done = append(done, s)
 	}
 	return deletedFrom, nil
+}
+
+// drainExecCache removes exec-credential cache entries for the servers being
+// logged out: --all clears the whole cache (no live token survives a full
+// logout, regardless of which server cached it); otherwise only entries
+// whose Server host matches one of targets are removed. Returns the deleted
+// cache keys.
+func (l logoutCmd) drainExecCache(cfg *config.Config, all bool, targets []string) ([]string, error) {
+	if all {
+		cached, err := l.store.ListCachedCreds()
+		if err != nil {
+			return nil, err
+		}
+		if err := l.store.DeleteAllCachedCreds(); err != nil {
+			return nil, err
+		}
+		keys := make([]string, 0, len(cached))
+		for _, c := range cached {
+			keys = append(keys, c.Key)
+		}
+		return keys, nil
+	}
+	var deleted []string
+	for _, s := range targets {
+		drained, err := config.DrainExecCacheForServer(l.store, cfg.Servers[s].URL)
+		if err != nil {
+			return deleted, err
+		}
+		deleted = append(deleted, drained...)
+	}
+	return deleted, nil
 }
 
 // clearCurrentContext unsets the current context when it no longer resolves to

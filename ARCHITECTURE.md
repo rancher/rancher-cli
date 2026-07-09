@@ -264,7 +264,10 @@ through to the file store on a keychain miss, so tokens written before an upgrad
 keep working. `config.DrainToken` (logout) drains **both** backends unconditionally —
 because read-through makes the file store part of the effective read path under every
 policy — aggregating per-backend errors with `errors.Join` and reporting which backends a
-token was `deletedFrom`. No orphaned live tokens.
+token was `deletedFrom`. Logout also drains the exec-credential cache: entries whose
+`Server` matches a logged-out server's host are deleted (`--all` clears every cached
+entry), reported as `deletedCache` in the result. No orphaned live tokens.
+`auth delete-token` remains available for clearing cache entries outside a logout.
 
 **Exec-credential cache.** `auth get-token` caches short-lived bearer tokens as records
 (`{Name, Server, Cluster, Token, Expiry}`) keyed `<name>@<serverHost>/<cluster>` in
