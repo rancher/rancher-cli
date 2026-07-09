@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -187,6 +188,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			if c.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
+			config.SetContextOverride(c.String("context"), c.String("project"))
 			return ctx, nil
 		},
 		Commands: commandsList,

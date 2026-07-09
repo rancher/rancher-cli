@@ -94,5 +94,29 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 			eff.Cluster = v
 		}
 	}
+
+	// Flag overrides (flag > env > file).
+	if v := contextOverride.context; v != "" {
+		if cl, pr, ok := strings.Cut(v, ":"); ok {
+			eff.Cluster, eff.Project = cl, pr
+		} else {
+			eff.Cluster = v
+		}
+	}
+	if v := contextOverride.project; v != "" {
+		eff.Project = v
+	}
 	return eff, nil
+}
+
+// contextOverride carries the global --context/--project flag values, set once
+// by the CLI adapter before dispatch. Flags outrank RANCHER_CONTEXT (env),
+// which outranks the config file — the same env-over-file rule this block
+// already applies, extended one level up.
+var contextOverride struct{ context, project string }
+
+// SetContextOverride records the global --context (cluster[:project]) and
+// --project flag values for this process. Empty strings clear/skip an axis.
+func SetContextOverride(contextVal, project string) {
+	contextOverride.context, contextOverride.project = contextVal, project
 }

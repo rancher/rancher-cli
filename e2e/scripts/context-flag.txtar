@@ -1,0 +1,21 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# seed via the explicit flag, read back via --context (CW-3: the flag routes
+# exactly like RANCHER_CONTEXT — Downstream kind, no --cluster)
+exec rancher create resource -f cm.yaml --cluster testcluster --apply
+exec rancher get configmap ctx-cm --context testcluster --namespace default -o json
+jsonquery stdout data.metadata.name ctx-cm
+
+# bogus context cluster → resolution error
+! exec rancher get configmap ctx-cm --context no-such-cluster --namespace default -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ctx-cm
+  namespace: default
+data:
+  k: v

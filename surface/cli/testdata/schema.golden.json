@@ -4658,6 +4658,18 @@
       "appliesTo": "all",
       "name": "--debug",
       "type": "bool"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CONTEXT \u003e config",
+      "name": "--context",
+      "type": "string"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "scope: project axis only",
+      "name": "--project",
+      "type": "string"
     }
   ],
   "outputApiVersion": "cli.rancher.io/v1"

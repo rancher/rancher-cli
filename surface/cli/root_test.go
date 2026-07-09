@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -210,6 +211,12 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 
 	_, statErr2 := os.Stat(filepath.Join(dir, "cli2.json"))
 	require.True(t, os.IsNotExist(statErr2), "must not write cli2.json")
+
+	cfg, cfgErr := config.Load(config.FilePath(dir))
+	require.NoError(t, cfgErr)
+	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster,
+		"auth login's local --context flag must still land in the written config (CW-3: leaf shadows the global --context flag)")
+	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project)
 
 	out.Reset()
 	require.NoError(t, root.Run(context.Background(), []string{
