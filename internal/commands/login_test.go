@@ -73,6 +73,24 @@ func TestLoginTokenViaStdin(t *testing.T) {
 	assert.Equal(t, "id-1:secret-1", tok)
 }
 
+func TestLoginExtTokenViaStdin(t *testing.T) {
+	// ext-issued bearers look like "ext/token-abc:secret"; the id:secret split
+	// cuts at the FIRST colon so the ext/ prefix stays inside the id (EXT-3).
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	in := args{
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
+		b: map[string]bool{"token-stdin": true},
+	}
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "LoginResult", res.Kind)
+
+	tok, err := store.GetToken("acme")
+	require.NoError(t, err)
+	assert.Equal(t, "ext/token-abc:secretxyz", tok)
+}
+
 func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
