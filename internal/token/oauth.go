@@ -346,11 +346,9 @@ func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, o
 		return nil, err
 	}
 
-	token := &Token{}
-	err = json.Unmarshal(respBody, token)
+	token, err := parseLoginResponse(respBody)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshaling login response: %w", err)
+		return nil, err
 	}
-
-	return token, nil
+	return &token, nil
 }

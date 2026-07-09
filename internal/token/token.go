@@ -352,11 +352,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, useV
 	if resp.StatusCode != http.StatusCreated {
 		return Token{}, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
-	var token Token
-	if err := json.Unmarshal(respBody, &token); err != nil {
-		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
-	}
-	return token, nil
+	return parseLoginResponse(respBody)
 }
 
 func samlAuth(ctx context.Context, client *http.Client, input *loginInput, useV1Public bool, p runtime.Prompter) (Token, error) {

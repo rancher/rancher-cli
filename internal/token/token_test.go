@@ -367,6 +367,59 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 	assert.Equal(t, clierr.CodeAuth, ce.Code, "401 from login POST must map to CodeAuth")
 }
 
+func TestBasicAuthExtTokenResponse(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+			return
+		}
+		if r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{
+				"apiVersion": "ext.cattle.io/v1",
+				"kind": "Token",
+				"metadata": {"name": "token-e2e"},
+				"status": {"bearerToken": "ext/token-e2e:sssss", "expiresAt": ""}
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		p)
+	require.NoError(t, err)
+
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "ext/token-e2e:sssss", cred.Status.Token,
+		"ext bearer must reach the exec credential with its prefix intact (EXT-3)")
+}
+
+func TestGetTokenCacheHitExtToken(t *testing.T) {
+	// An ext-issued bearer ("ext/<name>:<value>") must round-trip the exec-cred
+	// cache byte-for-byte — the ext/ prefix is opaque data (EXT-3).
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r.ex", ""), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "r.ex", ""))
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r.ex", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "ext/token-abc:secretxyz", cred.Status.Token)
+}
+
 func TestOAuthDeviceCodeFlowNoInputIsAuthError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
