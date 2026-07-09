@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,8 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -61,24 +65,23 @@ func TestMain(m *testing.M) {
 	// envtest-start) instead of their sum.
 	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
 	var cfg *rest.Config
-	g := new(errgroup.Group)
-	g.Go(func() error {
+	build := func() error {
 		// cwd during `go test` is this package directory (e2e/); the module
 		// root with the main package is one level up.
 		if out, err := exec.Command("go", "build", "-o", binPath, "..").CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
 		}
 		return nil
-	})
-	g.Go(func() error {
+	}
+	startEnv := func() error {
 		var err error
 		if cfg, err = env.Start(); err != nil {
 			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
 				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use -p path` and export it): %w", err)
 		}
 		return nil
-	})
-	if err := g.Wait(); err != nil {
+	}
+	if err := buildAndStartEnv(build, startEnv, func() { _ = env.Stop() }); err != nil {
 		panic(err.Error())
 	}
 
@@ -135,6 +138,87 @@ func TestMain(m *testing.M) {
 	_ = env.Stop()
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)
+}
+
+// buildAndStartEnv runs build and startEnv concurrently — they have no data
+// dependency on each other, so `make e2e` pays max(build, envtest-start)
+// instead of their sum. If either fails, stopEnv runs first when startEnv
+// actually succeeded: errgroup.Wait blocks until BOTH goroutines return, so
+// envStarted is settled by the time it's read here regardless of which
+// goroutine failed. A build failure after envtest already started must
+// still stop it — otherwise the etcd/kube-apiserver child processes outlive
+// this function.
+func buildAndStartEnv(build, startEnv func() error, stopEnv func()) error {
+	var envStarted bool
+	g := new(errgroup.Group)
+	g.Go(build)
+	g.Go(func() error {
+		if err := startEnv(); err != nil {
+			return err
+		}
+		envStarted = true
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		if envStarted {
+			stopEnv()
+		}
+		return err
+	}
+	return nil
+}
+
+// DR-011 repro: a build failure racing a slower, successful envtest start
+// must still stop envtest — the goroutine leaked etcd/kube-apiserver
+// processes before this fix, since env.Stop() was only reachable via the
+// sequential path after m.Run(), never on this early-panic path.
+func TestBuildAndStartEnvStopsEnvOnBuildFailureAfterEnvStarted(t *testing.T) {
+	t.Parallel()
+	var stopped bool
+	buildErr := errors.New("build failed")
+
+	err := buildAndStartEnv(
+		func() error {
+			time.Sleep(20 * time.Millisecond) // finishes after startEnv below
+			return buildErr
+		},
+		func() error {
+			return nil // envtest starts successfully, faster than the failing build
+		},
+		func() { stopped = true },
+	)
+
+	require.ErrorIs(t, err, buildErr)
+	assert.True(t, stopped, "envtest must be stopped when the build fails after envtest already started")
+}
+
+func TestBuildAndStartEnvSkipsStopWhenEnvNeverStarted(t *testing.T) {
+	t.Parallel()
+	var stopped bool
+	envErr := errors.New("envtest failed to start")
+
+	err := buildAndStartEnv(
+		func() error { return nil },
+		func() error { return envErr },
+		func() { stopped = true },
+	)
+
+	require.ErrorIs(t, err, envErr)
+	assert.False(t, stopped, "there is nothing to stop when envtest itself never started")
+}
+
+func TestBuildAndStartEnvNoErrorDoesNotStop(t *testing.T) {
+	t.Parallel()
+	var stopped bool
+
+	err := buildAndStartEnv(
+		func() error { return nil },
+		func() error { return nil },
+		func() { stopped = true },
+	)
+
+	require.NoError(t, err)
+	assert.False(t, stopped)
 }
 
 func TestScenarios(t *testing.T) {
