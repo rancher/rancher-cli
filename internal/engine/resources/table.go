@@ -1,19 +1,43 @@
 package resources
 
 import (
+	"encoding/json"
+
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // table projects objects to NAME plus the kind's extra columns for -o table
-// and -o name. It implements output.Tabular.
+// and -o name. It implements output.Tabular AND json.Marshaler: -o json/yaml
+// must see the real object(s), not the table projection, so MarshalJSON
+// bypasses Columns/Rows entirely and emits the underlying object(s).
 type table struct {
-	k     kinds.Kind
-	items []unstructured.Unstructured
+	k      kinds.Kind
+	items  []unstructured.Unstructured
+	single bool // true for a named get (one object), false for a list
 }
 
-func newTable(k kinds.Kind, items []unstructured.Unstructured) table {
-	return table{k: k, items: items}
+func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) table {
+	return table{k: k, items: items, single: single}
+}
+
+// MarshalJSON emits the bare object for a named get, or a bare array of
+// objects for a list — never {"items":...} — so gjson paths like
+// `data.metadata.name` (single) and `data.0.metadata.name`/`data.#` (list)
+// address the real object graph. sigs.k8s.io/yaml marshals through JSON, so
+// this fixes -o yaml too; no separate MarshalYAML is needed.
+func (t table) MarshalJSON() ([]byte, error) {
+	if t.single {
+		if len(t.items) == 0 {
+			return []byte("null"), nil
+		}
+		return json.Marshal(t.items[0].Object)
+	}
+	objs := make([]map[string]any, len(t.items))
+	for i := range t.items {
+		objs[i] = t.items[i].Object
+	}
+	return json.Marshal(objs)
 }
 
 func (t table) Columns() []string {

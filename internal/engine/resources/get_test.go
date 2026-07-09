@@ -1,7 +1,9 @@
 package resources
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,10 +12,12 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/yaml"
 )
 
 // memClient serves canned objects and records the namespaces/names it is asked
@@ -294,6 +298,83 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCluster, gotCluster)
 			assert.Equal(t, tt.wantNS, gotNS)
+		})
+	}
+}
+
+// decodeEnvelope decodes a rendered envelope for the given format (json or
+// yaml — sigs.k8s.io/yaml marshals through JSON, so both round-trip through
+// json.Unmarshal-compatible structures) into v. Tests must decode and assert
+// fields, never string-match the rendered document.
+func decodeEnvelope(t *testing.T, format string, b []byte, v any) {
+	t.Helper()
+	if format == "yaml" {
+		require.NoError(t, yaml.Unmarshal(b, v))
+		return
+	}
+	require.NoError(t, json.Unmarshal(b, v))
+}
+
+// TestGetListRendersRealObjectsThroughOutputRender drives a list `get`
+// through the actual runtime.Run → output.Render pipeline (not just
+// Execute), because that's where the table projection used to swallow the
+// data: table has no exported fields, so json.Marshal/yaml.Marshal on the
+// envelope produced "data": {} for every kind's -o json/-o yaml. table now
+// implements json.Marshaler to emit a bare array of the real objects.
+func TestGetListRendersRealObjectsThroughOutputRender(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			client := &memClient{items: []unstructured.Unstructured{
+				clusterObj("local", "local", "active"),
+				clusterObj("c-m-abc", "prod", "active"),
+			}}
+			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
+
+			var buf bytes.Buffer
+			ce := runtime.Run(context.Background(), cmd, input{}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+
+			var env struct {
+				Data []struct {
+					Metadata struct {
+						Name string `json:"name"`
+					} `json:"metadata"`
+				} `json:"data"`
+			}
+			decodeEnvelope(t, format, buf.Bytes(), &env)
+			require.Len(t, env.Data, 2, "list must render as a bare array of the real objects, not an empty table projection")
+			assert.Equal(t, "c-m-abc", env.Data[1].Metadata.Name)
+		})
+	}
+}
+
+// TestGetNamedRendersRealObjectThroughOutputRender is the named-get
+// counterpart: a single object must render bare (never wrapped in
+// {"items":[...]}), so gjson paths like data.metadata.name address it
+// directly.
+func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			client := &memClient{items: []unstructured.Unstructured{clusterObj("c-m-abc", "prod", "active")}}
+			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
+
+			var buf bytes.Buffer
+			ce := runtime.Run(context.Background(), cmd, input{args: []string{"prod"}}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+
+			var env struct {
+				Data struct {
+					Metadata struct {
+						Name string `json:"name"`
+					} `json:"metadata"`
+				} `json:"data"`
+			}
+			decodeEnvelope(t, format, buf.Bytes(), &env)
+			assert.Equal(t, "c-m-abc", env.Data.Metadata.Name)
 		})
 	}
 }

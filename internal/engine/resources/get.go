@@ -141,13 +141,13 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one})}, nil
+		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true)}, nil
 	}
 	list, lerr := client.List(ctx, c.k.GVR, ns, "")
 	if lerr != nil {
 		return runtime.Result{}, lerr
 	}
-	return runtime.Result{Kind: title + "List", Data: newTable(c.k, list.Items)}, nil
+	return runtime.Result{Kind: title + "List", Data: newTable(c.k, list.Items, false)}, nil
 }
 
 // parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable
