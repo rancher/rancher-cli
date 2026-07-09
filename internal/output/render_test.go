@@ -56,3 +56,26 @@ func TestRenderNameNoNameColumnIsEmpty(t *testing.T) {
 	require.NoError(t, Render(&buf, "name", env))
 	assert.Empty(t, buf.String())
 }
+
+type onlyMarshaler struct{}
+
+func (onlyMarshaler) MarshalJSON() ([]byte, error) { return []byte(`{"name":"m"}`), nil }
+
+func TestRenderTemplateUsesJSONView(t *testing.T) {
+	t.Parallel()
+
+	type widget struct {
+		DisplayName string `json:"displayName"`
+	}
+	var buf bytes.Buffer
+	env := &Envelope{Data: widget{DisplayName: "w1"}}
+	require.NoError(t, Render(&buf, "{{.displayName}}", env))
+	assert.Equal(t, "w1\n", buf.String(),
+		"templates must see the serialized (json-tag) shape, not Go field names")
+
+	// A json.Marshaler-only payload (like resources.table) must be addressable too.
+	buf.Reset()
+	env = &Envelope{Data: onlyMarshaler{}}
+	require.NoError(t, Render(&buf, "{{.name}}", env))
+	assert.Equal(t, "m\n", buf.String())
+}

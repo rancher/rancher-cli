@@ -43,7 +43,18 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		if err != nil {
 			return fmt.Errorf("invalid template: %w", err)
 		}
-		if err := tmpl.Execute(w, env.Data); err != nil {
+		// Execute the template over the JSON view of data, so templates address
+		// the same shape agents see under -o json (and json.Marshaler-only
+		// payloads like get's table are reachable at all) — CW-4.
+		b, err := json.Marshal(env.Data)
+		if err != nil {
+			return err
+		}
+		var view any
+		if err := json.Unmarshal(b, &view); err != nil {
+			return err
+		}
+		if err := tmpl.Execute(w, view); err != nil {
 			return err
 		}
 		_, err = fmt.Fprintln(w)

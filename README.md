@@ -107,7 +107,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 ```
 
 - **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
-  `name` (`.metadata.name`/ids only) · any other value is a Go template over `data`.
+  `name` (`.metadata.name`/ids only) · any other value is a Go template over
+  the JSON view of `data` (same shape as `-o json`).
 - **Errors** are structured, on stderr, always the JSON envelope regardless of
   `-o`, with the error object under `data`:
 
