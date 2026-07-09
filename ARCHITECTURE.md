@@ -148,6 +148,7 @@ graph TD
     provider --> clierr
 
     kube --> config
+    kube --> clierr
 
     config --> clierr
 

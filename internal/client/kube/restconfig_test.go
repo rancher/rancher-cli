@@ -3,6 +3,7 @@ package kube
 import (
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,9 +46,12 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		assert.False(t, rc.Insecure)
 		assert.Nil(t, rc.CAData)
 	})
-	t.Run("empty URL returns error", func(t *testing.T) {
+	t.Run("empty URL returns CONTEXT_NOT_SET with a login-or-env hint", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{Token: "t", CA: "PEM"})
-		assert.ErrorContains(t, err, "server URL is empty")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
 	})
 	t.Run("empty token returns error", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"})

@@ -14,6 +14,10 @@ const fileName = "config.yaml"
 // LoginHint is the canonical remediation hint pointing users at auth login.
 const LoginHint = "run: rancher auth login --server <url>"
 
+// LoginOrEnvHint is LoginHint's counterpart for connection resolution, which
+// also accepts an env-only session (no stored context needed).
+const LoginOrEnvHint = "run: rancher auth login --server <url>, or set RANCHER_URL and RANCHER_TOKEN"
+
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
 type Server struct {
 	URL string `json:"url"`

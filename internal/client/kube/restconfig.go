@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -26,7 +27,8 @@ func BaseURL(serverURL string) string {
 // endpoint for the effective cluster (default "local").
 func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	if eff.URL == "" {
-		return nil, fmt.Errorf("server URL is empty")
+		return nil, clierr.New(clierr.CodeContextNotSet,
+			"no current context and no RANCHER_URL set").WithHint(config.LoginOrEnvHint)
 	}
 	if eff.Token == "" {
 		return nil, fmt.Errorf("no token for server")
