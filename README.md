@@ -135,6 +135,8 @@ be denied, not that dry-run is broken). See [ARCHITECTURE.md](ARCHITECTURE.md)
 for the full pipeline, gates, and package-dependency model, and `rancher schema`
 for the machine-readable surface.
 
+Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
+
 ## Configuration
 
 - **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`),
