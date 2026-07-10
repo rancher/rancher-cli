@@ -80,6 +80,20 @@ func filePolicyDir(t *testing.T) (string, config.CredStore) {
 	return dir, config.NewFileStore(dir)
 }
 
+// stubRancherVersion stands in for loginCmd.rancherVersion in tests that
+// aren't exercising the PS-8 version probe itself: it never dials out, so
+// login's success path can be tested against unresolvable/example hostnames
+// without a real network call.
+func stubRancherVersion(context.Context, string, string, string) (string, error) {
+	return "v2.20.0", nil
+}
+
+// newLoginCmd builds a loginCmd with the version probe stubbed, mirroring
+// NewLogin's wiring but for direct struct construction in tests.
+func newLoginCmd(dir string, store config.CredStore) runtime.ReadCommand {
+	return &loginCmd{dir: dir, store: store, rancherVersion: stubRancherVersion}
+}
+
 func TestLoginTokenViaStdin(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
@@ -87,7 +101,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id-1:secret-1\n"))
+	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id-1:secret-1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -112,7 +126,7 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
+	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -176,7 +190,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	// lineReader's doc comment) — a plain strings.Reader would drop "id:sec".
 	p := ui.New(&bytes.Buffer{}, newLineReader("1", "id:sec"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
-	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, p)
 	require.NoError(t, err)
 	tok, err := store.GetToken("acme")
 	require.NoError(t, err)
@@ -218,7 +232,7 @@ func TestLoginUnaffectedWithoutGlobalOverride(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	_, err := NewLogin(dir, store).(runtime.ReadCommand).
+	_, err := newLoginCmd(dir, store).
 		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 }
@@ -268,7 +282,7 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -279,7 +293,7 @@ func TestLoginDefaultName(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -312,7 +326,7 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	}
 	// Inject a file store; under auto with a usable (mock) keychain, login must
 	// re-pin to keychain and write the token there, not to the file store.
-	_, err := NewLogin(dir, config.NewFileStore(dir)).(runtime.ReadCommand).
+	_, err := newLoginCmd(dir, config.NewFileStore(dir)).
 		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 

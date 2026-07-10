@@ -19,11 +19,14 @@ import (
 type loginCmd struct {
 	dir   string
 	store config.CredStore
+	// rancherVersion reads the server-version Setting for the PS-8 floor
+	// check, injectable for tests; defaults to probeServerVersion.
+	rancherVersion func(ctx context.Context, server, token, cacertFlag string) (string, error)
 }
 
 // NewLogin builds the `auth login` command (local).
 func NewLogin(dir string, store config.CredStore) runtime.Command {
-	return &loginCmd{dir: dir, store: store}
+	return &loginCmd{dir: dir, store: store, rancherVersion: probeServerVersion}
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -124,7 +127,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]string{
 		"server": name, "url": u.String(), "context": name,
 	}}
-	if warning := warnBelowMinVersion(ctx, u.String(), token, in.String("cacert")); warning != "" {
+	if warning := l.warnBelowMinVersion(ctx, u.String(), token, in.String("cacert")); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
 	}
 	return res, nil
@@ -136,29 +139,38 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // the ext.cattle.io paths in login_ext.go.
 const serverVersionSettingPath = "/k8s/clusters/local/apis/management.cattle.io/v3/settings/server-version"
 
-// warnBelowMinVersion probes the server-version Setting (PS-8) via a direct
-// HTTP GET with the just-stored token: login has no engine client factory,
-// so — unlike auth check's existing client path — this is login_ext.go's
-// direct-HTTP style, not provider.ServerVersionSetting. Any failure to
-// reach, read, or parse the setting (RBAC denial, a missing setting,
-// connectivity, or a dev/head build) is folded into the same "cannot
-// determine" posture; this probe never turns a successful login into a
-// failure.
-func warnBelowMinVersion(ctx context.Context, server, token, cacertFlag string) string {
-	caPEM, err := config.ResolveCA(cacertFlag)
-	if err != nil {
+// warnBelowMinVersion evaluates the server-version Setting read via
+// l.rancherVersion against config.MinRancherVersion (PS-8, warn-only floor).
+// Any failure to read it at all — RBAC denial, a missing setting,
+// connectivity — is folded into the same "cannot determine" posture as an
+// unparseable value (a dev/head build): this probe never turns a successful
+// login into a failure.
+func (l loginCmd) warnBelowMinVersion(ctx context.Context, server, token, cacertFlag string) string {
+	if l.rancherVersion == nil {
 		return config.UnknownServerVersionWarning
 	}
-	client, err := httpx.New(httpx.Options{CACert: caPEM})
-	if err != nil {
-		return config.UnknownServerVersionWarning
-	}
-	raw, err := fetchServerVersionSetting(ctx, client, kube.BaseURL(server), token)
+	raw, err := l.rancherVersion(ctx, server, token, cacertFlag)
 	if err != nil {
 		return config.UnknownServerVersionWarning
 	}
 	_, warning := config.EvalMinVersionSupport(raw)
 	return warning
+}
+
+// probeServerVersion is the real server-version Setting read (PS-8) via a
+// direct HTTP GET with the just-stored token: login has no engine client
+// factory, so — unlike auth check's existing client path — this is
+// login_ext.go's direct-HTTP style, not provider.ServerVersionSetting.
+func probeServerVersion(ctx context.Context, server, token, cacertFlag string) (string, error) {
+	caPEM, err := config.ResolveCA(cacertFlag)
+	if err != nil {
+		return "", err
+	}
+	client, err := httpx.New(httpx.Options{CACert: caPEM})
+	if err != nil {
+		return "", err
+	}
+	return fetchServerVersionSetting(ctx, client, kube.BaseURL(server), token)
 }
 
 // fetchServerVersionSetting GETs the server-version Setting and returns its
