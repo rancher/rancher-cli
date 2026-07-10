@@ -38,3 +38,16 @@ func TestCompositesRejectProjectScope(t *testing.T) {
 		})
 	}
 }
+
+// TestCompositesRejectContextProjectWithoutFlag proves rejectProject checks
+// EffectiveProject (flag > context), not just the flag: a context-set
+// project with no --project flag must still reject, or it is the exact
+// silent no-op DR-004 removed --project for.
+func TestCompositesRejectContextProjectWithoutFlag(t *testing.T) {
+	fac := &fakeFactory{ctxProject: "p-x"}
+	_, err := execRead(t, NewImages(fac), input{s: map[string]string{"cluster": "c-abc"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "images")
+}

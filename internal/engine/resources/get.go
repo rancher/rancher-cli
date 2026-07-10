@@ -20,7 +20,7 @@ import (
 // routing (Route), and the manifest namespace reconciliation (reconcile) must
 // agree on these exact strings, so they are named once here.
 const (
-	FlagCluster   = "cluster"
+	FlagCluster   = engine.FlagCluster
 	FlagNamespace = "namespace"
 	FlagProject   = "project"
 	flagFilename  = "filename"
@@ -201,8 +201,12 @@ type ProjectScope struct {
 	Selector  string
 }
 
-// effectiveProject resolves --project (flag > context, PC-2's precedence).
-func effectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
+// EffectiveProject resolves --project (flag > context, PC-2's precedence).
+// Exported so every project-scope consumer — Route, usage, and the
+// composites that must actively reject a project — shares this one seam
+// instead of some reading the flag directly and silently skipping the
+// context fallback.
+func EffectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
 	if p := in.String(FlagProject); p != "" {
 		return p, nil
 	}
@@ -213,7 +217,7 @@ func effectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (st
 // families that do not support project scoping: any effective project (flag
 // or context) is a VALIDATION error, never an ignored value.
 func rejectProjectScope(clients engine.ClusterClientFactory, in runtime.Input, k kinds.Kind) error {
-	project, err := effectiveProject(clients, in)
+	project, err := EffectiveProject(clients, in)
 	if err != nil {
 		return err
 	}
@@ -229,7 +233,7 @@ func rejectProjectScope(clients engine.ClusterClientFactory, in runtime.Input, k
 // play. clusterID is the already-resolved downstream cluster the member
 // namespace list is fetched from.
 func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, clusterID string) (projectID string, members map[string]bool, err error) {
-	raw, err := effectiveProject(clients, in)
+	raw, err := EffectiveProject(clients, in)
 	if err != nil {
 		return "", nil, err
 	}
@@ -346,9 +350,8 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		if nspace != "" {
 			if !members[nspace] {
-				return "", "", "", nil, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("namespace %q is not in project %q", nspace, projectID)).
-					WithHint("pass a member namespace, or omit --namespace to scope the whole project")
+				return "", "", "", nil, projects.NotMemberError(nspace, projectID,
+					"pass a member namespace, or omit --namespace to scope the whole project")
 			}
 		}
 		return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Members: members}, nil
@@ -376,7 +379,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	raw, err := effectiveProject(clients, in)
+	raw, err := EffectiveProject(clients, in)
 	if err != nil {
 		return "", "", "", nil, err
 	}
@@ -387,8 +390,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	named := len(in.Args()) > 0 && in.Args()[0] != ""
-	if named {
+	if hasName(in) {
 		client, cerr := clients.Cluster(ctx, clientCluster)
 		if cerr != nil {
 			return "", "", "", nil, cerr
@@ -399,9 +401,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 		}
 		name := in.Args()[0]
 		if !members[name] {
-			return "", "", "", nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("namespace %q is not in project %q", name, projectID)).
-				WithHint("pass a member namespace")
+			return "", "", "", nil, projects.NotMemberError(name, projectID, "pass a member namespace")
 		}
 		return clientCluster, ns, effectCluster, nil, nil
 	}
@@ -432,21 +432,12 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 // wide inspect composites: images, usage): an explicit flag is resolved via
 // ResolveCluster; an empty flag falls back to the context cluster, else a
 // VALIDATION error. routeCluster's Downstream branch is exactly this.
+// Delegates to engine.ResolveDownstreamCluster, which also serves the
+// projects package's bespoke commands — resources already imports projects
+// (Route's membership validation), so the shared logic lives in engine to
+// avoid a cycle.
 func ResolveDownstreamCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	target := in.String(FlagCluster)
-	if target == "" {
-		cc, err := clients.ContextCluster()
-		if err != nil {
-			return "", err
-		}
-		target = cc
-	}
-	if target == "" {
-		return "", clierr.New(clierr.CodeValidation,
-			"--cluster is required (no cluster set in the current context)").
-			WithHint("pass --cluster <id|name>")
-	}
-	return clients.ResolveCluster(ctx, target)
+	return engine.ResolveDownstreamCluster(ctx, clients, in)
 }
 
 // kindTitle upper-cases the kind's first rune for the Result envelope Kind

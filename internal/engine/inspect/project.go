@@ -73,22 +73,42 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	podKind, _ := kinds.Lookup("pod")
 	depKind, _ := kinds.Lookup("deployment")
 	namespaces := make([]string, 0, len(members))
-	nsRows := make([]projectNamespace, 0, len(members))
-	allPods := map[string][]unstructured.Unstructured{}
 	for ns := range members {
 		namespaces = append(namespaces, ns)
-		pods, lerr := client.List(ctx, podKind.GVR, ns, "")
-		if lerr != nil {
-			return runtime.Result{}, lerr
+	}
+
+	// ONE cluster-wide List per kind, filtered client-side by membership —
+	// N per-namespace List pairs would cost 2N round trips for no reason.
+	podList, err := client.List(ctx, podKind.GVR, "", "")
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	depList, err := client.List(ctx, depKind.GVR, "", "")
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	podCounts := map[string]int{}
+	depCounts := map[string]int{}
+	allPods := map[string][]unstructured.Unstructured{}
+	for i := range podList.Items {
+		ns := podList.Items[i].GetNamespace()
+		if !members[ns] {
+			continue
 		}
-		deps, lerr := client.List(ctx, depKind.GVR, ns, "")
-		if lerr != nil {
-			return runtime.Result{}, lerr
+		podCounts[ns]++
+		allPods[projectID] = append(allPods[projectID], podList.Items[i])
+	}
+	for i := range depList.Items {
+		ns := depList.Items[i].GetNamespace()
+		if members[ns] {
+			depCounts[ns]++
 		}
-		allPods[projectID] = append(allPods[projectID], pods.Items...)
+	}
+	nsRows := make([]projectNamespace, 0, len(members))
+	for ns := range members {
 		nsRows = append(nsRows, projectNamespace{
 			Name:      ns,
-			Workloads: projectWorkloads{Pods: len(pods.Items), Deployments: len(deps.Items)},
+			Workloads: projectWorkloads{Pods: podCounts[ns], Deployments: depCounts[ns]},
 		})
 	}
 	sort.Slice(nsRows, func(i, j int) bool { return nsRows[i].Name < nsRows[j].Name })

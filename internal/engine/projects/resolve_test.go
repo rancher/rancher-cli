@@ -98,6 +98,25 @@ func TestResolveProjectAmbiguousDisplayName(t *testing.T) {
 	require.Len(t, cerr.Candidates, 2)
 }
 
+func TestResolveProjectIDCollidesWithDifferentProjectsDisplayName(t *testing.T) {
+	t.Parallel()
+	// project A's id equals project B's display name — an id-wins
+	// short-circuit would silently resolve to A; ResolveCluster's collision
+	// semantics say this is ambiguous instead.
+	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
+		"projects": {Items: []unstructured.Unstructured{project("web", "A"), project("p-2", "web")}},
+	}}
+	factory := stubFactory{c: client}
+
+	_, err := ResolveProject(context.Background(), factory, "c-x", "web")
+	require.Error(t, err)
+	cerr, ok := err.(*clierr.Error)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
+	require.Len(t, cerr.Candidates, 2)
+	assert.Contains(t, cerr.Message, "web")
+}
+
 func TestResolveProjectNotFound(t *testing.T) {
 	t.Parallel()
 	client := &listClient{lists: map[string]*unstructured.UnstructuredList{

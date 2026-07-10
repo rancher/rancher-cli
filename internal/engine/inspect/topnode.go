@@ -40,7 +40,7 @@ func (c *topNodeCmd) Describe() runtime.Descriptor {
 }
 
 func (c *topNodeCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(in, "top node"); err != nil {
+	if err := rejectProject(c.clients, in, "top node"); err != nil {
 		return runtime.Result{}, err
 	}
 	nodeKind, _ := kinds.Lookup("node")

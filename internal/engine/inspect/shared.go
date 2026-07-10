@@ -23,10 +23,16 @@ import (
 // rejectProject enforces PC-3 for the composites that bypass Route
 // (inspect pod/deployment, top node, images): the global --project flag
 // would otherwise reach them and be silently ignored, exactly the class of
-// no-op DR-004 removed --project for. cmd is the command name for the
-// message ("inspect pod", "top node", ...).
-func rejectProject(in runtime.Input, cmd string) error {
-	if in.String(resources.FlagProject) == "" {
+// no-op DR-004 removed --project for. Uses EffectiveProject (flag > context)
+// so a context-set project rejects too — a flag-only check would let that
+// same no-op back in through the context fallback. cmd is the command name
+// for the message ("inspect pod", "top node", ...).
+func rejectProject(clients engine.ClusterClientFactory, in runtime.Input, cmd string) error {
+	project, err := resources.EffectiveProject(clients, in)
+	if err != nil {
+		return err
+	}
+	if project == "" {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd).

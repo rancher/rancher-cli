@@ -12,28 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// resolveCluster resolves --cluster (flag > context, ResolveCluster) the same
-// way the generated commands' routing does (resources.ResolveDownstreamCluster).
-// Duplicated locally rather than imported: package resources already imports
-// package projects (Route's membership validation), so the reverse import
-// would cycle.
-func resolveCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	target := in.String("cluster")
-	if target == "" {
-		cc, err := clients.ContextCluster()
-		if err != nil {
-			return "", err
-		}
-		target = cc
-	}
-	if target == "" {
-		return "", clierr.New(clierr.CodeValidation,
-			"--cluster is required (no cluster set in the current context)").
-			WithHint("pass --cluster <id|name>")
-	}
-	return clients.ResolveCluster(ctx, target)
-}
-
 type addNamespaceCmd struct {
 	clients engine.ClusterClientFactory
 }
@@ -81,8 +59,7 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 
 	after := before.DeepCopy()
-	_ = unstructured.SetNestedField(after.Object, projectID, "metadata", "labels", projectLabel)
-	_ = unstructured.SetNestedField(after.Object, cluster+":"+projectID, "metadata", "annotations", projectLabel)
+	SetMembership(after, cluster, projectID)
 
 	return planMembershipUpdate(ctx, client, before, after, cluster)
 }
@@ -128,14 +105,11 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 
 	current, _, _ := unstructured.NestedString(before.Object, "metadata", "labels", projectLabel)
 	if current != projectID {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("namespace %q is not in project %q", nsName, projectID)).
-			WithHint("check the namespace's current project")
+		return safety.Effect{}, nil, NotMemberError(nsName, projectID, "check the namespace's current project")
 	}
 
 	after := before.DeepCopy()
-	unstructured.RemoveNestedField(after.Object, "metadata", "labels", projectLabel)
-	unstructured.RemoveNestedField(after.Object, "metadata", "annotations", projectLabel)
+	ClearMembership(after)
 
 	return planMembershipUpdate(ctx, client, before, after, cluster)
 }
@@ -157,7 +131,7 @@ func membershipArgs(in runtime.Input) (nsName, projectFlag string, err error) {
 // loadMembershipTarget resolves the cluster and project, and fetches the live
 // namespace object both add/remove-namespace mutate.
 func loadMembershipTarget(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, nsName, projectFlag string) (cluster string, client engine.ClusterClient, projectID string, before *unstructured.Unstructured, err error) {
-	cluster, err = resolveCluster(ctx, clients, in)
+	cluster, err = engine.ResolveDownstreamCluster(ctx, clients, in)
 	if err != nil {
 		return "", nil, "", nil, err
 	}

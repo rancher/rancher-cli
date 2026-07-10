@@ -2,10 +2,8 @@ package inspect
 
 import (
 	"context"
-	"fmt"
 	"sort"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -46,7 +44,10 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 
 func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
-	projectFlag := in.String(resources.FlagProject)
+	projectFlag, err := resources.EffectiveProject(c.clients, in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
@@ -77,9 +78,8 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		// PC-3's universal rule: --namespace + --project is allowed, provided
 		// the namespace is a member, then behaves as plain namespace scope.
 		if !members[namespace] {
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("namespace %q is not in project %q", namespace, projectID)).
-				WithHint("pass a member namespace, or omit --namespace to scope the whole project")
+			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
+				"pass a member namespace, or omit --namespace to scope the whole project")
 		}
 		namespaces = []string{namespace}
 		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
@@ -89,19 +89,22 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		grouped[namespace] = l.Items
 
 	case projectID != "":
-		if len(members) == 0 {
-			return runtime.Result{}, clierr.New(clierr.CodeNotFound,
-				fmt.Sprintf("no namespaces found for --project %q", projectFlag)).
-				WithHint("check the project id")
-		}
-		var pods []unstructured.Unstructured
+		// An empty member set is a valid empty result (a typo'd project name
+		// already fails loudly in ResolveProject above with NOT_FOUND) — one
+		// cluster-wide pod List, filtered client-side by membership, same as
+		// the generic get<kind> --project list path (PC-3).
 		for ns := range members {
 			namespaces = append(namespaces, ns)
-			l, lerr := client.List(ctx, podKind.GVR, ns, "")
-			if lerr != nil {
-				return runtime.Result{}, lerr
+		}
+		l, lerr := client.List(ctx, podKind.GVR, "", "")
+		if lerr != nil {
+			return runtime.Result{}, lerr
+		}
+		var pods []unstructured.Unstructured
+		for _, pod := range l.Items {
+			if members[pod.GetNamespace()] {
+				pods = append(pods, pod)
 			}
-			pods = append(pods, l.Items...)
 		}
 		grouped[projectID] = pods
 
@@ -126,24 +129,25 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 	return aggregateUsage(ctx, client, clusterID, grouped, namespaces)
 }
 
-// fetchPodMetrics lists pod metrics scoped to namespaces (cluster-wide when
-// nil, one List per namespace otherwise), so a --namespace/--project run
-// never pulls metrics for the whole cluster to summarize a handful of pods.
+// fetchPodMetrics lists pod metrics with ONE List call: scoped to the single
+// namespace when exactly one is given (--namespace mode never pulls
+// cluster-wide metrics to summarize a handful of pods), cluster-wide
+// otherwise. A multi-namespace --project run relies on the namespace+name
+// key lookup in aggregateUsage to filter — an unscoped fetch is correct
+// there because non-member pods are simply never looked up.
 func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespaces []string) (map[string]*unstructured.Unstructured, error) {
-	scopes := namespaces
-	if len(scopes) == 0 {
-		scopes = []string{""}
+	scope := ""
+	if len(namespaces) == 1 {
+		scope = namespaces[0]
+	}
+	list, err := client.List(ctx, podMetricsGVR, scope, "")
+	if err != nil {
+		return nil, err
 	}
 	byKey := map[string]*unstructured.Unstructured{}
-	for _, ns := range scopes {
-		list, err := client.List(ctx, podMetricsGVR, ns, "")
-		if err != nil {
-			return nil, err
-		}
-		for i := range list.Items {
-			m := list.Items[i]
-			byKey[m.GetNamespace()+"/"+m.GetName()] = &list.Items[i]
-		}
+	for i := range list.Items {
+		m := list.Items[i]
+		byKey[m.GetNamespace()+"/"+m.GetName()] = &list.Items[i]
 	}
 	return byKey, nil
 }

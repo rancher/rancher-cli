@@ -130,6 +130,32 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	assert.NotContains(t, rows, "ns1")
 }
 
+// TestUsageContextProjectScopesWithoutFlag proves usage reads --project via
+// EffectiveProject (flag > context), not in.String directly: a context-set
+// project with no --project flag must still scope usage — an unset flag
+// falling through to the cluster-wide branch would reproduce the exact
+// silent-scope-loss DR-004 removed --project for.
+func TestUsageContextProjectScopesWithoutFlag(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{namespaceObj("ns1", nil)}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client, ctxProject: "p-x"})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
+	require.NoError(t, err)
+	rows, ok := res.Data.(usageRows)
+	require.True(t, ok)
+	assert.Contains(t, rows, "p-x", "the context project must scope usage exactly as the flag does")
+}
+
 func TestUsageProjectResolvesDisplayName(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
@@ -190,20 +216,29 @@ func TestUsageProjectUnknownProjectErrors(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
-func TestUsageProjectMatchingNoNamespacesErrors(t *testing.T) {
+// TestUsageProjectEmptyMembersReturnsEmptyAggregate pins the empty-project
+// consistency decision (get's behavior wins): an empty member set is a valid
+// empty result, not an error — a typo'd project name already fails loudly at
+// ResolveProject with NOT_FOUND, so an existing-but-empty project legitimately
+// has nothing, exactly like `get pods --project empty` returns zero rows.
+func TestUsageProjectEmptyMembersReturnsEmptyAggregate(t *testing.T) {
 	t.Parallel()
 	projectKind := mustKind(t, "project")
 	nsKind := mustKind(t, "namespace")
+	podKind := mustKind(t, "pod")
 	client := newFakeClient().
 		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
-		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+		withList(nsKind.GVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{})
 
 	cmd := NewUsage(&fakeFactory{client: client})
-	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
+	require.NoError(t, err)
+	rows, ok := res.Data.(usageRows)
+	require.True(t, ok)
+	require.Contains(t, rows, "p-x")
+	assert.Equal(t, "0", rows["p-x"].CPURequest)
 }
 
 func TestUsageProjectRejectsInvalidLabelValue(t *testing.T) {

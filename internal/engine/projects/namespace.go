@@ -49,7 +49,7 @@ func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 	}
 	name := args[0]
 
-	cluster, err := resolveCluster(ctx, c.clients, in)
+	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -64,8 +64,7 @@ func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 		if perr != nil {
 			return safety.Effect{}, nil, perr
 		}
-		_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectLabel)
-		_ = unstructured.SetNestedField(obj.Object, cluster+":"+projectID, "metadata", "annotations", projectLabel)
+		SetMembership(obj, cluster, projectID)
 	}
 
 	client, err := c.clients.Cluster(ctx, cluster)

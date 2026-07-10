@@ -28,15 +28,15 @@ func nsListItem(name string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
 }
 
-func podListItem(name string) unstructured.Unstructured {
+func podListItem(ns, name string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": name, "namespace": "does-not-matter"},
+		"metadata": map[string]any{"name": name, "namespace": ns},
 		"spec":     map[string]any{"containers": []any{}},
 	}}
 }
 
-func deploymentListItem(name string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
+func deploymentListItem(ns, name string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name, "namespace": ns}}}
 }
 
 func prtbListItem(user, roleTemplate string) unstructured.Unstructured {
@@ -72,10 +72,14 @@ func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *
 	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{nsListItem("ns-a"), nsListItem("ns-b")},
 	})
-	downstream.withListNS(podKind.GVR, "ns-a", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{podListItem("pod-a1")}})
-	downstream.withListNS(podKind.GVR, "ns-b", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{podListItem("pod-b1"), podListItem("pod-b2")}})
-	downstream.withListNS(depKind.GVR, "ns-a", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{deploymentListItem("dep-a")}})
-	downstream.withListNS(depKind.GVR, "ns-b", &unstructured.UnstructuredList{})
+	// Cluster-wide lists (ns=""), filtered client-side by membership — pins
+	// the single-List-per-kind design (no more per-namespace List loop).
+	downstream.withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		podListItem("ns-a", "pod-a1"), podListItem("ns-b", "pod-b1"), podListItem("ns-b", "pod-b2"),
+	}})
+	downstream.withList(depKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		deploymentListItem("ns-a", "dep-a"),
+	}})
 
 	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{
 		engine.LocalCluster: mgmt,

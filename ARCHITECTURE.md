@@ -45,7 +45,7 @@ what drifted the previous revision of this doc).
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
-| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports and reusable plan/execute helpers; depends only on runtime + safety contracts. |
+| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, tier bindings, table columns. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`, `top node`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb fetch failures to warnings. |
@@ -122,6 +122,7 @@ graph TD
 
     engine --> runtime
     engine --> safety
+    engine --> clierr
 
     kinds --> safety
 
