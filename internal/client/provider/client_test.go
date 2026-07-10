@@ -92,6 +92,33 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
 }
 
+// TestAbsentExtGroupYieldsFriendlyHint pins EXT-R-4: an older Rancher without
+// the aggregated ext.cattle.io APIService must surface a hint pointing at the
+// pre-existing local alternatives, not the generic "not served" message other
+// groups get.
+func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
+	disc := &stubDiscovery{groups: map[string]string{}}
+	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+
+	tokens := schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"}
+	_, err := c.List(context.Background(), tokens, "", "")
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Error(), "ext.cattle.io")
+	assert.Contains(t, ce.Hint, "auth list-tokens")
+
+	// A non-ext group absence keeps the generic message.
+	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "")
+	require.Error(t, err)
+	require.True(t, errors.As(err, &ce))
+	assert.NotContains(t, ce.Hint, "auth list-tokens")
+}
+
 var projectGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
 
 // newFakeClient builds a dynamicClient over the fake dynamic client. Discovery

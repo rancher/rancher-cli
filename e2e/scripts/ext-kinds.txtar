@@ -1,0 +1,40 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# NSNone + Scope Management: the empty-version ext.cattle.io kinds route to
+# LOCAL unconditionally — no --cluster flag is even generated (Downstream-only
+# per getFlags), so this alone proves routing never touches a --cluster target.
+exec rancher get tokens -o json
+jsonquery stdout 'data.#' 0
+
+exec rancher create resource -f token.yaml --apply --yes
+exec rancher get token ext-kinds-token -o json
+jsonquery stdout data.spec.userID u-ext-1
+jsonquery stdout data.spec.description ext-kinds-token-desc
+
+exec rancher delete token ext-kinds-token --apply --yes
+
+exec rancher get kubeconfigs -o json
+jsonquery stdout 'data.#' 0
+
+exec rancher create resource -f kubeconfig.yaml --apply --yes
+exec rancher get kubeconfig ext-kinds-kubeconfig -o json
+jsonquery stdout data.spec.description ext-kinds-kubeconfig-desc
+
+exec rancher delete kubeconfig ext-kinds-kubeconfig --apply --yes
+
+-- token.yaml --
+apiVersion: ext.cattle.io/v1
+kind: Token
+metadata:
+  name: ext-kinds-token
+spec:
+  userID: u-ext-1
+  description: ext-kinds-token-desc
+-- kubeconfig.yaml --
+apiVersion: ext.cattle.io/v1
+kind: Kubeconfig
+metadata:
+  name: ext-kinds-kubeconfig
+spec:
+  description: ext-kinds-kubeconfig-desc

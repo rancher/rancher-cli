@@ -10,6 +10,8 @@
   "projectroletemplatebinding": {"group": "management.cattle.io", "version": "v3", "resource": "projectroletemplatebindings"},
   "provisioningcluster": {"group": "provisioning.cattle.io", "version": "v1", "resource": "clusters"},
   "k3kcluster":          {"group": "k3k.io", "version": "v1beta1", "resource": "clusters"},
+  "token":               {"group": "ext.cattle.io", "version": "", "resource": "tokens"},
+  "kubeconfig":          {"group": "ext.cattle.io", "version": "", "resource": "kubeconfigs"},
   "gitrepo":             {"group": "fleet.cattle.io", "version": "v1alpha1", "resource": "gitrepos"},
   "bundle":              {"group": "fleet.cattle.io", "version": "v1alpha1", "resource": "bundles"},
   "bundledeployment":    {"group": "fleet.cattle.io", "version": "v1alpha1", "resource": "bundledeployments"},

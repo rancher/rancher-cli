@@ -303,6 +303,36 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
+	{
+		// Empty GVR version: ext.cattle.io is resolved via discovery at call
+		// time; group absence means an older Rancher without the aggregated
+		// imperative API (both kinds shipped in v2.12).
+		Key: "token", Name: "token", Aliases: []string{"tokens"},
+		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"},
+		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Beta},
+		Columns: []Column{
+			// STRING leaves only — table Rows uses unstructured.NestedString,
+			// which silently renders "" for bool/int64/array paths (that is why
+			// there is no EXPIRED bool column; EXPIRES carries the signal).
+			{Header: "USER", Path: []string{"spec", "userID"}},
+			{Header: "KIND", Path: []string{"spec", "kind"}},
+			{Header: "EXPIRES", Path: []string{"status", "expiresAt"}},
+			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
+		},
+	},
+	{
+		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "kubeconfigs"},
+		Policy: NSNone, K8sKind: "Kubeconfig", Scope: Management, Deletable: true, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Beta},
+		Columns: []Column{
+			// STRING leaves only (see the token entry's note): TTL (int64) and
+			// CLUSTERS ([]string) would render blank — deliberately omitted.
+			{Header: "SUMMARY", Path: []string{"status", "summary"}},
+			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
+		},
+	},
 }
 
 func All() []Kind { out := make([]Kind, len(table)); copy(out, table); return out }

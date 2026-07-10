@@ -107,6 +107,11 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 		gvr.Version = g.PreferredVersion.Version
 		return gvr, nil
 	}
+	if gvr.Group == "ext.cattle.io" {
+		return gvr, clierr.New(clierr.CodeNotFound,
+			"this Rancher does not serve ext.cattle.io (requires Rancher >= 2.12)").
+			WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
+	}
 	return gvr, clierr.New(clierr.CodeNotFound, fmt.Sprintf("API group %q not served by the cluster", gvr.Group))
 }
 

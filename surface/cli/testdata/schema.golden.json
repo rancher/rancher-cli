@@ -735,6 +735,41 @@
     },
     {
       "aliases": [
+        "kubeconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete kubeconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Delete a kubeconfig"
+    },
+    {
+      "aliases": [
         "namespaces",
         "ns"
       ],
@@ -1166,6 +1201,41 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Delete a statefulset"
+    },
+    {
+      "aliases": [
+        "tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete token",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Delete a token"
     },
     {
       "aliases": [
@@ -1860,6 +1930,39 @@
     },
     {
       "aliases": [
+        "kubeconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get kubeconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "List kubeconfigs or show one"
+    },
+    {
+      "aliases": [
         "machines"
       ],
       "args": [
@@ -2551,6 +2654,39 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List statefulsets or show one"
+    },
+    {
+      "aliases": [
+        "tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get token",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "List tokens or show one"
     },
     {
       "aliases": [
@@ -3641,6 +3777,52 @@
     },
     {
       "aliases": [
+        "kubeconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch kubeconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Patch a kubeconfig with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
         "machines"
       ],
       "args": [
@@ -4575,6 +4757,52 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a statefulset with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch token",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Patch a token with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
