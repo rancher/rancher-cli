@@ -21,7 +21,6 @@ func execLogs(t *testing.T, clients engine.ClusterClientFactory, in input) (runt
 
 func TestLogsExecuteMergesAndPrefixesMultiPod(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	downstream := newFakeClient().
 		withListNS(podKind.GVR, "cattle-system", podList("agent-1", "agent-2")).
 		withLog("main", "hello\n")
@@ -39,7 +38,6 @@ func TestLogsExecuteMergesAndPrefixesMultiPod(t *testing.T) {
 
 func TestLogsExecuteContainerFilter(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		unstructuredPodWithContainers("agent-1", "main", "sidecar"),
 	}}
@@ -62,7 +60,6 @@ func TestLogsExecuteContainerFilter(t *testing.T) {
 
 func TestLogsExecutePartialFailureWarnsButSucceeds(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		unstructuredPodWithContainers("agent-1", "main"),
 		unstructuredPodWithContainers("agent-2", "broken"),
@@ -98,7 +95,6 @@ func TestLogsExecuteZeroYieldedLogsIsAnError(t *testing.T) {
 
 	t.Run("pods matched but every fetch failed", func(t *testing.T) {
 		t.Parallel()
-		podKind := mustKind(t, "pod")
 		downstream := newFakeClient().
 			withListNS(podKind.GVR, "cattle-system", podList("agent-1")).
 			withLogErr("main", errors.New("rbac denied"))
@@ -114,7 +110,6 @@ func TestLogsExecuteZeroYieldedLogsIsAnError(t *testing.T) {
 
 func TestLogsExecuteSinceWrapper(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 
 	newDownstream := func() *fakeClient {
 		return newFakeClient().
@@ -168,7 +163,6 @@ func TestLogsExecuteUnknownTargetIsValidation(t *testing.T) {
 
 func TestLogsExecuteTailFlag(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 
 	t.Run("empty --tail defaults to 200", func(t *testing.T) {
 		t.Parallel()
@@ -177,7 +171,8 @@ func TestLogsExecuteTailFlag(t *testing.T) {
 		_, err := execLogs(t, factory, input{args: []string{"agent"}, s: map[string]string{engine.FlagCluster: "c-1"}})
 		require.NoError(t, err)
 		require.Len(t, downstream.logOptsCalls, 1)
-		assert.Equal(t, int64(200), downstream.logOptsCalls[0].TailLines)
+		require.NotNil(t, downstream.logOptsCalls[0].TailLines)
+		assert.Equal(t, int64(200), *downstream.logOptsCalls[0].TailLines)
 	})
 
 	t.Run("negative --tail is VALIDATION", func(t *testing.T) {

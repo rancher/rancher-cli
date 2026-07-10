@@ -53,7 +53,7 @@ func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	selector, err := selectorFrom(dep)
+	selector, err := engine.SelectorFrom(dep)
 	if err != nil {
 		return runtime.Result{}, err
 	}

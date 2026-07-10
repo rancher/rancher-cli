@@ -6,7 +6,6 @@ package observe
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -14,6 +13,31 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+// Package-level kind vars, resolved once and fail-fast: a typo or removed
+// kind name here would otherwise silently produce a zero-value Kind{}/GVR{},
+// only discovered downstream via a confusing client.Get/List error far from
+// the actual mistake. mustKind panics at init on a miss, so any test run (or
+// `rancher` invocation) catches it immediately.
+var (
+	podKind     = mustKind("pod")
+	clusterKind = mustKind("cluster")
+	deployKind  = mustKind("deployment")
+	provKind    = mustKind("provisioningcluster")
+	fleetKind   = mustKind("fleetcluster")
+	nodeKind    = mustKind("node")
+	eventKind   = mustKind("event")
+	settingKind = mustKind("setting")
+	featureKind = mustKind("feature")
+)
+
+func mustKind(name string) kinds.Kind {
+	k, ok := kinds.Lookup(name)
+	if !ok {
+		panic("observe: kind " + name + " not registered in the kinds table")
+	}
+	return k
+}
 
 // Target describes one curated log source: a fixed (or, for fleet-agent,
 // dynamically resolved) namespace/selector/container on either the local or
@@ -157,7 +181,6 @@ func ResolveOnCluster(ctx context.Context, clients engine.ClusterClientFactory, 
 		}
 		return Resolved{Client: client, ClusterID: clusterID, Namespace: ns, Pods: pods}, nil
 	default:
-		podKind, _ := kinds.Lookup("pod")
 		list, err := client.List(ctx, podKind.GVR, t.Namespace, t.Selector)
 		if err != nil {
 			return Resolved{}, err
@@ -207,7 +230,6 @@ func resolveTargetCluster(ctx context.Context, clients engine.ClusterClientFacto
 // authorized cluster endpoint enabled (spec.localClusterAuthEndpoint.enabled;
 // false or absent is non-ACE).
 func hasACE(ctx context.Context, local engine.ClusterClient, clusterID string) (bool, error) {
-	clusterKind, _ := kinds.Lookup("cluster")
 	obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID)
 	if err != nil {
 		return false, err
@@ -221,7 +243,6 @@ func hasACE(ctx context.Context, local engine.ClusterClient, clusterID string) (
 // spec.selector, then the Docker-install degradation.
 func resolveServerPods(ctx context.Context, client engine.ClusterClient) (string, []unstructured.Unstructured, error) {
 	const ns = "cattle-system"
-	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, ns, "app=rancher")
 	if err != nil {
 		return "", nil, err
@@ -229,9 +250,8 @@ func resolveServerPods(ctx context.Context, client engine.ClusterClient) (string
 	if len(list.Items) > 0 {
 		return ns, list.Items, nil
 	}
-	deployKind, _ := kinds.Lookup("deployment")
 	if dep, err := client.Get(ctx, deployKind.GVR, ns, "rancher"); err == nil {
-		if sel, serr := selectorFromDeployment(dep); serr == nil {
+		if sel, serr := engine.SelectorFrom(dep); serr == nil {
 			if list2, lerr := client.List(ctx, podKind.GVR, ns, sel); lerr == nil && len(list2.Items) > 0 {
 				return ns, list2.Items, nil
 			}
@@ -255,7 +275,6 @@ func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClie
 	if isLocal {
 		workspace = fleetWorkspaceLocal
 	}
-	clusterKind, _ := kinds.Lookup("cluster")
 	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err == nil {
 		if ws, found, _ := unstructured.NestedString(obj.Object, "spec", "fleetWorkspaceName"); found && ws != "" {
 			workspace = ws
@@ -265,7 +284,6 @@ func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClie
 	fleetClusterName := "local"
 	if !isLocal {
 		fleetClusterName = ""
-		provKind, _ := kinds.Lookup("provisioningcluster")
 		if list, err := local.List(ctx, provKind.GVR, workspace, ""); err == nil {
 			for i := range list.Items {
 				if cn, _, _ := unstructured.NestedString(list.Items[i].Object, "status", "clusterName"); cn == clusterID {
@@ -281,7 +299,6 @@ func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClie
 		ns = fleetNamespaceLocal
 	}
 	if fleetClusterName != "" {
-		fleetKind, _ := kinds.Lookup("fleetcluster")
 		if fc, err := local.Get(ctx, fleetKind.GVR, workspace, fleetClusterName); err == nil {
 			if agentNS, found, _ := unstructured.NestedString(fc.Object, "spec", "agentNamespace"); found && agentNS != "" {
 				ns = agentNS
@@ -289,7 +306,6 @@ func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClie
 		}
 	}
 
-	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, ns, "app=fleet-agent")
 	if err != nil {
 		return "", nil, err
@@ -301,28 +317,4 @@ func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClie
 		return fleetNamespaceLegacy, legacy.Items, nil
 	}
 	return ns, list.Items, nil
-}
-
-// selectorFromDeployment decodes a Deployment's spec.selector.matchLabels
-// into a comma-joined label selector string ("k1=v1,k2=v2"). matchExpressions
-// are not modeled — the one chart-owned Deployment this branch reads
-// (rancher) uses plain matchLabels.
-func selectorFromDeployment(dep *unstructured.Unstructured) (string, error) {
-	matchLabels, found, _ := unstructured.NestedStringMap(dep.Object, "spec", "selector", "matchLabels")
-	if !found || len(matchLabels) == 0 {
-		return "", fmt.Errorf("deployment %s has no spec.selector.matchLabels", dep.GetName())
-	}
-	keys := make([]string, 0, len(matchLabels))
-	for k := range matchLabels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	sel := ""
-	for i, k := range keys {
-		if i > 0 {
-			sel += ","
-		}
-		sel += k + "=" + matchLabels[k]
-	}
-	return sel, nil
 }

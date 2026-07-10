@@ -7,18 +7,10 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
-
-func mustKind(t *testing.T, name string) kinds.Kind {
-	t.Helper()
-	k, ok := kinds.Lookup(name)
-	require.True(t, ok, "kind %q not in table", name)
-	return k
-}
 
 func clierrCode(t *testing.T, err error) string {
 	t.Helper()
@@ -39,7 +31,6 @@ func TestLookup(t *testing.T) {
 
 func TestResolveAgentDownstream(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	downstream := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
 	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
@@ -77,7 +68,6 @@ func TestResolveLocalOnlyRejectsExplicitDownstreamCluster(t *testing.T) {
 
 func TestResolveLocalOnlyAllowsExplicitLocal(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	local := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("webhook-1"))
 	factory := &fakeFactory{local: local}
 	target, _ := Lookup("webhook")
@@ -90,8 +80,6 @@ func TestResolveLocalOnlyAllowsExplicitLocal(t *testing.T) {
 
 func TestResolveServerFallbackChain(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
-	deployKind := mustKind(t, "deployment")
 
 	t.Run("primary selector finds pods", func(t *testing.T) {
 		t.Parallel()
@@ -140,7 +128,6 @@ func TestResolveServerFallbackChain(t *testing.T) {
 
 func TestResolveKubeAPIAuthPropagatesRealGetError(t *testing.T) {
 	t.Parallel()
-	clusterKind := mustKind(t, "cluster")
 	wantErr := errors.New("connection refused")
 	local := newFakeClient().withGetErr(clusterKind.GVR, "", "c-1", wantErr)
 	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": newFakeClient()}}
@@ -153,7 +140,6 @@ func TestResolveKubeAPIAuthPropagatesRealGetError(t *testing.T) {
 
 func TestResolveAgentPropagatesListError(t *testing.T) {
 	t.Parallel()
-	podKind := mustKind(t, "pod")
 	wantErr := errors.New("rbac denied")
 	downstream := newFakeClient().withListErr(podKind.GVR, "cattle-system", wantErr)
 	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
@@ -166,8 +152,6 @@ func TestResolveAgentPropagatesListError(t *testing.T) {
 
 func TestResolveKubeAPIAuth(t *testing.T) {
 	t.Parallel()
-	clusterKind := mustKind(t, "cluster")
-	podKind := mustKind(t, "pod")
 
 	aceCluster := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "c-1"},
@@ -226,10 +210,6 @@ func TestResolveFleetAgentClusterDefault(t *testing.T) {
 
 func TestResolveFleetAgentNamespaceChain(t *testing.T) {
 	t.Parallel()
-	clusterKind := mustKind(t, "cluster")
-	provKind := mustKind(t, "provisioningcluster")
-	fleetKind := mustKind(t, "fleetcluster")
-	podKind := mustKind(t, "pod")
 
 	t.Run("downstream: agentNamespace override via the provisioning-keyed fleetcluster", func(t *testing.T) {
 		t.Parallel()

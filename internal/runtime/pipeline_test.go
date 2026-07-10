@@ -424,6 +424,18 @@ func TestRenderResultRejectsTextAndRawBytes(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
+func TestRenderResultRejectsTextAndRaw(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "x", CommandType: ReadOnly},
+		res: Result{Text: "x", Raw: true},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+}
+
 func TestRenderErrAlwaysJSON(t *testing.T) {
 	t.Parallel()
 	for _, format := range []string{"", "json", "yaml", "name", "table", "{{.error.code}}"} {

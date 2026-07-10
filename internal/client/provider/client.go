@@ -142,10 +142,9 @@ func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResourc
 func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.LogOptions) (string, error) {
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	tl := opts.TailLines
 	req := r.cs.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{
 		Container:    opts.Container,
-		TailLines:    &tl,
+		TailLines:    opts.TailLines,
 		SinceSeconds: opts.SinceSeconds,
 		Previous:     opts.Previous,
 		Timestamps:   opts.Timestamps,

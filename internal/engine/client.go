@@ -36,13 +36,17 @@ type ClusterClient interface {
 	Logs(ctx context.Context, ns, pod string, opts LogOptions) (string, error)
 }
 
-// LogOptions parameterizes a Logs call. SinceSeconds is a pointer because nil
-// (omitted) and *0 (explicit "since now") are different requests — callers
-// that only have a duration string must decide which one they mean before
-// constructing this struct.
+// LogOptions parameterizes a Logs call. SinceSeconds and TailLines are both
+// pointers because nil (unset) and *0 (an explicit zero) are different
+// requests to corev1.PodLogOptions — SinceSeconds' nil means "no limit" vs
+// *0 meaning "since now" (silently empty output); TailLines' nil means "no
+// limit" vs *0 meaning "request exactly zero lines". A plain int64 here
+// would let a caller that forgets to set TailLines silently ask for zero
+// lines instead of "no limit". Callers that only have a duration/count
+// string must decide which one they mean before constructing this struct.
 type LogOptions struct {
 	Container    string
-	TailLines    int64
+	TailLines    *int64
 	SinceSeconds *int64
 	Previous     bool
 	Timestamps   bool

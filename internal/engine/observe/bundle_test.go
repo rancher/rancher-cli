@@ -75,8 +75,6 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 func TestSupportBundleRBACFailingCollectorStillShipsBundle(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	podKind := mustKind(t, "pod")
-	clusterKind := mustKind(t, "cluster")
 	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "c-1"},
 	}})
@@ -105,7 +103,6 @@ func TestSupportBundleRBACFailingCollectorStillShipsBundle(t *testing.T) {
 func TestSupportBundleSettingsAllowlist(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	settingKind := mustKind(t, "setting")
 	local := newFakeClient().
 		withObject(settingKind.GVR, "", "server-version", &unstructured.Unstructured{Object: map[string]any{
 			"metadata": map[string]any{"name": "server-version"},
@@ -137,11 +134,6 @@ func TestSupportBundleSettingsAllowlist(t *testing.T) {
 func TestSupportBundleEventsPerNamespace(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	podKind := mustKind(t, "pod")
-	clusterKind := mustKind(t, "cluster")
-	provKind := mustKind(t, "provisioningcluster")
-	fleetKind := mustKind(t, "fleetcluster")
-	eventKind := mustKind(t, "event")
 
 	mgmtCluster := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "c-1"}, "spec": map[string]any{}}}
 	provList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -173,6 +165,48 @@ func TestSupportBundleEventsPerNamespace(t *testing.T) {
 	customEvents, hasCustom := contents["clusters/c-1/events-custom-ns.json"]
 	require.True(t, hasCustom, "the fleet-agent target's resolved namespace must also get an events file")
 	assert.Contains(t, customEvents, "crashlooping")
+}
+
+func TestCollectFeaturesSerializesFalseValues(t *testing.T) {
+	t.Parallel()
+	local := newFakeClient().withListNS(featureKind.GVR, "", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		{Object: map[string]any{
+			"metadata": map[string]any{"name": "harvester"},
+			"spec":     map[string]any{"value": false},
+			"status":   map[string]any{"default": false, "lockedValue": false, "description": "disabled"},
+		}},
+	}})
+
+	data, err := collectFeatures(context.Background(), local)
+	require.NoError(t, err)
+
+	// A dropped key here would be indistinguishable from "collector never
+	// populated this field" — omitempty on a bool is exactly that trap.
+	assert.Contains(t, string(data), `"value":false`)
+	assert.Contains(t, string(data), `"default":false`)
+	assert.Contains(t, string(data), `"lockedValue":false`)
+}
+
+func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	local := newFakeClient().withListErr(clusterKind.GVR, "", errors.New("rbac denied listing clusters"))
+	factory := &fakeFactory{local: local}
+
+	path := filepath.Join(dir, "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "webhook"}})
+	require.NoError(t, err, "a fleet-discovery failure must degrade to local-only, not abort the command")
+
+	m := manifestFrom(t, path)
+	item := findItem(t, m, "cluster-discovery", "")
+	assert.Contains(t, item.Status, "rbac denied listing clusters")
+
+	data := res.Data.(bundleResult)
+	assert.Greater(t, data.Errors, 0)
+
+	contents := readArchive(t, path)
+	_, hasManifest := contents["manifest.json"]
+	assert.True(t, hasManifest, "the local-only bundle must still ship")
 }
 
 func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {

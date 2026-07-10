@@ -232,8 +232,9 @@ func TestLogsFetchesTail(t *testing.T) {
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
+		tail := int64(50)
 		out, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{
-			Container: "app", TailLines: 50, Previous: true, Timestamps: true,
+			Container: "app", TailLines: &tail, Previous: true, Timestamps: true,
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, out)
@@ -256,6 +257,17 @@ func TestLogsFetchesTail(t *testing.T) {
 		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app"})
 		require.NoError(t, err)
 		assert.Nil(t, lastOpts(t, cs).SinceSeconds)
+	})
+
+	t.Run("TailLines nil means no limit, not a request for zero lines", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		cs := k8sfake.NewClientset(pod)
+		r := &dynamicClient{cs: cs}
+
+		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app"})
+		require.NoError(t, err)
+		assert.Nil(t, lastOpts(t, cs).TailLines)
 	})
 
 	t.Run("SinceSeconds set is passed through verbatim, including zero", func(t *testing.T) {

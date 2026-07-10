@@ -186,6 +186,9 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	if res.RawBytes != nil && res.Text != "" {
 		return clierr.New(clierr.CodeGeneric, "command bug: Result set both RawBytes and Text")
 	}
+	if res.Raw && res.Text != "" {
+		return clierr.New(clierr.CodeGeneric, "command bug: Result set both Raw and Text")
+	}
 	if res.Text != "" && (streams.Format == "" || streams.Format == "table") {
 		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())

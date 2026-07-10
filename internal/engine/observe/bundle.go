@@ -10,7 +10,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -122,14 +121,15 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		since = &secs
 	}
 	if in.String(flagTail) == "" {
-		tail = defaultBundleTail
+		n := int64(defaultBundleTail)
+		tail = &n
 	}
 	path := in.String(flagFilename)
 	if path == "" {
 		path = fmt.Sprintf("rancher-support-%d.tar.gz", nowFunc().Unix())
 	}
 
-	clusters, err := resolveBundleClusters(ctx, c.clients, in.String(flagClusters))
+	clusters, discoveryErr, err := resolveBundleClusters(ctx, c.clients, in.String(flagClusters))
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -141,6 +141,10 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 
 	var entries []ArchiveEntry
 	var items []manifestItem
+
+	if discoveryErr != nil {
+		items = append(items, manifestItem{Name: "cluster-discovery", Status: errorStatus(discoveryErr)})
+	}
 
 	settingsValues, settingsData := collectSettings(ctx, local)
 	entries = append(entries, ArchiveEntry{Path: "rancher/settings.json", Data: settingsData})
@@ -257,24 +261,35 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 // resolveBundleClusters resolves --clusters: "" or "*" discovers local plus
 // every management Cluster the caller can list; an explicit comma-separated
 // list is resolved token by token (the "local" literal short-circuits).
-func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, raw string) ([]string, error) {
+//
+// The two error returns are NOT interchangeable. discoveryErr is a non-fatal
+// signal on the default/"*" path: fleet-wide discovery failed (RBAC denied
+// listing Clusters, the local client is unreachable, ...), so the returned
+// clusters degrade to local-only — the caller must record discoveryErr as a
+// manifest error entry rather than silently shipping a bundle that only
+// covers local while claiming fleet coverage. err is fatal — an explicit
+// --clusters token that fails to resolve aborts the whole command, same as
+// any other VALIDATION-class failure.
+func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, raw string) (clusters []string, discoveryErr error, err error) {
 	if raw == "" || raw == "*" {
 		ids := map[string]bool{engine.LocalCluster: true}
-		clusterKind, _ := kinds.Lookup("cluster")
-		local, err := clients.Cluster(ctx, engine.LocalCluster)
-		if err == nil {
-			if list, err := local.List(ctx, clusterKind.GVR, "", ""); err == nil {
-				for i := range list.Items {
-					ids[list.Items[i].GetName()] = true
-				}
-			}
+		local, cerr := clients.Cluster(ctx, engine.LocalCluster)
+		if cerr != nil {
+			return []string{engine.LocalCluster}, cerr, nil
+		}
+		list, lerr := local.List(ctx, clusterKind.GVR, "", "")
+		if lerr != nil {
+			return []string{engine.LocalCluster}, lerr, nil
+		}
+		for i := range list.Items {
+			ids[list.Items[i].GetName()] = true
 		}
 		out := make([]string, 0, len(ids))
 		for id := range ids {
 			out = append(out, id)
 		}
 		sort.Strings(out)
-		return out, nil
+		return out, nil, nil
 	}
 	var out []string
 	for _, tok := range strings.Split(raw, ",") {
@@ -286,13 +301,13 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 			out = append(out, engine.LocalCluster)
 			continue
 		}
-		id, err := clients.ResolveCluster(ctx, tok)
-		if err != nil {
-			return nil, err
+		id, rerr := clients.ResolveCluster(ctx, tok)
+		if rerr != nil {
+			return nil, nil, rerr
 		}
 		out = append(out, id)
 	}
-	return out, nil
+	return out, nil, nil
 }
 
 // collectSettings fetches every allowlisted setting; a setting absent on
@@ -300,7 +315,6 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 // allowlisted setting) — never a full dump, and a missing setting is not a
 // collector failure.
 func collectSettings(ctx context.Context, local engine.ClusterClient) (map[string]string, []byte) {
-	settingKind, _ := kinds.Lookup("setting")
 	values := map[string]string{}
 	for _, name := range settingsAllowlist {
 		obj, err := local.Get(ctx, settingKind.GVR, "", name)
@@ -319,16 +333,19 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 	return values, data
 }
 
+// featureRow's bool fields carry NO `omitempty`: "off" (false) and "not
+// collected" (field absent) must not serialize to the same bytes in a
+// triage bundle — a support engineer reading features.json needs to see
+// `"value":false` explicitly, not a missing key.
 type featureRow struct {
 	Name        string `json:"name"`
-	Value       bool   `json:"value,omitempty"`
-	Default     bool   `json:"default,omitempty"`
-	Locked      bool   `json:"lockedValue,omitempty"`
+	Value       bool   `json:"value"`
+	Default     bool   `json:"default"`
+	Locked      bool   `json:"lockedValue"`
 	Description string `json:"description,omitempty"`
 }
 
 func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, error) {
-	featureKind, _ := kinds.Lookup("feature")
 	list, err := local.List(ctx, featureKind.GVR, "", "")
 	if err != nil {
 		return nil, err
@@ -350,12 +367,11 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 // items, and the set of namespaces any attempted target resolved to (for
 // the caller's per-namespace events collection) — cattle-system is always
 // included, per the design spec.
-func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail int64, since *int64) ([]ArchiveEntry, []manifestItem, []string) {
+func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64) ([]ArchiveEntry, []manifestItem, []string) {
 	var entries []ArchiveEntry
 	var items []manifestItem
 	namespaces := map[string]bool{"cattle-system": true}
 
-	clusterKind, _ := kinds.Lookup("cluster")
 	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err != nil {
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: errorStatus(err)})
 	} else {
@@ -370,7 +386,6 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 	if client, err := clients.Cluster(ctx, clusterID); err != nil {
 		items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: errorStatus(err)})
 	} else {
-		nodeKind, _ := kinds.Lookup("node")
 		if list, err := client.List(ctx, nodeKind.GVR, "", ""); err != nil {
 			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: errorStatus(err)})
 		} else {
@@ -414,11 +429,11 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 // a best-effort previous-container log (silently omitted when there is
 // none — a fresh container has never restarted, which is the common case,
 // not a failure).
-func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail int64, since *int64) []ArchiveEntry {
+func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64) []ArchiveEntry {
 	var entries []ArchiveEntry
 	for i := range resolved.Pods {
 		podName := resolved.Pods[i].GetName()
-		for _, cname := range containerNames(resolved.Pods[i].Object) {
+		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
 			base := fmt.Sprintf("logs/%s/%s/%s-%s", resolved.ClusterID, t.Name, podName, cname)
 			if out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since}); err == nil {
@@ -438,7 +453,6 @@ func collectEvents(ctx context.Context, clients engine.ClusterClientFactory, clu
 	if err != nil {
 		return nil, err
 	}
-	eventKind, _ := kinds.Lookup("event")
 	list, err := client.List(ctx, eventKind.GVR, namespace, "")
 	if err != nil {
 		return nil, err

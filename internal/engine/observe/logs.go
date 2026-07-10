@@ -93,7 +93,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	var warnings []string
 	for i := range resolved.Pods {
 		podName := resolved.Pods[i].GetName()
-		for _, cname := range containerNames(resolved.Pods[i].Object) {
+		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
 			if containerFilter != "" && cname != containerFilter {
 				continue
 			}
@@ -123,18 +123,21 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 }
 
 // parseTailFlag defaults an empty --tail to 200 and rejects anything that is
-// not a non-negative integer with a VALIDATION error.
-func parseTailFlag(raw string) (int64, error) {
+// not a non-negative integer with a VALIDATION error. Returns *int64 (never
+// nil) matching LogOptions.TailLines' pointer type — nil there means "field
+// unset", which a --tail value, defaulted or explicit, never is.
+func parseTailFlag(raw string) (*int64, error) {
 	if raw == "" {
-		return defaultTailLines, nil
+		n := int64(defaultTailLines)
+		return &n, nil
 	}
 	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
-		return 0, clierr.New(clierr.CodeValidation,
+		return nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("--tail %q is not a valid non-negative integer", raw)).
 			WithHint("pass --tail <N>")
 	}
-	return n, nil
+	return &n, nil
 }
 
 // parseSinceFlag wraps extres.ParseTTL for the duration GRAMMAR without its
@@ -195,26 +198,6 @@ func podNames(pods []unstructured.Unstructured) []string {
 	names := make([]string, len(pods))
 	for i := range pods {
 		names[i] = pods[i].GetName()
-	}
-	return names
-}
-
-// containerNames returns the name of every container in pod, spec.containers
-// then spec.initContainers, so an init container stuck in CrashLoopBackOff is
-// not silently skipped.
-func containerNames(pod map[string]any) []string {
-	var names []string
-	for _, field := range []string{"containers", "initContainers"} {
-		items, _, _ := unstructured.NestedSlice(pod, "spec", field)
-		for _, item := range items {
-			cm, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			if name, _ := cm["name"].(string); name != "" {
-				names = append(names, name)
-			}
-		}
 	}
 	return names
 }
