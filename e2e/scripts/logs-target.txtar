@@ -1,0 +1,49 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# the harness seeds only fleet-default/team-a/c-test as namespaces — logs
+# targets live in cattle-system, which this scenario must create itself.
+exec rancher create resource -f ns.yaml --cluster testcluster --apply
+exec rancher create resource -f agent-pod.yaml --cluster testcluster --apply
+
+# agent: DownstreamOnly, cattle-system/app=cattle-cluster-agent. envtest has
+# no scheduler/kubelet, so the pod never binds — log fetch against an unbound
+# pod still succeeds with an empty body (inspect.txtar's precedent), which is
+# exactly the "empty body IS a yield" boundary this asserts on the honest
+# side: one entry, not a zero-pods error.
+exec rancher logs agent --cluster testcluster -o json
+jsonquery stdout 'data.entries.#' 1
+jsonquery stdout data.entries.0.pod agent-pod
+jsonquery stdout data.entries.0.container cluster-register
+
+# server: LocalOnly. No app=rancher pods (nor a rancher Deployment) exist on
+# the local cluster in this harness — the Docker-install degradation is the
+# honest assertion available without a running Rancher server.
+! exec rancher logs server -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'no rancher pods on the local cluster — single-node Docker install? server logs live in `docker logs <container>`'
+
+# kube-api-auth: the seeded management Cluster c-test has no
+# spec.localClusterAuthEndpoint.enabled — non-ACE, so the ACE precheck must
+# reject before any pod fetch is attempted.
+! exec rancher logs kube-api-auth --cluster testcluster -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'cluster has no authorized cluster endpoint (kube-api-auth runs only on ACE clusters)'
+
+-- ns.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cattle-system
+-- agent-pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agent-pod
+  namespace: cattle-system
+  labels:
+    app: cattle-cluster-agent
+spec:
+  containers:
+    - name: cluster-register
+      image: busybox

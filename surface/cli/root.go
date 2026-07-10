@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -64,6 +65,7 @@ func buildEntries() []entry {
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return commands.NewKubeconfig(d.dir, d.store, d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return observe.NewLogs(d.clients) }},
 	}
 	for _, k := range kinds.All() {
 		k := k

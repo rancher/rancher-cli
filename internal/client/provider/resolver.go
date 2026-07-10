@@ -32,6 +32,8 @@ func NewResolver() *Resolver {
 		"top node":           {Tier: safety.TierCRD, Stability: safety.Beta},
 		"images":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"usage":              {Tier: safety.TierCRD, Stability: safety.Beta},
+
+		"logs": {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 

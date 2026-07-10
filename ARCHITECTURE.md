@@ -51,6 +51,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`, `top node`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
+| `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, legacy migration, store selection/pinning. |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
@@ -79,6 +80,7 @@ graph TD
     inspect["internal/engine/inspect"]
     projects["internal/engine/projects"]
     extres["internal/engine/extres"]
+    observe["internal/engine/observe"]
     config["internal/config"]
     provider["internal/client/provider"]
     kube["internal/client/kube"]
@@ -96,6 +98,7 @@ graph TD
     cli --> kinds
     cli --> projects
     cli --> extres
+    cli --> observe
     cli --> resources
     cli --> inspect
     cli --> provider
@@ -157,6 +160,12 @@ graph TD
     extres --> runtime
     extres --> safety
     extres --> clierr
+
+    observe --> engine
+    observe --> kinds
+    observe --> extres
+    observe --> runtime
+    observe --> clierr
 
     provider --> engine
     provider --> kube

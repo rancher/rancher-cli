@@ -1,0 +1,292 @@
+package observe
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+func mustKind(t *testing.T, name string) kinds.Kind {
+	t.Helper()
+	k, ok := kinds.Lookup(name)
+	require.True(t, ok, "kind %q not in table", name)
+	return k
+}
+
+func clierrCode(t *testing.T, err error) string {
+	t.Helper()
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	return ce.Code
+}
+
+func TestLookup(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"server", "agent", "fleet-agent", "kube-api-auth", "webhook"} {
+		_, ok := Lookup(name)
+		assert.True(t, ok, "target %q must be in the table", name)
+	}
+	_, ok := Lookup("bogus")
+	assert.False(t, ok)
+}
+
+func TestResolveAgentDownstream(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	downstream := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
+	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+
+	target, _ := Lookup("agent")
+	resolved, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+	require.NoError(t, err)
+	assert.Equal(t, "c-1", resolved.ClusterID)
+	assert.Equal(t, "cattle-system", resolved.Namespace)
+	require.Len(t, resolved.Pods, 1)
+	assert.Equal(t, "agent-1", resolved.Pods[0].GetName())
+	assert.Contains(t, downstream.listSelectors, "app=cattle-cluster-agent")
+}
+
+func TestResolveDownstreamOnlyRejectsLocal(t *testing.T) {
+	t.Parallel()
+	factory := &fakeFactory{local: newFakeClient()}
+	target, _ := Lookup("agent")
+
+	_, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "local"}})
+	require.Error(t, err)
+	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+	assert.Contains(t, err.Error(), "only runs on a downstream cluster")
+}
+
+func TestResolveLocalOnlyRejectsExplicitDownstreamCluster(t *testing.T) {
+	t.Parallel()
+	factory := &fakeFactory{local: newFakeClient(), resolve: map[string]string{"prod": "c-prod"}}
+	target, _ := Lookup("webhook")
+
+	_, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "prod"}})
+	require.Error(t, err)
+	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+	assert.Contains(t, err.Error(), "local-only target")
+}
+
+func TestResolveLocalOnlyAllowsExplicitLocal(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	local := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("webhook-1"))
+	factory := &fakeFactory{local: local}
+	target, _ := Lookup("webhook")
+
+	resolved, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "local"}})
+	require.NoError(t, err)
+	assert.Equal(t, engine.LocalCluster, resolved.ClusterID)
+	require.Len(t, resolved.Pods, 1)
+}
+
+func TestResolveServerFallbackChain(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	deployKind := mustKind(t, "deployment")
+
+	t.Run("primary selector finds pods", func(t *testing.T) {
+		t.Parallel()
+		local := newFakeClient().withListSelector(podKind.GVR, "cattle-system", "app=rancher", podList("rancher-1"))
+		factory := &fakeFactory{local: local}
+		target, _ := Lookup("server")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{})
+		require.NoError(t, err)
+		assert.Equal(t, "cattle-system", resolved.Namespace)
+		require.Len(t, resolved.Pods, 1)
+		assert.Equal(t, "rancher-1", resolved.Pods[0].GetName())
+	})
+
+	t.Run("falls back to the rancher Deployment's own selector", func(t *testing.T) {
+		t.Parallel()
+		dep := &unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "rancher"},
+			"spec":     map[string]any{"selector": map[string]any{"matchLabels": map[string]any{"app": "rancher-fallback"}}},
+		}}
+		local := newFakeClient().
+			withObject(deployKind.GVR, "cattle-system", "rancher", dep).
+			withListSelector(podKind.GVR, "cattle-system", "app=rancher-fallback", podList("rancher-2"))
+		factory := &fakeFactory{local: local}
+		target, _ := Lookup("server")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{})
+		require.NoError(t, err)
+		require.Len(t, resolved.Pods, 1)
+		assert.Equal(t, "rancher-2", resolved.Pods[0].GetName())
+	})
+
+	t.Run("degrades to the Docker-install message when nothing matches", func(t *testing.T) {
+		t.Parallel()
+		local := newFakeClient() // no pods, no rancher Deployment
+		factory := &fakeFactory{local: local}
+		target, _ := Lookup("server")
+
+		_, err := Resolve(context.Background(), factory, target, input{})
+		require.Error(t, err)
+		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
+		assert.Contains(t, err.Error(), "single-node Docker install")
+		assert.Contains(t, err.Error(), "docker logs")
+	})
+}
+
+func TestResolveKubeAPIAuthPropagatesRealGetError(t *testing.T) {
+	t.Parallel()
+	clusterKind := mustKind(t, "cluster")
+	wantErr := errors.New("connection refused")
+	local := newFakeClient().withGetErr(clusterKind.GVR, "", "c-1", wantErr)
+	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": newFakeClient()}}
+	target, _ := Lookup("kube-api-auth")
+
+	_, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, wantErr, "a real fetch failure must propagate, not be mistaken for a non-ACE cluster")
+}
+
+func TestResolveAgentPropagatesListError(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	wantErr := errors.New("rbac denied")
+	downstream := newFakeClient().withListErr(podKind.GVR, "cattle-system", wantErr)
+	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	target, _ := Lookup("agent")
+
+	_, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, wantErr)
+}
+
+func TestResolveKubeAPIAuth(t *testing.T) {
+	t.Parallel()
+	clusterKind := mustKind(t, "cluster")
+	podKind := mustKind(t, "pod")
+
+	aceCluster := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-1"},
+		"spec":     map[string]any{"localClusterAuthEndpoint": map[string]any{"enabled": true}},
+	}}
+	nonACECluster := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-2"},
+		"spec":     map[string]any{},
+	}}
+
+	t.Run("ACE cluster proceeds to pod fetch", func(t *testing.T) {
+		t.Parallel()
+		local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", aceCluster)
+		downstream := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("kaa-1"))
+		factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		target, _ := Lookup("kube-api-auth")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+		require.NoError(t, err)
+		require.Len(t, resolved.Pods, 1)
+	})
+
+	t.Run("non-ACE cluster is NOT_FOUND before any pod fetch", func(t *testing.T) {
+		t.Parallel()
+		local := newFakeClient().withObject(clusterKind.GVR, "", "c-2", nonACECluster)
+		factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-2": newFakeClient()}}
+		target, _ := Lookup("kube-api-auth")
+
+		_, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-2"}})
+		require.Error(t, err)
+		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
+		assert.Contains(t, err.Error(), "authorized cluster endpoint")
+	})
+}
+
+func TestResolveFleetAgentClusterDefault(t *testing.T) {
+	t.Parallel()
+	factory := &fakeFactory{local: newFakeClient()}
+	target, _ := Lookup("fleet-agent")
+
+	t.Run("omitted --cluster defaults to local", func(t *testing.T) {
+		t.Parallel()
+		resolved, err := Resolve(context.Background(), factory, target, input{})
+		require.NoError(t, err)
+		assert.Equal(t, engine.LocalCluster, resolved.ClusterID)
+	})
+
+	t.Run("--cluster targets the given downstream cluster", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": newFakeClient()}}
+		resolved, err := Resolve(context.Background(), f, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+		require.NoError(t, err)
+		assert.Equal(t, "c-1", resolved.ClusterID)
+	})
+}
+
+func TestResolveFleetAgentNamespaceChain(t *testing.T) {
+	t.Parallel()
+	clusterKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioningcluster")
+	fleetKind := mustKind(t, "fleetcluster")
+	podKind := mustKind(t, "pod")
+
+	t.Run("downstream: agentNamespace override via the provisioning-keyed fleetcluster", func(t *testing.T) {
+		t.Parallel()
+		mgmtCluster := &unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "c-1"},
+			"spec":     map[string]any{},
+		}}
+		provList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}, "status": map[string]any{"clusterName": "c-1"}}},
+		}}
+		fleetCluster := &unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "p-1"},
+			"spec":     map[string]any{"agentNamespace": "custom-fleet-ns"},
+		}}
+		local := newFakeClient().
+			withObject(clusterKind.GVR, "", "c-1", mgmtCluster).
+			withListNS(provKind.GVR, "fleet-default", provList).
+			withObject(fleetKind.GVR, "fleet-default", "p-1", fleetCluster)
+		downstream := newFakeClient().withListNS(podKind.GVR, "custom-fleet-ns", podList("fleet-agent-1"))
+		factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		target, _ := Lookup("fleet-agent")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+		require.NoError(t, err)
+		assert.Equal(t, "custom-fleet-ns", resolved.Namespace)
+		require.Len(t, resolved.Pods, 1)
+	})
+
+	t.Run("downstream: legacy fleet-system fallback when the default namespace has no pods", func(t *testing.T) {
+		t.Parallel()
+		local := newFakeClient() // no mgmt Cluster, no provisioningclusters, no fleetcluster: every read falls through
+		downstream := newFakeClient().withListNS(podKind.GVR, "fleet-system", podList("legacy-agent"))
+		factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		target, _ := Lookup("fleet-agent")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-1"}})
+		require.NoError(t, err)
+		assert.Equal(t, "fleet-system", resolved.Namespace)
+		require.Len(t, resolved.Pods, 1)
+	})
+
+	t.Run("local cluster uses the fixed fleetcluster \"local\" in fleet-local, no provisioningcluster lookup", func(t *testing.T) {
+		t.Parallel()
+		localMgmt := &unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "local"},
+			"spec":     map[string]any{},
+		}}
+		local := newFakeClient().
+			withObject(clusterKind.GVR, "", "local", localMgmt).
+			withListNS(podKind.GVR, "cattle-fleet-local-system", podList("local-fleet-agent"))
+		factory := &fakeFactory{local: local}
+		target, _ := Lookup("fleet-agent")
+
+		resolved, err := Resolve(context.Background(), factory, target, input{})
+		require.NoError(t, err)
+		assert.Equal(t, engine.LocalCluster, resolved.ClusterID)
+		assert.Equal(t, "cattle-fleet-local-system", resolved.Namespace)
+		require.Len(t, resolved.Pods, 1)
+	})
+}

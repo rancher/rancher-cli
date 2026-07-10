@@ -2959,6 +2959,53 @@
       "usage": "Emit an exec-credential kubeconfig for a cluster"
     },
     {
+      "args": [
+        {
+          "name": "target",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "examples": [
+        "rancher logs agent --cluster prod",
+        "rancher logs server --since 1h"
+      ],
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "tail",
+          "type": "string"
+        },
+        {
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "name": "previous",
+          "type": "bool"
+        },
+        {
+          "name": "container",
+          "type": "string"
+        },
+        {
+          "name": "timestamps",
+          "type": "bool"
+        }
+      ],
+      "name": "logs",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+    },
+    {
       "aliases": [
         "bundles"
       ],
