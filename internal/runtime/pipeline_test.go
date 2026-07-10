@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 type mapInput struct {
@@ -334,6 +335,93 @@ func TestQuietErrorStillRendersJSON(t *testing.T) {
 	assert.Equal(t, "Error", env["kind"])
 	data := env["data"].(map[string]any)
 	assert.NotEmpty(t, data["error"], "error envelope must contain error details")
+}
+
+func TestRenderResultTextMode(t *testing.T) {
+	text := "server pod-1 ready\nserver pod-2 ready\n"
+	data := map[string]any{"pods": []string{"pod-1", "pod-2"}}
+	warnings := []string{"pod-3: rbac denied"}
+
+	newCmd := func() fakeRead {
+		return fakeRead{
+			d:   Descriptor{Name: "logs", CommandType: ReadOnly},
+			res: Result{Kind: "LogsResult", Text: text, Data: data, Warnings: warnings},
+		}
+	}
+
+	t.Run("default format writes Text verbatim and warnings to stderr", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Equal(t, text, out.String())
+		assert.Contains(t, errBuf.String(), "# warning: pod-3: rbac denied\n")
+		assert.NotContains(t, out.String(), "apiVersion")
+	})
+
+	t.Run("table format identical to default", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Equal(t, text, out.String())
+		assert.Contains(t, errBuf.String(), "# warning: pod-3: rbac denied\n")
+	})
+
+	t.Run("json format renders envelope over Data, not raw text", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		require.Nil(t, ce)
+		env := decodeEnvelope(t, out.Bytes())
+		assert.Equal(t, "LogsResult", env["kind"])
+		edata, ok := env["data"].(map[string]any)
+		require.True(t, ok)
+		assert.NotNil(t, edata["pods"])
+		warn, ok := env["warnings"].([]any)
+		require.True(t, ok)
+		assert.Contains(t, warn[0], "rbac denied")
+		assert.NotContains(t, out.String(), text)
+	})
+
+	t.Run("yaml format renders envelope over Data", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "yaml"}, safety.Binding{})
+		require.Nil(t, ce)
+		var env map[string]any
+		require.NoError(t, yaml.Unmarshal(out.Bytes(), &env))
+		assert.Equal(t, "LogsResult", env["kind"])
+		assert.NotContains(t, out.String(), text)
+	})
+
+	t.Run("template renders over JSON view of Data", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "{{index .pods 0}}"}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Equal(t, "pod-1\n", out.String())
+	})
+
+	t.Run("-o name is a documented no-op for non-Tabular Data", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Empty(t, out.String())
+	})
+}
+
+func TestRenderResultRejectsTextAndRawBytes(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "x", CommandType: ReadOnly},
+		res: Result{Text: "x", RawBytes: []byte("y")},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
 func TestRenderErrAlwaysJSON(t *testing.T) {

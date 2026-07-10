@@ -208,6 +208,12 @@ detection warning is emitted on both the dry-run Effect and the applied result.
 prompter)` → render. `--dry-run` on a read command is rejected with
 `DRY_RUN_NOT_APPLICABLE`.
 
+**Text-mode results.** A command may set `runtime.Result.Text` for a user-facing plain
+default rendering (e.g. `logs`): under format `""`/`table` the pipeline writes `Text`
+verbatim to stdout and `Warnings` to stderr as `# warning: <w>` lines, while `json`/
+`yaml`/template/`-o name` still render the normal envelope over `Data` — mutually
+exclusive with `RawBytes`.
+
 **`CommandType: local` does not mean offline.** `auth check` and `auth get-token` are
 `local` (they own their own I/O rather than going through the cluster-client factory) yet
 both do network + auth. The manifest's per-command `network` and `auth` booleans are the

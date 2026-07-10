@@ -62,7 +62,13 @@ type Result struct {
 	// and no encoding — used by `kubeconfig`, whose stdout must be a bare
 	// YAML document. Mutually exclusive with Raw; renderResult rejects a
 	// Result that sets both.
-	RawBytes  []byte
+	RawBytes []byte
+	// Text, when non-empty, is written verbatim to stdout under format ""/
+	// "table" (with Warnings rendered to stderr as "# warning: <w>" lines);
+	// json/yaml/template/name render the envelope over Data as usual.
+	// Mutually exclusive with RawBytes; renderResult rejects a Result that
+	// sets both.
+	Text      string
 	Tier      string
 	Stability string
 }
