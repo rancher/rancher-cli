@@ -1,0 +1,64 @@
+# RANCHER_CREDENTIAL_STORE=file is already Setup's default (headless CI has
+# no keyring; deliberately why there is no `logout` txtar either) — pinned
+# here explicitly too since delete-server drains a real credential store.
+env RANCHER_CREDENTIAL_STORE=file
+
+# config path: prints the resolved path whether or not the file exists yet.
+! exists $RANCHER_CONFIG_DIR/config.yaml
+exec rancher config path
+stdout $RANCHER_CONFIG_DIR/config.yaml
+
+exec rancher config path -o json
+jsonquery stdout data.exists false
+
+# Seed a server + context via a direct config-file write — no login flow
+# needed just to populate config.yaml.
+mkdir $RANCHER_CONFIG_DIR
+cp seed-config.yaml $RANCHER_CONFIG_DIR/config.yaml
+
+exec rancher config path -o json
+jsonquery stdout data.exists true
+
+exec rancher config get-servers -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.name acme
+
+# config delete-server: unknown name -> NOT_FOUND with candidates (the
+# logout pattern).
+! exec rancher config delete-server nope -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr 'data.error.candidates.#' 1
+jsonquery stderr data.error.candidates.0.id acme
+
+# config delete-server end-to-end: removes the server, its field-matched
+# context, clears the current context that pointed at it, and reports the
+# drain (file backend; no stored token here, so deletedFrom is empty) —
+# does NOT revoke the server-side token.
+exec rancher config delete-server acme -o json
+jsonquery stdout data.server acme
+jsonquery stdout data.currentContextCleared true
+jsonquery stdout 'data.contexts.#' 1
+jsonquery stdout data.contexts.0 acme
+
+exec rancher config get-servers -o json
+jsonquery stdout 'data.#' 0
+
+! exec rancher config current-context
+jsonquery stderr data.error.code CONTEXT_NOT_SET
+
+# config edit: the only path this harness can honestly drive without
+# scripting an interactive editor is the no-TTY gate — `exec` here has no
+# terminal attached.
+! exec rancher config edit
+jsonquery stderr data.error.code VALIDATION
+stderr 'TTY'
+stderr $RANCHER_CONFIG_DIR/config.yaml
+
+-- seed-config.yaml --
+current-context: acme
+servers:
+  acme:
+    url: https://acme.example.com
+contexts:
+  acme:
+    server: acme

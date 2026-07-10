@@ -173,12 +173,52 @@
       "usage": "Show the current context"
     },
     {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config delete-server prod"
+      ],
+      "name": "config delete-server",
+      "network": false,
+      "toolset": "core",
+      "usage": "Delete a configured server, its contexts, and its stored credentials"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config edit"
+      ],
+      "name": "config edit",
+      "network": false,
+      "toolset": "core",
+      "usage": "Edit the config file in $VISUAL or $EDITOR"
+    },
+    {
       "auth": false,
       "commandType": "local",
       "name": "config get-servers",
       "network": false,
       "toolset": "core",
       "usage": "List configured servers"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config path"
+      ],
+      "name": "config path",
+      "network": false,
+      "toolset": "core",
+      "usage": "Print the resolved config file path"
     },
     {
       "auth": false,

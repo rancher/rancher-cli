@@ -80,6 +80,9 @@ or point any other agent's instructions file at it.
 | `config use-context <name>` | Activate a different named context |
 | `config get-servers` | List configured servers |
 | `config use-server [name]` | Switch the active server |
+| `config delete-server <name>` | Remove a configured server, every context that targets it, and drain its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
+| `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
+| `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
 | `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — public tier; dry-run/apply |
 | `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
@@ -102,13 +105,18 @@ or point any other agent's instructions file at it.
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 | `schema [command]` | Machine-readable capability manifest |
 
+`config use-server` switches to a context that targets the named server
+(creating one if needed); `config use-context` activates a named context
+directly. `use-server` is the migrating target for the legacy `server
+switch` command.
+
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
 Generated per kind from the 40-kind table: `get <kind>` (40), `patch <kind>`
 (40), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
-`token`, and `kubeconfig`) — 100 generated commands, 132 total together with
+`token`, and `kubeconfig`) — 100 generated commands, 135 total together with
 the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 
