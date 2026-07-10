@@ -2,8 +2,10 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -138,4 +140,109 @@ func TestCreateProjectResolvesClusterDisplayName(t *testing.T) {
 func projectCmdFor(t *testing.T, c engine.ClusterClient) runtime.Command {
 	t.Helper()
 	return NewCreate(stubFactory{c: c})
+}
+
+func TestCreateProjectQuotaFlagsPopulateBothSpecs(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{
+		"cluster":                 "c-x",
+		"quota-limit":             "limitsCpu=2,limitsMemory=4Gi",
+		"namespace-default-quota": "limitsCpu=1,limitsMemory=2Gi",
+	}, a: []string{"web"}})
+	require.NoError(t, err)
+
+	limitCPU, _, _ := unstructured.NestedString(client.created.Object, "spec", "resourceQuota", "limit", "limitsCpu")
+	assert.Equal(t, "2", limitCPU)
+	limitMem, _, _ := unstructured.NestedString(client.created.Object, "spec", "resourceQuota", "limit", "limitsMemory")
+	assert.Equal(t, "4Gi", limitMem)
+	nsCPU, _, _ := unstructured.NestedString(client.created.Object, "spec", "namespaceDefaultResourceQuota", "limit", "limitsCpu")
+	assert.Equal(t, "1", nsCPU)
+	nsMem, _, _ := unstructured.NestedString(client.created.Object, "spec", "namespaceDefaultResourceQuota", "limit", "limitsMemory")
+	assert.Equal(t, "2Gi", nsMem)
+}
+
+func TestCreateProjectWithoutQuotaFlagsHasNoQuotaSpecs(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}})
+	require.NoError(t, err)
+
+	_, found, _ := unstructured.NestedMap(client.created.Object, "spec", "resourceQuota")
+	assert.False(t, found, "no quota flags means no empty quota spec")
+	_, found, _ = unstructured.NestedMap(client.created.Object, "spec", "namespaceDefaultResourceQuota")
+	assert.False(t, found)
+}
+
+func TestCreateProjectOneQuotaFlagWithoutTheOtherIsValidation(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{
+		"cluster":     "c-x",
+		"quota-limit": "limitsCpu=2",
+	}, a: []string{"web"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "together")
+}
+
+func TestCreateProjectQuotaKeySetMismatchIsValidation(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{
+		"cluster":                 "c-x",
+		"quota-limit":             "limitsCpu=2,limitsMemory=4Gi",
+		"namespace-default-quota": "limitsCpu=1",
+	}, a: []string{"web"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "limitsMemory")
+}
+
+func TestCreateProjectQuotaUnknownKeyIsValidation(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{
+		"cluster":                 "c-x",
+		"quota-limit":             "limitsCPU=2",
+		"namespace-default-quota": "limitsCPU=1",
+	}, a: []string{"web"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "limitsCPU")
+	assert.Contains(t, ce.Hint, "limitsCpu")
+}
+
+func TestCreateProjectQuotaMalformedPairIsValidation(t *testing.T) {
+	t.Parallel()
+	cases := []string{"foo", "=x", "limitsCpu="}
+	for _, pair := range cases {
+		client := &recClient{}
+		cmd := projectCmdFor(t, client)
+		_, _, err := planProject(t, cmd, in{s: map[string]string{
+			"cluster":                 "c-x",
+			"quota-limit":             pair,
+			"namespace-default-quota": pair,
+		}, a: []string{"web"}})
+		require.Error(t, err, "pair %q", pair)
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce))
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+	}
 }

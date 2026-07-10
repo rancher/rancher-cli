@@ -52,6 +52,14 @@ jsonquery stdout 'data.members.#' 0
 jsonquery stdout warnings.0 'metrics.k8s.io unavailable on cluster c-test'
 jsonquery stdout 'warnings.#' 1
 
+# PC-8: quota flags on create project (mandatory-together, matching keys).
+exec rancher create project web-quota --cluster testcluster --quota-limit limitsCpu=2,limitsMemory=4Gi --namespace-default-quota limitsCpu=1,limitsMemory=2Gi --apply
+exec rancher get project web-quota --cluster testcluster -o json
+jsonquery stdout data.spec.resourceQuota.limit.limitsCpu 2
+jsonquery stdout data.spec.resourceQuota.limit.limitsMemory 4Gi
+jsonquery stdout data.spec.namespaceDefaultResourceQuota.limit.limitsCpu 1
+jsonquery stdout data.spec.namespaceDefaultResourceQuota.limit.limitsMemory 2Gi
+
 -- cm-member.yaml --
 apiVersion: v1
 kind: ConfigMap
