@@ -129,12 +129,12 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		path = fmt.Sprintf("rancher-support-%d.tar.gz", nowFunc().Unix())
 	}
 
-	clusters, discoveryErr, err := resolveBundleClusters(ctx, c.clients, in.String(flagClusters))
+	local, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
-	local, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	clusters, discoveryErr, err := resolveBundleClusters(ctx, c.clients, local, in.String(flagClusters))
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -259,24 +259,23 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 }
 
 // resolveBundleClusters resolves --clusters: "" or "*" discovers local plus
-// every management Cluster the caller can list; an explicit comma-separated
-// list is resolved token by token (the "local" literal short-circuits).
+// every management Cluster the caller can list (via the already-fetched
+// local client — the caller has no separate local-client failure mode to
+// worry about, since it needed local before calling this anyway); an
+// explicit comma-separated list is resolved token by token (the "local"
+// literal short-circuits).
 //
-// The two error returns are NOT interchangeable. discoveryErr is a non-fatal
-// signal on the default/"*" path: fleet-wide discovery failed (RBAC denied
-// listing Clusters, the local client is unreachable, ...), so the returned
-// clusters degrade to local-only — the caller must record discoveryErr as a
-// manifest error entry rather than silently shipping a bundle that only
-// covers local while claiming fleet coverage. err is fatal — an explicit
-// --clusters token that fails to resolve aborts the whole command, same as
-// any other VALIDATION-class failure.
-func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, raw string) (clusters []string, discoveryErr error, err error) {
+// The two error returns are NOT interchangeable. discoveryErr is a
+// non-fatal signal on the default/"*" path: fleet-wide listing failed
+// (RBAC denied listing Clusters, ...), so the returned clusters degrade to
+// local-only — the caller must record discoveryErr as a manifest error
+// entry rather than silently shipping a bundle that only covers local
+// while claiming fleet coverage. err is fatal — an explicit --clusters
+// token that fails to resolve aborts the whole command, same as any other
+// VALIDATION-class failure.
+func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, raw string) (clusters []string, discoveryErr error, err error) {
 	if raw == "" || raw == "*" {
 		ids := map[string]bool{engine.LocalCluster: true}
-		local, cerr := clients.Cluster(ctx, engine.LocalCluster)
-		if cerr != nil {
-			return []string{engine.LocalCluster}, cerr, nil
-		}
 		list, lerr := local.List(ctx, clusterKind.GVR, "", "")
 		if lerr != nil {
 			return []string{engine.LocalCluster}, lerr, nil
