@@ -1,0 +1,33 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# PS-8: the server-version Setting is a cluster-scoped singleton shared
+# with every other concurrent txtar against this one envtest apiserver —
+# this scenario is the ONLY one that creates/patches it, and owns ALL
+# warning-sensitive assertions on it; no other script may assert warning
+# presence/absence for `auth check`.
+
+exec rancher create resource -f setting.yaml --apply --yes
+
+exec rancher auth check -o json
+jsonquery stdout data.ok true
+jsonquery stdout data.rancherVersion v2.13.0
+jsonquery stdout data.supported false
+jsonquery stdout 'warnings.0' 'server v2.13.0 is below the supported minimum 2.14; some commands may fail'
+
+# Setting is Deletable: false — patch in place rather than delete+recreate.
+exec rancher patch setting server-version --patch '[{"op":"replace","path":"/value","value":"dev"}]' --apply --yes -o json
+jsonquery stdout data.value dev
+
+exec rancher auth check -o json
+jsonquery stdout data.ok true
+jsonquery stdout data.rancherVersion dev
+jsonquery stdout data.supported ''
+jsonquery stdout 'warnings.0' 'cannot determine server version, assuming supported'
+
+-- setting.yaml --
+apiVersion: management.cattle.io/v3
+kind: Setting
+metadata:
+  name: server-version
+value: v2.13.0

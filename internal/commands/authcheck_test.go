@@ -79,6 +79,94 @@ func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
 	assert.Equal(t, "file", cs["pinned"])
 }
 
+// TestAuthCheckRancherVersionSupportPayload pins PS-8's additive auth-check
+// payload fields: rancherVersion and supported, alongside (never replacing)
+// the existing serverVersion k8s-discovery key.
+func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
+	t.Parallel()
+	run := func(t *testing.T, rv func(context.Context, config.Effective) (string, error)) (runtime.Result, error) {
+		t.Helper()
+		dir := t.TempDir()
+		cmd := &authCheckCmd{
+			dir:   dir,
+			store: config.NewFileStore(dir),
+			preflight: func(context.Context, config.Effective) (string, error) {
+				return "v1.31.0", nil
+			},
+			rancherVersion: rv,
+		}
+		return cmd.Execute(context.Background(), args{}, ui.Discard())
+	}
+
+	t.Run("above floor: supported true, no warning, both keys present", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "v2.15.0", nil
+		})
+		require.NoError(t, err)
+		data := res.Data.(map[string]any)
+		assert.Equal(t, "v1.31.0", data["serverVersion"], "the k8s discovery key must stay untouched")
+		rv, ok := data["rancherVersion"].(*string)
+		require.True(t, ok)
+		require.NotNil(t, rv)
+		assert.Equal(t, "v2.15.0", *rv)
+		supported, ok := data["supported"].(*bool)
+		require.True(t, ok)
+		require.NotNil(t, supported)
+		assert.True(t, *supported)
+		assert.Empty(t, res.Warnings)
+	})
+
+	t.Run("below floor: supported false plus a warning", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "v2.13.0", nil
+		})
+		require.NoError(t, err)
+		data := res.Data.(map[string]any)
+		supported := data["supported"].(*bool)
+		require.NotNil(t, supported)
+		assert.False(t, *supported)
+		require.Len(t, res.Warnings, 1)
+		assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
+	})
+
+	t.Run("unparseable dev build: supported nil, cannot-determine warning, check still succeeds", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "dev", nil
+		})
+		require.NoError(t, err)
+		data := res.Data.(map[string]any)
+		assert.Nil(t, data["supported"].(*bool))
+		require.Len(t, res.Warnings, 1)
+		assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+	})
+
+	t.Run("RBAC-denied version read never fails the check: both keys nil plus the same warning", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeRBAC, "settings.management.cattle.io is forbidden")
+		})
+		require.NoError(t, err, "a working login must never be turned into a failure by the version probe")
+		data := res.Data.(map[string]any)
+		assert.Nil(t, data["rancherVersion"].(*string))
+		assert.Nil(t, data["supported"].(*bool))
+		require.Len(t, res.Warnings, 1)
+		assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+	})
+
+	t.Run("missing setting is folded into the same unknown posture, not an error", func(t *testing.T) {
+		t.Parallel()
+		res, err := run(t, func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeNotFound, "settings.management.cattle.io \"server-version\" not found")
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Warnings, 1)
+		assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+	})
+}
+
 func TestAuthCheckHitsServerVersion(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/k8s/clusters/local/version" {

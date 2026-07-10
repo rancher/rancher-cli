@@ -146,7 +146,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 				if err != nil {
 					return res, err
 				}
-				res.Warnings = append(res.Warnings, "if this Rancher is older than 2.12, project-scoped secrets are not propagated")
+				res.Warnings = append(res.Warnings, "project-scoped secret propagation is not guaranteed (requires Rancher >= 2.14, the supported minimum)")
 				return res, nil
 			}
 		}

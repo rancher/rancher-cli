@@ -517,3 +517,92 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	_, tokErr := store.GetToken("prod")
 	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
 }
+
+// newVersionProbeFake stands in for Rancher's local-cluster proxy, serving
+// EXACTLY the server-version Setting path PS-8 requires — a regression
+// hitting a bare /apis/... path (management.cattle.io/v3 is never served at
+// the Rancher root) 404s here exactly as it would for real, landing the
+// probe in the same unknown-version path every time.
+func newVersionProbeFake(t *testing.T, value string, status int) *httptest.Server {
+	t.Helper()
+	if status == 0 {
+		status = http.StatusOK
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/k8s/clusters/local/apis/management.cattle.io/v3/settings/server-version" {
+			http.NotFound(w, r)
+			return
+		}
+		assert.Equal(t, "Bearer id:sec", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": value})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestLoginWarnsWhenServerBelowMinVersion(t *testing.T) {
+	t.Parallel()
+	fake := newVersionProbeFake(t, "v2.13.0", http.StatusOK)
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
+}
+
+func TestLoginNoWarningAtOrAboveMinVersion(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"v2.14.0", "v2.15.2", "2.14"} {
+		fake := newVersionProbeFake(t, v, http.StatusOK)
+		dir, store := filePolicyDir(t)
+		in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
+		res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+		require.NoError(t, err, v)
+		assert.Empty(t, res.Warnings, v)
+	}
+}
+
+func TestLoginUnparseableVersionWarnsCannotDetermine(t *testing.T) {
+	t.Parallel()
+	fake := newVersionProbeFake(t, "dev", http.StatusOK)
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+}
+
+// TestLoginVersionProbeFailureNeverFailsLogin pins PS-8's warn-only
+// contract at the login seam: an RBAC-denied/missing-setting probe must
+// never turn an otherwise-successful login into an error.
+func TestLoginVersionProbeFailureNeverFailsLogin(t *testing.T) {
+	t.Parallel()
+	fake := newVersionProbeFake(t, "", http.StatusForbidden)
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+
+	tok, err := store.GetToken("acme")
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok, "the token is stored regardless of the version probe's outcome")
+}
+
+// TestLoginVersionProbeUnreachableServerNeverFailsLogin covers the
+// connectivity-failure sub-case (no listener at all) of the same
+// never-fails contract, distinct from an HTTP-level RBAC/404 response.
+func TestLoginVersionProbeUnreachableServerNeverFailsLogin(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": "https://127.0.0.1:1", "name": "acme"}, b: map[string]bool{"token-stdin": true}}
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+}

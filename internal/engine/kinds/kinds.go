@@ -317,7 +317,8 @@ var table = []Kind{
 	{
 		// Empty GVR version: ext.cattle.io is resolved via discovery at call
 		// time; group absence means an older Rancher without the aggregated
-		// imperative API (both kinds shipped in v2.12).
+		// imperative API (both kinds shipped in v2.12; the CLI's own
+		// supported floor is now 2.14 — PS-8).
 		Key: "token", Name: "token", Aliases: []string{"tokens"},
 		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,

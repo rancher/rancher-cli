@@ -79,7 +79,7 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 	d, err := mintDerivedToken(ctx, client, base, s, ttlMs)
 	if err != nil {
 		if errors.Is(err, errExtGroupAbsent) {
-			note := "this Rancher does not serve ext.cattle.io (requires Rancher >= 2.12); storing the session token directly"
+			note := "this Rancher does not serve ext.cattle.io (requires Rancher >= 2.14, the supported minimum); storing the session token directly"
 			if sessionToken.ExpiresAt != "" {
 				note += " (expires " + sessionToken.ExpiresAt + ")"
 			}

@@ -104,7 +104,7 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	res, err := exec(context.Background())
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "2.12")
+	assert.Contains(t, res.Warnings[0], "requires Rancher >= 2.14, the supported minimum")
 }
 
 func TestCreateSecretProjectScopedWithoutProjectIsValidation(t *testing.T) {
