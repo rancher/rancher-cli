@@ -2570,6 +2570,29 @@
       "usage": "Inspect a pod: owners, metrics, and container logs"
     },
     {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "inspect project",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Inspect a project: namespaces, members, quota, and usage"
+    },
+    {
       "auth": true,
       "commandType": "local",
       "examples": [

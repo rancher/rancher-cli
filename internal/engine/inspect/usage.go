@@ -117,7 +117,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		}
 	}
 
-	return c.aggregate(ctx, client, clusterID, grouped, namespaces)
+	return aggregateUsage(ctx, client, clusterID, grouped, namespaces)
 }
 
 // fetchPodMetrics lists pod metrics scoped to namespaces (cluster-wide when
@@ -142,7 +142,11 @@ func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespace
 	return byKey, nil
 }
 
-func (c *usageCmd) aggregate(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured, namespaces []string) (runtime.Result, error) {
+// aggregateUsage sums CPU/memory requests, limits, and (when metrics.k8s.io
+// is reachable) usage per grouped key, degrading a metrics fetch failure to
+// a warning rather than a command error. Shared by usage's own per-namespace/
+// per-project modes and inspect project's usage summary.
+func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured, namespaces []string) (runtime.Result, error) {
 	var warnings []string
 	metricsOK := true
 	metricsByKey, merr := fetchPodMetrics(ctx, client, namespaces)

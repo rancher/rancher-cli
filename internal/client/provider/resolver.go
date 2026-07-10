@@ -23,6 +23,7 @@ func NewResolver() *Resolver {
 
 		"inspect pod":        {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment": {Tier: safety.TierCRD, Stability: safety.Beta},
+		"inspect project":    {Tier: safety.TierPublic, Stability: safety.Beta},
 		"top node":           {Tier: safety.TierCRD, Stability: safety.Beta},
 		"images":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"usage":              {Tier: safety.TierCRD, Stability: safety.Beta},

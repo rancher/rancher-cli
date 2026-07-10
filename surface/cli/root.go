@@ -53,6 +53,7 @@ func buildEntries() []entry {
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
+		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients) }},
 		{group: "top", make: func(d runDeps) runtime.Command { return inspect.NewTopNode(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
