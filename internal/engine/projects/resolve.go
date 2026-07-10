@@ -78,6 +78,28 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 	}
 }
 
+// BackingNamespace returns the namespace projectroletemplatebindings and
+// project-scoped secrets live in for projectID: status.backingNamespace,
+// falling back to the project id itself when that field is absent or empty
+// (older Rancher, or a project not yet touched by the propagation
+// controller) — Rancher's own GetProjectBackingNamespace semantics.
+func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, clusterID, projectID string) (string, error) {
+	client, err := clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return "", err
+	}
+	projectKind, _ := kinds.Lookup("project")
+	obj, err := client.Get(ctx, projectKind.GVR, clusterID, projectID)
+	if err != nil {
+		return "", err
+	}
+	backing, _, _ := unstructured.NestedString(obj.Object, "status", "backingNamespace")
+	if backing == "" {
+		return projectID, nil
+	}
+	return backing, nil
+}
+
 // NotMemberError builds the canonical "namespace is not in project"
 // VALIDATION error: the message format Route, usage, and project
 // remove-namespace all enforce membership with, kept in one place so a

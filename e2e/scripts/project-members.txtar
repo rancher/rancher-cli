@@ -1,0 +1,54 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create project members-proj --cluster testcluster --apply
+
+# the fallback backing namespace IS the project id; it must EXIST before a
+# PRTB create can succeed — the harness runs no Rancher controllers.
+exec rancher create namespace members-proj --cluster local --apply
+
+# seed a user fixture: Sensitive-kind creates need --apply --yes.
+exec rancher create resource -f user.yaml --apply --yes
+
+# regression: users are a flat/norman-style kind (root-level displayName,
+# principalIds — not spec-nested); root fields must round-trip through the
+# CRD fixture like the real API.
+exec rancher get user u-alice -o json
+jsonquery stdout data.displayName alice
+jsonquery stdout 'data.principalIds.0' local://u-alice
+
+# add-member dry-run preview: a create Effect is Target-only.
+exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --dry-run -o json
+jsonquery stdout data.action create
+stdout projectroletemplatebindings/project-member-
+
+exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --apply
+
+# the binding carries BOTH userName and userPrincipalName from the one
+# resolved user (PC-7: forecloses Rancher's EnsureUser orphan-mint trap).
+exec rancher get prtb --namespace members-proj -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.userName u-alice
+jsonquery stdout data.0.userPrincipalName local://u-alice
+jsonquery stdout data.0.roleTemplateName project-member
+jsonquery stdout data.0.projectName c-test:members-proj
+
+# remove-member is destructive: --apply alone is refused.
+! exec rancher project remove-member alice --project members-proj --cluster testcluster --apply
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --yes'
+
+exec rancher project remove-member alice --project members-proj --cluster testcluster --apply --yes
+
+exec rancher get prtb --namespace members-proj -o json
+jsonquery stdout 'data.#' 0
+
+-- user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-alice
+displayName: alice
+username: alice
+principalIds:
+  - local://u-alice

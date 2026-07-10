@@ -17,13 +17,19 @@ import (
 // keyed by GVR resource.
 type listClient struct {
 	lists map[string]*unstructured.UnstructuredList
+	// gets, when set, answers Get by "namespace/name" key; unset keys fall
+	// through to a nil, nil no-op (existing List-only tests are unaffected).
+	gets map[string]*unstructured.Unstructured
 
 	lastNS       string
 	lastSelector string
 	lastResource string
 }
 
-func (l *listClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+func (l *listClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if obj, ok := l.gets[ns+"/"+name]; ok {
+		return obj, nil
+	}
 	return nil, nil
 }
 
@@ -155,6 +161,38 @@ func TestProjectNamespacesEmptySetIsNotAnError(t *testing.T) {
 	members, err := ProjectNamespaces(context.Background(), client, "p-1")
 	require.NoError(t, err)
 	assert.Empty(t, members)
+}
+
+func projectWithBackingNS(id, backingNS string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": id}}}
+	if backingNS != "" {
+		_ = unstructured.SetNestedField(obj.Object, backingNS, "status", "backingNamespace")
+	}
+	return obj
+}
+
+func TestBackingNamespaceUsesStatusField(t *testing.T) {
+	t.Parallel()
+	client := &listClient{gets: map[string]*unstructured.Unstructured{
+		"c-x/p-1": projectWithBackingNS("p-1", "p-abc123"),
+	}}
+	factory := stubFactory{c: client}
+
+	ns, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	require.NoError(t, err)
+	assert.Equal(t, "p-abc123", ns)
+}
+
+func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
+	t.Parallel()
+	client := &listClient{gets: map[string]*unstructured.Unstructured{
+		"c-x/p-1": projectWithBackingNS("p-1", ""),
+	}}
+	factory := stubFactory{c: client}
+
+	ns, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	require.NoError(t, err)
+	assert.Equal(t, "p-1", ns)
 }
 
 var _ engine.ClusterClient = (*listClient)(nil)

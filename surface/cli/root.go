@@ -51,6 +51,8 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
+		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddMember(d.clients) }},
+		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveMember(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients) }},

@@ -261,7 +261,7 @@ var table = []Kind{
 		// cluster id — reflected in the generated flag help.
 		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"prtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
-		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 

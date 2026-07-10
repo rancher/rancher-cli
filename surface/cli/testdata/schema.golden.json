@@ -849,6 +849,46 @@
     },
     {
       "aliases": [
+        "prtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete projectroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a projectroletemplatebinding"
+    },
+    {
+      "aliases": [
         "replicasets",
         "rs"
       ],
@@ -4529,6 +4569,47 @@
     {
       "args": [
         {
+          "name": "principal",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply"
+      ],
+      "flags": [
+        {
+          "name": "project",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "group",
+          "type": "bool"
+        }
+      ],
+      "name": "project add-member",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Add a member to a project via a role template binding"
+    },
+    {
+      "args": [
+        {
           "name": "namespace",
           "required": true,
           "type": "string"
@@ -4557,6 +4638,42 @@
       "tier": "public",
       "toolset": "core",
       "usage": "Add a namespace to a project"
+    },
+    {
+      "args": [
+        {
+          "name": "principal",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "examples": [
+        "rancher project remove-member u-abc123 --project p-x --cluster c-x --apply --yes"
+      ],
+      "flags": [
+        {
+          "name": "project",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "group",
+          "type": "bool"
+        }
+      ],
+      "name": "project remove-member",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Remove a member from a project by deleting their role template binding(s)"
     },
     {
       "args": [
