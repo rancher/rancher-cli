@@ -21,6 +21,7 @@ func NewResolver() *Resolver {
 		"project remove-namespace": {Tier: safety.TierPublic, Stability: safety.Stable},
 		"project add-member":       {Tier: safety.TierPublic, Stability: safety.Beta},
 		"project remove-member":    {Tier: safety.TierPublic, Stability: safety.Beta},
+		"create secret":            {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create resource":          {Tier: safety.TierCRD, Stability: safety.Beta},
 
 		"inspect pod":        {Tier: safety.TierCRD, Stability: safety.Beta},

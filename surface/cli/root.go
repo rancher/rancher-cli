@@ -48,6 +48,7 @@ func buildEntries() []entry {
 		{group: "config", make: func(runDeps) runtime.Command { return commands.NewConfigPurgeLegacy() }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},

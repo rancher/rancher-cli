@@ -335,6 +335,54 @@
       "usage": "Create a resource from a manifest file"
     },
     {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
+        "rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply"
+      ],
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "name": "project-scoped",
+          "type": "bool"
+        },
+        {
+          "name": "from-literal",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "name": "create secret",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Create a secret, optionally project-scoped"
+    },
+    {
       "aliases": [
         "configmaps",
         "cm"
