@@ -383,6 +383,34 @@
       "usage": "Create a secret, optionally project-scoped"
     },
     {
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "examples": [
+        "rancher create token --ttl 90d --description ci --apply --yes"
+      ],
+      "flags": [
+        {
+          "name": "ttl",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "create token",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Mint a server-side derived token"
+    },
+    {
       "aliases": [
         "configmaps",
         "cm"

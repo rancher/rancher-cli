@@ -23,6 +23,7 @@ func NewResolver() *Resolver {
 		"project remove-member":    {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create secret":            {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create resource":          {Tier: safety.TierCRD, Stability: safety.Beta},
+		"create token":             {Tier: safety.TierPublic, Stability: safety.Beta},
 
 		"inspect pod":        {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment": {Tier: safety.TierCRD, Stability: safety.Beta},

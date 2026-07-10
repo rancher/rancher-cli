@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -50,6 +51,7 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateToken(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddMember(d.clients) }},
