@@ -140,7 +140,9 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 // eff.Token (no token at all) is not "legacy" — there is nothing to report
 // on, so this stays silently null: in practice unreachable once preflight
 // has actually succeeded (RESTConfig refuses an empty token before any of
-// this runs), but reachable in tests that stub preflight without a token.
+// this runs), but reachable in tests that stub preflight without a token. A
+// nil token field is the same "not wired for this check" case checkIdentity
+// documents for a.identity == nil.
 func (a authCheckCmd) checkToken(ctx context.Context, eff config.Effective) (any, string) {
 	if eff.Token == "" {
 		return nil, ""

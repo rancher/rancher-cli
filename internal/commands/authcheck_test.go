@@ -338,6 +338,34 @@ func TestAuthCheckLegacyTokenDegradesToNullWithWarning(t *testing.T) {
 	assert.Contains(t, res.Warnings, "legacy token — no ext metadata")
 }
 
+// TestAuthCheckNoTokenAtAllIsNotLegacy pins checkToken's distinct empty-token
+// case: with no effective token at all (unreachable via a real preflight,
+// which would already have failed, but reachable when a test — like this
+// one — stubs preflight to bypass that), the token field stays null with NO
+// warning at all, never the "legacy token" text a non-empty non-ext token
+// gets, and the probe is never called.
+func TestAuthCheckNoTokenAtAllIsNotLegacy(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	called := false
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion,
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		token: func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
+			called = true
+			return provider.TokenMetadata{}, nil
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+	assert.False(t, called, "no token at all must never reach the ext token probe")
+	assert.Nil(t, res.Data.(map[string]any)["token"])
+	assert.NotContains(t, res.Warnings, "legacy token — no ext metadata")
+}
+
 // TestAuthCheckIdentityDegradation covers PS-2's null+warning posture for
 // the identity probe across every non-version failure cause: RBAC denial
 // (the expected outcome under a genuinely read-only token, since SelfUser is
