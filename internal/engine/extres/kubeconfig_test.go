@@ -181,3 +181,30 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, cfg)
 }
+
+// TestCreateKubeconfigExecEmptyValueIsError mirrors mintDerivedToken's
+// empty-bearer guard: an absent or empty status.value must be a real error,
+// never exit-0 with a header-only file that fails to parse downstream.
+func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent", func(t *testing.T) {
+		t.Parallel()
+		client := &fakeClient{name: "kubeconfig-abc"}
+		cmd := NewCreateKubeconfig(stubFactory{c: client})
+		_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
+		require.NoError(t, err)
+		_, err = exec(context.Background())
+		require.Error(t, err)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		t.Parallel()
+		client := &fakeClient{name: "kubeconfig-abc", status: map[string]any{"value": ""}}
+		cmd := NewCreateKubeconfig(stubFactory{c: client})
+		_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
+		require.NoError(t, err)
+		_, err = exec(context.Background())
+		require.Error(t, err)
+	})
+}

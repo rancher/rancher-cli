@@ -16,7 +16,12 @@ import (
 // proxy the client connects through. A Project is written via the management
 // proxy ("local") but lands in a downstream cluster; the Effect must show the
 // downstream cluster (PE-5), so routing and identity are separate parameters.
-func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string) (safety.Effect, runtime.ExecuteFunc, error) {
+// destructive is the caller's per-kind policy (a Sensitive kind's create is
+// destructive) — mirrors PlanUpdate's own destructive parameter, so a future
+// Sensitive-kind create cannot silently skip the gate by omitting an
+// after-the-fact eff.Destructive assignment the way every prior call site
+// had to remember to add.
+func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
 	out, err := client.Create(ctx, gvr, ns, obj, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
@@ -27,7 +32,7 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 		Cluster:           effectCluster,
 		ConflictDetection: true,
 		Reversible:        true,
-		Destructive:       false,
+		Destructive:       destructive,
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		created, err := client.Create(ctx, gvr, ns, obj, false)

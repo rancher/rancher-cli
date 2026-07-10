@@ -48,13 +48,17 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	ttlMs, err := TTLMilliseconds(ttl, in.String("ttl"))
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 
 	spec := map[string]any{}
 	if desc := in.String("description"); desc != "" {
 		spec["description"] = desc
 	}
-	if ttl > 0 {
-		spec["ttl"] = ttl.Milliseconds()
+	if ttlMs > 0 {
+		spec["ttl"] = ttlMs
 	}
 	if clusterFlag := in.String("cluster"); clusterFlag != "" {
 		id, err := c.clients.ResolveCluster(ctx, clusterFlag)
@@ -76,14 +80,10 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, _, err := engine.PlanCreate(ctx, client, tokenKind.GVR, "", obj, engine.LocalCluster, "Token")
+	eff, _, err := engine.PlanCreate(ctx, client, tokenKind.GVR, "", obj, engine.LocalCluster, "Token", tokenKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	// Creating a Sensitive kind is destructive and must gate on --yes exactly
-	// as patching one does (secret.go:141/184, resources/create.go:122) — the
-	// shared PlanCreate has no notion of Sensitive, so the caller sets it.
-	eff.Destructive = tokenKind.Sensitive
 
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		created, err := client.Create(ctx, tokenKind.GVR, "", obj, false)

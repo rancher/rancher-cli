@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -65,4 +66,22 @@ func New(o Options) (*http.Client, error) {
 		Transport: tr,
 		Timeout:   o.Timeout,
 	}, nil
+}
+
+// Do executes req and reads the full response body, closing it before
+// returning — the one request/response shape every hand-rolled Rancher API
+// caller in this codebase needs (token's provider dance, login's ext-token
+// mint/revoke), so it lives here once instead of once per package.
+func Do(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return resp, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp, nil, err
+	}
+	return resp, body, nil
 }

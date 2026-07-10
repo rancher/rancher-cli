@@ -113,13 +113,10 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	// namespace decision, so the object is normalized to it (cleared for a
 	// cluster-scoped kind).
 	obj.SetNamespace(ns)
-	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.K8sKind)
+	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.K8sKind, k.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	// Creating a Sensitive kind is destructive and must gate on --yes exactly as
-	// patching one does — PlanCreate can't know the kind, so the caller sets it.
-	eff.Destructive = k.Sensitive
 	return eff, exec, nil
 }
 

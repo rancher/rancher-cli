@@ -188,13 +188,10 @@ func (c addMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect
 		return safety.Effect{}, nil, err
 	}
 	prtbKind, _ := kinds.Lookup("projectroletemplatebinding")
-	eff, exec, err := engine.PlanCreate(ctx, client, prtbKind.GVR, backingNS, obj, cluster, "ProjectRoleTemplateBinding")
+	eff, exec, err := engine.PlanCreate(ctx, client, prtbKind.GVR, backingNS, obj, cluster, "ProjectRoleTemplateBinding", prtbKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	// A create binding via Sensitive kind needs the destructive gate exactly
-	// like the generic create path (resources/create.go).
-	eff.Destructive = prtbKind.Sensitive
 	// generateName means the dry-run response's name is a real but
 	// throwaway server-assigned suffix that will NOT match the name Execute
 	// gets — show the prefix pattern instead of implying a concrete name.

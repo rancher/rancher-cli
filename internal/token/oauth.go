@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	iruntime "github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
@@ -360,7 +361,7 @@ func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, o
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, respBody, err := doRequest(client, req)
+	resp, respBody, err := httpx.Do(client, req)
 	if err == nil && resp.StatusCode != http.StatusCreated {
 		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}

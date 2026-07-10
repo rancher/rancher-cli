@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -362,7 +361,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	if err != nil {
 		return Token{}, fmt.Errorf("error creating request: %w", err)
 	}
-	resp, respBody, err := doRequest(client, req)
+	resp, respBody, err := httpx.Do(client, req)
 	if err != nil {
 		return Token{}, fmt.Errorf("error logging user in: %w", err)
 	}
@@ -451,7 +450,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	for {
 		select {
 		case <-poll.C:
-			resp, respBody, err := doRequest(client, getReq)
+			resp, respBody, err := httpx.Do(client, getReq)
 			if err != nil {
 				return token, fmt.Errorf("error fetching auth token: %w", err)
 			}
@@ -480,7 +479,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 			}
 			token.Token = string(decryptedBytes)
 
-			resp, _, err = doRequest(client, deleteReq)
+			resp, _, err = httpx.Do(client, deleteReq)
 			if err == nil {
 				switch resp.StatusCode {
 				case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
@@ -514,7 +513,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	resp, respBody, err := doRequest(client, req)
+	resp, respBody, err := httpx.Do(client, req)
 	if err == nil && resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
@@ -691,19 +690,4 @@ func caForServer(cfg *config.Config, server string) string {
 		}
 	}
 	return ""
-}
-
-func doRequest(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
-	resp, err := client.Do(req)
-	if err != nil {
-		return resp, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp, nil, err
-	}
-
-	return resp, body, nil
 }

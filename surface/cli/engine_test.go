@@ -228,6 +228,30 @@ func TestResolveClusterMemoizes(t *testing.T) {
 	assert.Equal(t, 1, client.listCalls, "second resolve served from the memo")
 }
 
+// TestResolveClusterDistinctNamesShareOneList pins the fan-out fix: the
+// name→id memo only helps a REPEATED name (TestResolveClusterMemoizes above);
+// resolving several DISTINCT names used to List once per name. They now share
+// one cached list for the whole invocation.
+func TestResolveClusterDistinctNamesShareOneList(t *testing.T) {
+	t.Parallel()
+	client := &listCountClient{items: []unstructured.Unstructured{
+		mgmtClusterObj("c-abc", "prod"),
+		mgmtClusterObj("c-def", "dev"),
+		mgmtClusterObj("c-ghi", "staging"),
+	}}
+	f := resolveFactory(t, client)
+	for _, tc := range []struct{ in, want string }{
+		{"prod", "c-abc"},
+		{"dev", "c-def"},
+		{"staging", "c-ghi"},
+	} {
+		got, err := f.ResolveCluster(context.Background(), tc.in)
+		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
+		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
+	}
+	assert.Equal(t, 1, client.listCalls, "three distinct names must still cost one List")
+}
+
 func TestRegistryBindingLookup(t *testing.T) {
 	t.Parallel()
 	// The registry runs on the composed resolver: generated bindings from the

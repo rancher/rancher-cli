@@ -132,13 +132,10 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, backingNS, obj, cluster, "Secret")
+		eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, backingNS, obj, cluster, "Secret", secretKind.Sensitive)
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		// A create secret via Sensitive kind needs the destructive gate
-		// exactly like the generic create path (resources/create.go).
-		eff.Destructive = secretKind.Sensitive
 		if statusEmpty {
 			// status.backingNamespace was absent/empty; the fallback still
 			// writes to a namespace, but propagation only works there on
@@ -177,10 +174,9 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, cluster, "Secret")
+	eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, cluster, "Secret", secretKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff.Destructive = secretKind.Sensitive
 	return eff, exec, nil
 }

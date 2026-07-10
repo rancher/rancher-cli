@@ -121,6 +121,52 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 	assert.Equal(t, "ext/token-abc:secretxyz", tok)
 }
 
+// TestLoginTokenStdinRejectsProviderFlags pins the fix for combining
+// --token-stdin with any provider flag: the two paths are mutually
+// exclusive, and silently ignoring the provider flags would surprise a
+// caller who set --ttl expecting it to reach the mint request.
+func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
+	t.Parallel()
+	for _, extra := range []string{"auth-provider", "auth-flow", "ttl"} {
+		in := args{
+			s: map[string]string{"server": "https://r.ex", extra: "x"},
+			b: map[string]bool{"token-stdin": true},
+		}
+		_, err := NewLogin(t.TempDir(), config.NewFileStore(t.TempDir())).(runtime.ReadCommand).
+			Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce, extra)
+		assert.Equal(t, clierr.CodeValidation, ce.Code, extra)
+	}
+}
+
+// TestLoginProviderFlowNonTTYAllowedWithExplicitProvider mirrors get-token's
+// own TestOAuthDeviceCodeFlowNonTTYAllowed: naming --auth-provider explicitly
+// must reach the provider flow without a TTY — the finer-grained gates
+// inside it (OAuth needs none for device-code) are the real gate, not
+// login's own outer CanPrompt check.
+func TestLoginProviderFlowNonTTYAllowedWithExplicitProvider(t *testing.T) {
+	t.Parallel()
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer fake.Close()
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{
+		"server": fake.URL, "name": "prod", "auth-provider": "azureADProvider", "auth-flow": "devicecode",
+	}}
+	p := ui.New(&bytes.Buffer{}, strings.NewReader(""), false, false) // no TTY, no --no-input
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.Error(t, err, "device-code will fail on OAuth config/network, but not on login's own gate")
+	assert.NotContains(t, err.Error(), "token required", "non-TTY must bypass login's outer gate when --auth-provider is explicit")
+}
+
 func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)

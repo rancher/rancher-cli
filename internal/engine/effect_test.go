@@ -57,7 +57,7 @@ func TestPlanCreate(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, exec, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project")
+	eff, exec, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project", false)
 	require.NoError(t, err)
 	assert.True(t, client.lastCreateDryRun, "Plan must call Create with dryRun=true")
 	assert.Equal(t, safety.ActionCreate, eff.Action)
@@ -110,6 +110,20 @@ func TestPlanUpdatePropagatesError(t *testing.T) {
 func TestPlanCreatePropagatesError(t *testing.T) {
 	client := &stubClient{createErr: assert.AnError}
 	_, _, err := PlanCreate(context.Background(), client, testGVR, "c-x",
-		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "Project")
+		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "Project", false)
 	require.Error(t, err)
+}
+
+// TestPlanCreateDestructiveParameter pins the fix for the class of bug where
+// a Sensitive kind's create silently skipped the gate because the caller
+// forgot the after-the-fact `eff.Destructive = kind.Sensitive` assignment:
+// destructive is now a required parameter, not an opt-in follow-up.
+func TestPlanCreateDestructiveParameter(t *testing.T) {
+	client := &stubClient{}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
+	}}
+	eff, _, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project", true)
+	require.NoError(t, err)
+	assert.True(t, eff.Destructive)
 }

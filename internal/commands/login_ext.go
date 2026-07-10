@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -58,6 +56,10 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 	if err != nil {
 		return "", err
 	}
+	ttlMs, err := extres.TTLMilliseconds(ttl, in.String("ttl"))
+	if err != nil {
+		return "", err
+	}
 
 	sessionToken, err := token.Login(ctx, client, token.LoginRequest{
 		Server:       server,
@@ -74,7 +76,7 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 	}
 
 	base := kube.BaseURL(server)
-	d, err := mintDerivedToken(ctx, client, base, s, ttl)
+	d, err := mintDerivedToken(ctx, client, base, s, ttlMs)
 	if err != nil {
 		if errors.Is(err, errExtGroupAbsent) {
 			note := "this Rancher does not serve ext.cattle.io (requires Rancher >= 2.12); storing the session token directly"
@@ -93,22 +95,23 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 
 // mintDerivedToken asks the ext Token store to mint a derived token (bearer
 // sessionToken) and returns its status.bearerToken. errExtGroupAbsent
-// signals the group-level 404 that means an older Rancher.
-func mintDerivedToken(ctx context.Context, client *http.Client, base, sessionToken string, ttl time.Duration) (string, error) {
+// signals the group-level 404 that means an older Rancher. ttlMs <= 0 omits
+// spec.ttl entirely (server default), matching create.go/kubeconfig.go's
+// `if ttl > 0` idiom — one omit-when-unset convention across all three
+// ext.cattle.io create call sites, rather than this one alone sending an
+// explicit ttl: 0.
+func mintDerivedToken(ctx context.Context, client *http.Client, base, sessionToken string, ttlMs int64) (string, error) {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
 	}
-	var ttlMs int64
-	if ttl > 0 {
-		ttlMs = ttl.Milliseconds()
+	spec := map[string]any{
+		"description": fmt.Sprintf("rancher-cli login @ %s", host),
 	}
-	body, err := json.Marshal(map[string]any{
-		"spec": map[string]any{
-			"description": fmt.Sprintf("rancher-cli login @ %s", host),
-			"ttl":         ttlMs,
-		},
-	})
+	if ttlMs > 0 {
+		spec["ttl"] = ttlMs
+	}
+	body, err := json.Marshal(map[string]any{"spec": spec})
 	if err != nil {
 		return "", fmt.Errorf("building mint request: %w", err)
 	}
@@ -119,7 +122,7 @@ func mintDerivedToken(ctx context.Context, client *http.Client, base, sessionTok
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+sessionToken)
 
-	resp, respBody, err := doHTTP(client, req)
+	resp, respBody, err := httpx.Do(client, req)
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, "minting derived token: "+err.Error())
 	}
@@ -155,7 +158,7 @@ func revokeSessionToken(ctx context.Context, client *http.Client, base, sessionT
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+bearer)
-	resp, _, err := doHTTP(client, req)
+	resp, _, err := httpx.Do(client, req)
 	if err != nil {
 		p.Notice(fmt.Sprintf("could not revoke the transient session token %s: %v", id, err))
 		return
@@ -165,17 +168,4 @@ func revokeSessionToken(ctx context.Context, client *http.Client, base, sessionT
 	default:
 		p.Notice(fmt.Sprintf("could not revoke the transient session token %s: %d %s", id, resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
-}
-
-func doHTTP(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
-	resp, err := client.Do(req)
-	if err != nil {
-		return resp, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp, nil, err
-	}
-	return resp, body, nil
 }

@@ -30,6 +30,16 @@ type clientFactory struct {
 	eff        config.Effective
 	resolveErr error
 
+	// clustersOnce fetches the management cluster LIST at most once per
+	// invocation: ResolveCluster used to List on every unmemoized name, so
+	// resolving N distinct display names (create kubeconfig --clusters a,b,c)
+	// cost N network round trips — the name→id memo below only helped repeat
+	// names. Every ResolveCluster call now matches against this one cached
+	// list instead.
+	clustersOnce sync.Once
+	clusterList  *unstructured.UnstructuredList
+	clustersErr  error
+
 	mu       sync.Mutex
 	cache    map[string]engine.ClusterClient
 	resolved map[string]string // ResolveCluster memo: nameOrID → cluster id
@@ -111,27 +121,37 @@ func (f *clientFactory) Identity() (string, error) {
 	return eff.ServerName, nil
 }
 
+// clusters returns the management cluster LIST, fetched at most once per
+// invocation regardless of how many distinct names ResolveCluster is asked
+// to resolve. Concurrent callers block on the same sync.Once rather than
+// racing duplicate Lists — unlike the per-name memo below, there is no
+// per-name work to save by racing, so there is nothing "benign" to gain by
+// not locking here.
+func (f *clientFactory) clusters(ctx context.Context) (*unstructured.UnstructuredList, error) {
+	f.clustersOnce.Do(func() {
+		mgmt, err := f.Cluster(ctx, engine.LocalCluster)
+		if err != nil {
+			f.clustersErr = err
+			return
+		}
+		f.clusterList, f.clustersErr = mgmt.List(ctx, clustersGVR, "", "")
+	})
+	return f.clusterList, f.clustersErr
+}
+
 // ResolveCluster accepts a cluster id or display name (agents pass names;
 // rancher-ai-mcp accepts both — keep the semantics aligned).
 func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (string, error) {
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
 	}
-	// Benign race by design: a concurrent caller may also miss the memo and List
-	// in parallel. Both compute identical results and the memo writes converge,
-	// costing at most one duplicate List — cheaper than holding mu across the
-	// network call. Do NOT "fix" this by locking around the List below.
 	f.mu.Lock()
 	if id, ok := f.resolved[nameOrID]; ok {
 		f.mu.Unlock()
 		return id, nil
 	}
 	f.mu.Unlock()
-	mgmt, err := f.Cluster(ctx, engine.LocalCluster)
-	if err != nil {
-		return "", err
-	}
-	list, err := mgmt.List(ctx, clustersGVR, "", "")
+	list, err := f.clusters(ctx)
 	if err != nil {
 		return "", err
 	}

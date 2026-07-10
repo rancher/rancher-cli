@@ -108,6 +108,10 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	ttlSecs, err := TTLSeconds(ttl, in.String("ttl"))
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
@@ -124,8 +128,8 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	if desc := in.String("description"); desc != "" {
 		_ = unstructured.SetNestedField(obj.Object, desc, "spec", "description")
 	}
-	if ttl > 0 {
-		_ = unstructured.SetNestedField(obj.Object, int64(ttl.Seconds()), "spec", "ttl")
+	if ttlSecs > 0 {
+		_ = unstructured.SetNestedField(obj.Object, ttlSecs, "spec", "ttl")
 	}
 	switch includeDefaultEntry {
 	case "true":
@@ -139,14 +143,10 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, _, err := engine.PlanCreate(ctx, client, kubeconfigKind.GVR, "", obj, engine.LocalCluster, "Kubeconfig")
+	eff, _, err := engine.PlanCreate(ctx, client, kubeconfigKind.GVR, "", obj, engine.LocalCluster, "Kubeconfig", kubeconfigKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	// Creating a Sensitive kind is destructive and must gate on --yes exactly
-	// as patching one does (secret.go:141/184, resources/create.go:122) — the
-	// shared PlanCreate has no notion of Sensitive, so the caller sets it.
-	eff.Destructive = kubeconfigKind.Sensitive
 
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		created, err := client.Create(ctx, kubeconfigKind.GVR, "", obj, false)
@@ -154,7 +154,10 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			return runtime.Result{}, err
 		}
 		name := created.GetName()
-		value, _, _ := unstructured.NestedString(created.Object, "status", "value")
+		value, found, _ := unstructured.NestedString(created.Object, "status", "value")
+		if !found || value == "" {
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric, "server returned no kubeconfig content")
+		}
 		header := fmt.Sprintf("# ext kubeconfig %q — shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
 		return runtime.Result{RawBytes: append([]byte(header), []byte(value)...)}, nil
 	}

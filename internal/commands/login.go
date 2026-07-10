@@ -123,6 +123,14 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 }
 
 func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
+	if in.Bool("token-stdin") {
+		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
+			return "", clierr.New(clierr.CodeValidation,
+				"--auth-provider/--auth-flow/--ttl apply to the provider sign-in flow and are incompatible with --token-stdin").
+				WithHint("drop --token-stdin to use the provider flow, or drop the provider flags to paste/pipe a token")
+		}
+	}
+
 	var (
 		tok string
 		err error
@@ -130,7 +138,13 @@ func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p r
 	switch {
 	case in.Bool("token-stdin"):
 		tok, err = p.ReadLine(ctx)
-	case p.CanPrompt():
+	// The provider flow is allowed without a TTY when --auth-provider is
+	// explicitly named: the finer-grained gates already inside it (SAML's
+	// NoInput check, basicAuth's per-prompt CanPrompt check, OAuth's lack of
+	// any TTY requirement) are the real gate — mirroring how `auth get-token`
+	// already runs its OAuth device-code/auth-code flows headlessly. Without
+	// an explicit provider, the paste-or-provider menu itself needs a TTY.
+	case p.CanPrompt() || in.String("auth-provider") != "":
 		tok, err = promptForToken(ctx, server, in, p)
 	default:
 		return "", clierr.New(clierr.CodeValidation, "token required").
