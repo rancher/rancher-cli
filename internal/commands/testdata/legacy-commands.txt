@@ -1,0 +1,43 @@
+clusters ls
+clusters create
+clusters import
+clusters add-node
+clusters delete
+clusters export
+clusters kubeconfig
+clusters add-member-role
+clusters delete-member-role
+clusters list-roles
+clusters list-members
+context switch
+context current
+inspect
+kubectl
+login
+machines ls
+namespaces ls
+namespaces create
+namespaces delete
+namespaces move
+nodes ls
+nodes delete
+projects ls
+projects create
+projects delete
+projects add-member-role
+projects delete-member-role
+projects list-roles
+projects list-members
+ps
+server current
+server delete
+server ls
+server switch
+settings ls
+settings get
+settings set
+ssh
+token
+token delete
+up
+wait

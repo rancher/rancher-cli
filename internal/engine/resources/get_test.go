@@ -105,6 +105,14 @@ func podObj(name string) unstructured.Unstructured {
 	}}
 }
 
+func roleTemplateObj(name, context, display string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata":    map[string]any{"name": name},
+		"context":     context,
+		"displayName": display,
+	}}
+}
+
 func projectObj(name, display, cluster string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": name},
@@ -147,6 +155,23 @@ func TestGetClusterListsWithColumns(t *testing.T) {
 	assert.Equal(t, []string{"NAME", "DISPLAY", "STATE"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
 	assert.Equal(t, []string{"c-m-abc", "prod", "active"}, tab.Rows()[1])
+}
+
+func TestGetRoleTemplateListsWithColumns(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{
+		roleTemplateObj("project-owner", "project", "Project Owner"),
+		roleTemplateObj("cluster-owner", "cluster", "Cluster Owner"),
+	}}
+	cmd := NewGet(mustKind(t, "roletemplate"), &recFactory{client: client})
+
+	res := execGet(t, cmd, input{})
+	assert.Equal(t, "RoletemplateList", res.Kind)
+	tab, ok := res.Data.(output.Tabular)
+	require.True(t, ok)
+	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY"}, tab.Columns())
+	require.Len(t, tab.Rows(), 2)
+	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner"}, tab.Rows()[1])
 }
 
 func TestGetClusterSingle(t *testing.T) {

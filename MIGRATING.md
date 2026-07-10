@@ -14,25 +14,57 @@ tiers, and stability, without reading docs.
 
 ## Command disposition
 
-Every legacy command below maps to exactly one of: a new spelling, a
-replacement recipe, or a documented drop.
+Every legacy command and subcommand below maps to exactly one of: a new
+spelling, a replacement recipe, or a documented drop. This table is kept
+exhaustive against the full legacy command inventory by a tracked
+conformance test (`internal/commands/migrating_test.go` +
+`internal/commands/testdata/legacy-commands.txt`).
 
 | Legacy | Disposition |
 |---|---|
-| `login` | → `rancher auth login` |
+| `login` (alias `l`) | → `rancher auth login` |
 | `context switch` | → `rancher config use-context` |
-| `server` (ls/switch) | → `rancher config get-servers` / `use-server` |
-| `clusters` / `nodes` / `projects` / `namespaces` (+create/delete/rm where they existed) | → `rancher get/create/delete <kind>` |
-| `machines` | → `rancher get machines` |
-| `settings` | → `rancher get settings` / `get setting <name>` |
-| `inspect <type> <id>` | → `rancher get <kind> <name> -o json` |
-| `ps` | → `rancher get deployments/pods` (+ `rancher inspect deployment`) |
-| `wait <type> <id>` | → `rancher get <kind> <name> --wait` |
+| `context current` | → `rancher config current-context` |
+| `clusters ls` | → `rancher get clusters` |
+| `clusters create` | DROPPED — the `cluster` kind is read/patch only (`Deletable: false`, no fixed create-cluster command); use the Rancher UI/API to create a cluster |
+| `clusters import` | DROPPED — same reason as `clusters create` |
+| `clusters add-node` | DROPPED — RKE1 node-driver docker-command workflow; no CAPI/RKE2 equivalent surfaced |
+| `clusters delete` (alias `rm`) | DROPPED — the `cluster` kind is `Deletable: false`; no fixed delete-cluster command |
+| `clusters export` | DROPPED — no export/backup command surfaced |
+| `clusters kubeconfig` (alias `kf`) | → `rancher kubeconfig --cluster <id>` |
+| `clusters add-member-role` | DROPPED (pending) — a `clusterroletemplatebinding` can be created via `rancher create resource -f`, but no fixed convenience command ships yet; `rancher project add-member` (this branch) is the project-level analog |
+| `clusters delete-member-role` | DROPPED (pending) — `clusterroletemplatebinding` is `Deletable: false`; no generic delete path yet |
+| `clusters list-roles` | → `rancher get roletemplates` — filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
+| `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id> -o json` |
+| `machines ls` | → `rancher get machines` |
+| `namespaces ls` | → `rancher get namespaces` (`--project <p>` lists a project's member namespaces) |
+| `namespaces create` | → `rancher create namespace <name> [--project <p>]` |
+| `namespaces delete` (alias `rm`) | → `rancher delete namespace <name>` |
+| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` — an explicit two-step, never an implicit move (spec PC-4) |
+| `nodes ls` | → `rancher get nodes` |
+| `nodes delete` (alias `rm`) | DROPPED — the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
+| `projects ls` | → `rancher get projects` |
+| `projects create` | → `rancher create project <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...]` |
+| `projects delete` (alias `rm`) | → `rancher delete project <id>` |
+| `projects add-member-role` | → `rancher project add-member <principal> --role <r> --project <p>` (this branch) |
+| `projects delete-member-role` | → `rancher project remove-member <principal> --project <p>` (this branch) |
+| `projects list-roles` | → `rancher get roletemplates` — filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
+| `projects list-members` | → `rancher inspect project <name-or-id>` (members section), or `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
+| `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |
+| `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
 | `kubectl …` | → one-time `rancher kubeconfig --cluster <id>` + native `kubectl` (merge recipe below); `auth get-token` handles credentials transparently |
+| `server current` | → `rancher config current-context` (server field) |
+| `server delete` | DROPPED — no config command removes a stored server; edit the config file directly |
+| `server ls` | → `rancher config get-servers` |
+| `server switch` | → `rancher config use-server` |
+| `settings ls` | → `rancher get settings` |
+| `settings get` | → `rancher get setting <name>` |
+| `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
+| `ssh <node>` | DROPPED — RKE1/node-driver only, Norman-only; keep the legacy binary for this |
 | `token` | → `rancher auth get-token` (already the exec-credential plugin; the legacy command is named `token`) |
 | `token delete` | → `rancher auth delete-token` |
-| `ssh <node>` | DROPPED — RKE1/node-driver only, Norman-only; keep the legacy binary for this |
 | `up -f compose.yml` | DROPPED — compose-era, no replacement |
+| `wait <type> <id>` | → `rancher get <kind> <name> --wait` |
 
 ## `rancher kubeconfig`
 
