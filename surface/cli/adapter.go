@@ -75,6 +75,22 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 	return out
 }
 
+// argsUsage renders a Descriptor's positional Args as urfave's ArgsUsage
+// help string: "<name>" for a Required arg, "[name]" otherwise, space-joined
+// in declared order. This is the SAME Args (incl. Required) the schema
+// manifest publishes, so help text cannot drift from the manifest.
+func argsUsage(args []runtime.ArgSpec) string {
+	parts := make([]string, len(args))
+	for i, a := range args {
+		if a.Required {
+			parts[i] = "<" + a.Name + ">"
+		} else {
+			parts[i] = "[" + a.Name + "]"
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // buildIO reads the resolved global flags/streams for a run.
 func buildIO(c *ucli.Command) runtime.IO {
 	r := c.Root()
@@ -134,10 +150,11 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
 	return &ucli.Command{
-		Name:    leafName(d.Name),
-		Aliases: d.Aliases,
-		Usage:   d.Usage,
-		Flags:   flagsFor(d),
+		Name:      leafName(d.Name),
+		Aliases:   d.Aliases,
+		Usage:     d.Usage,
+		ArgsUsage: argsUsage(d.Args),
+		Flags:     flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b); ce != nil {
 				return exit(ce)

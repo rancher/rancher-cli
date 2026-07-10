@@ -225,10 +225,11 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 	d := make(runDeps{}).Describe()
 	b := reg.Binding(d.Name)
 	return &ucli.Command{
-		Name:    leafName(d.Name),
-		Aliases: d.Aliases,
-		Usage:   d.Usage,
-		Flags:   flagsFor(d),
+		Name:      leafName(d.Name),
+		Aliases:   d.Aliases,
+		Usage:     d.Usage,
+		ArgsUsage: argsUsage(d.Args),
+		Flags:     flagsFor(d),
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			dir, store, err := resolveDeps(c)
 			if err != nil {

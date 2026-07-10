@@ -171,6 +171,27 @@ func TestBuildRootWiresAliases(t *testing.T) {
 	assert.Contains(t, project.Aliases, "projects")
 }
 
+// TestAdaptEntrySetsArgsUsageFromDescriptorArgs pins PS-9's second adapter
+// site: adaptEntry (every generated get/patch/delete leaf) sets ArgsUsage
+// from the same Descriptor.Args the manifest publishes, exactly like Adapt.
+func TestAdaptEntrySetsArgsUsageFromDescriptorArgs(t *testing.T) {
+	t.Parallel()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	getGroup := findCommand(root.Commands, "get")
+	require.NotNil(t, getGroup)
+	pod := findCommand(getGroup.Commands, "pod")
+	require.NotNil(t, pod)
+	assert.Equal(t, "[name]", pod.ArgsUsage, "get pod's name argument is optional")
+
+	delGroup := findCommand(root.Commands, "delete")
+	require.NotNil(t, delGroup)
+	delPod := findCommand(delGroup.Commands, "pod")
+	require.NotNil(t, delPod)
+	assert.Equal(t, "<name>", delPod.ArgsUsage, "delete always addresses a resource by name")
+}
+
 func TestAssembleCommandsUnknownGroupReachable(t *testing.T) {
 	t.Parallel()
 	leaf := &ucli.Command{Name: "widget"}

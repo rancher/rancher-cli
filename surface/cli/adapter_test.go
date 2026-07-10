@@ -43,6 +43,46 @@ func TestAdaptRunsAndRendersJSON(t *testing.T) {
 	assert.Equal(t, "Pong", env["kind"])
 }
 
+// TestArgsUsageRendersRequiredAndOptionalArgs pins PS-9's helper: required
+// Args render "<name>", optional Args render "[name]", space-joined in
+// declared order — the SAME Descriptor.Args the manifest publishes, so help
+// text cannot drift from schema.
+func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "", argsUsage(nil))
+	assert.Equal(t, "[command]", argsUsage([]runtime.ArgSpec{{Name: "command", Type: "string"}}))
+	assert.Equal(t, "<name>", argsUsage([]runtime.ArgSpec{{Name: "name", Type: "string", Required: true}}))
+	assert.Equal(t, "<name> [extra]", argsUsage([]runtime.ArgSpec{
+		{Name: "name", Type: "string", Required: true},
+		{Name: "extra", Type: "string"},
+	}))
+}
+
+// TestAdaptSetsArgsUsageFromDescriptorArgs pins the Adapt wiring: the urfave
+// ArgsUsage field is derived from the same Descriptor.Args the manifest
+// already publishes.
+func TestAdaptSetsArgsUsageFromDescriptorArgs(t *testing.T) {
+	t.Parallel()
+	reg := runtime.NewRegistry(provider.NewResolver())
+	cmd := Adapt(reg, schemaLikeCmd{})
+	assert.Equal(t, "[command]", cmd.ArgsUsage)
+}
+
+// schemaLikeCmd stands in for the real `schema` command's Descriptor (an
+// optional positional arg) without depending on internal/runtime's schema_cmd
+// wiring.
+type schemaLikeCmd struct{}
+
+func (schemaLikeCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name: "schema", CommandType: runtime.ReadOnly,
+		Args: []runtime.ArgSpec{{Name: "command", Type: "string"}},
+	}
+}
+func (schemaLikeCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
+	return runtime.Result{}, nil
+}
+
 // runResolveDeps drives resolveDeps with a parsed --config flag, returning the
 // resolved dir and error.
 func runResolveDeps(t *testing.T, configFlag string) (string, error) {
