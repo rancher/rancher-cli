@@ -198,3 +198,35 @@ func TestFunctionalRoundTrip(t *testing.T) {
 		assert.Contains(t, err.Error(), "certificate")
 	})
 }
+
+func TestDo(t *testing.T) {
+	t.Run("reads and closes the body, returns it alongside the response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer server.Close()
+
+		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+
+		resp, body, err := Do(http.DefaultClient, req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode)
+		assert.Equal(t, `{"ok":true}`, string(body))
+
+		// The body reader is already closed by Do; a second read must not hang
+		// or panic — it's just empty.
+		n, _ := resp.Body.Read(make([]byte, 1))
+		assert.Equal(t, 0, n)
+	})
+
+	t.Run("propagates a client.Do transport error without a response", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:0", nil)
+		require.NoError(t, err)
+
+		_, body, err := Do(http.DefaultClient, req)
+		assert.Error(t, err)
+		assert.Nil(t, body)
+	})
+}

@@ -468,3 +468,52 @@ func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
 		t.Fatal("the mint request body was never captured")
 	}
 }
+
+// TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent pins mintDerivedToken's
+// omit-when-unset idiom (fix #5) end to end: no --ttl must mean the mint
+// request body carries no "ttl" key at all, not an explicit ttl: 0 — the
+// unit tests in duration_test.go cover TTLMilliseconds itself, but not that
+// login's own request-building actually omits the key.
+func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
+	t.Parallel()
+	bodyCh := make(chan []byte, 1)
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", mintBodyCh: bodyCh})
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.NoError(t, err)
+
+	select {
+	case b := <-bodyCh:
+		var payload map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(b, &payload))
+		var spec map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(payload["spec"], &spec))
+		_, hasTTL := spec["ttl"]
+		assert.False(t, hasTTL, "no --ttl must omit spec.ttl entirely, not send ttl: 0")
+	default:
+		t.Fatal("the mint request body was never captured")
+	}
+}
+
+// TestLoginProviderFlowSubSecondTTLIsValidation exercises the sub-unit
+// truncation rejection (fix #6) through login's own flow, not just the
+// shared TTLMilliseconds unit test: a --ttl that parses but rounds to 0ms
+// must fail before any network call, as VALIDATION.
+func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{
+		"server": "https://r.ex", "name": "prod", "auth-provider": "localProvider", "ttl": "500us",
+	}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	_, tokErr := store.GetToken("prod")
+	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
+}
