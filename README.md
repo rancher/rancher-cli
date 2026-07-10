@@ -98,17 +98,26 @@ or point any other agent's instructions file at it.
 | `images [--cluster --all-clusters]` | Running container images, fleet-wide |
 | `usage [--cluster --namespace] [--project]` | Resource usage composite (`--project` is the global flag) |
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
+| `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
+| `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 | `schema [command]` | Machine-readable capability manifest |
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
-Generated per kind from the 39-kind table: `get <kind>` (39), `patch <kind>`
-(39), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
-`token`, and `kubeconfig`) — 98 generated commands, 128 total together with
+Generated per kind from the 40-kind table: `get <kind>` (40), `patch <kind>`
+(40), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
+`token`, and `kubeconfig`) — 100 generated commands, 132 total together with
 the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
+
+`feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
+those generated kinds — not deletable, sensitive (flipping a flag via
+`patch feature` escalates to `--yes`). Its interesting fields
+(`spec.value`, `status.default`, `status.lockedValue`) are booleans, which
+render blank under the string-only table columns — `-o json` is the real
+read for a feature's actual state.
 
 `token` and `kubeconfig` are registered with an empty GVR version, resolved
 via discovery at call time (the same mechanism the CAPI kinds use) — on a
@@ -122,6 +131,15 @@ fallback needs list rights most users lack). The CLI adds the auth bootstrap,
 the token-vs-kubeconfig TTL unit conversion (`--ttl` takes a duration; the
 underlying spec fields are milliseconds and seconds respectively — the CLI
 never exposes the raw units), and shown-once handling for the minted secret.
+
+`logs`/`support-bundle` cover only what Rancher's own k8s API can reach.
+`rancher-system-agent` is a node systemd unit, not a pod — its logs are
+`journalctl -u rancher-system-agent` on the node itself, and generic pod
+logs outside the curated targets stay with `inspect pod` and kubectl.
+`support-bundle` is deliberately the API-reachable half of a two-bundle
+story: pair it with rancherlabs/support-tools' node collector for the
+node-level half (journald, the system-agent unit, OS state) that no API
+call can reach.
 
 ### Project scope (`--project`)
 

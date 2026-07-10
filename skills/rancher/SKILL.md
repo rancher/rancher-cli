@@ -156,7 +156,26 @@ get-token` — the `rancher` binary must stay on PATH for kubectl to
 authenticate. Cached credentials: `rancher auth list-tokens` /
 `rancher auth delete-token`.
 
-### 9. Project membership and secrets
+### 9. Observability & support
+
+- `rancher logs <target> [--cluster <c>] [--since 1h] [--tail 500]` — curated,
+  verified-location logs for `server`, `agent`, `fleet-agent`,
+  `kube-api-auth`, or `webhook`; multi-pod targets merge with
+  `[pod/container]` prefixes. A missing target degrades to an honest
+  `NOT_FOUND` (a single-node Docker install's server logs live in `docker
+  logs <container>`; a non-ACE cluster has no `kube-api-auth`).
+- `rancher support-bundle -f bundle.tar.gz [--targets ...] [--clusters ...]` —
+  packs every curated target's logs plus cluster/node state, events, and an
+  allowlisted settings/features/schema snapshot into one tar.gz;
+  `manifest.json` inside records each item as collected, skipped (not
+  applicable), or errored, and partial bundles are normal. Complements
+  rancherlabs/support-tools' node-level collector, not a replacement for it.
+- `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` —
+  flip a Rancher feature flag (RFC 6902 patch, like every `patch <kind>`);
+  gated like any sensitive-kind patch (`--yes` required, since flipping a
+  flag is destructive by policy).
+
+### 10. Project membership and secrets
 
 - `rancher project add-member <principal> --project <p> --role <r>` — add a
   user or (with `--group`) group principal to a project. A user principal is
