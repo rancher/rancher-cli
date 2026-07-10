@@ -20,14 +20,31 @@ rancher auth check -o json
 Reports server, cluster context, server version, and credential-store state.
 If it fails with `AUTH` or `CONTEXT_NOT_SET`, establish a session:
 
-- Interactive: `rancher auth login --server <url> --name <alias>` — prompts for
-  a Rancher API token (`id:secret`, created in the Rancher UI under Account &
-  API Keys). It does NOT run provider login flows.
+- Interactive: `rancher auth login --server <url> --name <alias>` — no UI trip
+  needed. With no piped/pasted token, it offers a choice: paste an existing
+  API token, or sign in via an identity provider (`--auth-provider`,
+  `--auth-flow devicecode|authcode` skip the prompt). The provider path mints
+  its own purpose-made, individually revocable token behind the scenes (see
+  the token taxonomy below).
 - Scripted/CI: pipe the token — `rancher auth login --server <url> --token-stdin < token.txt`,
   or set `RANCHER_URL` + `RANCHER_TOKEN` env vars (no stored config needed).
-- SAML/OAuth provider flows live on `rancher auth get-token` (`--auth-provider`,
-  `--auth-flow devicecode|authcode`) — the kubeconfig exec plugin drives them
-  automatically; they mint cached exec credentials, not stored login sessions.
+- SAML/OAuth provider flows also live on `rancher auth get-token`
+  (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
+  plugin drives them automatically; that path mints cached exec credentials,
+  not a stored login session.
+
+**Token taxonomy** — three distinct things called "token", each minted by a
+different actor for a different purpose:
+
+1. `auth login` — takes a token you already have (pasted, piped, or minted by
+   its own provider path above) and stores it in config. It never mints a
+   token itself; Rancher does.
+2. `auth get-token` — drives the identity-provider flow via `/v1-public`;
+   RANCHER mints the session token (`spec.kind: "session"`). The kubeconfig
+   exec plugin drives this automatically and caches the result.
+3. `create token` — an existing authenticated session asks the ext Token
+   store to mint a DERIVED token (`spec.kind` empty), individually revocable
+   and visible in `get tokens`.
 
 ### 2. Discover, don't guess
 
@@ -186,5 +203,25 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - **Tier/stability:** server ops surface `tier` (`public` > `crd` > `norman`)
   and `stability` (`stable`/`beta`/`deprecated`) — mention them when the user
   is deciding whether to depend on an operation.
+- **Token commands — local vs. server:**
+
+  | Command | Scope | Manages |
+  |---|---|---|
+  | `auth list-tokens` / `auth delete-token` | local | the exec-credential cache (`token-cache.yaml`) |
+  | `get tokens` / `get token <name>` | server | `ext.Token` objects |
+  | `create token` | server | mints a derived `ext.Token` |
+  | `delete token <name>` | server | revokes an `ext.Token` |
+
+  They are not interchangeable — deleting a cache entry does not revoke the
+  server-side token, and vice versa.
+- **`kubeconfig` vs. `create kubeconfig`:** `kubeconfig` renders a LOCAL
+  exec-credential kubeconfig from config alone (no server call, no embedded
+  secret) — the interactive default. `create kubeconfig` mints a
+  SERVER-SIDE, embedded, revocable kubeconfig via the ext Kubeconfig store —
+  for CI/handoff where an exec plugin isn't usable. Every ext.cattle.io
+  operation here is also plain Kubernetes API — `kubectl get/create
+  tokens.ext.cattle.io` and `kubeconfigs.ext.cattle.io` work too — the CLI
+  adds the auth bootstrap, the ms-vs-seconds TTL conversion, and shown-once
+  handling on top.
 - Migrating from the legacy `rancher` CLI? `MIGRATING.md` in the release maps
   every old command to its replacement.

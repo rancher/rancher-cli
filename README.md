@@ -85,6 +85,8 @@ or point any other agent's instructions file at it.
 | `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
 | `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — public tier; dry-run/apply |
 | `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
+| `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — public tier; sensitive; dry-run/apply --yes |
+| `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — public tier; sensitive; dry-run/apply --yes |
 | `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — public tier; dry-run/apply |
 | `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — public tier; dry-run/apply |
 | `project add-member <principal> --project <p> --role <r> [--cluster --group]` | Add a project member via a role template binding — public tier; dry-run/apply |
@@ -95,17 +97,31 @@ or point any other agent's instructions file at it.
 | `top node [name] [--cluster]` | Node resource usage |
 | `images [--cluster --all-clusters]` | Running container images, fleet-wide |
 | `usage [--cluster --namespace] [--project]` | Resource usage composite (`--project` is the global flag) |
-| `kubeconfig --cluster <id>` | Emit an exec-credential kubeconfig for a cluster |
+| `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `schema [command]` | Machine-readable capability manifest |
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
-Generated per kind from the 37-kind table: `get <kind>` (37), `patch <kind>`
-(37), `delete <kind>` (18 deletable, including `projectroletemplatebinding`)
-— 92 generated commands, ≈120 total together with the fixed commands above.
-The authoritative, always-current list is `rancher schema -o json`.
+Generated per kind from the 39-kind table: `get <kind>` (39), `patch <kind>`
+(39), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
+`token`, and `kubeconfig`) — 98 generated commands, 128 total together with
+the fixed commands above. The authoritative, always-current list is
+`rancher schema -o json`.
+
+`token` and `kubeconfig` are registered with an empty GVR version, resolved
+via discovery at call time (the same mechanism the CAPI kinds use) — on a
+Rancher older than 2.12 (no aggregated `ext.cattle.io` API), the generated
+`get`/`patch`/`delete` ops on these two kinds fail with a friendly `NOT_FOUND`
+pointing at `auth list-tokens` and the exec-credential `kubeconfig` instead.
+Every operation on these two kinds is also plain Kubernetes API — `kubectl
+get/create tokens.ext.cattle.io` / `kubeconfigs.ext.cattle.io` works too (with
+`--validate=false` for a standard user, since kubectl's CRD-schema validation
+fallback needs list rights most users lack). The CLI adds the auth bootstrap,
+the token-vs-kubeconfig TTL unit conversion (`--ttl` takes a duration; the
+underlying spec fields are milliseconds and seconds respectively — the CLI
+never exposes the raw units), and shown-once handling for the minted secret.
 
 ### Project scope (`--project`)
 
@@ -275,6 +291,7 @@ PATH enables the kubectl-interop scenario; otherwise it skips.
       engine/kinds/         kind table (MCP keys, GVRs, scope, bindings)
       engine/resources/     generic get/delete over the kind table
       engine/projects/      create project/namespace, project membership, name resolution
+      engine/extres/        create token/kubeconfig (ext.cattle.io fixed mutating commands)
       commands/             auth login/check, config context/server ops, purge-legacy
       token/                exec-credential plugin (auth get-token / delete-token)
     surface/cli/            urfave/cli v3 adapter + root wiring + engine DI

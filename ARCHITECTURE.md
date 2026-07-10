@@ -386,6 +386,8 @@ table whose MCP keys are conformance-pinned, and each op's safety binding has ex
 owner (kind table for generated ops, bespoke `Resolver` for the rest), with overlaps
 rejected at `BuildRoot`.
 
+Verb reservation. get/create/patch/delete are reserved for kind-table resources — a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
+
 **Schema manifest as the discovery contract.** `rancher schema` emits a golden-tested
 manifest: per-command args/flags, `commandType`, `destructive`
 (`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, tier,

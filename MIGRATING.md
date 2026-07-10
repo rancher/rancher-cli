@@ -61,7 +61,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `settings get` | → `rancher get setting <name>` |
 | `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
 | `ssh <node>` | DROPPED — RKE1/node-driver only, Norman-only; keep the legacy binary for this |
-| `token` | → `rancher auth get-token` (already the exec-credential plugin; the legacy command is named `token`) |
+| `token` | → `rancher auth get-token` (already the exec-credential plugin; the legacy command is named `token`). Server-side token management is now `rancher get tokens` / `create token` / `delete token` (this branch) — distinct from the local exec-credential cache `auth list-tokens`/`auth delete-token` manage. |
 | `token delete` | → `rancher auth delete-token` |
 | `up -f compose.yml` | DROPPED — compose-era, no replacement |
 | `wait <type> <id>` | → `rancher get <kind> <name> --wait` |
@@ -85,10 +85,11 @@ KUBECONFIG=~/.kube/config:<(rancher kubeconfig --cluster X) kubectl config view 
 ```
 
 **No `rancher` binary on the target machine?** (CI, teammates without the
-CLI) `rancher kubeconfig`'s exec mode is not the only option — the
-Dashboard's "Download KubeConfig" mints a server-side kubeconfig with an
-embedded, revocable token that needs no local binary. A future `rancher
-kubeconfig --embed-token` will cover that mode from the CLI directly.
+CLI) `rancher kubeconfig`'s exec mode is not the only option: `rancher create
+kubeconfig [--clusters ...] --apply` mints a server-side, embedded, revocable
+kubeconfig (same as the Dashboard's "Download KubeConfig") that needs no
+local `rancher` binary to authenticate — the output goes straight to stdout,
+with a shown-once notice on where its server-assigned name is.
 
 ## `--wait` on named `get`
 

@@ -5133,7 +5133,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Show CPU/memory requests, limits, and usage per namespace or project"
+      "usage": "Show CPU/memory requests, limits, and usage per namespace or project (scopable by the global --project/--context flags)"
     }
   ],
   "effectSchema": {

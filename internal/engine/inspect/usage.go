@@ -30,7 +30,7 @@ func NewUsage(clients engine.ClusterClientFactory) runtime.Command {
 func (c *usageCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "usage",
-		Usage:       "Show CPU/memory requests, limits, and usage per namespace or project",
+		Usage:       "Show CPU/memory requests, limits, and usage per namespace or project (scopable by the global --project/--context flags)",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string"},
