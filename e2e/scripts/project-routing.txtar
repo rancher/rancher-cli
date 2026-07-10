@@ -1,0 +1,60 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# create project object; a fixed (non-generateName) name lands as the id.
+exec rancher create project web --cluster testcluster --apply
+
+# a member namespace (carries the membership label+annotation directly —
+# project add-namespace lands in a later commit) and a non-member namespace.
+exec rancher create resource -f ns-member.yaml --cluster testcluster --apply
+exec rancher create resource -f ns-other.yaml --cluster testcluster --apply
+exec rancher create resource -f cm-member.yaml --cluster testcluster --apply
+exec rancher create resource -f cm-other.yaml --cluster testcluster --apply
+
+# list scoped to the project: only the member namespace's configmap comes back.
+exec rancher get configmaps --cluster testcluster --project web -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name proj-member-cm
+
+# named get of the non-member's configmap under --project → VALIDATION, never
+# a silent no-op (PC-3).
+! exec rancher get configmap proj-other-cm --cluster testcluster --namespace proj-ns-other --project web
+jsonquery stderr data.error.code VALIDATION
+
+# a workspace-policy kind rejects --project outright.
+! exec rancher get gitrepos --project web
+jsonquery stderr data.error.code VALIDATION
+
+-- ns-member.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proj-ns-member
+  labels:
+    field.cattle.io/projectId: web
+  annotations:
+    field.cattle.io/projectId: c-test:web
+
+-- ns-other.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proj-ns-other
+
+-- cm-member.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proj-member-cm
+  namespace: proj-ns-member
+data:
+  k: v
+
+-- cm-other.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proj-other-cm
+  namespace: proj-ns-other
+data:
+  k: v

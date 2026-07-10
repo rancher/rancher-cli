@@ -101,7 +101,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		return safety.Effect{}, nil, err
 	}
 
-	clientCluster, ns, effectCluster, err := Route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
+	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

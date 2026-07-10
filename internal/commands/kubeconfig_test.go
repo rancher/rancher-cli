@@ -28,6 +28,7 @@ type stubFactory struct {
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return nil, nil }
 func (f stubFactory) ContextCluster() (string, error)                               { return f.ctxCluster, f.ctxErr }
+func (f stubFactory) ContextProject() (string, error)                               { return "", nil }
 func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if f.resolveErr != nil {
 		return "", f.resolveErr

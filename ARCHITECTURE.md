@@ -47,7 +47,7 @@ what drifted the previous revision of this doc).
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports and reusable plan/execute helpers; depends only on runtime + safety contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, tier bindings, table columns. |
-| `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing and table projection. |
+| `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`, `top node`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, legacy migration, store selection/pinning. |
@@ -127,6 +127,7 @@ graph TD
 
     resources --> engine
     resources --> kinds
+    resources --> projects
     resources --> runtime
     resources --> safety
     resources --> clierr

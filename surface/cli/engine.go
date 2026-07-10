@@ -95,6 +95,14 @@ func (f *clientFactory) ContextCluster() (string, error) {
 	return eff.Cluster, nil
 }
 
+func (f *clientFactory) ContextProject() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	return eff.Project, nil
+}
+
 func (f *clientFactory) Identity() (string, error) {
 	eff, err := f.resolve()
 	if err != nil {

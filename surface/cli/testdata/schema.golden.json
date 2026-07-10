@@ -4664,6 +4664,12 @@
       "desc": "scope: cluster[:project]; flag \u003e RANCHER_CONTEXT \u003e config; project axis is informational only",
       "name": "--context",
       "type": "string"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag \u003e context; VALIDATION where it does not apply",
+      "name": "--project",
+      "type": "string"
     }
   ],
   "outputApiVersion": "cli.rancher.io/v1"

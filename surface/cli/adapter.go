@@ -28,6 +28,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
 		&ucli.StringFlag{Name: "context", Usage: "scope this invocation to cluster[:project] for server operations (overrides RANCHER_CONTEXT and the current context); a trailing colon (cluster:) clears the project; the project axis is informational only"},
+		&ucli.StringFlag{Name: "project", Usage: "scope server operations to a project's namespaces (Downstream namespaced kinds only)"},
 	}
 }
 

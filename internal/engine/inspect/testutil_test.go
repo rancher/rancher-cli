@@ -185,6 +185,7 @@ func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClien
 }
 
 func (f *fakeFactory) ContextCluster() (string, error) { return f.ctxCluster, f.ctxClusterErr }
+func (f *fakeFactory) ContextProject() (string, error) { return "", nil }
 
 func (f *fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if f.resolveErr != nil {

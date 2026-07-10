@@ -42,7 +42,7 @@ func (c *topNodeCmd) Describe() runtime.Descriptor {
 func (c *topNodeCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	nodeKind, _ := kinds.Lookup("node")
 	named := len(in.Args()) > 0 && in.Args()[0] != ""
-	clusterID, _, _, err := resources.Route(ctx, c.clients, nodeKind, in, named)
+	clusterID, _, _, _, err := resources.Route(ctx, c.clients, nodeKind, in, named)
 	if err != nil {
 		return runtime.Result{}, err
 	}

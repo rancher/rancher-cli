@@ -37,7 +37,7 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 
 func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	depKind, _ := kinds.Lookup("deployment")
-	clusterID, ns, _, err := resources.Route(ctx, c.clients, depKind, in, true)
+	clusterID, ns, _, _, err := resources.Route(ctx, c.clients, depKind, in, true)
 	if err != nil {
 		return runtime.Result{}, err
 	}

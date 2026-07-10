@@ -58,18 +58,30 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 	}
 }
 
+// ProjectSelector renders the validated, correctly-escaped equality selector
+// for the projectID membership label. labels.NewRequirement rejects a
+// malformed project id (e.g. one containing an unescaped comma) with a
+// VALIDATION error instead of silently building a selector that matches
+// something other than intended.
+func ProjectSelector(projectID string) (string, error) {
+	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{projectID})
+	if err != nil {
+		return "", clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("invalid project id %q: %v", projectID, err)).
+			WithHint("pass a valid label value")
+	}
+	return labels.NewSelector().Add(*req).String(), nil
+}
+
 // ProjectNamespaces returns the set of namespace names carrying the
 // projectID membership label on the downstream cluster. An empty result is
 // not an error — callers decide whether that means "no members" or
 // "unknown project".
 func ProjectNamespaces(ctx context.Context, client engine.ClusterClient, projectID string) (map[string]bool, error) {
-	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{projectID})
+	selector, err := ProjectSelector(projectID)
 	if err != nil {
-		return nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid project id %q: %v", projectID, err)).
-			WithHint("pass a valid label value")
+		return nil, err
 	}
-	selector := labels.NewSelector().Add(*req).String()
 
 	nsKind, _ := kinds.Lookup("namespace")
 	list, err := client.List(ctx, nsKind.GVR, "", selector)

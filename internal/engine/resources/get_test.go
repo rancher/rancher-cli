@@ -60,6 +60,7 @@ type recFactory struct {
 	client       engine.ClusterClient
 	resolve      map[string]string
 	ctxCluster   string
+	ctxProject   string
 	clusterCalls []string
 }
 
@@ -68,6 +69,7 @@ func (f *recFactory) Cluster(_ context.Context, id string) (engine.ClusterClient
 	return f.client, nil
 }
 func (f *recFactory) ContextCluster() (string, error) { return f.ctxCluster, nil }
+func (f *recFactory) ContextProject() (string, error) { return f.ctxProject, nil }
 func (f *recFactory) ResolveCluster(_ context.Context, s string) (string, error) {
 	if s == "" || s == engine.LocalCluster {
 		return engine.LocalCluster, nil
@@ -282,13 +284,33 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
 			flags: map[string]string{"namespace": "p-1"}, named: true,
 			wantCluster: engine.LocalCluster, wantNS: "p-1"},
+		{name: "NSCluster kind rejects a project scope",
+			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
+			flags: map[string]string{"cluster": "prod", "project": "p-1"}, named: false,
+			wantErrCode: clierr.CodeValidation},
+		{name: "NSWorkspace kind rejects a project scope",
+			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
+			flags: map[string]string{"project": "p-1"}, named: true,
+			wantErrCode: clierr.CodeValidation},
+		{name: "Management-scope NSPlain kind rejects a project scope",
+			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+			flags: map[string]string{"namespace": "p-1", "project": "p-1"}, named: true,
+			wantErrCode: clierr.CodeValidation},
+		{name: "Management-scope NSNone kind rejects a project scope",
+			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
+			flags: map[string]string{"project": "p-1"}, named: true,
+			wantErrCode: clierr.CodeValidation},
+		{name: "Downstream NSNone kind (other than namespace) rejects a project scope",
+			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
+			flags: map[string]string{"cluster": "prod", "project": "p-1"}, named: true,
+			wantErrCode: clierr.CodeValidation},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			gotCluster, gotNS, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			gotCluster, gotNS, _, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
 			if tt.wantErrCode != "" {
 				var ce *clierr.Error
 				require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)

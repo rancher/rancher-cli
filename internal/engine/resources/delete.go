@@ -68,7 +68,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 
 	// delete always addresses a resource by name; Route enforces the
 	// Management+Namespaced --cluster requirement independently of the flag.
-	clientCluster, ns, effectCluster, err := Route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

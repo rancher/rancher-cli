@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -21,6 +22,7 @@ import (
 const (
 	FlagCluster   = "cluster"
 	FlagNamespace = "namespace"
+	FlagProject   = "project"
 	flagFilename  = "filename"
 	flagPatch     = "patch"
 	flagWait      = "wait"
@@ -109,7 +111,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			WithHint("pass --for state=<value> or --for condition=<Type>[=<Status>] to specify a custom signal")
 	}
 
-	clusterID, ns, _, err := Route(ctx, c.clients, c.k, in, named)
+	clusterID, ns, _, scope, err := Route(ctx, c.clients, c.k, in, named)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -143,11 +145,29 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		}
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true)}, nil
 	}
-	list, lerr := client.List(ctx, c.k.GVR, ns, "")
+	selector := ""
+	if scope != nil {
+		selector = scope.Selector
+	}
+	list, lerr := client.List(ctx, c.k.GVR, ns, selector)
 	if lerr != nil {
 		return runtime.Result{}, lerr
 	}
-	return runtime.Result{Kind: title + "List", Data: newTable(c.k, list.Items, false)}, nil
+	items := list.Items
+	// caller-side list filtering (PC-3): a Downstream NSPlain kind under a
+	// project without --namespace carries the member set here; the
+	// namespace-kind special case instead carries a server-side Selector
+	// above and leaves Members nil.
+	if scope != nil && scope.Members != nil {
+		filtered := make([]unstructured.Unstructured, 0, len(items))
+		for _, item := range items {
+			if scope.Members[item.GetNamespace()] {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false)}, nil
 }
 
 // parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable
@@ -169,9 +189,72 @@ func hasName(in runtime.Input) bool {
 	return len(args) > 0 && args[0] != ""
 }
 
+// ProjectScope carries the effective --project scope a routing decision
+// resolved (PC-3): nil means unscoped. Members is the project's member
+// namespace set, used for caller-side membership validation and list
+// filtering (the generic Downstream NSPlain path). Selector is a server-side
+// label selector, used only by the namespace-kind special case (Members is
+// nil there — membership is enforced by the server, not the caller).
+type ProjectScope struct {
+	ProjectID string
+	Members   map[string]bool
+	Selector  string
+}
+
+// effectiveProject resolves --project (flag > context, PC-2's precedence).
+func effectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
+	if p := in.String(FlagProject); p != "" {
+		return p, nil
+	}
+	return clients.ContextProject()
+}
+
+// rejectProjectScope enforces PC-3's "never a silent no-op" rule for kind
+// families that do not support project scoping: any effective project (flag
+// or context) is a VALIDATION error, never an ignored value.
+func rejectProjectScope(clients engine.ClusterClientFactory, in runtime.Input, k kinds.Kind) error {
+	project, err := effectiveProject(clients, in)
+	if err != nil {
+		return err
+	}
+	if project == "" {
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation, "--project does not apply to "+k.Name).
+		WithHint("drop --project for this kind")
+}
+
+// resolveProjectScope resolves the effective project (flag > context) for a
+// Downstream namespaced kind, returning ("", nil, nil) when no project is in
+// play. clusterID is the already-resolved downstream cluster the member
+// namespace list is fetched from.
+func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, clusterID string) (projectID string, members map[string]bool, err error) {
+	raw, err := effectiveProject(clients, in)
+	if err != nil {
+		return "", nil, err
+	}
+	if raw == "" {
+		return "", nil, nil
+	}
+	id, err := projects.ResolveProject(ctx, clients, clusterID, raw)
+	if err != nil {
+		return "", nil, err
+	}
+	client, err := clients.Cluster(ctx, clusterID)
+	if err != nil {
+		return "", nil, err
+	}
+	members, err = projects.ProjectNamespaces(ctx, client, id)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, members, nil
+}
+
 // Route maps a kind's NamespacePolicy + input to the client cluster id, the
-// namespace, and the Effect's target cluster (the identity a mutation lands on,
-// which differs from the client cluster for management namespaced kinds):
+// namespace, the Effect's target cluster (the identity a mutation lands on,
+// which differs from the client cluster for management namespaced kinds), and
+// the effective project scope (PC-3; nil when unscoped):
 //
 //	NSNone:      client per scope,     ns "",                 effect = client
 //	NSCluster:   client "local",       ns = resolved --cluster, effect that cluster
@@ -189,28 +272,40 @@ func hasName(in runtime.Input) bool {
 // addressing a resource by name requires --cluster. NSPlain applies the same
 // fail-fast rule to --namespace before any network resolution.
 //
+// PC-3 project scope: a Downstream NSPlain kind validates/filters by project
+// membership inside Route (named ops and mutations can never skip it); every
+// other kind family rejects a non-empty project outright, EXCEPT the
+// namespace kind itself (NSNone/Downstream), which converts an unnamed
+// --project into a server-side label-selector list rather than a rejection.
+//
 // Route is shared by get and delete: delete always passes named=true and uses
 // the effect cluster to stamp Effect.Cluster.
-func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, err error) {
+func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, scope *ProjectScope, err error) {
 	switch k.Policy {
 	case kinds.NSCluster:
+		if err := rejectProjectScope(clients, in, k); err != nil {
+			return "", "", "", nil, err
+		}
 		clusterFlag := in.String(FlagCluster)
 		if clusterFlag == "" {
 			if named {
-				return "", "", "", clierr.New(clierr.CodeValidation,
+				return "", "", "", nil, clierr.New(clierr.CodeValidation,
 					"--cluster is required to address a "+k.Name+" by name").
 					WithHint("pass --cluster <id|name>")
 			}
-			return engine.LocalCluster, "", "", nil // list across all clusters
+			return engine.LocalCluster, "", "", nil, nil // list across all clusters
 		}
 		id, rerr := clients.ResolveCluster(ctx, clusterFlag)
 		if rerr != nil {
-			return "", "", "", rerr
+			return "", "", "", nil, rerr
 		}
 		// The namespace IS the cluster id; the Effect targets that cluster.
-		return engine.LocalCluster, id, id, nil
+		return engine.LocalCluster, id, id, nil, nil
 
 	case kinds.NSWorkspace:
+		if err := rejectProjectScope(clients, in, k); err != nil {
+			return "", "", "", nil, err
+		}
 		// A management-plane namespace with a default; --cluster is never
 		// consulted and a missing --namespace falls back to the default, so a
 		// named op never fails validation here.
@@ -218,7 +313,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if nspace == "" {
 			nspace = k.DefaultNamespace
 		}
-		return engine.LocalCluster, nspace, engine.LocalCluster, nil
+		return engine.LocalCluster, nspace, engine.LocalCluster, nil, nil
 
 	case kinds.NSPlain:
 		// Namespace is a pure input requirement — check it before any network
@@ -227,15 +322,94 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		// nameless list keeps ns="" (all-namespaces), which is valid and useful.
 		nspace := in.String(FlagNamespace)
 		if named && nspace == "" {
-			return "", "", "", clierr.New(clierr.CodeValidation,
+			return "", "", "", nil, clierr.New(clierr.CodeValidation,
 				"--namespace is required to address a "+k.Name+" by name").
 				WithHint("pass --namespace <namespace>")
 		}
-		return routeCluster(ctx, clients, k, in, nspace)
+		if k.Scope == kinds.Management {
+			if err := rejectProjectScope(clients, in, k); err != nil {
+				return "", "", "", nil, err
+			}
+			clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, nspace)
+			return clientCluster, ns, effectCluster, nil, err
+		}
+		clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, nspace)
+		if err != nil {
+			return "", "", "", nil, err
+		}
+		projectID, members, perr := resolveProjectScope(ctx, clients, k, in, clientCluster)
+		if perr != nil {
+			return "", "", "", nil, perr
+		}
+		if projectID == "" {
+			return clientCluster, ns, effectCluster, nil, nil
+		}
+		if nspace != "" {
+			if !members[nspace] {
+				return "", "", "", nil, clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("namespace %q is not in project %q", nspace, projectID)).
+					WithHint("pass a member namespace, or omit --namespace to scope the whole project")
+			}
+		}
+		return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Members: members}, nil
 
 	default: // NSNone — cluster-scoped, no namespace
-		return routeCluster(ctx, clients, k, in, "")
+		if k.Name == "namespace" {
+			return routeNamespaceKind(ctx, clients, k, in)
+		}
+		if err := rejectProjectScope(clients, in, k); err != nil {
+			return "", "", "", nil, err
+		}
+		clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, "")
+		return clientCluster, ns, effectCluster, nil, err
 	}
+}
+
+// routeNamespaceKind is PC-3's special case: the namespace kind's own
+// membership IS the project label, so --project converts a list into a
+// server-side label-selector query rather than a rejection or a caller-side
+// membership filter. A named op still validates membership like any other
+// Downstream NSPlain kind, since a label selector cannot address one object
+// by name.
+func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input) (clientCluster, ns, effectCluster string, scope *ProjectScope, err error) {
+	clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, "")
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	raw, err := effectiveProject(clients, in)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if raw == "" {
+		return clientCluster, ns, effectCluster, nil, nil
+	}
+	projectID, err := projects.ResolveProject(ctx, clients, clientCluster, raw)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	named := len(in.Args()) > 0 && in.Args()[0] != ""
+	if named {
+		client, cerr := clients.Cluster(ctx, clientCluster)
+		if cerr != nil {
+			return "", "", "", nil, cerr
+		}
+		members, merr := projects.ProjectNamespaces(ctx, client, projectID)
+		if merr != nil {
+			return "", "", "", nil, merr
+		}
+		name := in.Args()[0]
+		if !members[name] {
+			return "", "", "", nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("namespace %q is not in project %q", name, projectID)).
+				WithHint("pass a member namespace")
+		}
+		return clientCluster, ns, effectCluster, nil, nil
+	}
+	selector, err := projects.ProjectSelector(projectID)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Selector: selector}, nil
 }
 
 // routeCluster picks the serving cluster for the scope-driven policies (NSNone,

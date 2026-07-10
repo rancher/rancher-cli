@@ -52,7 +52,7 @@ func (c *podCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	if terr != nil {
 		return runtime.Result{}, terr
 	}
-	clusterID, ns, _, err := resources.Route(ctx, c.clients, podKind, in, true)
+	clusterID, ns, _, _, err := resources.Route(ctx, c.clients, podKind, in, true)
 	if err != nil {
 		return runtime.Result{}, err
 	}
