@@ -15,6 +15,16 @@ jsonquery stdout data.rancherVersion v2.13.0
 jsonquery stdout data.supported false
 jsonquery stdout 'warnings.0' 'server v2.13.0 is below the supported minimum 2.14; some commands may fail'
 
+# PS-2: this harness has no SelfUser CRD (there is no server-side store to
+# fake status.userID against) — envtest's ext.cattle.io group serves tokens
+# and kubeconfigs only, so the identity probe's POST 404s exactly like a
+# server missing the whole group would. That absence is a static property
+# of this harness (no script ever registers a SelfUser CRD), unlike the
+# server-version Setting above, so asserting on it here does not compete
+# with any other concurrent script.
+jsonquery stdout data.identity ''
+jsonquery stdout 'warnings.1' 'identity metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)'
+
 # Setting is Deletable: false — patch in place rather than delete+recreate.
 exec rancher patch setting server-version --patch '[{"op":"replace","path":"/value","value":"dev"}]' --apply --yes -o json
 jsonquery stdout data.value dev
