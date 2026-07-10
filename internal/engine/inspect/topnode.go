@@ -40,6 +40,9 @@ func (c *topNodeCmd) Describe() runtime.Descriptor {
 }
 
 func (c *topNodeCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	if err := rejectProject(in, "top node"); err != nil {
+		return runtime.Result{}, err
+	}
 	nodeKind, _ := kinds.Lookup("node")
 	named := len(in.Args()) > 0 && in.Args()[0] != ""
 	clusterID, _, _, _, err := resources.Route(ctx, c.clients, nodeKind, in, named)

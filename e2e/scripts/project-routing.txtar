@@ -36,6 +36,11 @@ exec rancher get namespaces --project web --cluster testcluster -o json
 jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-ns-member
 
+# root-position --project reaches usage via urfave lineage (usage's own
+# local --project flag is gone; PC-6's inversion of DR-004's failure mode).
+exec rancher --project web usage --cluster testcluster -o json
+jsonquery stdout data.web.cpuRequest '0'
+
 # inspect project: identity, member namespaces, quota, usage. envtest has no
 # metrics-server, so the usage summary degrades to a warning (as every other
 # metrics-joining composite does here) with prtb membership unaffected.

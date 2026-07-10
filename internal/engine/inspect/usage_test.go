@@ -101,6 +101,7 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
 
 	namespaces := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
@@ -110,6 +111,7 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	// is ignored), so both ns1 and ns2 pod Lists return this same set; the
 	// aggregation still lands in the single "p-x" bucket either way.
 	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
 		withList(nsKind.GVR, namespaces).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -121,11 +123,32 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEmpty(t, client.listSelectors)
-	assert.Equal(t, "field.cattle.io/projectId=p-x", client.listSelectors[0], "the namespace List call must carry the rendered project selector")
+	assert.Contains(t, client.listSelectors, "field.cattle.io/projectId=p-x", "the namespace List call must carry the rendered project selector")
 	rows, ok := res.Data.(usageRows)
 	require.True(t, ok)
 	require.Contains(t, rows, "p-x")
 	assert.NotContains(t, rows, "ns1")
+}
+
+func TestUsageProjectResolvesDisplayName(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{namespaceObj("ns1", nil)}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "web"}})
+	require.NoError(t, err)
+
+	rows, ok := res.Data.(usageRows)
+	require.True(t, ok)
+	assert.Contains(t, rows, "p-x", "a display name must resolve to the project id before grouping")
 }
 
 func TestUsageNamespaceScopesMetricsFetch(t *testing.T) {
@@ -154,10 +177,10 @@ func TestUsageNamespaceScopesMetricsFetch(t *testing.T) {
 	}
 }
 
-func TestUsageProjectMatchingNoNamespacesErrors(t *testing.T) {
+func TestUsageProjectUnknownProjectErrors(t *testing.T) {
 	t.Parallel()
-	nsKind := mustKind(t, "namespace")
-	client := newFakeClient().withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	projectKind := mustKind(t, "project")
+	client := newFakeClient().withList(projectKind.GVR, &unstructured.UnstructuredList{})
 
 	cmd := NewUsage(&fakeFactory{client: client})
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-typo"}})
@@ -167,21 +190,75 @@ func TestUsageProjectMatchingNoNamespacesErrors(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
+func TestUsageProjectMatchingNoNamespacesErrors(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}
+
 func TestUsageProjectRejectsInvalidLabelValue(t *testing.T) {
 	t.Parallel()
-	client := newFakeClient()
+	projectKind := mustKind(t, "project")
+	malformed := "p-x,foo=bar"
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj(malformed, "web", "")}})
 	cmd := NewUsage(&fakeFactory{client: client})
-	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x,foo=bar"}})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": malformed}})
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Empty(t, client.listSelectors, "an invalid project value must never reach List")
+	for _, sel := range client.listSelectors {
+		assert.NotContains(t, sel, malformed, "an invalid project value must never reach a List selector")
+	}
 }
 
-func TestUsageNamespaceAndProjectConflict(t *testing.T) {
+func TestUsageNamespaceAndProjectValidatesMembership(t *testing.T) {
 	t.Parallel()
-	cmd := NewUsage(&fakeFactory{client: newFakeClient()})
-	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns1", "project": "p-x"}})
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{namespaceObj("ns1", nil)}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns2", "project": "p-x"}})
 	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "ns2")
+	assert.Contains(t, ce.Message, "p-x")
+}
+
+func TestUsageNamespaceAndProjectMemberScopesAsNamespace(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{namespaceObj("ns1", nil)}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withListNS(podKind.GVR, "ns1", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns1", "project": "p-x"}})
+	require.NoError(t, err)
+	rows, ok := res.Data.(usageRows)
+	require.True(t, ok)
+	assert.Contains(t, rows, "ns1", "a member namespace scopes the result by namespace, not by project bucket")
+	assert.NotContains(t, rows, "p-x")
 }

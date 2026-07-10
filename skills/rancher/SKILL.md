@@ -121,6 +121,7 @@ One call each, with graceful degradation (missing metrics/logs become
 
 - `rancher inspect pod <name>` — status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
+- `rancher inspect project <name-or-id>` — member namespaces, workload counts, members, quota, usage
 - `rancher top node` / `rancher usage` — capacity and consumption
 - `rancher images` — running images inventory
 
@@ -145,9 +146,16 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   with `rancher config use-context` / `set-context`, or override for a single
   invocation with the `RANCHER_CONTEXT` env var (`cluster[:project]`) or the
   global `--context cluster[:project]` flag (flag > `RANCHER_CONTEXT` env >
-  current context). The project axis is informational only — it is not
-  consumed for scoping; pass `--cluster`/`--namespace` for actual routing.
-  Fleet kinds default to the `fleet-default` workspace.
+  current context). Fleet kinds default to the `fleet-default` workspace.
+- **Project scope (`--project`):** the global `--project <id-or-name>` flag
+  scopes Downstream namespaced kinds (`get`/`delete`/`patch`, plus `usage`)
+  to a project's member namespaces — a list filters to members, a named op
+  or mutation validates membership first. `get namespaces --project <p>` is
+  the membership listing (server-side label selector). Every other kind
+  family and the non-project composites (`inspect pod`/`deployment`, `top
+  node`, `images`) reject a non-empty `--project` with `VALIDATION` — it is
+  never a silent no-op. Precedence: `--project` flag > the context's project
+  axis (set via `--context`/`RANCHER_CONTEXT`/`set-context`) > unscoped.
 - **Isolation for scripted sessions:** point `RANCHER_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain.

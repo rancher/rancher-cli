@@ -4641,10 +4641,6 @@
         {
           "name": "namespace",
           "type": "string"
-        },
-        {
-          "name": "project",
-          "type": "string"
         }
       ],
       "name": "usage",

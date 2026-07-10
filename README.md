@@ -82,12 +82,16 @@ or point any other agent's instructions file at it.
 | `config use-server [name]` | Switch the active server |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
 | `create project <name> --cluster <id> [--description]` | Create a project — public tier; dry-run/apply |
+| `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
 | `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
+| `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — public tier; dry-run/apply |
+| `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — public tier; dry-run/apply |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
+| `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
 | `top node [name] [--cluster]` | Node resource usage |
 | `images [--cluster --all-clusters]` | Running container images, fleet-wide |
-| `usage [--cluster --namespace --project]` | Resource usage composite |
+| `usage [--cluster --namespace] [--project]` | Resource usage composite (`--project` is the global flag) |
 | `kubeconfig --cluster <id>` | Emit an exec-credential kubeconfig for a cluster |
 | `schema [command]` | Machine-readable capability manifest |
 
@@ -96,9 +100,24 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
 Generated per kind from the 37-kind table: `get <kind>` (37), `patch <kind>`
-(37), `delete <kind>` (17 deletable) — 91 generated commands, ≈112 total
+(37), `delete <kind>` (17 deletable) — 91 generated commands, ≈116 total
 together with the fixed commands above. The authoritative, always-current
 list is `rancher schema -o json`.
+
+### Project scope (`--project`)
+
+The global `--project <id-or-name>` flag scopes Downstream namespaced kinds
+(`get`/`delete`/`patch`, plus `usage`) to one project's member namespaces:
+a bare list is filtered to member namespaces; a named op or mutation
+validates the target namespace's membership before touching the server.
+`get namespaces --project <p>` is the one special case — it lists namespaces
+by the membership label server-side rather than filtering client-side.
+Every other command family (cluster-scoped kinds, management-plane kinds,
+and the composites `inspect pod`/`inspect deployment`/`top node`/`images`)
+rejects a non-empty `--project` with `VALIDATION` rather than silently
+ignoring it. Precedence: `--project` flag > the current context's project
+axis (`--context cluster:project` / `RANCHER_CONTEXT` / `config
+set-context --project`) > unscoped.
 
 ## Output & the agent contract
 
@@ -187,9 +206,10 @@ Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
 
   The global `--context cluster[:project]` flag overrides `RANCHER_CONTEXT`
   for a single invocation. `--context c:` (trailing colon, no project) clears
-  the project for this invocation. The project axis is informational only
-  (shown by `config current-context`/`auth check`) — no routing or API call
-  scopes by it.
+  the project for this invocation. The context's project axis is shown by
+  `config current-context`/`auth check`, and is consulted for routing only as
+  a fallback: an unset `--project` flag falls back to it (`--project` always
+  wins when both are set) — see "Project scope" above.
 
 - **Migration:** on first run the CLI imports a legacy
   `~/.rancher/cli2.json` (also `$RANCHER_CONFIG_DIR/cli2.json`) into the new
@@ -251,7 +271,7 @@ PATH enables the kubectl-interop scenario; otherwise it skips.
       engine/               ClusterClient port + plan/execute helpers
       engine/kinds/         kind table (MCP keys, GVRs, scope, bindings)
       engine/resources/     generic get/delete over the kind table
-      engine/projects/      create project (bespoke write)
+      engine/projects/      create project/namespace, project membership, name resolution
       commands/             auth login/check, config context/server ops, purge-legacy
       token/                exec-credential plugin (auth get-token / delete-token)
     surface/cli/            urfave/cli v3 adapter + root wiring + engine DI

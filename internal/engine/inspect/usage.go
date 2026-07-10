@@ -8,29 +8,23 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 )
-
-const flagProject = "project"
-
-// projectLabel is the Rancher label namespaces carry to mark their project,
-// the same mechanism rancher-ai-mcp's getResourceUsage groups by.
-const projectLabel = "field.cattle.io/projectId"
 
 type usageCmd struct {
 	clients engine.ClusterClientFactory
 }
 
-// NewUsage builds `usage --cluster [--namespace | --project]`: CPU/memory
+// NewUsage builds `usage --cluster [--namespace] [--project]`: CPU/memory
 // requests and limits from pod specs, plus usage from pod metrics, summed per
 // namespace — or, under --project, summed across every namespace in that
-// project into one bucket. A missing metrics server degrades every usage
-// field to empty plus one warning.
+// project into one bucket. --project has no local flag: the global
+// --project flag reaches it via urfave lineage. A missing metrics server
+// degrades every usage field to empty plus one warning.
 func NewUsage(clients engine.ClusterClientFactory) runtime.Command {
 	return &usageCmd{clients: clients}
 }
@@ -43,7 +37,6 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string"},
 			{Name: resources.FlagNamespace, Type: "string"},
-			{Name: flagProject, Type: "string"},
 		},
 		Toolset: "core",
 		Network: true,
@@ -53,12 +46,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 
 func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
-	project := in.String(flagProject)
-	if namespace != "" && project != "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--namespace and --project are mutually exclusive").
-			WithHint("pass at most one of --namespace or --project")
-	}
+	projectFlag := in.String(resources.FlagProject)
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
@@ -69,27 +57,45 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 	}
 	podKind, _ := kinds.Lookup("pod")
 
+	var projectID string
+	var members map[string]bool
+	if projectFlag != "" {
+		projectID, err = projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		members, err = projects.ProjectNamespaces(ctx, client, projectID)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+	}
+
 	grouped := map[string][]unstructured.Unstructured{}
 	var namespaces []string // nil = cluster-wide; scopes the metrics fetch below
 	switch {
-	case project != "":
-		sel, serr := projectSelector(project)
-		if serr != nil {
-			return runtime.Result{}, serr
+	case namespace != "" && projectID != "":
+		// PC-3's universal rule: --namespace + --project is allowed, provided
+		// the namespace is a member, then behaves as plain namespace scope.
+		if !members[namespace] {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("namespace %q is not in project %q", namespace, projectID)).
+				WithHint("pass a member namespace, or omit --namespace to scope the whole project")
 		}
-		nsKind, _ := kinds.Lookup("namespace")
-		nsList, nerr := client.List(ctx, nsKind.GVR, "", sel)
-		if nerr != nil {
-			return runtime.Result{}, nerr
+		namespaces = []string{namespace}
+		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
+		if lerr != nil {
+			return runtime.Result{}, lerr
 		}
-		if len(nsList.Items) == 0 {
+		grouped[namespace] = l.Items
+
+	case projectID != "":
+		if len(members) == 0 {
 			return runtime.Result{}, clierr.New(clierr.CodeNotFound,
-				fmt.Sprintf("no namespaces found for --project %q", project)).
+				fmt.Sprintf("no namespaces found for --project %q", projectFlag)).
 				WithHint("check the project id")
 		}
 		var pods []unstructured.Unstructured
-		for i := range nsList.Items {
-			ns := nsList.Items[i].GetName()
+		for ns := range members {
 			namespaces = append(namespaces, ns)
 			l, lerr := client.List(ctx, podKind.GVR, ns, "")
 			if lerr != nil {
@@ -97,7 +103,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 			}
 			pods = append(pods, l.Items...)
 		}
-		grouped[project] = pods
+		grouped[projectID] = pods
 
 	case namespace != "":
 		namespaces = []string{namespace}
@@ -198,20 +204,6 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID 
 		result[scope] = totals
 	}
 	return runtime.Result{Kind: "ResourceUsage", Data: result, Warnings: warnings}, nil
-}
-
-// projectSelector renders a validated, correctly-escaped equality selector
-// for the project label. labels.NewRequirement rejects a malformed project id
-// (e.g. one containing an unescaped comma) with a VALIDATION error instead of
-// silently building a selector that matches something other than intended.
-func projectSelector(project string) (string, error) {
-	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{project})
-	if err != nil {
-		return "", clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --project %q: %v", project, err)).
-			WithHint("pass a valid label value")
-	}
-	return labels.NewSelector().Add(*req).String(), nil
 }
 
 // addQuantity parses the string quantity at path within container (a

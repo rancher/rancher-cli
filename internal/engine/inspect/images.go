@@ -52,6 +52,9 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 }
 
 func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	if err := rejectProject(in, "images"); err != nil {
+		return runtime.Result{}, err
+	}
 	clusterFlag := in.String(resources.FlagCluster)
 	allClusters := in.Bool(flagAllClusters)
 	if allClusters && clusterFlag != "" {

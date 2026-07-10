@@ -9,13 +9,29 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+// rejectProject enforces PC-3 for the composites that bypass Route
+// (inspect pod/deployment, top node, images): the global --project flag
+// would otherwise reach them and be silently ignored, exactly the class of
+// no-op DR-004 removed --project for. cmd is the command name for the
+// message ("inspect pod", "top node", ...).
+func rejectProject(in runtime.Input, cmd string) error {
+	if in.String(resources.FlagProject) == "" {
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd).
+		WithHint("drop --project for this command")
+}
 
 // podMetricsGVR is a metrics GVR constant — deliberately not a kind-table
 // row: the metrics pseudo-kinds are not user-addressable nouns, only fetched
