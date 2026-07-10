@@ -139,6 +139,26 @@ get-token` — the `rancher` binary must stay on PATH for kubectl to
 authenticate. Cached credentials: `rancher auth list-tokens` /
 `rancher auth delete-token`.
 
+### 9. Project membership and secrets
+
+- `rancher project add-member <principal> --project <p> --role <r>` — add a
+  user or (with `--group`) group principal to a project. A user principal is
+  resolved by id or display name; the binding carries both `userName` and
+  `userPrincipalName` from that one resolved user, never a bare principal
+  string (that path lets Rancher mint an orphan user instead).
+- `rancher project remove-member <principal> --project <p>` — deletes every
+  role template binding for that principal in the project (destructive,
+  needs `--yes`).
+- `rancher get roletemplates -o json` — filter `context=="cluster"` or
+  `context=="project"` to find role names for `--role`; `-o table` shows the
+  same as a CONTEXT column.
+- `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` —
+  an ordinary namespaced secret without hand-rolling base64.
+- `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` —
+  writes into the project's backing namespace for Rancher to propagate into
+  every member namespace; a `warnings` entry means this Rancher may predate
+  2.12 and won't propagate it.
+
 ## Conventions
 
 - **Routing:** `--cluster` accepts a display name or id; `--namespace` scopes

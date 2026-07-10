@@ -81,11 +81,14 @@ or point any other agent's instructions file at it.
 | `config get-servers` | List configured servers |
 | `config use-server [name]` | Switch the active server |
 | `config purge-legacy` | Delete the migrated legacy `cli2.json` |
-| `create project <name> --cluster <id> [--description]` | Create a project — public tier; dry-run/apply |
+| `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — public tier; dry-run/apply |
 | `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
+| `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — public tier; dry-run/apply |
 | `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
 | `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — public tier; dry-run/apply |
 | `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — public tier; dry-run/apply |
+| `project add-member <principal> --project <p> --role <r> [--cluster --group]` | Add a project member via a role template binding — public tier; dry-run/apply |
+| `project remove-member <principal> --project <p> [--cluster --group]` | Remove a project member's role template binding(s) — public tier; destructive; dry-run/apply --yes |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
@@ -100,9 +103,9 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
 Generated per kind from the 37-kind table: `get <kind>` (37), `patch <kind>`
-(37), `delete <kind>` (17 deletable) — 91 generated commands, ≈116 total
-together with the fixed commands above. The authoritative, always-current
-list is `rancher schema -o json`.
+(37), `delete <kind>` (18 deletable, including `projectroletemplatebinding`)
+— 92 generated commands, ≈120 total together with the fixed commands above.
+The authoritative, always-current list is `rancher schema -o json`.
 
 ### Project scope (`--project`)
 
