@@ -241,6 +241,37 @@
       "commandType": "mutating",
       "destructive": "false",
       "examples": [
+        "rancher create namespace team-a --project p-x --cluster c-x --apply"
+      ],
+      "flags": [
+        {
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "create namespace",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Create a namespace, optionally as a project member"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
         "rancher create project web --cluster c-x --dry-run",
         "rancher create project web --cluster c-x --apply"
       ],
@@ -4471,6 +4502,70 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a user with an RFC 6902 JSON patch"
+    },
+    {
+      "args": [
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher project add-namespace team-a --project p-x --cluster c-x --apply"
+      ],
+      "flags": [
+        {
+          "name": "project",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "project add-namespace",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Add a namespace to a project"
+    },
+    {
+      "args": [
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher project remove-namespace team-a --project p-x --cluster c-x --apply"
+      ],
+      "flags": [
+        {
+          "name": "project",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "cluster",
+          "type": "string"
+        }
+      ],
+      "name": "project remove-namespace",
+      "network": true,
+      "stability": "stable",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Remove a namespace from a project"
     },
     {
       "args": [

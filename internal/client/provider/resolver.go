@@ -15,8 +15,11 @@ type Resolver struct {
 // here only.
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
-		"create project":  {Tier: safety.TierPublic, Stability: safety.Stable},
-		"create resource": {Tier: safety.TierCRD, Stability: safety.Beta},
+		"create project":           {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create namespace":         {Tier: safety.TierPublic, Stability: safety.Stable},
+		"project add-namespace":    {Tier: safety.TierPublic, Stability: safety.Stable},
+		"project remove-namespace": {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create resource":          {Tier: safety.TierCRD, Stability: safety.Beta},
 
 		"inspect pod":        {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment": {Tier: safety.TierCRD, Stability: safety.Beta},

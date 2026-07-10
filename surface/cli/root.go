@@ -47,7 +47,10 @@ func buildEntries() []entry {
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerSwitch(d.dir) }},
 		{group: "config", make: func(runDeps) runtime.Command { return commands.NewConfigPurgeLegacy() }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
+		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
+		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "top", make: func(d runDeps) runtime.Command { return inspect.NewTopNode(d.clients) }},
@@ -116,6 +119,7 @@ var groupUsages = map[string]string{
 	"delete":  "Delete resources",
 	"inspect": "Inspect composite reads",
 	"top":     "Resource usage composites",
+	"project": "Project membership operations",
 }
 
 // assembleCommands builds the root command list: the top-level commands

@@ -3,8 +3,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"sort"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
@@ -106,7 +104,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// type, unlike mapping ops to entries (a move would misreport as a single
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
-	diff := diffObjects("", orig.Object, patched.Object)
+	diff := engine.DiffObjects("", orig.Object, patched.Object)
 	if c.k.Sensitive {
 		redactSensitiveDiff(diff)
 	}
@@ -148,51 +146,6 @@ func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
 	return patch, nil
 }
 
-// diffObjects walks two decoded-JSON trees and emits one DiffEntry per changed
-// leaf, keyed by JSON pointer. A key present on one side only yields a nil
-// From or To. metadata.resourceVersion and metadata.managedFields are skipped
-// (server-managed churn, not a user-visible change).
-func diffObjects(prefix string, a, b any) []safety.DiffEntry {
-	switch prefix {
-	case "/metadata/resourceVersion", "/metadata/managedFields":
-		return nil
-	}
-	switch av := a.(type) {
-	case map[string]any:
-		bv, ok := b.(map[string]any)
-		if !ok {
-			return []safety.DiffEntry{{Path: prefix, From: a, To: b}}
-		}
-		var out []safety.DiffEntry
-		for _, k := range unionKeys(av, bv) {
-			out = append(out, diffObjects(prefix+"/"+k, av[k], bv[k])...)
-		}
-		return out
-	case []any:
-		bv, ok := b.([]any)
-		if !ok {
-			return []safety.DiffEntry{{Path: prefix, From: a, To: b}}
-		}
-		var out []safety.DiffEntry
-		for i := 0; i < max(len(av), len(bv)); i++ {
-			var ai, bi any
-			if i < len(av) {
-				ai = av[i]
-			}
-			if i < len(bv) {
-				bi = bv[i]
-			}
-			out = append(out, diffObjects(fmt.Sprintf("%s/%d", prefix, i), ai, bi)...)
-		}
-		return out
-	default:
-		if !reflect.DeepEqual(a, b) {
-			return []safety.DiffEntry{{Path: prefix, From: a, To: b}}
-		}
-		return nil
-	}
-}
-
 // redactSensitiveDiff blanks From/To for diff entries under /data or
 // /stringData in place — the JSON path stays visible (so a caller can see
 // which keys changed) but the raw value never reaches the Effect. Gated on
@@ -212,21 +165,4 @@ func redactSensitiveDiff(diff []safety.DiffEntry) {
 func isSecretDataPath(path string) bool {
 	return path == "/data" || strings.HasPrefix(path, "/data/") ||
 		path == "/stringData" || strings.HasPrefix(path, "/stringData/")
-}
-
-// unionKeys returns the sorted union of two maps' keys, for deterministic diffs.
-func unionKeys(a, b map[string]any) []string {
-	set := map[string]struct{}{}
-	for k := range a {
-		set[k] = struct{}{}
-	}
-	for k := range b {
-		set[k] = struct{}{}
-	}
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

@@ -4,10 +4,9 @@ env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
 # create project object; a fixed (non-generateName) name lands as the id.
 exec rancher create project web --cluster testcluster --apply
 
-# a member namespace (carries the membership label+annotation directly —
-# project add-namespace lands in a later commit) and a non-member namespace.
-exec rancher create resource -f ns-member.yaml --cluster testcluster --apply
-exec rancher create resource -f ns-other.yaml --cluster testcluster --apply
+# a namespace born a member (create namespace --project) and a plain one.
+exec rancher create namespace proj-ns-member --project web --cluster testcluster --apply
+exec rancher create namespace proj-ns-other --cluster testcluster --apply
 exec rancher create resource -f cm-member.yaml --cluster testcluster --apply
 exec rancher create resource -f cm-other.yaml --cluster testcluster --apply
 
@@ -25,21 +24,17 @@ jsonquery stderr data.error.code VALIDATION
 ! exec rancher get gitrepos --project web
 jsonquery stderr data.error.code VALIDATION
 
--- ns-member.yaml --
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: proj-ns-member
-  labels:
-    field.cattle.io/projectId: web
-  annotations:
-    field.cattle.io/projectId: c-test:web
+# membership commands: add a second namespace, see it join the membership
+# listing, then remove it again.
+exec rancher create namespace proj-ns-second --cluster testcluster --apply
+exec rancher project add-namespace proj-ns-second --project web --cluster testcluster --apply
+exec rancher get namespaces --project web --cluster testcluster -o json
+jsonquery stdout 'data.#' 2
 
--- ns-other.yaml --
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: proj-ns-other
+exec rancher project remove-namespace proj-ns-second --project web --cluster testcluster --apply
+exec rancher get namespaces --project web --cluster testcluster -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name proj-ns-member
 
 -- cm-member.yaml --
 apiVersion: v1
