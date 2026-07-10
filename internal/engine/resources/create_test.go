@@ -48,7 +48,7 @@ func (c *createClient) Get(context.Context, schema.GroupVersionResource, string,
 func (c *createClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
 }
-func (c *createClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (c *createClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (c *createClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {

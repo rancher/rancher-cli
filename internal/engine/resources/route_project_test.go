@@ -51,7 +51,7 @@ func (c *routeProjectClient) Update(context.Context, schema.GroupVersionResource
 func (c *routeProjectClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
 	return nil
 }
-func (c *routeProjectClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (c *routeProjectClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 

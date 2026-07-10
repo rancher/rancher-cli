@@ -78,7 +78,7 @@ func (m *memberClient) Delete(_ context.Context, _ schema.GroupVersionResource, 
 	return nil
 }
 
-func (m *memberClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (m *memberClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 

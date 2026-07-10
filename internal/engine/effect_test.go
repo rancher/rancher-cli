@@ -28,7 +28,7 @@ func (s *stubClient) Get(context.Context, schema.GroupVersionResource, string, s
 func (s *stubClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
 }
-func (s *stubClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (s *stubClient) Logs(context.Context, string, string, LogOptions) (string, error) {
 	return "", nil
 }
 func (s *stubClient) Create(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {

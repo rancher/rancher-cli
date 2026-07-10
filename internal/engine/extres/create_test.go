@@ -34,7 +34,7 @@ func (f *fakeClient) Get(context.Context, schema.GroupVersionResource, string, s
 func (f *fakeClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
 }
-func (f *fakeClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (f *fakeClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (f *fakeClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

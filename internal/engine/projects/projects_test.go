@@ -27,7 +27,7 @@ func (r *recClient) Get(context.Context, schema.GroupVersionResource, string, st
 func (r *recClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return nil, nil
 }
-func (r *recClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (r *recClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (r *recClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {

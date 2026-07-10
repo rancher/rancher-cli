@@ -80,7 +80,7 @@ func (c *podCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 
 	logs := map[string]string{}
 	for _, cname := range containerNames(pod.Object) {
-		out, lerr := client.Logs(ctx, ns, name, cname, tailLines)
+		out, lerr := client.Logs(ctx, ns, name, engine.LogOptions{Container: cname, TailLines: int64(tailLines)})
 		if lerr != nil {
 			warnings = append(warnings, fmt.Sprintf("logs unavailable for container %s: %v", cname, lerr))
 			continue

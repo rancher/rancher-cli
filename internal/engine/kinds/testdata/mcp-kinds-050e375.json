@@ -2,6 +2,7 @@
   "managementcluster": {"group": "management.cattle.io", "version": "v3", "resource": "clusters"},
   "project":           {"group": "management.cattle.io", "version": "v3", "resource": "projects"},
   "setting":           {"group": "management.cattle.io", "version": "v3", "resource": "settings"},
+  "feature":           {"group": "management.cattle.io", "version": "v3", "resource": "features"},
   "user":              {"group": "management.cattle.io", "version": "v3", "resource": "users"},
   "roletemplate":      {"group": "management.cattle.io", "version": "v3", "resource": "roletemplates"},
   "globalrole":        {"group": "management.cattle.io", "version": "v3", "resource": "globalroles"},

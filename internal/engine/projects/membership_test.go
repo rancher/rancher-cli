@@ -61,7 +61,7 @@ func (m *membershipClient) Delete(context.Context, schema.GroupVersionResource, 
 	return nil
 }
 
-func (m *membershipClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (m *membershipClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 

@@ -1750,6 +1750,39 @@
     },
     {
       "aliases": [
+        "features"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get feature",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List features or show one"
+    },
+    {
+      "aliases": [
         "fleetclusters"
       ],
       "args": [
@@ -3500,6 +3533,52 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a event with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "features"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch feature",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a feature with an RFC 6902 JSON patch"
     },
     {
       "aliases": [

@@ -226,6 +226,17 @@ var table = []Kind{
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
+		// Feature's interesting fields (spec.value, status.default,
+		// status.lockedValue) are BOOLS — blank under the string-only NestedString
+		// column renderer, hence the single DESCRIPTION column; -o json is the
+		// real read.
+		Key: "feature", Name: "feature", Aliases: []string{"features"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
+		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns: []Column{{Header: "DESCRIPTION", Path: []string{"status", "description"}}},
+	},
+	{
 		Key: "user", Name: "user", Aliases: []string{"users"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
 		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: false, Sensitive: true,

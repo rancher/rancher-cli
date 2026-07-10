@@ -53,7 +53,7 @@ func (l *listClient) Delete(context.Context, schema.GroupVersionResource, string
 	return nil
 }
 
-func (l *listClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (l *listClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 

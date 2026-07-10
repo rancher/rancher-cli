@@ -38,7 +38,7 @@ func (d *delClient) Get(context.Context, schema.GroupVersionResource, string, st
 func (d *delClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
 }
-func (d *delClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (d *delClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (d *delClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

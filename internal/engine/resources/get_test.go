@@ -41,7 +41,7 @@ func (m *memClient) List(_ context.Context, _ schema.GroupVersionResource, ns, _
 	m.listNS = append(m.listNS, ns)
 	return &unstructured.UnstructuredList{Items: m.items}, nil
 }
-func (m *memClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (m *memClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (m *memClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,7 +47,7 @@ func (s *seqClient) Update(context.Context, schema.GroupVersionResource, string,
 func (s *seqClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
 	return nil
 }
-func (s *seqClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (s *seqClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 

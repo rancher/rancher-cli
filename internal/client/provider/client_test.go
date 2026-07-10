@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -205,30 +206,71 @@ func TestListPassesLabelSelector(t *testing.T) {
 }
 
 // TestLogsFetchesTail asserts Logs returns the fake clientset's canned log
-// body and requests the given tail line count.
+// body and maps LogOptions onto corev1.PodLogOptions 1:1, including the
+// nil-vs-set SinceSeconds distinction (nil = no limit; *0 = "since now").
 func TestLogsFetchesTail(t *testing.T) {
 	t.Parallel()
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
-	cs := k8sfake.NewClientset(pod)
-	r := &dynamicClient{cs: cs}
 
-	out, err := r.Logs(context.Background(), "ns1", "web", "app", 50)
-	require.NoError(t, err)
-	assert.NotEmpty(t, out)
-
-	found := false
-	for _, a := range cs.Actions() {
-		gen, ok := a.(k8stesting.GenericActionImpl)
-		if !ok || a.GetSubresource() != "log" {
-			continue
+	lastOpts := func(t *testing.T, cs *k8sfake.Clientset) *corev1.PodLogOptions {
+		t.Helper()
+		for _, a := range cs.Actions() {
+			gen, ok := a.(k8stesting.GenericActionImpl)
+			if !ok || a.GetSubresource() != "log" {
+				continue
+			}
+			opts, ok := gen.Value.(*corev1.PodLogOptions)
+			require.True(t, ok)
+			return opts
 		}
-		found = true
-		opts, ok := gen.Value.(*corev1.PodLogOptions)
-		require.True(t, ok)
+		t.Fatal("expected a get pods/log action")
+		return nil
+	}
+
+	t.Run("maps container, tail, previous, timestamps", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		cs := k8sfake.NewClientset(pod)
+		r := &dynamicClient{cs: cs}
+
+		out, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{
+			Container: "app", TailLines: 50, Previous: true, Timestamps: true,
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, out)
+
+		opts := lastOpts(t, cs)
+		assert.Equal(t, "app", opts.Container)
 		require.NotNil(t, opts.TailLines)
 		assert.Equal(t, int64(50), *opts.TailLines)
-	}
-	assert.True(t, found, "expected a get pods/log action")
+		assert.True(t, opts.Previous)
+		assert.True(t, opts.Timestamps)
+		assert.Nil(t, opts.SinceSeconds, "SinceSeconds omitted must stay nil (no limit), not become *0")
+	})
+
+	t.Run("SinceSeconds nil means no limit", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		cs := k8sfake.NewClientset(pod)
+		r := &dynamicClient{cs: cs}
+
+		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app"})
+		require.NoError(t, err)
+		assert.Nil(t, lastOpts(t, cs).SinceSeconds)
+	})
+
+	t.Run("SinceSeconds set is passed through verbatim, including zero", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		cs := k8sfake.NewClientset(pod)
+		r := &dynamicClient{cs: cs}
+		zero := int64(0)
+
+		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app", SinceSeconds: &zero})
+		require.NoError(t, err)
+		got := lastOpts(t, cs).SinceSeconds
+		require.NotNil(t, got)
+		assert.Equal(t, int64(0), *got)
+	})
 }
 
 func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {

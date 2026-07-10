@@ -32,8 +32,20 @@ type ClusterClient interface {
 	Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error)
 	Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error)
 	Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error
-	// Logs fetches the last tailLines lines of a container's log.
-	Logs(ctx context.Context, ns, pod, container string, tailLines int) (string, error)
+	// Logs fetches a container's log per opts.
+	Logs(ctx context.Context, ns, pod string, opts LogOptions) (string, error)
+}
+
+// LogOptions parameterizes a Logs call. SinceSeconds is a pointer because nil
+// (omitted) and *0 (explicit "since now") are different requests — callers
+// that only have a duration string must decide which one they mean before
+// constructing this struct.
+type LogOptions struct {
+	Container    string
+	TailLines    int64
+	SinceSeconds *int64
+	Previous     bool
+	Timestamps   bool
 }
 
 // ClusterClientFactory hands out per-cluster clients at call time (network

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func (p *patchClient) Get(context.Context, schema.GroupVersionResource, string, 
 func (p *patchClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
 }
-func (p *patchClient) Logs(context.Context, string, string, string, int) (string, error) {
+func (p *patchClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
 func (p *patchClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

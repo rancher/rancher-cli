@@ -137,13 +137,19 @@ func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResourc
 	return out, mapErr(err)
 }
 
-// Logs fetches the last tailLines lines of a container's log via the typed
-// clientset (pod logs have no dynamic/unstructured API).
-func (r *dynamicClient) Logs(ctx context.Context, ns, pod, container string, tailLines int) (string, error) {
+// Logs fetches a container's log via the typed clientset (pod logs have no
+// dynamic/unstructured API).
+func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.LogOptions) (string, error) {
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	tl := int64(tailLines)
-	req := r.cs.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{Container: container, TailLines: &tl})
+	tl := opts.TailLines
+	req := r.cs.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{
+		Container:    opts.Container,
+		TailLines:    &tl,
+		SinceSeconds: opts.SinceSeconds,
+		Previous:     opts.Previous,
+		Timestamps:   opts.Timestamps,
+	})
 	b, err := req.DoRaw(ctx)
 	if err != nil {
 		return "", mapErr(err)

@@ -143,11 +143,11 @@ func (f *fakeClient) Delete(context.Context, schema.GroupVersionResource, string
 	return nil
 }
 
-func (f *fakeClient) Logs(_ context.Context, _ string, _ string, container string, _ int) (string, error) {
-	if err, ok := f.logErrs[container]; ok {
+func (f *fakeClient) Logs(_ context.Context, _ string, _ string, opts engine.LogOptions) (string, error) {
+	if err, ok := f.logErrs[opts.Container]; ok {
 		return "", err
 	}
-	return f.logs[container], nil
+	return f.logs[opts.Container], nil
 }
 
 var _ engine.ClusterClient = (*fakeClient)(nil)
