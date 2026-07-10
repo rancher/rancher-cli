@@ -344,7 +344,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
-      "destructive": "false",
+      "destructive": "true",
       "examples": [
         "rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
         "rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply"
@@ -4632,7 +4632,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
-      "destructive": "false",
+      "destructive": "true",
       "examples": [
         "rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply"
       ],

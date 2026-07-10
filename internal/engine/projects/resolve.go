@@ -16,12 +16,34 @@ import (
 // membership (usage.go's mechanism, reused here).
 const projectLabel = "field.cattle.io/projectId"
 
-// ResolveProject maps a project display name or id to its metadata.name,
-// mirroring ResolveCluster's collision semantics exactly (surface/cli's
+// idOrDisplayMatch implements the shared id-or-display-name collision
+// algorithm ResolveProject and resolveUser both need, mirroring
+// ResolveCluster's collision semantics exactly (surface/cli's
 // clientFactory.ResolveCluster): an id match and any display-name matches
 // are collected as a union of candidate ids, not an id-wins short-circuit —
-// a value matching one project's id AND a different project's displayName
-// is ambiguous, not a silent id match.
+// a value matching one item's id AND a different item's displayName is
+// ambiguous, not a silent id match. Callers own the entity-specific error
+// message; this returns the matched id set (0, 1, or 2+) plus idFound and
+// the display-match count for wording it.
+func idOrDisplayMatch(nameOrID string, ids []string, displayOf func(id string) string) (matched []string, idFound bool, displayMatchCount int) {
+	set := map[string]bool{}
+	for _, id := range ids {
+		if id == nameOrID {
+			set[id] = true
+			idFound = true
+		}
+		if displayOf(id) == nameOrID {
+			set[id] = true
+			displayMatchCount++
+		}
+	}
+	for id := range set {
+		matched = append(matched, id)
+	}
+	return matched, idFound, displayMatchCount
+}
+
+// ResolveProject maps a project display name or id to its metadata.name.
 func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, clusterID, nameOrID string) (string, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -33,43 +55,27 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 		return "", err
 	}
 
-	var idMatch string
-	var idFound bool
-	var displayMatches []string
+	var ids []string
+	displayByID := map[string]string{}
 	var cands []clierr.Candidate
 	for i := range list.Items {
 		id := list.Items[i].GetName()
 		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
-		cands = append(cands, clierr.Candidate{ID: id, Name: display})
-		if id == nameOrID {
-			idMatch, idFound = id, true
-		}
-		if display == nameOrID {
-			displayMatches = append(displayMatches, id)
-		}
-	}
-
-	matched := map[string]bool{}
-	if idFound {
-		matched[idMatch] = true
-	}
-	for _, id := range displayMatches {
-		matched[id] = true
-	}
-	var ids []string
-	for id := range matched {
 		ids = append(ids, id)
+		displayByID[id] = display
+		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	switch len(ids) {
+	matched, idFound, displayMatchCount := idOrDisplayMatch(nameOrID, ids, func(id string) string { return displayByID[id] })
+	switch len(matched) {
 	case 1:
-		return ids[0], nil
+		return matched[0], nil
 	case 0:
 		return "", clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID).
 			WithCandidates(cands).
 			WithHint(fmt.Sprintf("run: rancher get projects --cluster %s", clusterID))
 	default:
-		msg := fmt.Sprintf("%d projects have display name %q", len(displayMatches), nameOrID)
+		msg := fmt.Sprintf("%d projects have display name %q", displayMatchCount, nameOrID)
 		if idFound {
 			msg = fmt.Sprintf("%q matches both a project id and a different project's display name", nameOrID)
 		}
@@ -83,21 +89,25 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 // falling back to the project id itself when that field is absent or empty
 // (older Rancher, or a project not yet touched by the propagation
 // controller) — Rancher's own GetProjectBackingNamespace semantics.
-func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, clusterID, projectID string) (string, error) {
+// statusEmpty reports whether that fallback fired, for callers that need to
+// know precisely (a project could coincidentally set backingNamespace to
+// the project id itself; comparing ns == projectID can't distinguish that
+// from an actually-empty status field).
+func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, clusterID, projectID string) (ns string, statusEmpty bool, err error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	projectKind, _ := kinds.Lookup("project")
 	obj, err := client.Get(ctx, projectKind.GVR, clusterID, projectID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	backing, _, _ := unstructured.NestedString(obj.Object, "status", "backingNamespace")
 	if backing == "" {
-		return projectID, nil
+		return projectID, true, nil
 	}
-	return backing, nil
+	return backing, false, nil
 }
 
 // NotMemberError builds the canonical "namespace is not in project"

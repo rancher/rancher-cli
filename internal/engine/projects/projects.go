@@ -36,21 +36,39 @@ func quotaKeysHint() string {
 	return "allowed keys: " + strings.Join(keys, ", ")
 }
 
+// parsePairs is the shared comma-separated k=v parser behind --quota-limit,
+// --namespace-default-quota, and --from-literal: split on ",", then split
+// each pair on the first "=". allowEmptyValue distinguishes quota pairs
+// (v="" is malformed) from literal pairs (v="" is a legitimate blank
+// entry); malformed builds the caller-specific error for a pair missing "="
+// or with an empty key.
+func parsePairs(s string, allowEmptyValue bool, malformed func(pair string) error) (map[string]any, error) {
+	data := map[string]any{}
+	for _, pair := range strings.Split(s, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok || k == "" || (!allowEmptyValue && v == "") {
+			return nil, malformed(pair)
+		}
+		data[k] = v
+	}
+	return data, nil
+}
+
 // parseQuotaPairs parses a comma-separated k=v list into a quota limit map,
 // validating each pair against quotaKeys.
 func parseQuotaPairs(s string) (map[string]any, error) {
-	limit := map[string]any{}
-	for _, pair := range strings.Split(s, ",") {
-		k, v, ok := strings.Cut(pair, "=")
-		if !ok || k == "" || v == "" {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed quota pair %q", pair)).
-				WithHint("pass key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi")
-		}
+	limit, err := parsePairs(s, false, func(pair string) error {
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed quota pair %q", pair)).
+			WithHint("pass key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi")
+	})
+	if err != nil {
+		return nil, err
+	}
+	for k := range limit {
 		if !quotaKeys[k] {
 			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown quota key %q", k)).
 				WithHint(quotaKeysHint())
 		}
-		limit[k] = v
 	}
 	return limit, nil
 }

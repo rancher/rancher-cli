@@ -174,3 +174,59 @@ func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(rendered), literal)
 }
+
+// TestCreateSecretIsDestructive pins the confirmation gate for both routing
+// modes: secret is a Sensitive kind, so create secret must need --yes
+// exactly like the generic create path (resources/create.go).
+func TestCreateSecretIsDestructive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("bare", func(t *testing.T) {
+		t.Parallel()
+		client := &memberClient{}
+		cmd := NewCreateSecret(stubFactory{c: client})
+		eff, _, err := planMember(t, cmd, memberIn{s: map[string]string{"namespace": "team-a", "cluster": "c-x"}, a: []string{"app-secret"}})
+		require.NoError(t, err)
+		assert.True(t, eff.Destructive)
+	})
+
+	t.Run("project-scoped", func(t *testing.T) {
+		t.Parallel()
+		client := &memberClient{
+			projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+			gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
+		}
+		cmd := NewCreateSecret(stubFactory{c: client})
+		eff, _, err := planMember(t, cmd, memberIn{
+			s: map[string]string{"project": "p-1", "cluster": "c-x"},
+			b: map[string]bool{"project-scoped": true},
+			a: []string{"shared-cred"},
+		})
+		require.NoError(t, err)
+		assert.True(t, eff.Destructive)
+	})
+}
+
+// TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNotWarn
+// distinguishes the precise statusEmpty signal from the old ns==projectID
+// heuristic: status.backingNamespace is explicitly SET, coincidentally to
+// the same value as the project id — the old heuristic would misfire a
+// warning here since it can't tell that apart from an empty status field.
+func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNotWarn(t *testing.T) {
+	t.Parallel()
+	client := &memberClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-1")},
+	}
+	cmd := NewCreateSecret(stubFactory{c: client})
+
+	_, exec, err := planMember(t, cmd, memberIn{
+		s: map[string]string{"project": "p-1", "cluster": "c-x"},
+		b: map[string]bool{"project-scoped": true},
+		a: []string{"shared-cred"},
+	})
+	require.NoError(t, err)
+	res, err := exec(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, res.Warnings, "status.backingNamespace was explicitly set (even though it equals the project id) — no propagation warning")
+}

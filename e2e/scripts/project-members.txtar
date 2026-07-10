@@ -22,7 +22,7 @@ exec rancher project add-member alice --project members-proj --role project-memb
 jsonquery stdout data.action create
 stdout projectroletemplatebindings/project-member-
 
-exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --apply
+exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --apply --yes
 
 # the binding carries BOTH userName and userPrincipalName from the one
 # resolved user (PC-7: forecloses Rancher's EnsureUser orphan-mint trap).

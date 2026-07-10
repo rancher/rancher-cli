@@ -178,9 +178,10 @@ func TestBackingNamespaceUsesStatusField(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	ns, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	ns, statusEmpty, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-abc123", ns)
+	assert.False(t, statusEmpty)
 }
 
 func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
@@ -190,9 +191,10 @@ func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	ns, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	ns, statusEmpty, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", ns)
+	assert.True(t, statusEmpty)
 }
 
 var _ engine.ClusterClient = (*listClient)(nil)

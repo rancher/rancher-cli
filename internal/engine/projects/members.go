@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -12,12 +13,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// preferredPrincipal picks the principal userPrincipalName is set from: the
+// first "local://" entry if the user has one (the canonical, auth-provider-
+// independent principal Rancher's own UI treats as primary for internal
+// bindings), else principalIDs[0] as before.
+func preferredPrincipal(principalIDs []string) string {
+	for _, id := range principalIDs {
+		if strings.HasPrefix(id, "local://") {
+			return id
+		}
+	}
+	return principalIDs[0]
+}
+
 // resolveUser maps a user display name or id to its metadata.name plus its
-// principalIds, mirroring ResolveProject's collision semantics exactly: an id
-// match and any display-name matches are collected as a union of candidate
-// ids, not an id-wins short-circuit. The user kind is Management-scoped and
-// NSNone, so the list is cluster-independent (always read via the "local"
-// proxy client).
+// principalIds. The user kind is Management-scoped and NSNone, so the list
+// is cluster-independent (always read via the "local" proxy client).
 func resolveUser(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (id string, principalIDs []string, err error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -29,46 +40,30 @@ func resolveUser(ctx context.Context, clients engine.ClusterClientFactory, nameO
 		return "", nil, err
 	}
 
-	var idMatch string
-	var idFound bool
-	var displayMatches []string
-	var cands []clierr.Candidate
+	var ids []string
+	displayByID := map[string]string{}
 	principalsByID := map[string][]string{}
+	var cands []clierr.Candidate
 	for i := range list.Items {
 		uid := list.Items[i].GetName()
 		display, _, _ := unstructured.NestedString(list.Items[i].Object, "displayName")
+		ids = append(ids, uid)
+		displayByID[uid] = display
 		cands = append(cands, clierr.Candidate{ID: uid, Name: display})
 		pids, _, _ := unstructured.NestedStringSlice(list.Items[i].Object, "principalIds")
 		principalsByID[uid] = pids
-		if uid == nameOrID {
-			idMatch, idFound = uid, true
-		}
-		if display == nameOrID {
-			displayMatches = append(displayMatches, uid)
-		}
 	}
 
-	matched := map[string]bool{}
-	if idFound {
-		matched[idMatch] = true
-	}
-	for _, uid := range displayMatches {
-		matched[uid] = true
-	}
-	var ids []string
-	for uid := range matched {
-		ids = append(ids, uid)
-	}
-
-	switch len(ids) {
+	matched, idFound, displayMatchCount := idOrDisplayMatch(nameOrID, ids, func(id string) string { return displayByID[id] })
+	switch len(matched) {
 	case 1:
-		return ids[0], principalsByID[ids[0]], nil
+		return matched[0], principalsByID[matched[0]], nil
 	case 0:
 		return "", nil, clierr.New(clierr.CodeNotFound, "user not found: "+nameOrID).
 			WithCandidates(cands).
 			WithHint("run: rancher get users")
 	default:
-		msg := fmt.Sprintf("%d users have display name %q", len(displayMatches), nameOrID)
+		msg := fmt.Sprintf("%d users have display name %q", displayMatchCount, nameOrID)
 		if idFound {
 			msg = fmt.Sprintf("%q matches both a user id and a different user's display name", nameOrID)
 		}
@@ -103,7 +98,7 @@ func resolveMemberTarget(ctx context.Context, clients engine.ClusterClientFactor
 	if err != nil {
 		return "", "", "", err
 	}
-	backingNS, err = BackingNamespace(ctx, clients, cluster, projectID)
+	backingNS, _, err = BackingNamespace(ctx, clients, cluster, projectID)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -141,7 +136,7 @@ func (addMemberCmd) Describe() runtime.Descriptor {
 			{Name: "group", Type: "bool"},
 		},
 		Examples:    []string{"rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply"},
-		Destructive: "false",
+		Destructive: "true",
 		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
@@ -185,7 +180,7 @@ func (c addMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect
 				WithHint("pass --group for group principals or fix the user object")
 		}
 		_ = unstructured.SetNestedField(obj.Object, userID, "userName")
-		_ = unstructured.SetNestedField(obj.Object, principalIDs[0], "userPrincipalName")
+		_ = unstructured.SetNestedField(obj.Object, preferredPrincipal(principalIDs), "userPrincipalName")
 	}
 
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
@@ -193,7 +188,18 @@ func (c addMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect
 		return safety.Effect{}, nil, err
 	}
 	prtbKind, _ := kinds.Lookup("projectroletemplatebinding")
-	return engine.PlanCreate(ctx, client, prtbKind.GVR, backingNS, obj, cluster, "ProjectRoleTemplateBinding")
+	eff, exec, err := engine.PlanCreate(ctx, client, prtbKind.GVR, backingNS, obj, cluster, "ProjectRoleTemplateBinding")
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	// A create binding via Sensitive kind needs the destructive gate exactly
+	// like the generic create path (resources/create.go).
+	eff.Destructive = prtbKind.Sensitive
+	// generateName means the dry-run response's name is a real but
+	// throwaway server-assigned suffix that will NOT match the name Execute
+	// gets — show the prefix pattern instead of implying a concrete name.
+	eff.Target = prtbKind.GVR.Resource + "/" + role + "-*"
+	return eff, exec, nil
 }
 
 type removeMemberCmd struct {
@@ -260,18 +266,20 @@ func (c removeMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 
 	var names []string
+	rvByName := map[string]string{}
 	for i := range list.Items {
 		obj := &list.Items[i]
+		var isMatch bool
 		if group {
 			gp, _, _ := unstructured.NestedString(obj.Object, "groupPrincipalName")
-			if gp == principal {
-				names = append(names, obj.GetName())
-			}
-			continue
+			isMatch = gp == principal
+		} else {
+			un, _, _ := unstructured.NestedString(obj.Object, "userName")
+			isMatch = un == userID
 		}
-		un, _, _ := unstructured.NestedString(obj.Object, "userName")
-		if un == userID {
+		if isMatch {
 			names = append(names, obj.GetName())
+			rvByName[obj.GetName()] = obj.GetResourceVersion()
 		}
 	}
 
@@ -281,22 +289,27 @@ func (c removeMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 			WithHint("run: rancher get projectroletemplatebindings --namespace " + backingNS + " -o json")
 	}
 
-	// Admission preview: a server-side dry-run delete on every match surfaces
-	// RBAC/webhook denials before the user confirms.
+	// Admission preview: a server-side dry-run delete on every match, with
+	// each one's own resourceVersion precondition, surfaces RBAC/webhook
+	// denials and stale-object conflicts before the user confirms.
 	for _, name := range names {
-		if err := client.Delete(ctx, prtbKind.GVR, backingNS, name, "", true); err != nil {
+		if err := client.Delete(ctx, prtbKind.GVR, backingNS, name, rvByName[name], true); err != nil {
 			return safety.Effect{}, nil, err
 		}
 	}
 
 	target := fmt.Sprintf("%s/%s", prtbKind.GVR.Resource, names[0])
+	var rv string
 	if len(names) > 1 {
 		target = fmt.Sprintf("%s (%d) for %s", prtbKind.GVR.Resource, len(names), principal)
+	} else {
+		rv = rvByName[names[0]]
 	}
 	eff := safety.Effect{
 		Action:            safety.ActionDelete,
 		Target:            target,
 		Cluster:           cluster,
+		ResourceVersion:   rv,
 		ConflictDetection: len(names) == 1,
 		Reversible:        false,
 		Destructive:       true,
@@ -304,7 +317,7 @@ func (c removeMemberCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		deleted := make([]string, 0, len(names))
 		for _, name := range names {
-			if err := client.Delete(ctx, prtbKind.GVR, backingNS, name, "", false); err != nil {
+			if err := client.Delete(ctx, prtbKind.GVR, backingNS, name, rvByName[name], false); err != nil {
 				return runtime.Result{}, err
 			}
 			deleted = append(deleted, name)

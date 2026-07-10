@@ -3,7 +3,6 @@ package projects
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -19,20 +18,13 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 
 // parseLiteralPairs parses a comma-separated k=v list for --from-literal.
 // Unlike quota pairs, an empty value is valid (e.g. an intentionally blank
-// secret entry); only a missing "=" or empty key is malformed. Values
-// containing a comma can't be expressed this way — the VALIDATION hint
-// points at create resource -f instead.
+// secret entry). Values containing a comma can't be expressed this way —
+// the VALIDATION hint points at create resource -f instead.
 func parseLiteralPairs(s string) (map[string]any, error) {
-	data := map[string]any{}
-	for _, pair := range strings.Split(s, ",") {
-		k, v, ok := strings.Cut(pair, "=")
-		if !ok || k == "" {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed --from-literal pair %q", pair)).
-				WithHint("pass key=value pairs; for values containing a comma use `create resource -f` instead")
-		}
-		data[k] = v
-	}
-	return data, nil
+	return parsePairs(s, true, func(pair string) error {
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed --from-literal pair %q", pair)).
+			WithHint("pass key=value pairs; for values containing a comma use `create resource -f` instead")
+	})
 }
 
 type createSecretCmd struct {
@@ -67,7 +59,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 			"rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
 			"rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply",
 		},
-		Destructive: "false",
+		Destructive: "true",
 		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
@@ -117,7 +109,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		backingNS, err := BackingNamespace(ctx, c.clients, cluster, projectID)
+		backingNS, statusEmpty, err := BackingNamespace(ctx, c.clients, cluster, projectID)
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
@@ -144,7 +136,10 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		if backingNS == projectID {
+		// A create secret via Sensitive kind needs the destructive gate
+		// exactly like the generic create path (resources/create.go).
+		eff.Destructive = secretKind.Sensitive
+		if statusEmpty {
 			// status.backingNamespace was absent/empty; the fallback still
 			// writes to a namespace, but propagation only works there on
 			// Rancher 2.12+ (spec PC-9).
@@ -182,5 +177,10 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, cluster, "Secret")
+	eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, cluster, "Secret")
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	eff.Destructive = secretKind.Sensitive
+	return eff, exec, nil
 }

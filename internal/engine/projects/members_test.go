@@ -31,6 +31,7 @@ type memberClient struct {
 
 	deletedNames  []string
 	deletedNS     []string
+	deletedRVs    []string
 	deleteDryRuns []bool
 }
 
@@ -69,9 +70,10 @@ func (m *memberClient) Update(context.Context, schema.GroupVersionResource, stri
 	return nil, nil
 }
 
-func (m *memberClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
+func (m *memberClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
 	m.deletedNames = append(m.deletedNames, name)
 	m.deletedNS = append(m.deletedNS, ns)
+	m.deletedRVs = append(m.deletedRVs, rv)
 	m.deleteDryRuns = append(m.deleteDryRuns, dryRun)
 	return nil
 }
@@ -96,7 +98,7 @@ func userObj(id, display string, principalIDs ...string) unstructured.Unstructur
 }
 
 func prtbObj(name, userName, groupPrincipalName string) unstructured.Unstructured {
-	obj := unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
+	obj := unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name, "resourceVersion": name + "-rv"}}}
 	if userName != "" {
 		_ = unstructured.SetNestedField(obj.Object, userName, "userName")
 	}
@@ -257,11 +259,14 @@ func TestRemoveMemberSingleMatchDeletes(t *testing.T) {
 	assert.Equal(t, safety.ActionDelete, eff.Action)
 	assert.True(t, eff.Destructive)
 	assert.Equal(t, "projectroletemplatebindings/prtb-1", eff.Target)
+	assert.Equal(t, "prtb-1-rv", eff.ResourceVersion)
 	assert.Equal(t, []bool{true}, client.deleteDryRuns, "Plan dry-runs the admission preview")
+	assert.Equal(t, []string{"prtb-1-rv"}, client.deletedRVs, "the dry-run preview carries the object's real resourceVersion, not empty")
 
 	res, err := exec(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"prtb-1", "prtb-1"}, client.deletedNames, "dry-run preview, then the real delete")
+	assert.Equal(t, []string{"prtb-1-rv", "prtb-1-rv"}, client.deletedRVs, "the real delete also carries the precondition — a concurrent modification must surface as a conflict")
 	deleted, _ := res.Data.(map[string]any)["deleted"].([]string)
 	assert.Equal(t, []string{"prtb-1"}, deleted)
 }
@@ -307,6 +312,73 @@ func TestRemoveMemberGroupPassthrough(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "projectroletemplatebindings/prtb-g", eff.Target)
+}
+
+// TestAddMemberIsDestructive pins the confirmation gate: projectroletemplatebinding
+// is a Sensitive kind, so add-member must need --yes exactly like the
+// generic create path (resources/create.go) — a create Effect isn't
+// automatically non-destructive just because engine.PlanCreate defaults it
+// to false.
+func TestAddMemberIsDestructive(t *testing.T) {
+	t.Parallel()
+	client := &memberClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		users:    &unstructured.UnstructuredList{Items: []unstructured.Unstructured{userObj("u-1", "alice", "local://u-1")}},
+		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
+	}
+	cmd := NewAddMember(stubFactory{c: client})
+
+	eff, _, err := planMember(t, cmd, memberIn{s: map[string]string{"project": "p-1", "cluster": "c-x", "role": "project-member"}, a: []string{"alice"}})
+	require.NoError(t, err)
+	assert.True(t, eff.Destructive)
+}
+
+// TestAddMemberDryRunTargetIsPrefixNotConcreteName pins that the previewed
+// Target never implies a name the server will actually assign: obj uses
+// generateName, so a real server's dry-run response carries a throwaway
+// random suffix that Execute's separate create call will never reproduce.
+func TestAddMemberDryRunTargetIsPrefixNotConcreteName(t *testing.T) {
+	t.Parallel()
+	client := &memberClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		users:    &unstructured.UnstructuredList{Items: []unstructured.Unstructured{userObj("u-1", "alice", "local://u-1")}},
+		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
+	}
+	cmd := NewAddMember(stubFactory{c: client})
+
+	eff, _, err := planMember(t, cmd, memberIn{s: map[string]string{"project": "p-1", "cluster": "c-x", "role": "project-member"}, a: []string{"alice"}})
+	require.NoError(t, err)
+	assert.Equal(t, "projectroletemplatebindings/project-member-*", eff.Target)
+}
+
+func TestAddMemberPrefersLocalPrincipal(t *testing.T) {
+	t.Parallel()
+	client := &memberClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		users:    &unstructured.UnstructuredList{Items: []unstructured.Unstructured{userObj("u-1", "alice", "activedirectory_user://CN=alice", "local://u-1")}},
+		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
+	}
+	cmd := NewAddMember(stubFactory{c: client})
+
+	_, _, err := planMember(t, cmd, memberIn{s: map[string]string{"project": "p-1", "cluster": "c-x", "role": "project-member"}, a: []string{"alice"}})
+	require.NoError(t, err)
+	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.Equal(t, "local://u-1", upn, "prefers the local:// principal over principalIDs[0]")
+}
+
+func TestAddMemberFallsBackToFirstPrincipalWhenNoLocal(t *testing.T) {
+	t.Parallel()
+	client := &memberClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		users:    &unstructured.UnstructuredList{Items: []unstructured.Unstructured{userObj("u-1", "alice", "activedirectory_user://CN=alice", "github_user://alice")}},
+		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
+	}
+	cmd := NewAddMember(stubFactory{c: client})
+
+	_, _, err := planMember(t, cmd, memberIn{s: map[string]string{"project": "p-1", "cluster": "c-x", "role": "project-member"}, a: []string{"alice"}})
+	require.NoError(t, err)
+	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.Equal(t, "activedirectory_user://CN=alice", upn, "no local:// entry falls back to principalIDs[0]")
 }
 
 var _ engine.ClusterClient = (*memberClient)(nil)
