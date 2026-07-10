@@ -31,6 +31,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--debug", Type: "bool", AppliesTo: "all"},
 		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; flag > RANCHER_CONTEXT > config; project axis is informational only"},
 		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag > context; VALIDATION where it does not apply"},
+		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_READONLY)"},
 	}
 }
 
@@ -92,12 +93,21 @@ func effectSchema() EffectSchema {
 
 // Manifest is the full `rancher schema` output.
 type Manifest struct {
-	CLIVersion       string          `json:"cliVersion"`
-	OutputAPIVersion string          `json:"outputApiVersion"`
-	ErrorCodes       []string        `json:"errorCodes"`
-	GlobalFlags      []GlobalFlag    `json:"globalFlags"`
-	EffectSchema     EffectSchema    `json:"effectSchema"`
-	Commands         []SchemaCommand `json:"commands"`
+	CLIVersion string `json:"cliVersion"`
+	// MinRancherVersion is the CLI's declared minimum supported server
+	// version (PS-8, warn-only floor); always present.
+	MinRancherVersion string `json:"minRancherVersion"`
+	OutputAPIVersion  string `json:"outputApiVersion"`
+	// ReadOnly reports this invocation's resolved read-only state (config +
+	// env + flag OR'd) — an agent reading the manifest sees the session
+	// cannot mutate BEFORE trying. ReadOnlySources names the active
+	// source(s); empty when ReadOnly is false.
+	ReadOnly        bool            `json:"readOnly"`
+	ReadOnlySources []string        `json:"readOnlySources,omitempty"`
+	ErrorCodes      []string        `json:"errorCodes"`
+	GlobalFlags     []GlobalFlag    `json:"globalFlags"`
+	EffectSchema    EffectSchema    `json:"effectSchema"`
+	Commands        []SchemaCommand `json:"commands"`
 }
 
 // Resolver maps operation names to their current tier binding. provider
@@ -155,14 +165,20 @@ func (reg *Registry) Validate() error {
 	return nil
 }
 
-// Schema assembles the manifest, merging each Descriptor with the resolver tier.
-func (reg *Registry) Schema(cliVersion string) Manifest {
+// Schema assembles the manifest, merging each Descriptor with the resolver
+// tier. minRancherVersion is threaded through from the caller (like
+// cliVersion) rather than imported: internal/runtime must not import
+// internal/config, where the const lives. ReadOnly/ReadOnlySources are left
+// at their zero value here — that state is per-invocation, not registry
+// data; the schema command overlays it after calling Schema.
+func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 	m := Manifest{
-		CLIVersion:       cliVersion,
-		OutputAPIVersion: output.APIVersion,
-		ErrorCodes:       clierr.AllCodes(),
-		GlobalFlags:      GlobalFlags(),
-		EffectSchema:     effectSchema(),
+		CLIVersion:        cliVersion,
+		MinRancherVersion: minRancherVersion,
+		OutputAPIVersion:  output.APIVersion,
+		ErrorCodes:        clierr.AllCodes(),
+		GlobalFlags:       GlobalFlags(),
+		EffectSchema:      effectSchema(),
 	}
 	for _, c := range reg.cmds {
 		d := c.Describe()

@@ -50,6 +50,33 @@ func TestCreateResourceShortFlag(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "Widget")
 }
 
+// TestReadOnlyModeRefusesMutatingBeforeDispatch proves the read-only gate
+// fires from the real urfave tree, before Plan (which performs real network
+// calls unconditionally) ever runs — no -f/--apply is supplied, so if the
+// gate did not fire first, some other VALIDATION (missing input) would
+// surface instead.
+func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_READONLY", "1")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	var out, errBuf bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errBuf
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+	runErr := root.Run(context.Background(), []string{"rancher", "--config", dir, "create", "resource"})
+	require.Error(t, runErr)
+
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, "read-only mode")
+	assert.Contains(t, env.Data.Error.Message, "create resource")
+}
+
 // TestPatchShortFlag exercises the real urfave tree: `patch pod web -f ops.json`
 // must parse the `-f` alias on a generated patch command. The missing file is a
 // VALIDATION error, proving the alias reached the leaf (the flag parsed at all).

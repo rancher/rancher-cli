@@ -5434,7 +5434,15 @@
       "desc": "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag \u003e context; VALIDATION where it does not apply",
       "name": "--project",
       "type": "string"
+    },
+    {
+      "appliesTo": "mutating",
+      "desc": "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_READONLY)",
+      "name": "--read-only",
+      "type": "bool"
     }
   ],
-  "outputApiVersion": "cli.rancher.io/v1"
+  "minRancherVersion": "2.14",
+  "outputApiVersion": "cli.rancher.io/v1",
+  "readOnly": false
 }

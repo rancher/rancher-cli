@@ -46,6 +46,10 @@ type Config struct {
 	Contexts        map[string]Context `json:"contexts,omitempty"`
 	Servers         map[string]Server  `json:"servers,omitempty"`
 	CredentialStore string             `json:"credentialStore,omitempty"`
+	// ReadOnly is one of the three OR'd sources (config/env/flag) that put a
+	// session into read-only mode — see runtime.IO.ReadOnly. One-way: there
+	// is no per-invocation override to turn this back off from here.
+	ReadOnly bool `json:"readOnly,omitempty"`
 
 	path string
 }

@@ -66,6 +66,104 @@ func decodeEnvelope(t *testing.T, b []byte) map[string]any {
 	return env
 }
 
+// refusingPlanMutating fails the test if Plan is ever invoked — used to
+// prove the read-only gate refuses a mutating command BEFORE dispatch, since
+// Plan performs real network calls unconditionally (including for
+// --dry-run).
+type refusingPlanMutating struct {
+	d Descriptor
+	t *testing.T
+}
+
+func (r refusingPlanMutating) Describe() Descriptor { return r.d }
+func (r refusingPlanMutating) Plan(context.Context, Input) (safety.Effect, ExecuteFunc, error) {
+	r.t.Helper()
+	r.t.Fatal("Plan must not be called when read-only mode refuses a mutating command")
+	return safety.Effect{}, nil, nil
+}
+
+func TestRunRefusesMutatingUnderReadOnly(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		sources []string
+	}{
+		{"config only", []string{"config readOnly"}},
+		{"env only", []string{"RANCHER_READONLY"}},
+		{"flag only", []string{"--read-only"}},
+		{"config and env", []string{"config readOnly", "RANCHER_READONLY"}},
+		{"all three", []string{"config readOnly", "RANCHER_READONLY", "--read-only"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
+			var out, errBuf bytes.Buffer
+			ce := Run(context.Background(), cmd, mapInput{},
+				IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: tc.sources},
+				safety.Binding{})
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, "read-only mode:")
+			assert.Contains(t, ce.Message, "clusters scale")
+			for _, s := range tc.sources {
+				assert.Contains(t, ce.Hint, s, "hint must name every active read-only source")
+			}
+		})
+	}
+}
+
+func TestRunRefusesMutatingDryRunUnderReadOnly(t *testing.T) {
+	t.Parallel()
+	cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"--read-only"}, DryRun: true},
+		safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code,
+		"read-only refusal must win over dry-run-not-applicable; a mutating --dry-run still sends write-verb admission requests")
+}
+
+func TestRunReadOnlyCommandUnaffectedByReadOnlyMode(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly}, res: Result{Kind: "Thing"}}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"--read-only"}},
+		safety.Binding{})
+	require.Nil(t, ce)
+}
+
+func TestRunLocalCommandUnaffectedByReadOnlyMode(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{d: Descriptor{Name: "auth login", CommandType: Local}, res: Result{Kind: "LoginResult"}}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"RANCHER_READONLY"}},
+		safety.Binding{})
+	require.Nil(t, ce)
+}
+
+func TestRunMutatingUnaffectedWhenReadOnlyFalse(t *testing.T) {
+	t.Parallel()
+	called := 0
+	cmd := fakeMutating{
+		d:   mutatingDesc(),
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x"},
+		exec: func(context.Context) (Result, error) {
+			called++
+			return Result{Kind: "ScaleResult"}, nil
+		},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, // ReadOnly defaults false
+		safety.Binding{})
+	require.Nil(t, ce)
+	assert.Equal(t, 1, called)
+}
+
 func TestRunRejectsInvalidAction(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{

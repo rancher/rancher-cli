@@ -11,13 +11,21 @@ import (
 // schemaCmd emits the capability manifest. It is readOnly (produces no server
 // mutation) and needs no auth.
 type schemaCmd struct {
-	reg        *Registry
-	cliVersion string
+	reg               *Registry
+	cliVersion        string
+	minRancherVersion string
+	// readOnly resolves this invocation's read-only state (config + env +
+	// flag OR'd) at Execute time. schema is wired via Adapt, which never
+	// calls resolveDeps, so it has no other way to see --config/--read-only
+	// or the loaded config — surface/cli hands over the SAME resolution
+	// buildIO uses for every other command (one resolver, two consumers).
+	// nil is treated as "inactive" (registry_test's stub registrations).
+	readOnly func() (bool, []string)
 }
 
 // NewSchemaCommand builds the `schema` command bound to a registry.
-func NewSchemaCommand(reg *Registry, cliVersion string) Command {
-	return &schemaCmd{reg: reg, cliVersion: cliVersion}
+func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string, readOnly func() (bool, []string)) Command {
+	return &schemaCmd{reg: reg, cliVersion: cliVersion, minRancherVersion: minRancherVersion, readOnly: readOnly}
 }
 
 func (s *schemaCmd) Describe() Descriptor {
@@ -32,7 +40,10 @@ func (s *schemaCmd) Describe() Descriptor {
 }
 
 func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, error) {
-	m := s.reg.Schema(s.cliVersion)
+	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
+	if s.readOnly != nil {
+		m.ReadOnly, m.ReadOnlySources = s.readOnly()
+	}
 	if len(in.Args()) == 0 {
 		return Result{Kind: "Schema", Data: m}, nil
 	}

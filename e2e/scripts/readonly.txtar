@@ -1,0 +1,33 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# PS-5: RANCHER_READONLY is non-empty (including the string "false", per the
+# one-way env rule) -> every Mutating command is refused before any network
+# call — no -f/--cluster/--apply needed, since the gate fires ahead of
+# validateInput and Plan alike.
+env RANCHER_READONLY=false
+! exec rancher create resource
+jsonquery stderr data.error.code VALIDATION
+stderr 'read-only mode: create resource is a mutating command'
+stderr 'RANCHER_READONLY'
+
+# a read command is unaffected by read-only mode
+exec rancher get configmaps --cluster testcluster --namespace default -o json
+
+# schema -o json advertises the active env-sourced state
+exec rancher schema -o json
+jsonquery stdout data.readOnly true
+jsonquery stdout 'data.readOnlySources.#' 1
+jsonquery stdout data.readOnlySources.0 RANCHER_READONLY
+
+env RANCHER_READONLY=
+
+# external-review regression: schema is wired via Adapt, which never calls
+# resolveDeps, so a config-file-sourced readOnly must still reach the
+# manifest — not just env/flag sources.
+exec rancher --config ro-config schema -o json
+jsonquery stdout data.readOnly true
+jsonquery stdout data.readOnlySources.0 'config readOnly'
+
+-- ro-config/config.yaml --
+readOnly: true

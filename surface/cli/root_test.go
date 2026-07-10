@@ -190,6 +190,34 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	data := m["data"].(map[string]any)
 	assert.Equal(t, "cli.rancher.io/v1", data["outputApiVersion"])
 	assert.NotEmpty(t, data["globalFlags"])
+	assert.Equal(t, config.MinRancherVersion, data["minRancherVersion"])
+	assert.Equal(t, false, data["readOnly"], "no config/env/flag read-only source is active for this invocation")
+}
+
+// TestSchemaReportsConfigSourcedReadOnly is the external-review regression:
+// the schema command sits on the Adapt path that never calls resolveDeps, so
+// a config-file-sourced readOnly must still reach the manifest — not just
+// env/flag sources.
+func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data struct {
+			ReadOnly        bool     `json:"readOnly"`
+			ReadOnlySources []string `json:"readOnlySources"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	assert.True(t, env.Data.ReadOnly)
+	assert.Contains(t, env.Data.ReadOnlySources, "config readOnly")
 }
 
 // DR-006 repro: an unknown top-level command or an unknown kind under a group

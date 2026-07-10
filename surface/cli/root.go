@@ -170,7 +170,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// than in buildEntries — the same reason schema.go's fixed command is
 	// built inline below instead of through the declarative table.
 	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
-		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version) })
+		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version, config.MinRancherVersion) })
 	}})
 
 	groups := map[string][]*ucli.Command{}
@@ -186,8 +186,11 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		groups[e.group] = append(groups[e.group], leaf)
 	}
 
-	// schema is a fixed command backed by the registry (no dir/store, no binding).
-	schemaCmd := runtime.NewSchemaCommand(reg, version)
+	// schema is a fixed command backed by the registry (no dir/store, no
+	// binding). Its read-only resolver is config.ReadOnlyOverride itself —
+	// the process-wide stash root's Before hook populates below, using the
+	// SAME resolution buildIO reads for every other command.
+	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, config.ReadOnlyOverride)
 	reg.Register(schemaCmd)
 
 	if err := reg.Validate(); err != nil {
@@ -211,6 +214,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
 			config.SetContextOverride(c.String("context"))
+			config.SetReadOnlyOverride(resolveReadOnly(c))
 			return ctx, nil
 		},
 		Commands: commandsList,

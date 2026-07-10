@@ -24,8 +24,10 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 	reg.Register(fakeRead{d: Descriptor{Name: "widgets set", CommandType: Local,
 		Flags: []ArgSpec{{Name: "token", Type: "string", Required: true}}}})
 
-	m := reg.Schema("v-test")
+	m := reg.Schema("v-test", "2.14")
 	assert.Equal(t, "cli.rancher.io/v1", m.OutputAPIVersion)
+	assert.Equal(t, "2.14", m.MinRancherVersion)
+	assert.False(t, m.ReadOnly, "readOnly defaults false; Schema itself carries no invocation state")
 	assert.NotEmpty(t, m.ErrorCodes)
 	assert.NotEmpty(t, m.GlobalFlags)
 

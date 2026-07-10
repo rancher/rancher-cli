@@ -267,3 +267,16 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 		assert.Empty(t, eff.Project, "a trailing colon must clear the project even though the file/context has one")
 	})
 }
+
+func TestReadOnlyOverrideStash(t *testing.T) {
+	t.Cleanup(func() { SetReadOnlyOverride(false, nil) })
+
+	active, sources := ReadOnlyOverride()
+	assert.False(t, active, "default stash state is inactive")
+	assert.Empty(t, sources)
+
+	SetReadOnlyOverride(true, []string{"config readOnly", "--read-only"})
+	active, sources = ReadOnlyOverride()
+	assert.True(t, active)
+	assert.Equal(t, []string{"config readOnly", "--read-only"}, sources)
+}

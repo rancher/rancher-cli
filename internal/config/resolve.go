@@ -208,3 +208,28 @@ func SetContextOverride(contextVal string) {
 func ContextOverride() string {
 	return contextOverride
 }
+
+// readOnlyActive and readOnlySources carry the process-wide resolved
+// read-only state (config readOnly + RANCHER_READONLY env + --read-only
+// flag, OR'd together), set once by the CLI adapter's root Before hook
+// before any command dispatches — the same stash pattern as contextOverride
+// above. internal/runtime must not import internal/config, so the runtime
+// pipeline and the schema command never call this directly: surface/cli
+// reads it into runtime.IO.ReadOnly, and passes ReadOnlyOverride itself as
+// the schema command's resolver function.
+var (
+	readOnlyActive  bool
+	readOnlySources []string
+)
+
+// SetReadOnlyOverride records the resolved read-only state for this process.
+func SetReadOnlyOverride(active bool, sources []string) {
+	readOnlyActive = active
+	readOnlySources = sources
+}
+
+// ReadOnlyOverride returns the recorded read-only state (see
+// SetReadOnlyOverride).
+func ReadOnlyOverride() (bool, []string) {
+	return readOnlyActive, readOnlySources
+}

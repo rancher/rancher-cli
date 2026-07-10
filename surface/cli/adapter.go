@@ -29,6 +29,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
 		&ucli.StringFlag{Name: "context", Usage: "scope this invocation to cluster[:project] for server operations (overrides RANCHER_CONTEXT and the current context); a trailing colon (cluster:) clears the project; the project axis is informational only"},
 		&ucli.StringFlag{Name: "project", Usage: "scope server operations to a project's namespaces (Downstream namespaced kinds only)"},
+		&ucli.BoolFlag{Name: "read-only", Usage: "refuse mutating commands for this session (one-way; also set via config readOnly or a non-empty RANCHER_READONLY)"},
 	}
 }
 
@@ -85,6 +86,7 @@ func buildIO(c *ucli.Command) runtime.IO {
 	if fp, ok := in.(*os.File); ok {
 		isTTY = term.IsTerminal(int(fp.Fd()))
 	}
+	readOnly, readOnlySources := config.ReadOnlyOverride()
 	return runtime.IO{
 		Out:             r.Writer,
 		Err:             r.ErrWriter,
@@ -96,7 +98,33 @@ func buildIO(c *ucli.Command) runtime.IO {
 		AllowDeprecated: c.Bool("allow-deprecated"),
 		NoInput:         c.Bool("no-input"),
 		IsTTY:           isTTY,
+		ReadOnly:        readOnly,
+		ReadOnlySources: readOnlySources,
 	}
+}
+
+// resolveReadOnly OR's the three read-only sources — config, env, flag —
+// into one bool plus the active source name(s), for the read-only-mode
+// refusal hint. It re-loads the config file directly (config.ResolveDir + a
+// plain config.Load, no credential store / migration side effects) so it
+// can run standalone from root's Before hook, ahead of any command's own
+// resolveDeps. A config load failure here degrades to "config source
+// inactive" rather than failing the whole invocation — resolveDeps already
+// enforces the config file for every command that actually needs it.
+func resolveReadOnly(c *ucli.Command) (bool, []string) {
+	var sources []string
+	if dir, err := config.ResolveDir(c.String("config")); err == nil {
+		if cfg, err := config.Load(config.FilePath(dir)); err == nil && cfg.ReadOnly {
+			sources = append(sources, "config readOnly")
+		}
+	}
+	if os.Getenv("RANCHER_READONLY") != "" {
+		sources = append(sources, "RANCHER_READONLY")
+	}
+	if c.Bool("read-only") {
+		sources = append(sources, "--read-only")
+	}
+	return len(sources) > 0, sources
 }
 
 // Adapt wraps a fixed runtime.Command that needs no per-run config dir/store

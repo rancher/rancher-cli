@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -85,6 +86,79 @@ func TestResolveDepsGuardsMigrationForOverriddenDir(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(freshDir, "config.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "must not migrate into an explicitly overridden config dir")
 	assert.Empty(t, buf.String(), "an explicitly overridden config dir must stay silent — no notice to corrupt a scripted session's stderr JSON")
+}
+
+// resolveReadOnlyFlags is the minimal flag set resolveReadOnly reads from.
+func resolveReadOnlyFlags() []ucli.Flag {
+	return []ucli.Flag{&ucli.StringFlag{Name: "config"}, &ucli.BoolFlag{Name: "read-only"}}
+}
+
+func runResolveReadOnly(t *testing.T, argv []string) (bool, []string) {
+	t.Helper()
+	var gotActive bool
+	var gotSources []string
+	cmd := &ucli.Command{
+		Name:  "x",
+		Flags: resolveReadOnlyFlags(),
+		Action: func(_ context.Context, c *ucli.Command) error {
+			gotActive, gotSources = resolveReadOnly(c)
+			return nil
+		},
+	}
+	require.NoError(t, cmd.Run(context.Background(), argv))
+	return gotActive, gotSources
+}
+
+func TestResolveReadOnlyNoSourcesActive(t *testing.T) {
+	active, sources := runResolveReadOnly(t, []string{"x", "--config", t.TempDir()})
+	assert.False(t, active)
+	assert.Empty(t, sources)
+}
+
+func TestResolveReadOnlyFlagSource(t *testing.T) {
+	active, sources := runResolveReadOnly(t, []string{"x", "--config", t.TempDir(), "--read-only"})
+	assert.True(t, active)
+	assert.Equal(t, []string{"--read-only"}, sources)
+}
+
+func TestResolveReadOnlyEnvSourceNonEmptyIncludingFalse(t *testing.T) {
+	t.Setenv("RANCHER_READONLY", "false")
+	active, sources := runResolveReadOnly(t, []string{"x", "--config", t.TempDir()})
+	assert.True(t, active, "RANCHER_READONLY=false is still non-empty, so the one-way rule turns read-only ON")
+	assert.Equal(t, []string{"RANCHER_READONLY"}, sources)
+}
+
+func TestResolveReadOnlyConfigSource(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
+	active, sources := runResolveReadOnly(t, []string{"x", "--config", dir})
+	assert.True(t, active)
+	assert.Equal(t, []string{"config readOnly"}, sources)
+}
+
+func TestResolveReadOnlyAllThreeCombineOrdered(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
+	t.Setenv("RANCHER_READONLY", "1")
+	_, sources := runResolveReadOnly(t, []string{"x", "--config", dir, "--read-only"})
+	assert.Equal(t, []string{"config readOnly", "RANCHER_READONLY", "--read-only"}, sources)
+}
+
+func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
+	t.Cleanup(func() { config.SetReadOnlyOverride(false, nil) })
+	config.SetReadOnlyOverride(true, []string{"RANCHER_READONLY"})
+
+	var got runtime.IO
+	cmd := &ucli.Command{
+		Name: "x",
+		Action: func(_ context.Context, c *ucli.Command) error {
+			got = buildIO(c)
+			return nil
+		},
+	}
+	require.NoError(t, cmd.Run(context.Background(), []string{"x"}))
+	assert.True(t, got.ReadOnly)
+	assert.Equal(t, []string{"RANCHER_READONLY"}, got.ReadOnlySources)
 }
 
 func TestResolveDepsMigratesIntoDefaultDir(t *testing.T) {

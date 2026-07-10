@@ -31,6 +31,17 @@ func TestWriteThenLoadRoundTrip(t *testing.T) {
 	assert.Equal(t, "https://rancher.example.com", got.Servers["acme"].URL)
 }
 
+func TestReadOnlyFieldRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	path := FilePath(dir)
+	c := &Config{ReadOnly: true, Contexts: map[string]Context{}, Servers: map[string]Server{}, path: path}
+	require.NoError(t, c.Write())
+
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.True(t, got.ReadOnly)
+}
+
 func TestLoadMissingFileReturnsEmpty(t *testing.T) {
 	got, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
 	require.NoError(t, err)

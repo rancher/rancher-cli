@@ -21,7 +21,7 @@ func TestSchemaFilter(t *testing.T) {
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{Name: "get pod", Aliases: []string{"pods"}, CommandType: ReadOnly}})
 	reg.Register(fakeRead{d: Descriptor{Name: "auth login", CommandType: Local}})
-	cmd := NewSchemaCommand(reg, "test")
+	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 
 	t.Run("no args returns the full manifest", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
@@ -51,4 +51,33 @@ func TestSchemaFilter(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
+}
+
+func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get pod", CommandType: ReadOnly}})
+	cmd := NewSchemaCommand(reg, "test", "2.14", func() (bool, []string) {
+		return true, []string{"config readOnly"}
+	})
+
+	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+	require.NoError(t, err)
+	m := res.Data.(Manifest)
+	assert.True(t, m.ReadOnly)
+	assert.Equal(t, []string{"config readOnly"}, m.ReadOnlySources)
+	assert.Equal(t, "2.14", m.MinRancherVersion)
+}
+
+func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get pod", CommandType: ReadOnly}})
+	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+
+	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+	require.NoError(t, err)
+	m := res.Data.(Manifest)
+	assert.False(t, m.ReadOnly)
+	assert.Empty(t, m.ReadOnlySources)
 }

@@ -27,6 +27,17 @@ type IO struct {
 	NoInput         bool
 	IsTTY           bool
 
+	// ReadOnly is the OR of three sources — config `readOnly: true`, a
+	// non-empty RANCHER_READONLY, and --read-only — resolved once per
+	// invocation by the CLI adapter. Strictly one-way: no flag disables a
+	// config/env-sourced read-only. Run refuses every Mutating command
+	// while it is set, before Plan (which sends real write-verb requests
+	// unconditionally, including for --dry-run).
+	ReadOnly bool
+	// ReadOnlySources names the active source(s) ("config readOnly",
+	// "RANCHER_READONLY", "--read-only") for the refusal hint.
+	ReadOnlySources []string
+
 	// ServerIdentity, when set, resolves the server name for Effect.Server
 	// stamping after a successful Plan. AdaptEngine wires the factory's
 	// Identity; other adapters leave it nil.
@@ -39,6 +50,12 @@ type IO struct {
 // command are overwritten, never trusted.
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) *clierr.Error {
 	d := cmd.Describe()
+
+	if d.CommandType == Mutating && streams.ReadOnly {
+		return renderErr(streams, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("read-only mode: %s is a mutating command", d.Name)).
+			WithHint("enabled by "+strings.Join(streams.ReadOnlySources, ", ")))
+	}
 
 	if streams.DryRun && d.CommandType != Mutating {
 		return renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
