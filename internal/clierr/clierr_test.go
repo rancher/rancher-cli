@@ -43,3 +43,12 @@ func TestAllCodesNonEmpty(t *testing.T) {
 	assert.Contains(t, AllCodes(), CodeContextNotSet)
 	assert.Contains(t, AllCodes(), CodeDryRunNotApplicable)
 }
+
+// TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
+// permanently-dead branch (no construction site ever advertises it) and has
+// been removed — the enum shrinks 11 -> 10.
+func TestAllCodesDropsNotImplemented(t *testing.T) {
+	codes := AllCodes()
+	assert.Len(t, codes, 10)
+	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
+}

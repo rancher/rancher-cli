@@ -25,16 +25,17 @@ func NewDelete(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Comman
 
 func (c deleteCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "delete " + c.k.Name,
-		Aliases:     c.k.Aliases,
-		Usage:       "Delete a " + c.k.Name,
-		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:       deleteFlags(c.k),
-		Destructive: "true",
-		Toolset:     "core",
-		Network:     true,
-		Auth:        true,
+		Name:         "delete " + c.k.Name,
+		Aliases:      c.k.Aliases,
+		Usage:        "Delete a " + c.k.Name,
+		CommandType:  runtime.Mutating,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Flags:        deleteFlags(c.k),
+		Destructive:  "true",
+		Toolset:      "core",
+		Network:      true,
+		Auth:         true,
+		ProjectScope: kinds.ProjectScopable(c.k),
 	}
 }
 

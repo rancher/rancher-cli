@@ -364,6 +364,20 @@ func Bindings() map[string]safety.Binding {
 	return out
 }
 
+// ProjectScopable reports whether --project applies to k (PC-3): a
+// Downstream NSPlain kind validates/filters by project membership, plus the
+// one carve-out — the namespace kind itself (NSNone/Downstream), which
+// converts an unnamed --project into a label-selector list rather than a
+// rejection (Route's default branch). Every other kind rejects a non-empty
+// project outright. This is the single source of the rule; Route and the
+// generated-command descriptor builders both consume it.
+func ProjectScopable(k Kind) bool {
+	if k.Policy == NSPlain && k.Scope == Downstream {
+		return true
+	}
+	return k.Name == "namespace" && k.Policy == NSNone && k.Scope == Downstream
+}
+
 // LookupGVK resolves a manifest's apiVersion+kind to a table row. Group,
 // VERSION, and K8sKind must all match — four rows share K8sKind "Cluster"
 // across groups, and a version mismatch (apps/v1beta1 Deployment) must be

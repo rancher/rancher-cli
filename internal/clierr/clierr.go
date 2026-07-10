@@ -6,7 +6,6 @@ const (
 	CodeDryRunNotApplicable  = "DRY_RUN_NOT_APPLICABLE"
 	CodeAmbiguousSelection   = "AMBIGUOUS_SELECTION"
 	CodeConflict             = "CONFLICT"
-	CodeNotImplemented       = "NOT_IMPLEMENTED"
 	CodeAuth                 = "AUTH"
 	CodeNotFound             = "NOT_FOUND"
 	CodeRBAC                 = "RBAC"
@@ -21,7 +20,6 @@ var exitCodes = map[string]int{
 	CodeDryRunNotApplicable:  2,
 	CodeAmbiguousSelection:   2,
 	CodeContextNotSet:        2,
-	CodeNotImplemented:       2,
 	CodeAuth:                 3,
 	CodeNotFound:             4,
 	CodeConflict:             5,
@@ -68,7 +66,7 @@ func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return 
 func AllCodes() []string {
 	return []string{
 		CodeContextNotSet, CodeConfirmationRequired, CodeDryRunNotApplicable,
-		CodeAmbiguousSelection, CodeConflict, CodeNotImplemented,
+		CodeAmbiguousSelection, CodeConflict,
 		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodeGeneric,
 	}
 }

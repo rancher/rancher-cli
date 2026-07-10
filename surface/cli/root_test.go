@@ -115,6 +115,43 @@ func TestBuildRootWiresGeneratedCommands(t *testing.T) {
 	assert.NotContains(t, names, "delete cluster", "clusters are not deletable")
 }
 
+// TestSchemaManifestExposesProjectScope pins PS-6: a generated get command
+// for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
+// projectScope: true, while a fixed command (schema itself) does not.
+func TestSchemaManifestExposesProjectScope(t *testing.T) {
+	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data struct {
+			Commands []struct {
+				Name         string `json:"name"`
+				ProjectScope bool   `json:"projectScope"`
+			} `json:"commands"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+
+	byName := map[string]bool{}
+	for _, c := range env.Data.Commands {
+		byName[c.Name] = c.ProjectScope
+	}
+
+	scopable, ok := byName["get pod"]
+	require.True(t, ok, "get pod must be a registered command")
+	assert.True(t, scopable, "pod is NSPlain+Downstream, so get pod must be projectScope: true")
+
+	fixed, ok := byName["schema"]
+	require.True(t, ok, "schema must be a registered command")
+	assert.False(t, fixed, "a fixed command must not advertise projectScope")
+}
+
 func TestBuildRootWiresAliases(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")

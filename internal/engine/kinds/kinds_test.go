@@ -109,6 +109,28 @@ func TestLookupByNameAliasAndKey(t *testing.T) {
 	}
 }
 
+func TestProjectScopable(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		k    Kind
+		want bool
+	}{
+		{"NSPlain + Downstream", Kind{Name: "pod", Policy: NSPlain, Scope: Downstream}, true},
+		{"NSPlain + Management", Kind{Name: "projectroletemplatebinding", Policy: NSPlain, Scope: Management}, false},
+		{"namespace carve-out (NSNone + Downstream)", Kind{Name: "namespace", Policy: NSNone, Scope: Downstream}, true},
+		{"NSCluster", Kind{Name: "project", Policy: NSCluster, Scope: Management}, false},
+		{"NSWorkspace", Kind{Name: "gitrepo", Policy: NSWorkspace, Scope: Management}, false},
+		{"NSNone, not the namespace kind", Kind{Name: "node", Policy: NSNone, Scope: Downstream}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, ProjectScopable(tt.k))
+		})
+	}
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

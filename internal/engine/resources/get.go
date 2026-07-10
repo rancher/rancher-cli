@@ -46,15 +46,16 @@ func NewGet(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
 
 func (c getCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "get " + c.k.Name,
-		Aliases:     c.k.Aliases,
-		Usage:       "List " + c.k.Name + "s or show one",
-		CommandType: runtime.ReadOnly,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:       getFlags(c.k),
-		Toolset:     "core",
-		Network:     true,
-		Auth:        true,
+		Name:         "get " + c.k.Name,
+		Aliases:      c.k.Aliases,
+		Usage:        "List " + c.k.Name + "s or show one",
+		CommandType:  runtime.ReadOnly,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Flags:        getFlags(c.k),
+		Toolset:      "core",
+		Network:      true,
+		Auth:         true,
+		ProjectScope: kinds.ProjectScopable(c.k),
 	}
 }
 
@@ -285,10 +286,13 @@ func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactor
 // Route is shared by get and delete: delete always passes named=true and uses
 // the effect cluster to stamp Effect.Cluster.
 func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, named bool) (clientCluster, ns, effectCluster string, scope *ProjectScope, err error) {
+	scopable := kinds.ProjectScopable(k)
 	switch k.Policy {
 	case kinds.NSCluster:
-		if err := rejectProjectScope(clients, in, k); err != nil {
-			return "", "", "", nil, err
+		if !scopable {
+			if err := rejectProjectScope(clients, in, k); err != nil {
+				return "", "", "", nil, err
+			}
 		}
 		clusterFlag := in.String(FlagCluster)
 		if clusterFlag == "" {
@@ -307,8 +311,10 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		return engine.LocalCluster, id, id, nil, nil
 
 	case kinds.NSWorkspace:
-		if err := rejectProjectScope(clients, in, k); err != nil {
-			return "", "", "", nil, err
+		if !scopable {
+			if err := rejectProjectScope(clients, in, k); err != nil {
+				return "", "", "", nil, err
+			}
 		}
 		// A management-plane namespace with a default; --cluster is never
 		// consulted and a missing --namespace falls back to the default, so a
@@ -330,7 +336,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 				"--namespace is required to address a "+k.Name+" by name").
 				WithHint("pass --namespace <namespace>")
 		}
-		if k.Scope == kinds.Management {
+		if !scopable {
 			if err := rejectProjectScope(clients, in, k); err != nil {
 				return "", "", "", nil, err
 			}
@@ -357,7 +363,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Members: members}, nil
 
 	default: // NSNone — cluster-scoped, no namespace
-		if k.Name == "namespace" {
+		if scopable {
 			return routeNamespaceKind(ctx, clients, k, in)
 		}
 		if err := rejectProjectScope(clients, in, k); err != nil {

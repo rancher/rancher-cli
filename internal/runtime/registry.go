@@ -37,19 +37,20 @@ func GlobalFlags() []GlobalFlag {
 
 // SchemaCommand is one command entry in the manifest (Descriptor + tier).
 type SchemaCommand struct {
-	Name        string      `json:"name"`
-	Aliases     []string    `json:"aliases,omitempty"`
-	Usage       string      `json:"usage,omitempty"`
-	Args        []ArgSpec   `json:"args,omitempty"`
-	Flags       []ArgSpec   `json:"flags,omitempty"`
-	Examples    []string    `json:"examples,omitempty"`
-	CommandType CommandType `json:"commandType"`
-	Destructive string      `json:"destructive,omitempty"`
-	Toolset     string      `json:"toolset,omitempty"`
-	Network     bool        `json:"network"`
-	Auth        bool        `json:"auth"`
-	Tier        string      `json:"tier,omitempty"`
-	Stability   string      `json:"stability,omitempty"`
+	Name         string      `json:"name"`
+	Aliases      []string    `json:"aliases,omitempty"`
+	Usage        string      `json:"usage,omitempty"`
+	Args         []ArgSpec   `json:"args,omitempty"`
+	Flags        []ArgSpec   `json:"flags,omitempty"`
+	Examples     []string    `json:"examples,omitempty"`
+	CommandType  CommandType `json:"commandType"`
+	Destructive  string      `json:"destructive,omitempty"`
+	Toolset      string      `json:"toolset,omitempty"`
+	Network      bool        `json:"network"`
+	Auth         bool        `json:"auth"`
+	Tier         string      `json:"tier,omitempty"`
+	Stability    string      `json:"stability,omitempty"`
+	ProjectScope bool        `json:"projectScope,omitempty"`
 }
 
 // EffectField is one field of the Effect preview (name + JSON type).
@@ -186,6 +187,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Args: d.Args, Flags: d.Flags,
 			Examples: d.Examples, CommandType: d.CommandType,
 			Destructive: d.Destructive, Toolset: d.Toolset, Network: d.Network, Auth: d.Auth,
+			ProjectScope: d.ProjectScope,
 		}
 		if b, ok := reg.resolver.Resolve(d.Name); ok {
 			sc.Tier = string(b.Tier)

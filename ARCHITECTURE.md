@@ -22,7 +22,7 @@ decisions](#key-design-decisions)).
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
 `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `DRY_RUN_NOT_APPLICABLE`, `AMBIGUOUS_SELECTION`,
-`NOT_IMPLEMENTED`, `CONTEXT_NOT_SET`, `GENERIC`) — with two raw exceptions. `auth
+`CONTEXT_NOT_SET`, `GENERIC`) — with two raw exceptions. `auth
 get-token`'s stdout is a bare `ExecCredential` JSON object for kubectl to parse; that
 command sets `runtime.Result.Raw`, which tells the pipeline to emit `Data` with no
 envelope. `kubeconfig`'s stdout is a bare kubeconfig YAML document; that command sets

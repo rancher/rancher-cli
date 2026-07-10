@@ -35,16 +35,17 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		destructive = "true"
 	}
 	return runtime.Descriptor{
-		Name:        "patch " + c.k.Name,
-		Aliases:     c.k.Aliases,
-		Usage:       "Patch a " + c.k.Name + " with an RFC 6902 JSON patch",
-		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:       patchFlags(c.k),
-		Destructive: destructive,
-		Toolset:     "core",
-		Network:     true,
-		Auth:        true,
+		Name:         "patch " + c.k.Name,
+		Aliases:      c.k.Aliases,
+		Usage:        "Patch a " + c.k.Name + " with an RFC 6902 JSON patch",
+		CommandType:  runtime.Mutating,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Flags:        patchFlags(c.k),
+		Destructive:  destructive,
+		Toolset:      "core",
+		Network:      true,
+		Auth:         true,
+		ProjectScope: kinds.ProjectScopable(c.k),
 	}
 }
 

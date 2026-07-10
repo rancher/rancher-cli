@@ -40,6 +40,10 @@ type Descriptor struct {
 	Toolset     string      `json:"toolset,omitempty"`     // MCP toolset filter ("core" today)
 	Network     bool        `json:"network"`               // performs network I/O
 	Auth        bool        `json:"auth"`                  // requires credentials
+	// ProjectScope reports whether --project applies to this command (PC-3):
+	// true for generated per-kind commands whose kind is
+	// kinds.ProjectScopable; false (the zero value) for every fixed command.
+	ProjectScope bool `json:"projectScope,omitempty"`
 }
 
 // Input abstracts parsed flags/args so engine code never imports urfave/cli.
