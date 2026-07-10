@@ -108,7 +108,10 @@ graph TD
     commands --> config
     commands --> provider
     commands --> engine
+    commands --> extres
+    commands --> token
     commands --> kube
+    commands --> httpx
     commands --> clierr
 
     token --> runtime

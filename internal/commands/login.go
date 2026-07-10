@@ -33,6 +33,9 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "name", Type: "string"},
 			{Name: "cacert", Type: "string"},
 			{Name: "context", Type: "string"},
+			{Name: "auth-provider", Type: "string"},
+			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}},
+			{Name: "ttl", Type: "string"},
 		},
 		Examples: []string{
 			"rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 < token.txt",
@@ -72,7 +75,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	// credentials into config.yaml (secrets live only in the credential store).
 	u.Path, u.RawQuery, u.Fragment, u.User = "", "", "", nil
 
-	token, err := resolveLoginToken(ctx, in, p)
+	token, err := resolveLoginToken(ctx, u.String(), in, p)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -85,7 +88,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 	name := in.String("name")
 	if name == "" {
-		name = "rancherDefault"
+		name = "default"
 	}
 
 	cfg, err := config.Load(config.FilePath(l.dir))
@@ -119,7 +122,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	}}, nil
 }
 
-func resolveLoginToken(ctx context.Context, in runtime.Input, p runtime.Prompter) (string, error) {
+func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
 	var (
 		tok string
 		err error
@@ -128,12 +131,19 @@ func resolveLoginToken(ctx context.Context, in runtime.Input, p runtime.Prompter
 	case in.Bool("token-stdin"):
 		tok, err = p.ReadLine(ctx)
 	case p.CanPrompt():
-		tok, err = p.PromptSecret(ctx, "Enter token (id:secret): ")
+		tok, err = promptForToken(ctx, server, in, p)
 	default:
 		return "", clierr.New(clierr.CodeValidation, "token required").
 			WithHint("pipe it via --token-stdin, or run in a terminal")
 	}
 	if err != nil {
+		// A typed clierr (from the provider flow, or an invalid menu pick) is
+		// already the right error to surface — the io.EOF/generic mapping
+		// below is for the plain-paste read paths only.
+		var ce *clierr.Error
+		if errors.As(err, &ce) {
+			return "", err
+		}
 		if errors.Is(err, io.EOF) {
 			return "", clierr.New(clierr.CodeValidation, "no token provided").
 				WithHint("pipe the token via --token-stdin, or enter it at the prompt")
@@ -146,4 +156,27 @@ func resolveLoginToken(ctx context.Context, in runtime.Input, p runtime.Prompter
 			WithHint("pipe the token via --token-stdin, or enter it at the prompt")
 	}
 	return tok, nil
+}
+
+// promptForToken offers the paste-or-provider choice (EXT-R-8): --auth-provider
+// or --auth-flow already signal provider intent and skip straight to it,
+// mirroring get-token's own explicit-flag shortcut past its provider menu.
+func promptForToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
+	if in.String("auth-provider") != "" || in.String("auth-flow") != "" {
+		return resolveProviderLoginToken(ctx, server, in, p)
+	}
+	p.Notice("1) paste an API token\n2) sign in via an identity provider")
+	choice, err := p.Prompt(ctx, "Select [1]: ")
+	if err != nil {
+		return "", err
+	}
+	switch strings.TrimSpace(choice) {
+	case "", "1":
+		return p.PromptSecret(ctx, "Enter token (id:secret): ")
+	case "2":
+		return resolveProviderLoginToken(ctx, server, in, p)
+	default:
+		return "", clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
+			WithHint("re-run and answer 1 or 2")
+	}
 }

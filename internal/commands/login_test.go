@@ -3,7 +3,11 @@ package commands
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -29,6 +33,32 @@ func (x args) Args() []string         { return x.a }
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
+
+// lineReader yields one line at a time without buffering, so multiple
+// sequential Prompt/PromptSecret calls (each creating a fresh bufio.Scanner
+// per ui.Prompter.readLine) don't lose data to a Scanner's internal buffer —
+// a shared strings.Reader over multi-line input loses everything past the
+// first line once one Scanner over-reads it. Copied from
+// internal/token/token_test.go (unexported there too) rather than imported,
+// since it's test-only plumbing with no production use.
+type lineReader struct {
+	lines []string
+	pos   int
+}
+
+func newLineReader(lines ...string) *lineReader {
+	return &lineReader{lines: lines}
+}
+
+func (r *lineReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.lines) {
+		return 0, io.EOF
+	}
+	line := r.lines[r.pos] + "\n"
+	r.pos++
+	n := copy(p, line)
+	return n, nil
+}
 
 // stdinPrompter builds a Prompter whose input is a canned reader (for --token-stdin).
 func stdinPrompter(tok string) *ui.Prompter {
@@ -94,8 +124,11 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	// isTTY=true, noInput=false -> CanPrompt; PromptSecret reads the line from the buffer.
-	p := ui.New(&bytes.Buffer{}, strings.NewReader("id:sec\n"), false, true)
+	// isTTY=true, noInput=false -> CanPrompt. Two prompts now fire (EXT-R-8's
+	// paste-or-provider menu, then the secret itself), so the input needs a
+	// reader that doesn't lose the second line to Scanner over-read (see
+	// lineReader's doc comment) — a plain strings.Reader would drop "id:sec".
+	p := ui.New(&bytes.Buffer{}, newLineReader("1", "id:sec"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
 	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	require.NoError(t, err)
@@ -204,7 +237,7 @@ func TestLoginDefaultName(t *testing.T) {
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "https://r.ex", cfg.Servers["rancherDefault"].URL)
+	assert.Equal(t, "https://r.ex", cfg.Servers["default"].URL)
 }
 
 func TestLoginEmptyPromptToken(t *testing.T) {
@@ -247,5 +280,145 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	assert.Equal(t, "id:sec", tok)
 	if _, ferr := config.NewFileStore(dir).GetToken("acme"); !errors.Is(ferr, config.ErrNoToken) {
 		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
+	}
+}
+
+// extLoginFakeOpts configures the httptest fake server standing in for
+// Rancher across the EXT-R-8 provider-flow tests: the IdP dance
+// (/v1-public/*) and the ext Token store mint/revoke, both reached ONLY
+// through the /k8s/clusters/local proxy prefix — a bare /apis/... path is
+// deliberately unregistered, so a proxy-path regression 404s here exactly as
+// it would against a real Rancher.
+type extLoginFakeOpts struct {
+	sessionToken  string // the /v1-public/login response's "token" (S)
+	mintNotFound  bool   // ext group absent: mint POST 404s
+	revokeStatus  int    // revoke DELETE response status (0 -> 200)
+	mintBodyCh    chan []byte
+	revokedPathCh chan string
+}
+
+func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
+	t.Helper()
+	if opts.revokeStatus == 0 {
+		opts.revokeStatus = http.StatusOK
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+
+		case strings.HasSuffix(r.URL.Path, "/v1-public/login") && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": opts.sessionToken})
+
+		case r.URL.Path == mintTokensPath && r.Method == http.MethodPost:
+			if opts.mintBodyCh != nil {
+				b, _ := io.ReadAll(r.Body)
+				opts.mintBodyCh <- b
+			}
+			if opts.mintNotFound {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
+
+		case (strings.HasPrefix(r.URL.Path, v3TokensPath+"/") || strings.HasPrefix(r.URL.Path, mintTokensPath+"/")) && r.Method == http.MethodDelete:
+			if opts.revokedPathCh != nil {
+				opts.revokedPathCh <- r.URL.Path
+			}
+			w.WriteHeader(opts.revokeStatus)
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T) {
+	t.Parallel()
+	revokedPathCh := make(chan string, 1)
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess1:sessionsecret", revokedPathCh: revokedPathCh})
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	res, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.NoError(t, err)
+	assert.Equal(t, "LoginResult", res.Kind)
+
+	tok, err := store.GetToken("prod")
+	require.NoError(t, err)
+	assert.Equal(t, "ext/derived-1:secretvalue", tok, "the derived token D is stored, not the session token S")
+
+	select {
+	case revokedPath := <-revokedPathCh:
+		assert.Equal(t, v3TokensPath+"/token-sess1", revokedPath, "S is v3-shaped, revoked via the v3 Token CRD path")
+	default:
+		t.Fatal("the transient session token was never revoked")
+	}
+}
+
+func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
+	t.Parallel()
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess2:sessionsecret", mintNotFound: true})
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	var errBuf bytes.Buffer
+	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.NoError(t, err)
+
+	tok, err := store.GetToken("prod")
+	require.NoError(t, err)
+	assert.Equal(t, "token-sess2:sessionsecret", tok, "no ext group: the session token itself is stored (legacy semantics)")
+	assert.Contains(t, errBuf.String(), "does not serve ext.cattle.io")
+}
+
+func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T) {
+	t.Parallel()
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess3:sessionsecret", revokeStatus: http.StatusInternalServerError})
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	var errBuf bytes.Buffer
+	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.NoError(t, err)
+
+	tok, err := store.GetToken("prod")
+	require.NoError(t, err)
+	assert.Equal(t, "ext/derived-1:secretvalue", tok, "a revoke failure must not block login")
+	assert.Contains(t, errBuf.String(), "could not revoke the transient session token")
+}
+
+func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
+	t.Parallel()
+	bodyCh := make(chan []byte, 1)
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess4:sessionsecret", mintBodyCh: bodyCh})
+
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider", "ttl": "12h"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	require.NoError(t, err)
+
+	select {
+	case b := <-bodyCh:
+		var payload struct {
+			Spec struct {
+				TTL int64 `json:"ttl"`
+			} `json:"spec"`
+		}
+		require.NoError(t, json.Unmarshal(b, &payload))
+		assert.Equal(t, int64(12*60*60*1000), payload.Spec.TTL, "12h in milliseconds")
+	default:
+		t.Fatal("the mint request body was never captured")
 	}
 }

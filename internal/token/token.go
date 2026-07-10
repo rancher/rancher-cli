@@ -267,6 +267,33 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
 }
 
+// LoginRequest is the constructible counterpart to loginInput: loginInput's
+// fields are unexported, so no command outside this package could build one
+// to drive the identity-provider dance. `auth login`'s own provider flow
+// (EXT-R-8) is the first consumer.
+type LoginRequest struct {
+	Server       string
+	ClusterID    string
+	AuthProvider string
+	AuthFlow     string
+	SkipVerify   bool
+}
+
+// Login runs the identity-provider dance (provider discovery/selection, then
+// basic/SAML/OAuth as appropriate) and returns the resulting Rancher-minted
+// session token. It is a thin exported wrapper around loginAndGenerateCred —
+// get-token's own call site is untouched, so this is purely additive.
+func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime.Prompter) (Token, error) {
+	input := &loginInput{
+		server:       req.Server,
+		clusterID:    req.ClusterID,
+		authProvider: req.AuthProvider,
+		authFlow:     req.AuthFlow,
+		skipVerify:   req.SkipVerify,
+	}
+	return loginAndGenerateCred(ctx, client, input, p)
+}
+
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
 	authProviders, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {

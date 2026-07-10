@@ -116,6 +116,22 @@
         {
           "name": "context",
           "type": "string"
+        },
+        {
+          "name": "auth-provider",
+          "type": "string"
+        },
+        {
+          "enum": [
+            "devicecode",
+            "authcode"
+          ],
+          "name": "auth-flow",
+          "type": "string"
+        },
+        {
+          "name": "ttl",
+          "type": "string"
         }
       ],
       "name": "auth login",
