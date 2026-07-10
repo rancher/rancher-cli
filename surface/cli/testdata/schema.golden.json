@@ -230,6 +230,46 @@
       "usage": "Switch the current server"
     },
     {
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "examples": [
+        "rancher create kubeconfig --clusters prod,staging --ttl 30d --apply \u003e ci.yaml"
+      ],
+      "flags": [
+        {
+          "name": "clusters",
+          "type": "string"
+        },
+        {
+          "name": "current-context",
+          "type": "string"
+        },
+        {
+          "name": "ttl",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "enum": [
+            "true",
+            "false"
+          ],
+          "name": "include-default-entry",
+          "type": "string"
+        }
+      ],
+      "name": "create kubeconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Mint a server-side, embedded kubeconfig"
+    },
+    {
       "args": [
         {
           "name": "name",
