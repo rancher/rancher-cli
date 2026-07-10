@@ -5220,6 +5220,45 @@
       "usage": "Print the machine-readable capability manifest, optionally filtered to one command"
     },
     {
+      "auth": true,
+      "commandType": "readOnly",
+      "examples": [
+        "rancher support-bundle -f bundle.tar.gz",
+        "rancher support-bundle --targets agent,fleet-agent --clusters prod,staging"
+      ],
+      "flags": [
+        {
+          "name": "targets",
+          "type": "string"
+        },
+        {
+          "name": "clusters",
+          "type": "string"
+        },
+        {
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "name": "tail",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "support-bundle",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Pack the API-reachable triage plane into one tar.gz for support"
+    },
+    {
       "args": [
         {
           "name": "name",

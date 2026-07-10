@@ -165,9 +165,17 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	}
 	reg := runtime.NewRegistry(resolver)
 
+	// support-bundle needs the registry (for its own rancher/schema.json
+	// collector) in scope at construction time, so it is wired here rather
+	// than in buildEntries — the same reason schema.go's fixed command is
+	// built inline below instead of through the declarative table.
+	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
+		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version) })
+	}})
+
 	groups := map[string][]*ucli.Command{}
 	var order []string
-	for _, e := range buildEntries() {
+	for _, e := range entries {
 		leaf, err := wireEntry(reg, resolver, e)
 		if err != nil {
 			return nil, err

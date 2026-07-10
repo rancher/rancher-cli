@@ -276,9 +276,12 @@ func seedManagementCluster() {
 // auto-created "default". "c-test" is required too: management.cattle.io
 // kinds namespaced by cluster id (project, clusterroletemplatebinding) need
 // the namespace object to exist before a namespaced create succeeds.
+// "cattle-system" is seeded here (not per-script) because the logs and
+// support-bundle target tables both hardcode it, and per-script creation
+// races across scripts sharing this one apiserver.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "c-test"} {
+	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",

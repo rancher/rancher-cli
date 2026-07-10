@@ -93,6 +93,33 @@ func Resolve(ctx context.Context, clients engine.ClusterClientFactory, t Target,
 	if err != nil {
 		return Resolved{}, err
 	}
+	return ResolveOnCluster(ctx, clients, t, clusterID)
+}
+
+// Applicable reports whether t can run against clusterID at all — a
+// LocalOnly target against a downstream cluster, or a DownstreamOnly target
+// against the local cluster, is never applicable. Callers that iterate a
+// target × cluster matrix themselves (support-bundle) check this BEFORE
+// calling ResolveOnCluster, since an inapplicable combination is a
+// "skipped: not applicable" manifest entry, never an error.
+func Applicable(t Target, clusterID string) bool {
+	isLocal := clusterID == engine.LocalCluster
+	if t.LocalOnly && !isLocal {
+		return false
+	}
+	if t.DownstreamOnly && isLocal {
+		return false
+	}
+	return true
+}
+
+// ResolveOnCluster runs every target-specific degradation chain (the server
+// selector fallback, the kube-api-auth ACE precheck, the fleet-agent
+// namespace chain) against an already-decided clusterID. Resolve (the logs
+// command, which reads --cluster from one Input) and support-bundle (which
+// iterates its own target × cluster matrix, checking Applicable first) both
+// funnel through this.
+func ResolveOnCluster(ctx context.Context, clients engine.ClusterClientFactory, t Target, clusterID string) (Resolved, error) {
 	client, err := clients.Cluster(ctx, clusterID)
 	if err != nil {
 		return Resolved{}, err

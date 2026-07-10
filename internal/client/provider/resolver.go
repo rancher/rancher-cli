@@ -33,7 +33,8 @@ func NewResolver() *Resolver {
 		"images":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"usage":              {Tier: safety.TierCRD, Stability: safety.Beta},
 
-		"logs": {Tier: safety.TierCRD, Stability: safety.Beta},
+		"logs":           {Tier: safety.TierCRD, Stability: safety.Beta},
+		"support-bundle": {Tier: safety.TierCRD, Stability: safety.Beta},
 	}}
 }
 

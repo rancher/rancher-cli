@@ -1,0 +1,35 @@
+env RANCHER_URL=$TEST_RANCHER_URL
+env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+
+# cattle-system is seeded by the harness (TestMain) — the logs and
+# support-bundle target tables both hardcode it. Targets webhook (not
+# agent): scripts run concurrently against one shared apiserver, and
+# logs-target.txtar owns the app=cattle-cluster-agent selector — a second
+# pod under that same selector would make ITS pod count assertion flaky.
+exec rancher create resource -f webhook-pod.yaml --cluster local --apply
+
+exec rancher support-bundle --targets webhook --clusters local -f bundle.tar.gz -o json
+jsonquery stdout data.path bundle.tar.gz
+
+exec tar -tzf bundle.tar.gz
+stdout 'manifest\.json'
+stdout 'logs/'
+stdout 'clusters/'
+
+# the archive writer is O_CREATE|O_EXCL — the same -f path must be refused,
+# never truncated, on a second run.
+! exec rancher support-bundle --targets webhook --clusters local -f bundle.tar.gz -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- webhook-pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webhook-pod
+  namespace: cattle-system
+  labels:
+    app: rancher-webhook
+spec:
+  containers:
+    - name: rancher-webhook
+      image: busybox

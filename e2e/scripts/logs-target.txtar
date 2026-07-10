@@ -1,9 +1,8 @@
 env RANCHER_URL=$TEST_RANCHER_URL
 env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
 
-# the harness seeds only fleet-default/team-a/c-test as namespaces — logs
-# targets live in cattle-system, which this scenario must create itself.
-exec rancher create resource -f ns.yaml --cluster testcluster --apply
+# cattle-system is seeded by the harness (TestMain) — the logs and
+# support-bundle target tables both hardcode it.
 exec rancher create resource -f agent-pod.yaml --cluster testcluster --apply
 
 # agent: DownstreamOnly, cattle-system/app=cattle-cluster-agent. envtest has
@@ -30,11 +29,6 @@ jsonquery stderr data.error.message 'no rancher pods on the local cluster — si
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'cluster has no authorized cluster endpoint (kube-api-auth runs only on ACE clusters)'
 
--- ns.yaml --
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cattle-system
 -- agent-pod.yaml --
 apiVersion: v1
 kind: Pod
