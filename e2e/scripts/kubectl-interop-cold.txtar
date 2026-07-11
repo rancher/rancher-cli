@@ -1,0 +1,18 @@
+# The full kubectl round trip COLD (spec FA-4.5) — live-exercise Phase 7,
+# hermetic: no seedexeccache, no warm cache. `rancher kubeconfig` embeds
+# the stored login CA directly into the exec plugin's own --cacert flag
+# (kubeconfig.go), so the exec plugin's first credential request mints
+# through the façade with no prior state at all.
+[!kubectl] skip 'kubectl not on PATH'
+
+stdin token.txt
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
+
+exec rancher kubeconfig --cluster testcluster
+cp stdout kc.yaml
+
+exec kubectl --kubeconfig kc.yaml get namespaces
+stdout default
+
+-- token.txt --
+e2e:secret

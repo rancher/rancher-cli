@@ -1,8 +1,11 @@
-# Tier A cannot exercise get-token's live login path (it needs Rancher's
-# /v1-public/authproviders + /v1-public/login, which the shim — a router,
-# not a Rancher emulator — must not grow). seedexeccache pre-warms the
-# exec-credential cache through the real config store API, so get-token
-# takes its cache fast-path; only the login half stays uncovered (Tier B).
+# This script sticks to the WARM exec-credential cache path via
+# seedexeccache; kubectl-interop-cold.txtar covers the cold round trip
+# through the façade's /v1-public/* endpoints and the ext.cattle.io/v1
+# token mint instead (spec FA-0 supersedes the old "shim must not grow"
+# note — the façade is a separate layer composed in front of the
+# unchanged router, per docs/superpowers/specs/2026-07-11-auth-e2e-harness-design.md).
+# seedexeccache pre-warms the cache through the real config store API, so
+# get-token takes its cache fast-path here without touching login at all.
 [!kubectl] skip 'kubectl not on PATH'
 
 stdin token.txt

@@ -1,0 +1,28 @@
+# This script's façade instance runs in legacy mode (harness_test.go's
+# legacyScripts table, keyed by this file's name) — the ext.cattle.io mint
+# route 404s, so cold get-token falls back to the raw stored login token,
+# cached for the bounded legacyMintTTL (spec FA-4.4). Cache-hit assertion is
+# via stderr, not a counter: the cold call emits the legacy-caching notice
+# and the warm call emits nothing.
+stdin token.txt
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
+exists $RANCHER_CONFIG_DIR/config.yaml
+
+exec rancher auth delete-token --all -o json
+jsonquery stdout data.deleted all
+
+exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
+cp stdout execcred1.json
+jsonquery execcred1.json kind ExecCredential
+stderr 'caching the stored login token for 15m0s'
+
+exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
+cp stdout execcred2.json
+jsonquery execcred2.json kind ExecCredential
+! stderr .
+
+exec rancher get clusters -o json
+jsonquery stdout 'data.#' 1
+
+-- token.txt --
+e2e:secret
