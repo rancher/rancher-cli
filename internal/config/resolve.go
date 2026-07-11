@@ -16,7 +16,7 @@ func ResolveDir(flagDir string) (string, error) {
 	if flagDir != "" {
 		return flagDir, nil
 	}
-	if env := os.Getenv("RANCHER_CLI_CONFIG_DIR"); env != "" {
+	if env := os.Getenv(EnvConfigDir); env != "" {
 		return env, nil
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
@@ -147,7 +147,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	}
 
 	// Env overrides (env > file).
-	if v := os.Getenv("RANCHER_CLI_URL"); v != "" {
+	if v := os.Getenv(EnvURL); v != "" {
 		if !SameServerURL(v, storedURL) {
 			// RANCHER_CLI_URL is pointing this invocation at a server other than
 			// the one eff.CA/eff.ServerName belong to — never pair a CA (or a
@@ -162,13 +162,13 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		}
 		eff.URL = v
 	}
-	if v := os.Getenv("RANCHER_CLI_CACERT"); v != "" {
+	if v := os.Getenv(EnvCACert); v != "" {
 		eff.CA = v
 	}
-	if v := os.Getenv("RANCHER_CLI_TOKEN"); v != "" {
+	if v := os.Getenv(EnvToken); v != "" {
 		eff.Token = v
 	}
-	if v := os.Getenv("RANCHER_CLI_CONTEXT"); v != "" {
+	if v := os.Getenv(EnvContext); v != "" {
 		cl, pr, hasProject := SplitContext(v)
 		eff.Cluster = cl
 		if hasProject {

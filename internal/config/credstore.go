@@ -279,7 +279,7 @@ type keyringStore struct {
 func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	hint := ""
 	if pinned {
-		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file)", PinPath(dir))
+		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set %s=file)", PinPath(dir), EnvCredentialStore)
 	}
 	return &keyringStore{cache: NewFileStore(dir), pinHint: hint}
 }

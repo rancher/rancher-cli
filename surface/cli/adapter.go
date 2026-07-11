@@ -133,8 +133,8 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 			sources = append(sources, "config readOnly")
 		}
 	}
-	if os.Getenv("RANCHER_CLI_READONLY") != "" {
-		sources = append(sources, "RANCHER_CLI_READONLY")
+	if os.Getenv(config.EnvReadOnly) != "" {
+		sources = append(sources, config.EnvReadOnly)
 	}
 	if c.Bool("read-only") {
 		sources = append(sources, "--read-only")

@@ -189,8 +189,8 @@ Every command emits one JSON document per invocation under `-o json` — an
   stderr as `# warning: <w>` lines; `-o json`/`yaml`/template/`name` still see
   the normal envelope over `data`.
 - **Errors** are structured, on stderr, always the JSON envelope regardless of
-  `-o`, with the error object under `data`. A plain-text notice (e.g. a
-  legacy-config or credential-store warning) may precede it on stderr — the
+  `-o`, with the error object under `data`. A plain-text notice (the
+  credential-store pin warning) may precede it on stderr — the
   envelope is always the LAST JSON object on stderr:
 
   ```json

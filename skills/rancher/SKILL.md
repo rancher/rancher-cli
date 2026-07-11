@@ -109,8 +109,8 @@ Errors land on stderr as an envelope with the error object under `data`:
 ```
 
 Read `data.error.code` / `data.error.hint`. The JSON envelope appears on
-stderr regardless of the `-o` format. A plain-text notice (e.g. a legacy-config
-or credential-store warning) may precede it on stderr — the error envelope is
+stderr regardless of the `-o` format. A plain-text notice (the credential-store
+pin warning) may precede it on stderr — the error envelope is
 always the LAST JSON object on stderr; parse from there, not the first line.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·

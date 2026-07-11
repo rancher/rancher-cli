@@ -208,7 +208,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		Flags: append([]ucli.Flag{
 			&ucli.BoolFlag{Name: "debug", Usage: "Debug logging"},
 			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to rancher config dir",
-				Sources: ucli.EnvVars("RANCHER_CLI_CONFIG_DIR")},
+				Sources: ucli.EnvVars(config.EnvConfigDir)},
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,
 		OnUsageError:    onUsageError,

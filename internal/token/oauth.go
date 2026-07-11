@@ -23,6 +23,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	iruntime "github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
@@ -47,7 +48,7 @@ type callbackResult struct {
 
 func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
 	if input.authFlow == "" {
-		input.authFlow = os.Getenv("RANCHER_CLI_OAUTH_AUTH_FLOW")
+		input.authFlow = os.Getenv(config.EnvOAuthAuthFlow)
 	}
 	input.authFlow = strings.ToLower(input.authFlow)
 
@@ -67,7 +68,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 }
 
 func getCallbackPort(p iruntime.Prompter) (int, error) {
-	env := os.Getenv("RANCHER_CLI_OAUTH_CALLBACK_PORT")
+	env := os.Getenv(config.EnvOAuthCallbackPort)
 	if env == "" {
 		return 0, nil
 	}

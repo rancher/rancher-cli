@@ -1,7 +1,9 @@
 # Migrating from the legacy Rancher CLI
 
 Config and credentials are not imported — run `rancher auth login` once per
-server.
+server. The old `cli2.json` is not read, not migrated, and not deleted by this
+CLI — it may contain plaintext credentials; remove it yourself
+(`rm ~/.rancher/cli2.json`, or the legacy `$RANCHER_CONFIG_DIR` location).
 
 Output is enveloped JSON/YAML/table (`-o table|json|yaml`, plus `-o name` for
 IDs only); table is the default for interactive use. Mutating commands need

@@ -11,7 +11,7 @@ import (
 // cannot silently change what a test observes — DR-008.
 func TestMain(m *testing.M) {
 	for _, v := range []string{
-		"RANCHER_CLI_URL", "RANCHER_CLI_TOKEN", "RANCHER_CLI_CONTEXT", "RANCHER_CLI_CACERT", "RANCHER_CLI_CREDENTIAL_STORE",
+		EnvURL, EnvToken, EnvContext, EnvCACert, EnvCredentialStore,
 	} {
 		_ = os.Unsetenv(v)
 	}
