@@ -108,7 +108,9 @@ or point any other agent's instructions file at it.
 `config use-server` switches to a context that targets the named server
 (creating one if needed); `config use-context` activates a named context
 directly. `use-server` is the migrating target for the legacy `server
-switch` command.
+switch` command. Both persist across invocations; the global `--context`
+flag (below) only overrides the cluster[:project] scope for the single
+invocation it's passed on.
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs

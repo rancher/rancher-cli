@@ -98,4 +98,6 @@ replaces the legacy standalone `wait` command. Unlike `kubectl wait`, it
 fails fast on a Rancher-reported provisioning error instead of burning the
 full timeout. For anything `--wait` doesn't cover well (arbitrary JSONPath
 conditions, non-Rancher resources), use `kubectl wait` via `rancher
-kubeconfig`.
+kubeconfig`. `--for state=<value>` matches `status.state` (the Rancher
+idiom); for kinds that carry no `status.state` (core kinds like Pod), it
+falls back to `status.phase` instead, compared case-insensitively.

@@ -341,6 +341,7 @@
       ],
       "flags": [
         {
+          "desc": "make the namespace a member of this project from birth (label + annotation set on create)",
           "name": "project",
           "type": "string"
         },
