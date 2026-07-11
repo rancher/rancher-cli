@@ -24,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/tidwall/gjson"
@@ -781,6 +782,11 @@ var errNoStoredCredential = errors.New("no usable stored login credential")
 // prefix of --name in the "<server>-<clusterID>" entry-name shape, (2) the
 // current context's server, (3) everything else (broken by the
 // lexicographic order candidates already carry on input).
+// serverCandidateRankCount is the number of distinct ranks serverCandidateRank
+// returns (0..serverCandidateRankCount-1), so callers can scan every rank
+// without a second magic number drifting out of sync with the switch below.
+const serverCandidateRankCount = 4
+
 func serverCandidateRank(name, wantName, curServer string) int {
 	switch {
 	case wantName != "" && name == wantName:
@@ -803,8 +809,10 @@ func serverCandidateRank(name, wantName, curServer string) int {
 // them deterministically, and every candidate in that order is tried in
 // turn — the first one with an actual stored token wins, so a
 // higher-ranked-but-tokenless sibling never masks a lower-ranked one that
-// does have a token. p is noticed when more than one candidate had a
-// stored token, since the choice is then a tie-break, not a certainty.
+// does have a token. p is noticed only when more than one candidate AT THE
+// WINNING RANK had a stored token — an exact --name match (rank 0) winning
+// outright is a certainty, not a tie-break, even if some unrelated
+// lower-ranked server also happens to have a stale token.
 func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, p runtime.Prompter) (name, tok string, ok bool) {
 	target := kube.BaseURL(server)
 	var candidates []string
@@ -822,28 +830,32 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	if cur := cfg.CurrentContext; cur != "" {
 		curServer = cfg.Contexts[cur].Server
 	}
+	rankOf := func(n string) int { return serverCandidateRank(n, wantName, curServer) }
 	sort.SliceStable(candidates, func(i, j int) bool {
-		return serverCandidateRank(candidates[i], wantName, curServer) < serverCandidateRank(candidates[j], wantName, curServer)
+		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
 
-	chosenName, chosenTok, hits := "", "", 0
+	type hit struct{ name, tok string }
+	hitsByRank := map[int][]hit{}
 	for _, n := range candidates {
 		t, err := store.GetToken(n)
 		if err != nil || strings.TrimSpace(t) == "" {
 			continue
 		}
-		hits++
-		if chosenName == "" {
-			chosenName, chosenTok = n, t
+		r := rankOf(n)
+		hitsByRank[r] = append(hitsByRank[r], hit{n, t})
+	}
+	for r := 0; r < serverCandidateRankCount; r++ {
+		hs := hitsByRank[r]
+		if len(hs) == 0 {
+			continue
 		}
+		if len(hs) > 1 {
+			p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", len(hs), hs[0].name))
+		}
+		return hs[0].name, hs[0].tok, true
 	}
-	if chosenName == "" {
-		return "", "", false
-	}
-	if hits > 1 {
-		p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", hits, chosenName))
-	}
-	return chosenName, chosenTok, true
+	return "", "", false
 }
 
 // clustersPath is the management Cluster collection/object path, reached
@@ -852,33 +864,23 @@ const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 
 // resolveMintClusterID resolves clusterID (an id, a display name, "", or
 // "local") to its Cluster id before minting, using the stored login
-// credential as bearer — the same exact-id-then-display-name semantics
-// get/patch's ResolveCluster uses, reimplemented locally since tokenCmd has
-// no ClusterClientFactory of its own. An exact id match short-circuits with
-// a single object Get; only a miss falls through to listing every cluster
-// and matching by spec.displayName.
+// credential as bearer. It shares projects.MatchByIDOrDisplay — the same
+// collision algorithm get/patch's ResolveCluster uses — rather than
+// carrying a third divergent copy: an id match never short-circuits ahead
+// of checking every cluster's spec.displayName too, since a string that
+// happens to equal one cluster's id AND a different cluster's display name
+// must be ambiguous, not a silent id-wins mint scoped to the wrong
+// cluster. One list call serves both checks.
 func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
 	if clusterID == "" || clusterID == "local" {
 		return clusterID, nil
 	}
-	get := func(path string) (*http.Response, []byte, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+bearerToken)
-		return httpx.Do(client, req)
-	}
-
-	resp, _, err := get(clustersPath + "/" + clusterID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+clustersPath, nil)
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
 	}
-	if resp.StatusCode == http.StatusOK {
-		return clusterID, nil
-	}
-
-	resp, body, err := get(clustersPath)
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	resp, body, err := httpx.Do(client, req)
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
 	}
@@ -886,20 +888,41 @@ func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearer
 		return "", clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
-	var matches []string
+
+	var ids []string
+	displayByID := map[string]string{}
+	var candidates []clierr.Candidate
 	for _, item := range gjson.GetBytes(body, "items").Array() {
-		if item.Get("spec.displayName").String() == clusterID {
-			matches = append(matches, item.Get("metadata.name").String())
-		}
+		id := item.Get("metadata.name").String()
+		display := item.Get("spec.displayName").String()
+		ids = append(ids, id)
+		displayByID[id] = display
+		candidates = append(candidates, clierr.Candidate{ID: id, Name: display})
 	}
-	switch len(matches) {
+
+	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(clusterID, ids, func(id string) string { return displayByID[id] })
+	switch len(matched) {
 	case 1:
-		return matches[0], nil
+		return matched[0], nil
 	case 0:
-		return "", clierr.New(clierr.CodeNotFound, fmt.Sprintf("cluster not found: %q", clusterID))
+		return "", clierr.New(clierr.CodeNotFound, fmt.Sprintf("cluster not found: %q", clusterID)).
+			WithCandidates(candidates)
 	default:
-		return "", clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d clusters have display name %q", len(matches), clusterID))
+		msg := fmt.Sprintf("%d clusters have display name %q", displayMatchCount, clusterID)
+		if idFound {
+			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", clusterID)
+		}
+		matchedSet := make(map[string]bool, len(matched))
+		for _, id := range matched {
+			matchedSet[id] = true
+		}
+		var matchedCandidates []clierr.Candidate
+		for _, c := range candidates {
+			if matchedSet[c.ID] {
+				matchedCandidates = append(matchedCandidates, c)
+			}
+		}
+		return "", clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(matchedCandidates)
 	}
 }
 

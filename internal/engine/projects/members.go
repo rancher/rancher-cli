@@ -54,7 +54,7 @@ func resolveUser(ctx context.Context, clients engine.ClusterClientFactory, nameO
 		principalsByID[uid] = pids
 	}
 
-	matched, idFound, displayMatchCount := idOrDisplayMatch(nameOrID, ids, func(id string) string { return displayByID[id] })
+	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
 	switch len(matched) {
 	case 1:
 		return matched[0], principalsByID[matched[0]], nil

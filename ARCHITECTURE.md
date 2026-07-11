@@ -123,6 +123,7 @@ graph TD
     token --> kube
     token --> ui
     token --> clierr
+    token --> projects
 
     runtime --> safety
     runtime --> output
@@ -342,6 +343,11 @@ RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code by default, or PKCE auth
 with a `127.0.0.1` callback). All of this HTTP goes through
 `internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts;
 `--skip-verify` on `auth get-token` sets `InsecureSkipVerify` for that client only.
+`get-token`'s stored-credential fast path resolves a `--cluster` display
+name to its id the same way `get`/`patch` do, sharing
+`internal/engine/projects.MatchByIDOrDisplay`'s id-or-display collision
+algorithm rather than carrying its own copy — hence the `token -->
+projects` edge above.
 
 **Environment overrides.** Applied over the file-based context, env always wins:
 

@@ -411,9 +411,9 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 	var gotClusters []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == clustersPath+"/c-a" || r.URL.Path == clustersPath+"/c-b":
-			// Exact-id lookups: both are already valid cluster ids.
-			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == clustersPath:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-a"}},{"metadata":{"name":"c-b"}}]}`))
 		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
@@ -455,8 +455,6 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var listHits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == clustersPath+"/prod":
-			w.WriteHeader(http.StatusNotFound) // "prod" is a display name, not an id
 		case r.URL.Path == clustersPath:
 			atomic.AddInt32(&listHits, 1)
 			gotAuth = r.Header.Get("Authorization")
@@ -497,8 +495,6 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 	var mintHits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case clustersPath + "/missing":
-			w.WriteHeader(http.StatusNotFound)
 		case clustersPath:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[]}`))
@@ -526,6 +522,89 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an unresolvable cluster must never reach the mint call")
+}
+
+// TestGetTokenClusterIDDisplayCollisionIsAmbiguous is the round-4 repro:
+// resolveMintClusterID must not let an id-based match short-circuit ahead
+// of checking every cluster's spec.displayName too. A string that matches
+// one cluster's id AND a different cluster's display name is ambiguous —
+// silently minting a token scoped to the id match would produce a token
+// for the wrong cluster whenever an admin names a cluster's display name
+// after another cluster's raw id.
+func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
+	var listHits, mintHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case clustersPath:
+			atomic.AddInt32(&listHits, 1)
+			w.Header().Set("Content-Type", "application/json")
+			// "c-1" is both a real cluster's id AND a different cluster's
+			// display name.
+			_, _ = w.Write([]byte(`{"items":[
+				{"metadata":{"name":"c-1"},"spec":{"displayName":"prod"}},
+				{"metadata":{"name":"c-2"},"spec":{"displayName":"c-1"}}
+			]}`))
+		case MintTokensPath:
+			atomic.AddInt32(&mintHits, 1)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}},
+		ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.ElementsMatch(t, []string{"c-1", "c-2"}, candidateIDsToken(ce.Candidates))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits), "no list scan beyond the collision check")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an ambiguous cluster must never reach the mint call")
+}
+
+// candidateIDsToken extracts candidate ids for an ElementsMatch assertion
+// (mirrors the candidateIDs helper already used elsewhere in this package
+// for a different type's Candidates field).
+func candidateIDsToken(cs []clierr.Candidate) []string {
+	out := make([]string, len(cs))
+	for i, c := range cs {
+		out[i] = c.ID
+	}
+	return out
+}
+
+// TestStoredTokenForServerNoticeScopedToWinningRank is the round-4 repro
+// for the cosmetic finding: the multiple-candidates notice must fire only
+// when the WINNING rank itself had more than one token-bearing candidate —
+// a rank-0 exact --name win must stay silent even if an unrelated,
+// lower-ranked server happens to also carry a stale token.
+func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken("prod-a", "tok-a")) // exact --name match, rank 0
+	require.NoError(t, store.SetToken("prod-z", "tok-z")) // unrelated, rank 3 (stale)
+	cfg := &config.Config{
+		Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-z": {URL: "https://r.ex"},
+		},
+	}
+
+	var notices bytes.Buffer
+	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", ui.New(&notices, strings.NewReader(""), true, false))
+	require.True(t, ok)
+	assert.Equal(t, "prod-a", name)
+	assert.Equal(t, "tok-a", tok)
+	assert.Empty(t, notices.String(), "a rank-0 exact --name win is a certainty, not a tie-break")
 }
 
 // TestGetTokenSurfacesRealMintFailureNotInteractive is the round-2 repro for

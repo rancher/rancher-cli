@@ -16,7 +16,7 @@ import (
 // membership (usage.go's mechanism, reused here).
 const projectLabel = "field.cattle.io/projectId"
 
-// idOrDisplayMatch implements the shared id-or-display-name collision
+// MatchByIDOrDisplay implements the shared id-or-display-name collision
 // algorithm ResolveProject and resolveUser both need, mirroring
 // ResolveCluster's collision semantics exactly (surface/cli's
 // clientFactory.ResolveCluster): an id match and any display-name matches
@@ -24,8 +24,10 @@ const projectLabel = "field.cattle.io/projectId"
 // a value matching one item's id AND a different item's displayName is
 // ambiguous, not a silent id match. Callers own the entity-specific error
 // message; this returns the matched id set (0, 1, or 2+) plus idFound and
-// the display-match count for wording it.
-func idOrDisplayMatch(nameOrID string, ids []string, displayOf func(id string) string) (matched []string, idFound bool, displayMatchCount int) {
+// the display-match count for wording it. Exported so
+// internal/token.resolveMintClusterID can share this exact algorithm
+// instead of carrying its own copy.
+func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string) string) (matched []string, idFound bool, displayMatchCount int) {
 	set := map[string]bool{}
 	for _, id := range ids {
 		if id == nameOrID {
@@ -66,7 +68,7 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	matched, idFound, displayMatchCount := idOrDisplayMatch(nameOrID, ids, func(id string) string { return displayByID[id] })
+	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
 	switch len(matched) {
 	case 1:
 		return matched[0], nil
