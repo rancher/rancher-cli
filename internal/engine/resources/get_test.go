@@ -59,6 +59,7 @@ func (m *memClient) Delete(context.Context, schema.GroupVersionResource, string,
 type recFactory struct {
 	client       engine.ClusterClient
 	resolve      map[string]string
+	resolveErr   map[string]error
 	ctxCluster   string
 	ctxProject   string
 	clusterCalls []string
@@ -73,6 +74,9 @@ func (f *recFactory) ContextProject() (string, error) { return f.ctxProject, nil
 func (f *recFactory) ResolveCluster(_ context.Context, s string) (string, error) {
 	if s == "" || s == engine.LocalCluster {
 		return engine.LocalCluster, nil
+	}
+	if err, ok := f.resolveErr[s]; ok {
+		return "", err
 	}
 	if id, ok := f.resolve[s]; ok {
 		return id, nil
@@ -181,6 +185,52 @@ func TestGetClusterSingle(t *testing.T) {
 	assert.Equal(t, "Cluster", res.Kind)
 	assert.Equal(t, []string{"prod"}, client.getName)
 	assert.Equal(t, []string{""}, client.getNS, "clusters are cluster-scoped")
+}
+
+func TestGetClusterNamedByID(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{clusterObj("c-m-abc", "prod", "active")}}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-m-abc"}}
+	res := execGet(t, NewGet(mustKind(t, "cluster"), fac), input{args: []string{"c-m-abc"}})
+	assert.Equal(t, "Cluster", res.Kind)
+	assert.Equal(t, []string{"c-m-abc"}, client.getName, "an id argument passes through ResolveCluster unchanged")
+}
+
+func TestGetClusterNamedByDisplayName(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{clusterObj("c-m-abc", "prod", "active")}}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-m-abc"}}
+	res := execGet(t, NewGet(mustKind(t, "cluster"), fac), input{args: []string{"prod"}})
+	assert.Equal(t, "Cluster", res.Kind)
+	assert.Equal(t, []string{"c-m-abc"}, client.getName, "the display name resolves to the cluster id before Get")
+}
+
+func TestGetClusterNamedAmbiguousDisplayName(t *testing.T) {
+	t.Parallel()
+	client := &memClient{}
+	fac := &recFactory{client: client, resolveErr: map[string]error{
+		"prod": clierr.New(clierr.CodeAmbiguousSelection, "2 clusters have display name \"prod\"").
+			WithCandidates([]clierr.Candidate{{ID: "c-m-abc", Name: "prod"}, {ID: "c-m-def", Name: "prod"}}),
+	}}
+	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"prod"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Empty(t, client.getName, "Get must not be called on an ambiguous resolution")
+}
+
+func TestGetClusterNamedMiss(t *testing.T) {
+	t.Parallel()
+	client := &memClient{}
+	fac := &recFactory{client: client, resolveErr: map[string]error{
+		"missing": clierr.New(clierr.CodeNotFound, "cluster not found: \"missing\"").
+			WithCandidates([]clierr.Candidate{{ID: "local", Name: "local"}, {ID: "c-m-abc", Name: "prod"}}),
+	}}
+	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"missing"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
 }
 
 func TestGetClusterEmptyArgLists(t *testing.T) {

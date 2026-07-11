@@ -123,6 +123,13 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	title := kindTitle(c.k.Name)
 	if named {
 		name := in.Args()[0]
+		if c.k.Key == "managementcluster" {
+			resolved, rerr := c.clients.ResolveCluster(ctx, name)
+			if rerr != nil {
+				return runtime.Result{}, rerr
+			}
+			name = resolved
+		}
 		var one *unstructured.Unstructured
 		if wait {
 			expr := forExpr
