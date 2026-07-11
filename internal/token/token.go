@@ -158,15 +158,15 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, err
 	}
 
-	rancherToken, ok, serr := t.storedCredToken(ctx, client, server, clusterID, p)
-	if serr != nil {
-		return runtime.Result{}, serr
-	}
-	if !ok {
+	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, name, p)
+	switch {
+	case errors.Is(err, errNoStoredCredential):
 		rancherToken, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
 			return runtime.Result{}, err
 		}
+	case err != nil:
+		return runtime.Result{}, err
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token").
@@ -767,16 +767,45 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	}
 }
 
+// errNoStoredCredential is storedCredToken's sentinel for "try the
+// interactive provider flow instead" — no usable stored credential exists,
+// or the mint was rejected as an invalid/insufficient credential
+// (errMintDenied). Any other error storedCredToken returns is a real
+// failure (network/TLS/5xx, or a resolution error for --cluster) that the
+// caller must surface directly, never paper over with "interactive login
+// required".
+var errNoStoredCredential = errors.New("no usable stored login credential")
+
+// serverCandidateRank orders storedTokenForServer's BaseURL-matching
+// candidates: (0) an exact --name match, (1) a candidate whose name is a
+// prefix of --name in the "<server>-<clusterID>" entry-name shape, (2) the
+// current context's server, (3) everything else (broken by the
+// lexicographic order candidates already carry on input).
+func serverCandidateRank(name, wantName, curServer string) int {
+	switch {
+	case wantName != "" && name == wantName:
+		return 0
+	case wantName != "" && strings.HasPrefix(wantName, name+"-"):
+		return 1
+	case curServer != "" && name == curServer:
+		return 2
+	default:
+		return 3
+	}
+}
+
 // storedTokenForServer finds the configured server entry whose URL matches
 // server (compared by scheme+host via kube.BaseURL) and has a stored login
 // token, and returns that name and token. Mirrors caForServer's
 // server-matching, but resolves the credential store's token instead of the
 // config's CA. Multiple Servers entries can share a BaseURL (e.g. re-login
-// under a new --name against the same host); ties break toward the current
-// context's server when it matches, else the lexicographically-smallest
-// name, so the choice is deterministic across runs rather than depending on
-// Go's map iteration order.
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server string) (name, tok string, ok bool) {
+// under a new --name against the same host); serverCandidateRank orders
+// them deterministically, and every candidate in that order is tried in
+// turn — the first one with an actual stored token wins, so a
+// higher-ranked-but-tokenless sibling never masks a lower-ranked one that
+// does have a token. p is noticed when more than one candidate had a
+// stored token, since the choice is then a tie-break, not a certainty.
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, p runtime.Prompter) (name, tok string, ok bool) {
 	target := kube.BaseURL(server)
 	var candidates []string
 	for n, s := range cfg.Servers {
@@ -788,58 +817,147 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server str
 		return "", "", false
 	}
 	sort.Strings(candidates)
-	chosen := candidates[0]
+
+	curServer := ""
 	if cur := cfg.CurrentContext; cur != "" {
-		if ctx, ok := cfg.Contexts[cur]; ok {
-			for _, n := range candidates {
-				if n == ctx.Server {
-					chosen = n
-					break
-				}
-			}
+		curServer = cfg.Contexts[cur].Server
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return serverCandidateRank(candidates[i], wantName, curServer) < serverCandidateRank(candidates[j], wantName, curServer)
+	})
+
+	chosenName, chosenTok, hits := "", "", 0
+	for _, n := range candidates {
+		t, err := store.GetToken(n)
+		if err != nil || strings.TrimSpace(t) == "" {
+			continue
+		}
+		hits++
+		if chosenName == "" {
+			chosenName, chosenTok = n, t
 		}
 	}
-	t, err := store.GetToken(chosen)
-	if err == nil && strings.TrimSpace(t) != "" {
-		return chosen, t, true
+	if chosenName == "" {
+		return "", "", false
 	}
-	return "", "", false
+	if hits > 1 {
+		p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", hits, chosenName))
+	}
+	return chosenName, chosenTok, true
 }
+
+// clustersPath is the management Cluster collection/object path, reached
+// through the same local-cluster proxy MintTokensPath uses.
+const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
+
+// resolveMintClusterID resolves clusterID (an id, a display name, "", or
+// "local") to its Cluster id before minting, using the stored login
+// credential as bearer — the same exact-id-then-display-name semantics
+// get/patch's ResolveCluster uses, reimplemented locally since tokenCmd has
+// no ClusterClientFactory of its own. An exact id match short-circuits with
+// a single object Get; only a miss falls through to listing every cluster
+// and matching by spec.displayName.
+func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
+	if clusterID == "" || clusterID == "local" {
+		return clusterID, nil
+	}
+	get := func(path string) (*http.Response, []byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+		return httpx.Do(client, req)
+	}
+
+	resp, _, err := get(clustersPath + "/" + clusterID)
+	if err != nil {
+		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
+	}
+	if resp.StatusCode == http.StatusOK {
+		return clusterID, nil
+	}
+
+	resp, body, err := get(clustersPath)
+	if err != nil {
+		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
+	var matches []string
+	for _, item := range gjson.GetBytes(body, "items").Array() {
+		if item.Get("spec.displayName").String() == clusterID {
+			matches = append(matches, item.Get("metadata.name").String())
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return "", clierr.New(clierr.CodeNotFound, fmt.Sprintf("cluster not found: %q", clusterID))
+	default:
+		return "", clierr.New(clierr.CodeAmbiguousSelection,
+			fmt.Sprintf("%d clusters have display name %q", len(matches), clusterID))
+	}
+}
+
+// legacyMintTTL is the bounded staleness a legacy (pre-ext.cattle.io)
+// Rancher's stored-credential fallback caches under, since the raw stored
+// login token carries no expiry of its own to propagate: caching nothing
+// (a zero expiry) would force a full mint-then-404 round trip on every
+// single invocation, but caching forever would mean serving a revoked
+// token indefinitely. 15 minutes trades a little staleness for a lot fewer
+// round trips.
+const legacyMintTTL = 15 * time.Minute
 
 // storedCredToken mints a cluster-scoped token from the stored login
 // credential for server, non-interactively, using the same derived-token
-// path `auth login` uses. ok=false with a nil error means there is no
-// usable stored credential, or the mint was rejected as an invalid/
-// insufficient credential (errMintDenied) — the caller falls through to the
-// interactive provider flow exactly as if no stored credential existed. A
-// non-nil error means a real failure (network/TLS/5xx, or a config.yaml
-// that could not be read) that the caller must surface directly, not paper
-// over with "interactive login required".
-func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID string, p runtime.Prompter) (Token, bool, error) {
+// path `auth login` uses. errNoStoredCredential means the caller should
+// fall through to the interactive provider flow exactly as if no stored
+// credential existed — either none was found, or the mint was rejected as
+// an invalid/insufficient credential. An unreadable config.yaml is noticed
+// and also falls through to errNoStoredCredential (the config load failure
+// itself is never returned as a hard error here — see the doc on the
+// —no-input residue in the package's fix history). Any other non-nil error
+// is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
+// the caller must surface directly.
+func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, p runtime.Prompter) (Token, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v — skipping stored-credential mint", err))
-		return Token{}, false, nil
+		return Token{}, errNoStoredCredential
 	}
-	name, stored, ok := storedTokenForServer(cfg, t.store, server)
+	name, stored, ok := storedTokenForServer(cfg, t.store, server, wantName, p)
 	if !ok {
-		return Token{}, false, nil
+		return Token{}, errNoStoredCredential
 	}
-	bearer, expiresAt, err := MintDerivedToken(ctx, client, kube.BaseURL(server), stored, clusterID, 0)
+	base := kube.BaseURL(server)
+	resolvedCluster, rerr := resolveMintClusterID(ctx, client, base, stored, clusterID)
+	if rerr != nil {
+		return Token{}, rerr
+	}
+	bearer, expiresAt, err := MintDerivedToken(ctx, client, base, stored, resolvedCluster, 0)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrExtGroupAbsent):
 			// Legacy Rancher with no ext.cattle.io: use the stored token
-			// itself, matching auth login's own fallback.
-			return Token{Token: stored}, true, nil
+			// itself, matching auth login's own fallback. The stored token
+			// carries no expiry of its own, so cache it for a bounded,
+			// conservative TTL rather than never (a zero expiry) or
+			// forever.
+			expiry := time.Now().Add(legacyMintTTL).UTC().Format(time.RFC3339)
+			p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyMintTTL))
+			return Token{Token: stored, ExpiresAt: expiry}, nil
 		case errors.Is(err, errMintDenied):
 			p.Notice(fmt.Sprintf("minting from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
-			return Token{}, false, nil
+			return Token{}, errNoStoredCredential
 		default:
-			return Token{}, false, err
+			return Token{}, err
 		}
 	}
-	return Token{Token: bearer, ExpiresAt: expiresAt}, true, nil
+	return Token{Token: bearer, ExpiresAt: expiresAt}, nil
 }
 
 // caForServer returns the CA of the configured server entry whose URL

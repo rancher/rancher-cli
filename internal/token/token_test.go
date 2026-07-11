@@ -239,6 +239,38 @@ func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
 // call fails, so get-token must still fall through to the interactive flow
 // (observed here as an authproviders hit) rather than surfacing the mint
 // error directly.
+// TestGetTokenLegacyFallbackCachesWithBoundedTTL is the round-3 repro for
+// finding 5: a legacy (pre-ext.cattle.io) Rancher's stored-credential
+// fallback must still be cached — with a bounded, conservative TTL, since
+// the raw stored token carries no expiry of its own — rather than never
+// (a zero expiry trips round-2's own no-zero-expiry-cache gate, forcing a
+// full mint-then-404 round trip on every single invocation).
+func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // no ext.cattle.io on this Rancher at all
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "stored-login-token", cred.Status.Token)
+
+	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	require.NoError(t, cerr, "the legacy fallback must be cached, not treated as zero-expiry")
+	assert.WithinDuration(t, time.Now().Add(legacyMintTTL), expiry, time.Minute)
+}
+
 func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 	var authProviderHits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -378,14 +410,18 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 func TestGetTokenMintScopesToCluster(t *testing.T) {
 	var gotClusters []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		switch {
+		case r.URL.Path == clustersPath+"/c-a" || r.URL.Path == clustersPath+"/c-b":
+			// Exact-id lookups: both are already valid cluster ids.
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
-			return
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -408,6 +444,88 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 
 	require.Len(t, gotClusters, 2)
 	assert.ElementsMatch(t, []string{"c-a", "c-b"}, gotClusters)
+}
+
+// TestGetTokenClusterDisplayNameResolves is the round-3 repro for finding
+// 3: an unresolved display name passed to --cluster must resolve to the
+// cluster's id (via the cluster list, using the stored credential) before
+// minting — a raw, unresolved display name must never reach spec.clusterName.
+func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
+	var gotCluster, gotAuth string
+	var listHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == clustersPath+"/prod":
+			w.WriteHeader(http.StatusNotFound) // "prod" is a display name, not an id
+		case r.URL.Path == clustersPath:
+			atomic.AddInt32(&listHits, 1)
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-m-abc"},"spec":{"displayName":"prod"}}]}`))
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "cluster": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	assert.Equal(t, "c-m-abc", gotCluster, "the resolved id, not the raw display name, must reach the mint")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits))
+	assert.Equal(t, "Bearer stored-login-token", gotAuth, "cluster resolution uses the stored credential, not a fresh session")
+}
+
+// TestGetTokenClusterMissErrorsWithoutMinting is the round-3 repro for
+// finding 3's "unresolvable → propagate the resolution error" half: an
+// unresolvable --cluster must fail directly, never mint an unscoped token.
+func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
+	var mintHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case clustersPath + "/missing":
+			w.WriteHeader(http.StatusNotFound)
+		case clustersPath:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case MintTokensPath:
+			atomic.AddInt32(&mintHits, 1)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "cluster": "missing"}},
+		ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an unresolvable cluster must never reach the mint call")
 }
 
 // TestGetTokenSurfacesRealMintFailureNotInteractive is the round-2 repro for
@@ -491,7 +609,7 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	}
 
 	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
-		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex")
+		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
 		require.True(t, ok)
 		assert.Equal(t, "prod-a", name)
 		assert.Equal(t, "tok-a", tok)
@@ -500,11 +618,50 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	t.Run("the current context's server wins the tie, regardless of name order", func(t *testing.T) {
 		cfg.CurrentContext = "ctx-b"
 		cfg.Contexts = map[string]config.Context{"ctx-b": {Server: "prod-b"}}
-		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex")
+		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
 		require.True(t, ok)
 		assert.Equal(t, "prod-b", name)
 		assert.Equal(t, "tok-b", tok)
 	})
+}
+
+// TestStoredTokenForServerExhaustsCandidatesWithNoToken is the round-3
+// repro for finding 1: the tie-break's chosen candidate having no stored
+// token must not mask a sibling that does — every candidate is tried, not
+// just the top-ranked one.
+func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	// prod-a ranks first lexicographically but has no stored token.
+	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	cfg := &config.Config{
+		Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-b": {URL: "https://r.ex"},
+		},
+	}
+	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+	require.True(t, ok, "a tokenless top-ranked candidate must not short-circuit the search")
+	assert.Equal(t, "prod-b", name)
+	assert.Equal(t, "tok-b", tok)
+}
+
+// TestStoredTokenForServerNamePicksNamedServer is the round-3 repro for
+// finding 2: an explicit --name must win over the lexicographic default,
+// even when neither is the current context's server.
+func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken("prod-a", "tok-a"))
+	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	cfg := &config.Config{
+		Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-b": {URL: "https://r.ex"},
+		},
+	}
+	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", ui.Discard())
+	require.True(t, ok)
+	assert.Equal(t, "prod-b", name, "--name must win over the lexicographic default")
+	assert.Equal(t, "tok-b", tok)
 }
 
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
