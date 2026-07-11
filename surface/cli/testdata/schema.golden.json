@@ -223,14 +223,6 @@
     {
       "auth": false,
       "commandType": "local",
-      "name": "config purge-legacy",
-      "network": false,
-      "toolset": "core",
-      "usage": "Delete the migrated legacy cli2.json (plaintext credentials)"
-    },
-    {
-      "auth": false,
-      "commandType": "local",
       "examples": [
         "rancher config set-context --current --cluster c-1 --project p-1"
       ],

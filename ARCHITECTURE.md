@@ -41,7 +41,7 @@ what drifted the previous revision of this doc).
 |---|---|
 | `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
 | `surface/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
-| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `config purge-legacy`, `kubeconfig`. |
+| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `kubeconfig`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
@@ -52,7 +52,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
-| `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, legacy migration, store selection/pinning. |
+| `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used only by `internal/token`'s auth-provider HTTP flows. |
@@ -364,12 +364,8 @@ projects` edge above.
 | `RANCHER_CLI_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
 | `RANCHER_CLI_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
 
-**Legacy migration.** On a run whose config dir has no `config.yaml`, if a legacy
-`cli2.json` is found (`$RANCHER_CLI_CONFIG_DIR/cli2.json`, then `~/.rancher/cli2.json`), it is
-imported **only** when the config dir was not explicitly overridden. An explicitly
-overridden dir (`--config` or `RANCHER_CLI_CONFIG_DIR`) never auto-imports — it logs a hint
-instead — so a run against a throwaway dir cannot silently pull in the real
-`~/.rancher/cli2.json`. `config purge-legacy` deletes the migrated plaintext file.
+**Legacy migration.** There is none: config and credentials are never imported
+from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 
 ## Key design decisions
 

@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -122,7 +121,7 @@ func buildIO(c *ucli.Command) runtime.IO {
 // resolveReadOnly OR's the three read-only sources — config, env, flag —
 // into one bool plus the active source name(s), for the read-only-mode
 // refusal hint. It re-loads the config file directly (config.ResolveDir + a
-// plain config.Load, no credential store / migration side effects) so it
+// plain config.Load, no credential store side effects) so it
 // can run standalone from root's Before hook, ahead of any command's own
 // resolveDeps. A config load failure here degrades to "config source
 // inactive" rather than failing the whole invocation — resolveDeps already
@@ -165,10 +164,9 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	}
 }
 
-// resolveDeps resolves the config dir from --config (flag > env > XDG), runs a
-// one-time legacy migration when no new config exists yet, and opens the
-// credential store per the config's policy. This is THE single place dir/store
-// are resolved, so --config always takes effect and migration never re-fires.
+// resolveDeps resolves the config dir from --config (flag > env > XDG) and
+// opens the credential store per the config's policy. This is THE single
+// place dir/store are resolved, so --config always takes effect.
 func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	dir, err := config.ResolveDir(c.String("config"))
 	if err != nil {
@@ -178,27 +176,10 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// Load before OpenStore so the declared policy drives store selection, and
-	// migration lands tokens in the backend the config declares.
+	// Load before OpenStore so the declared policy drives store selection.
 	store, err := config.OpenStore(cfg.CredentialStore, dir)
 	if err != nil {
 		return "", nil, err
-	}
-	// FindLegacy scans the real $HOME; only auto-migrate into the DEFAULT config
-	// dir. An explicitly overridden dir (--config or RANCHER_CLI_CONFIG_DIR) is
-	// deliberately isolated — legacy import advice is irrelevant there, and
-	// even a plain-text notice would corrupt a scripted session's stderr JSON
-	// (the error envelope, when one follows, must stay the only/last JSON
-	// object on stderr), so this case stays silent.
-	explicitDir := c.String("config") != "" || os.Getenv("RANCHER_CLI_CONFIG_DIR") != ""
-	if !explicitDir {
-		if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
-			if legacy, ok := config.FindLegacy(); ok {
-				if _, mErr := config.Migrate(legacy, dir, store); mErr == nil {
-					logrus.Warnf("migrated legacy config from %s; remove it with `rancher config purge-legacy`", legacy)
-				}
-			}
-		}
 	}
 	return dir, store, nil
 }

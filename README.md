@@ -83,7 +83,6 @@ or point any other agent's instructions file at it.
 | `config delete-server <name>` | Remove a configured server, every context that targets it, and drain its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
 | `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
 | `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
-| `config purge-legacy` | Delete the migrated legacy `cli2.json` |
 | `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — public tier; dry-run/apply |
 | `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
 | `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — public tier; dry-run/apply |
@@ -118,7 +117,7 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 
 Generated per kind from the 40-kind table: `get <kind>` (40), `patch <kind>`
 (40), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
-`token`, and `kubeconfig`) — 100 generated commands, 135 total together with
+`token`, and `kubeconfig`) — 100 generated commands, 134 total together with
 the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 
@@ -324,10 +323,8 @@ never depends on them.
   a fallback: an unset `--project` flag falls back to it (`--project` always
   wins when both are set) — see "Project scope" above.
 
-- **Migration:** on first run the CLI imports a legacy
-  `~/.rancher/cli2.json` (also `$RANCHER_CLI_CONFIG_DIR/cli2.json`) into the new
-  config + credential store, then warns you to remove the plaintext original
-  with `rancher config purge-legacy`.
+- **Migration:** config and credentials are not imported — run `rancher auth
+  login` once per server.
 
 ## kubectl integration
 
@@ -380,7 +377,7 @@ PATH enables the kubectl-interop scenario; otherwise it skips.
     internal/
       clierr/               structured error type + exit codes
       output/               versioned envelope + renderers
-      config/               XDG config, credential store, migration, atomic writes
+      config/               XDG config, credential store, atomic writes
       client/kube/          rest.Config for the Rancher k8s proxy
       client/httpx/         HTTP client (TLS / proxy / timeouts)
       client/provider/      op tier/stability resolver + dynamic ClusterClient (adapter)
@@ -390,7 +387,7 @@ PATH enables the kubectl-interop scenario; otherwise it skips.
       engine/resources/     generic get/delete over the kind table
       engine/projects/      create project/namespace, project membership, name resolution
       engine/extres/        create token/kubeconfig (ext.cattle.io fixed mutating commands)
-      commands/             auth login/check, config context/server ops, purge-legacy
+      commands/             auth login/check, config context/server ops
       token/                exec-credential plugin (auth get-token / delete-token)
     surface/cli/            urfave/cli v3 adapter + root wiring + engine DI
 

@@ -1,10 +1,7 @@
 # Migrating from the legacy Rancher CLI
 
-Config auto-migrates on first run: a legacy `~/.rancher/cli2.json` (or
-`$RANCHER_CLI_CONFIG_DIR/cli2.json`) is imported into the new config + credential
-store the first time you run against that config dir (only when the dir was
-not explicitly overridden). Run `rancher config purge-legacy` afterward to
-remove the plaintext original.
+Config and credentials are not imported — run `rancher auth login` once per
+server.
 
 Output is enveloped JSON/YAML/table (`-o table|json|yaml`, plus `-o name` for
 IDs only); table is the default for interactive use. Mutating commands need

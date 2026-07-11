@@ -5,13 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
@@ -81,51 +79,6 @@ func (schemaLikeCmd) Describe() runtime.Descriptor {
 }
 func (schemaLikeCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
 	return runtime.Result{}, nil
-}
-
-// runResolveDeps drives resolveDeps with a parsed --config flag, returning the
-// resolved dir and error.
-func runResolveDeps(t *testing.T, configFlag string) (string, error) {
-	t.Helper()
-	var (
-		gotDir string
-		gotErr error
-	)
-	cmd := &ucli.Command{
-		Name:  "x",
-		Flags: []ucli.Flag{&ucli.StringFlag{Name: "config"}},
-		Action: func(_ context.Context, c *ucli.Command) error {
-			gotDir, _, gotErr = resolveDeps(c)
-			return nil
-		},
-	}
-	argv := []string{"x"}
-	if configFlag != "" {
-		argv = append(argv, "--config", configFlag)
-	}
-	require.NoError(t, cmd.Run(context.Background(), argv))
-	return gotDir, gotErr
-}
-
-func TestResolveDepsGuardsMigrationForOverriddenDir(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	legacyDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(legacyDir, "cli2.json"), []byte("{}"), 0o600))
-	t.Setenv("RANCHER_CLI_CONFIG_DIR", legacyDir) // makes FindLegacy discover the legacy file
-
-	freshDir := t.TempDir()
-
-	orig := logrus.StandardLogger().Out
-	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(orig)
-
-	dir, err := runResolveDeps(t, freshDir)
-	require.NoError(t, err)
-	assert.Equal(t, freshDir, dir)
-	_, statErr := os.Stat(filepath.Join(freshDir, "config.yaml"))
-	assert.True(t, os.IsNotExist(statErr), "must not migrate into an explicitly overridden config dir")
-	assert.Empty(t, buf.String(), "an explicitly overridden config dir must stay silent — no notice to corrupt a scripted session's stderr JSON")
 }
 
 // resolveReadOnlyFlags is the minimal flag set resolveReadOnly reads from.
@@ -199,20 +152,4 @@ func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 	require.NoError(t, cmd.Run(context.Background(), []string{"x"}))
 	assert.True(t, got.ReadOnly)
 	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
-}
-
-func TestResolveDepsMigratesIntoDefaultDir(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	t.Setenv("RANCHER_CLI_CONFIG_DIR", "")
-	t.Setenv("XDG_CONFIG_HOME", "")
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	require.NoError(t, os.MkdirAll(filepath.Join(home, ".rancher"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".rancher", "cli2.json"), []byte("{}"), 0o600))
-
-	dir, err := runResolveDeps(t, "")
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(home, ".config", "rancher"), dir)
-	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))
-	require.NoError(t, statErr, "migration must create config.yaml in the default dir")
 }

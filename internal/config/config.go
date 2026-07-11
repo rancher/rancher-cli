@@ -99,7 +99,7 @@ func (c *Config) Write() error {
 // Path returns the file path this config was loaded from / writes to.
 func (c *Config) Path() string { return c.path }
 
-// SetPath overrides the write target (used by migration).
+// SetPath overrides the write target.
 func (c *Config) SetPath(p string) { c.path = p }
 
 // CurrentServer resolves the server referenced by the current context.

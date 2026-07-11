@@ -359,16 +359,15 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "bogus-flag")
 }
 
-// DR-005 repro: an explicitly overridden config dir with a leftover legacy
-// cli2.json must not put a plain-text notice ahead of the error envelope —
-// stderr must parse as pure JSON, exactly as a scripted session relies on.
+// An explicitly overridden config dir must not put a plain-text notice ahead
+// of the error envelope — stderr must parse as pure JSON, exactly as a
+// scripted session relies on.
 func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	t.Setenv("RANCHER_CLI_URL", "")
 	t.Setenv("RANCHER_CLI_TOKEN", "")
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cli2.json"), []byte("{}"), 0o600))
-	t.Setenv("RANCHER_CLI_CONFIG_DIR", dir) // explicit override AND FindLegacy's scan target
+	t.Setenv("RANCHER_CLI_CONFIG_DIR", dir)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -389,9 +388,6 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	data := env["data"].(map[string]any)
 	errObj := data["error"].(map[string]any)
 	assert.Equal(t, "CONTEXT_NOT_SET", errObj["code"])
-
-	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))
-	assert.True(t, os.IsNotExist(statErr), "must not migrate into an explicitly overridden config dir")
 }
 
 func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
