@@ -90,6 +90,17 @@ func newRouter(validBearer func(string) bool) http.Handler {
 }
 
 func TestMain(m *testing.M) {
+	// legacyScripts keys must resolve to real txtars, loudly, for the same
+	// reason Setup's own scriptName derivation fails loudly: a typo'd key or
+	// a renamed txtar must be an obvious harness-drift error, never a
+	// confusing scenario failure (e.g. get-token-legacy.txtar's stderr
+	// assertion failing because its façade silently ran non-legacy).
+	for name := range legacyScripts {
+		if _, err := os.Stat(filepath.Join("scripts", name+".txtar")); err != nil {
+			panic(fmt.Sprintf("legacyScripts references missing scripts/%s.txtar: %v", name, err))
+		}
+	}
+
 	tmp, err := os.MkdirTemp("", "rancher-e2e-*")
 	if err != nil {
 		panic("creating temp dir: " + err.Error())

@@ -14,16 +14,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 const (
 	authProvidersPath = "/v1-public/authproviders"
 	loginPath         = "/v1-public/login"
 
-	// mintTokensPath mirrors token.MintTokensPath's literal value. It is
-	// duplicated rather than imported so this test double stays decoupled
-	// from the production package it fakes.
-	mintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
+	// mintTokensPath is production's own constant, not a duplicated literal:
+	// the architecture conformance edge only forbids a production package
+	// importing testrancher, not the reverse, so this is the one place the
+	// path lives.
+	mintTokensPath = token.MintTokensPath
 
 	defaultMintTTL = 15 * time.Minute
 )
@@ -101,14 +104,14 @@ func New(opts Options) *Facade {
 // ValidBearer reports whether token is a façade-issued, unrevoked, unexpired
 // bearer (instance clock). Revoked tokens are removed from the store, so
 // "unrevoked" and "present" are the same condition here.
-func (f *Facade) ValidBearer(token string) bool {
-	if token == "" {
+func (f *Facade) ValidBearer(bearer string) bool {
+	if bearer == "" {
 		return false
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, rec := range f.tokens {
-		if rec.bearer() == token {
+		if rec.bearer() == bearer {
 			return time.Now().Before(rec.expiresAt)
 		}
 	}
@@ -242,6 +245,10 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *Facade) handleNamedGet(w http.ResponseWriter, r *http.Request, name string) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	f.mu.Lock()
 	rec, ok := f.tokens[name]
 	f.mu.Unlock()
@@ -249,13 +256,7 @@ func (f *Facade) handleNamedGet(w http.ResponseWriter, r *http.Request, name str
 		f.fallthroughTo(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"apiVersion": "ext.cattle.io/v1",
-		"kind":       "Token",
-		"metadata":   map[string]any{"name": rec.name, "resourceVersion": rec.resourceVersion},
-		"spec":       map[string]any{"clusterName": rec.clusterName},
-		"status":     map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)},
-	})
+	writeJSON(w, http.StatusOK, tokenCRBody(rec))
 }
 
 type deleteOptions struct {
@@ -266,6 +267,10 @@ type deleteOptions struct {
 }
 
 func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, name string) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "reading body", http.StatusBadRequest)
@@ -376,5 +381,9 @@ func writeExtToken(w http.ResponseWriter, status int, rec *record) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	// This JSON is a test fixture read by the CLI, not embedded in HTML — keep
+	// `<`, `>`, `&` literal, matching internal/output/render.go's convention.
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }

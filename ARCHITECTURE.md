@@ -183,6 +183,8 @@ graph TD
     config --> clierr
 
     output --> clierr
+
+    testrancher --> token
 ```
 
 ## Command pipeline

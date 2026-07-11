@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const mintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
+const mintTokensPath = token.MintTokensPath
 
 // recordingHandler captures every request it receives, for asserting a
 // mint-discrimination or unknown-name case actually fell through instead of
@@ -315,10 +316,6 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	require.NoError(t, json.Unmarshal(loginBody, &s))
 	require.Equal(t, "ext/fac-token-1:fac-secret-1", s.Status.BearerToken)
 
-	sessionBearer := strings.TrimPrefix(s.Status.BearerToken, "ext/")
-	sessionBearer = "ext/" + sessionBearer // keep full form for header use below
-	_ = sessionBearer
-
 	mintResp, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
 		map[string]any{"spec": map[string]any{}}, s.Status.BearerToken)
 	require.Equal(t, http.StatusCreated, mintResp.StatusCode)
@@ -445,6 +442,31 @@ func TestMintRejectsUnauthorizedBearer(t *testing.T) {
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "garbage:garbage")
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestNamedGetAndDeleteRejectUnauthorizedBearer(t *testing.T) {
+	t.Parallel()
+	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
+
+	_, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	var tok struct {
+		Status struct {
+			BearerToken string `json:"bearerToken"`
+		}
+	}
+	require.NoError(t, json.Unmarshal(mintBody, &tok))
+
+	for _, bearer := range []string{"", "garbage:garbage"} {
+		getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, bearer)
+		assert.Equal(t, http.StatusUnauthorized, getResp.StatusCode, "GET with bearer %q must 401", bearer)
+
+		delResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", nil, bearer)
+		assert.Equal(t, http.StatusUnauthorized, delResp.StatusCode, "DELETE with bearer %q must 401", bearer)
+	}
+
+	// The token is still valid after both rejections — neither failed call revoked it.
+	getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, tok.Status.BearerToken)
+	assert.Equal(t, http.StatusOK, getResp.StatusCode)
 }
 
 func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
