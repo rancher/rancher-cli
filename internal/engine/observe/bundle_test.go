@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,40 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, path, data.Path)
 	assert.Greater(t, data.Errors, 0)
+	assert.Greater(t, data.Skipped, 0)
+}
+
+// TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError is the exercise bug 6
+// repro: kube-api-auth on a non-ACE cluster is a structural inapplicability
+// detected at target resolution time, not an attempted-and-failed
+// collection, so it must manifest as skipped, never error.
+func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	nonACECluster := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-1"},
+		"spec":     map[string]any{},
+	}}
+	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", nonACECluster)
+	downstream := newFakeClient()
+	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+
+	path := filepath.Join(dir, "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{
+		flagFilename: path,
+		flagTargets:  "kube-api-auth",
+		flagClusters: "c-1",
+	}})
+	require.NoError(t, err)
+
+	m := manifestFrom(t, path)
+	item := findItem(t, m, "kube-api-auth", "c-1")
+	assert.True(t, strings.HasPrefix(item.Status, "skipped:"), "want a skipped status, got %q", item.Status)
+	assert.NotContains(t, item.Status, "error:")
+
+	data, ok := res.Data.(bundleResult)
+	require.True(t, ok)
+	assert.Equal(t, 0, data.Errors, "a non-ACE cluster must not count as an error")
 	assert.Greater(t, data.Skipped, 0)
 }
 

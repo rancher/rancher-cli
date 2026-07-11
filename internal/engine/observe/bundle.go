@@ -3,6 +3,7 @@ package observe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -57,6 +58,19 @@ type bundleManifest struct {
 }
 
 func errorStatus(err error) string { return fmt.Sprintf("error: %s", err) }
+
+func skippedStatus(reason string) string {
+	return fmt.Sprintf("skipped: not applicable — %s", reason)
+}
+
+// isNonACE reports whether err is the kube-api-auth non-ACE precheck from
+// ResolveOnCluster — a structural inapplicability detected at target
+// resolution time, not an attempted-and-failed collection, so it manifests
+// as skipped rather than error.
+func isNonACE(err error) bool {
+	var ce *clierr.Error
+	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound && ce.Message == nonACEHint
+}
 
 type supportBundleCmd struct {
 	clients engine.ClusterClientFactory
@@ -205,7 +219,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	var skipped, errored int
 	for _, it := range items {
 		switch {
-		case it.Status == statusSkippedNotApplicable:
+		case strings.HasPrefix(it.Status, "skipped:"):
 			skipped++
 		case strings.HasPrefix(it.Status, "error:"):
 			errored++
@@ -408,7 +422,11 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		}
 		resolved, err := ResolveOnCluster(ctx, clients, t, clusterID)
 		if err != nil {
-			items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: errorStatus(err)})
+			if isNonACE(err) {
+				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: skippedStatus(nonACEHint)})
+			} else {
+				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: errorStatus(err)})
+			}
 			continue
 		}
 		namespaces[resolved.Namespace] = true
