@@ -87,7 +87,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err := client.Delete(ctx, c.k.GVR, ns, name, rv, true); err != nil {
 		return safety.Effect{}, nil, err
 	}
-	title := kindTitle(c.k.Name)
+	title := resultKind(c.k)
 	eff := safety.Effect{
 		Action:            safety.ActionDelete,
 		Target:            c.k.GVR.Resource + "/" + name,

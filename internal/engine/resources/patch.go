@@ -114,7 +114,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
 	// per-kind destructiveness.
-	return engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, kindTitle(c.k.Name), diff, c.k.Sensitive)
+	return engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, resultKind(c.k), diff, c.k.Sensitive)
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,-f} rule and decodes the

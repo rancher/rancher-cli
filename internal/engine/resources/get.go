@@ -120,7 +120,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	title := kindTitle(c.k.Name)
+	title := resultKind(c.k)
 	if named {
 		name := in.Args()[0]
 		if c.k.Key == "managementcluster" {
@@ -454,11 +454,24 @@ func ResolveDownstreamCluster(ctx context.Context, clients engine.ClusterClientF
 }
 
 // kindTitle upper-cases the kind's first rune for the Result envelope Kind
-// ("cluster" → "Cluster", "pod" → "Pod").
+// ("cluster" → "Cluster", "pod" → "Pod"). Only a fallback for a kind with no
+// K8sKind — see resultKind.
 func kindTitle(name string) string {
 	if name == "" {
 		return ""
 	}
 	r := []rune(name)
 	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
+
+// resultKind is the Result envelope's Kind for a kind table row: the
+// manifest's proper Kubernetes casing (k.K8sKind, e.g. "RoleTemplate")
+// when set, falling back to kindTitle(k.Name) otherwise. This keeps
+// get/patch/delete's envelope kind consistent with create's, which already
+// echoes k.K8sKind.
+func resultKind(k kinds.Kind) string {
+	if k.K8sKind != "" {
+		return k.K8sKind
+	}
+	return kindTitle(k.Name)
 }

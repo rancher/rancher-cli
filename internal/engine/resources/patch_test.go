@@ -106,6 +106,27 @@ func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
 	assert.Equal(t, "7", client.updates[1].obj.GetResourceVersion(), "the update carries the fetched RV precondition")
 }
 
+// TestPatchMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
+// the patch path: the envelope kind must echo k.K8sKind's casing
+// ("StatefulSet"), not kindTitle(k.Name)'s mangled "Statefulset".
+func TestPatchMultiWordKindUsesK8sKindCasing(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "statefulset"), fac, nil)
+
+	_, exec, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+	}})
+	require.NoError(t, err)
+
+	res, err := exec(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "StatefulSet", res.Kind)
+}
+
 func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Setting","metadata":{"name":"server-url","resourceVersion":"3"},"value":"old"}`)

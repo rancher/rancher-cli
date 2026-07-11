@@ -170,7 +170,7 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 	cmd := NewGet(mustKind(t, "roletemplate"), &recFactory{client: client})
 
 	res := execGet(t, cmd, input{})
-	assert.Equal(t, "RoletemplateList", res.Kind)
+	assert.Equal(t, "RoleTemplateList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
 	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY"}, tab.Columns())
@@ -231,6 +231,18 @@ func TestGetClusterNamedMiss(t *testing.T) {
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
+}
+
+// TestResultKindUsesK8sKindCasing is the exercise bug 7 repro: envelope
+// kinds must echo the manifest's Kubernetes casing (k.K8sKind), not
+// kindTitle(k.Name)'s naive first-rune capitalization, which mangles
+// multi-word kinds like "roletemplate" -> "Roletemplate" instead of
+// "RoleTemplate".
+func TestResultKindUsesK8sKindCasing(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "RoleTemplate", resultKind(mustKind(t, "roletemplate")))
+	assert.Equal(t, "StatefulSet", resultKind(mustKind(t, "statefulset")))
+	assert.Equal(t, "Pod", resultKind(mustKind(t, "pod")), "a single-word kind is unaffected")
 }
 
 func TestGetClusterEmptyArgLists(t *testing.T) {

@@ -97,6 +97,23 @@ func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
 		"the executor deletes with the captured RV precondition, for real")
 }
 
+// TestDeleteMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
+// the delete path: the envelope kind must echo k.K8sKind's casing
+// ("StatefulSet"), not kindTitle(k.Name)'s mangled "Statefulset".
+func TestDeleteMultiWordKindUsesK8sKindCasing(t *testing.T) {
+	t.Parallel()
+	client := &delClient{obj: objWithRV("web", "1")}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewDelete(mustKind(t, "statefulset"), fac)
+
+	_, exec, err := planDelete(t, cmd, input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	require.NoError(t, err)
+
+	res, err := exec(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "StatefulSetDelete", res.Kind)
+}
+
 func TestDeletePlanDryRunsDeletion(t *testing.T) {
 	t.Parallel()
 	client := &delClient{obj: objWithRV("web", "7")}
