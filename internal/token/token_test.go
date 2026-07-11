@@ -1,9 +1,11 @@
 package token
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type tin struct {
@@ -298,6 +301,210 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits), "no stored credential must fall through to the interactive flow")
+}
+
+// TestGetTokenCachesMintedExpiry is the round-2 repro for finding 1: the
+// stored-credential mint's status.expiresAt must be propagated into the
+// cached credential's real expiry, not silently dropped.
+func TestGetTokenCachesMintedExpiry(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = fmt.Fprintf(w, `{"status":{"bearerToken":"ext/minted:secret","expiresAt":%q}}`, expiresAt)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+
+	_, gotExpiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	require.NoError(t, cerr, "a token with a real expiry must be cached")
+	assert.WithinDuration(t, time.Now().Add(time.Hour), gotExpiry, time.Minute)
+}
+
+// TestGetTokenSkipsCacheWhenMintCarriesNoExpiry is the round-2 repro for
+// finding 1: a mint response with no expiresAt must never be cached — a
+// zero expiry reads back as never-expiring (GetCachedCred only evicts a
+// past, non-zero expiry), so caching it would serve a stale token forever.
+func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	var notices bytes.Buffer
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.New(&notices, strings.NewReader(""), true, false))
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "ext/minted:secret", cred.Status.Token, "the token is still usable for this call")
+
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	assert.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
+	assert.Contains(t, notices.String(), "not caching")
+}
+
+// TestGetTokenMintScopesToCluster is the round-2 repro for finding 2:
+// --cluster must be threaded into the mint request as spec.clusterName, so
+// two different --cluster values produce two distinct scoped mints.
+func TestGetTokenMintScopesToCluster(t *testing.T) {
+	var gotClusters []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "cluster": "c-a"}},
+		ui.Discard())
+	require.NoError(t, err)
+	_, err = cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "cluster": "c-b"}},
+		ui.Discard())
+	require.NoError(t, err)
+
+	require.Len(t, gotClusters, 2)
+	assert.ElementsMatch(t, []string{"c-a", "c-b"}, gotClusters)
+}
+
+// TestGetTokenSurfacesRealMintFailureNotInteractive is the round-2 repro for
+// finding 6: a non-auth mint failure (a 500 here, standing in for
+// network/TLS failures too) must surface as the real error, never papered
+// over as "interactive login required".
+func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
+	var authProviderHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
+			atomic.AddInt32(&authProviderHits, 1)
+			w.WriteHeader(http.StatusNotFound)
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "interactive login required")
+	assert.Contains(t, err.Error(), "500")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "a real mint failure must not fall through to the interactive flow")
+}
+
+// TestGetTokenNoticesUnreadableConfigOnStoredCredPath is the round-2 repro
+// for finding 7: a config.yaml the stored-credential path can't parse must
+// be noticed, not silently folded into a generic "requires login" error.
+func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	var notices bytes.Buffer
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	// --cluster and a (garbage but unparsed, since --skip-verify bypasses
+	// CA loading) --cacert are set explicitly so resolveConn's OWN
+	// config.yaml read is skipped (all three of server/cluster/caIn are
+	// non-empty) — the point of this test is storedCredToken's separate,
+	// unconditional config.Load call.
+	_, err := cmd.Execute(context.Background(),
+		tin{
+			s: map[string]string{
+				"server": "https://r.ex", "cluster": "c-1",
+				"cacert": "-----BEGIN CERTIFICATE-----\nMIICertData\n-----END CERTIFICATE-----\n",
+				"name":   "prod",
+			},
+			b: map[string]bool{"skip-verify": true},
+		},
+		ui.New(&notices, strings.NewReader(""), true, false))
+	require.Error(t, err, "no stored credential and no reachable interactive provider — some error is expected")
+	assert.Contains(t, notices.String(), "config unreadable")
+}
+
+// TestStoredTokenForServerTieBreak is the round-2 repro for finding 8: two
+// Servers entries sharing a BaseURL must resolve deterministically —
+// preferring the current context's server, else the lexicographically
+// smallest name — not whichever a Go map iteration happens to yield.
+func TestStoredTokenForServerTieBreak(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken("prod-a", "tok-a"))
+	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	cfg := &config.Config{
+		Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-b": {URL: "https://r.ex"},
+		},
+	}
+
+	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
+		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex")
+		require.True(t, ok)
+		assert.Equal(t, "prod-a", name)
+		assert.Equal(t, "tok-a", tok)
+	})
+
+	t.Run("the current context's server wins the tie, regardless of name order", func(t *testing.T) {
+		cfg.CurrentContext = "ctx-b"
+		cfg.Contexts = map[string]config.Context{"ctx-b": {Server: "prod-b"}}
+		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex")
+		require.True(t, ok)
+		assert.Equal(t, "prod-b", name)
+		assert.Equal(t, "tok-b", tok)
+	})
 }
 
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {

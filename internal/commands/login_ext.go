@@ -64,7 +64,10 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 	}
 
 	base := kube.BaseURL(server)
-	d, err := token.MintDerivedToken(ctx, client, base, s, ttlMs)
+	// auth login has no cluster-scoping concept of its own; the stored
+	// login token this mints is later scoped per-cluster by get-token's own
+	// derived-token call.
+	d, _, err := token.MintDerivedToken(ctx, client, base, s, "", ttlMs)
 	if err != nil {
 		if errors.Is(err, token.ErrExtGroupAbsent) {
 			note := fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); storing the session token directly", config.MinRancherVersion)

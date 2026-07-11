@@ -67,6 +67,13 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
 	}
 	name := args[0]
+	if c.k.Key == "managementcluster" {
+		resolved, rerr := c.clients.ResolveCluster(ctx, name)
+		if rerr != nil {
+			return safety.Effect{}, nil, rerr
+		}
+		name = resolved
+	}
 
 	patch, err := c.decodePatch(in)
 	if err != nil {

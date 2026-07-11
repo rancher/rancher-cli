@@ -218,7 +218,9 @@ func exit(ce *clierr.Error) error {
 // ShowRootCommandHelpAndExit calls OsExiter.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 	hint := "run: rancher schema"
-	if name == "version" {
+	if name == "version" && c == c.Root() {
+		// --version is a root-level flag only; a subgroup miss like `get
+		// version` has no such flag to point at, so it keeps the generic hint.
 		hint = "there is no `version` command; use --version"
 	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).

@@ -328,6 +328,15 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 	assert.Contains(t, env.Data.Error.Hint, "--version")
+
+	// A subgroup miss on the same literal name has no --version flag to
+	// point at (that flag is root-only) — it must get the generic hint.
+	errOut.Reset()
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "get", "version"}))
+	var env2 errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
+	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
+	assert.NotContains(t, env2.Data.Error.Hint, "--version")
 }
 
 // exercise bug 2 repro: an unknown flag on a real command must surface the

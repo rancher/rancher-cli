@@ -7,12 +7,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// deniedFallbackMessage substitutes for a Forbidden/Unauthorized error whose
-// message is empty — Rancher's proxy paths reject an invalid/insufficient
-// token with an empty-body 403, and apierrors' err.Error() passes that
-// through verbatim, so the envelope would otherwise carry code without any
-// explanation.
-const deniedFallbackMessage = "server denied the request (403): the credential may be invalid or lack permission"
+// deniedFallbackForbiddenMessage and deniedFallbackUnauthorizedMessage
+// substitute for a Forbidden/Unauthorized error whose message is empty —
+// Rancher's proxy paths reject an invalid/insufficient token with an
+// empty-body 403 (and a direct k8s endpoint may do the same with a 401),
+// and apierrors' err.Error() passes that through verbatim, so the envelope
+// would otherwise carry a code without any explanation. Each names its own
+// HTTP status rather than sharing one "(403)" string across both branches.
+const (
+	deniedFallbackForbiddenMessage    = "server denied the request (403): the credential may be invalid or lack permission"
+	deniedFallbackUnauthorizedMessage = "server denied the request (401): the credential may be invalid or lack permission"
+)
 
 // mapErr translates a Kubernetes API error into a structured *clierr.Error so the
 // pipeline renders it with the right exit code. Returns nil for nil.
@@ -24,9 +29,9 @@ func mapErr(err error) error {
 	case apierrors.IsNotFound(err):
 		return clierr.New(clierr.CodeNotFound, err.Error())
 	case apierrors.IsForbidden(err):
-		return withDeniedFallback(clierr.New(clierr.CodeRBAC, err.Error()))
+		return withDeniedFallback(clierr.New(clierr.CodeRBAC, err.Error()), deniedFallbackForbiddenMessage)
 	case apierrors.IsUnauthorized(err):
-		return withDeniedFallback(clierr.New(clierr.CodeAuth, err.Error()))
+		return withDeniedFallback(clierr.New(clierr.CodeAuth, err.Error()), deniedFallbackUnauthorizedMessage)
 	case apierrors.IsConflict(err) || apierrors.IsAlreadyExists(err):
 		// Both are HTTP 409 but distinct predicates: Conflict = resourceVersion
 		// race, AlreadyExists = duplicate name on create.
@@ -38,13 +43,13 @@ func mapErr(err error) error {
 	}
 }
 
-// withDeniedFallback substitutes deniedFallbackMessage and a hint pointing
-// at `rancher auth check` when ce's message is empty or whitespace-only,
+// withDeniedFallback substitutes fallbackMessage and a hint pointing at
+// `rancher auth check` when ce's message is empty or whitespace-only,
 // otherwise returns ce untouched.
-func withDeniedFallback(ce *clierr.Error) *clierr.Error {
+func withDeniedFallback(ce *clierr.Error, fallbackMessage string) *clierr.Error {
 	if strings.TrimSpace(ce.Message) != "" {
 		return ce
 	}
-	ce.Message = deniedFallbackMessage
+	ce.Message = fallbackMessage
 	return ce.WithHint("rancher auth check")
 }

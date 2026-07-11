@@ -340,7 +340,11 @@ caching), `--cacert`,
 server/CA/cluster fall back to the active config context. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows. Long-poll flows are
 interrupt-cancellable. List cached credentials with `rancher auth list-tokens`.
-Clear them with `rancher auth delete-token [<name>]`.
+Clear them with `rancher auth delete-token [<name>]`. On a cache miss it first
+tries to mint from the stored `auth login` credential for the matching
+server; when that credential lives in the OS keychain, this can trigger a
+keychain-unlock prompt — CI and other non-interactive runs should use
+`RANCHER_CREDENTIAL_STORE=file` or a warm `--name` cache.
 
 ## TLS & proxy
 

@@ -64,16 +64,18 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
-		assert.Equal(t, deniedFallbackMessage, ce.Message)
+		assert.Equal(t, deniedFallbackForbiddenMessage, ce.Message)
 		assert.Equal(t, "rancher auth check", ce.Hint)
 	})
 
-	t.Run("empty unauthorized message gets a substituted message and hint", func(t *testing.T) {
+	t.Run("empty unauthorized message gets a substituted message and hint naming 401, not 403", func(t *testing.T) {
 		got := mapErr(emptyUnauthorized)
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, deniedFallbackMessage, ce.Message)
+		assert.Equal(t, deniedFallbackUnauthorizedMessage, ce.Message)
+		assert.Contains(t, ce.Message, "(401)")
+		assert.NotContains(t, ce.Message, "(403)")
 		assert.Equal(t, "rancher auth check", ce.Hint)
 	})
 
@@ -81,7 +83,7 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		got := mapErr(whitespaceForbidden)
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, deniedFallbackMessage, ce.Message)
+		assert.Equal(t, deniedFallbackForbiddenMessage, ce.Message)
 	})
 
 	t.Run("a populated forbidden message passes through untouched", func(t *testing.T) {
@@ -89,7 +91,7 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		got := mapErr(apierrors.NewForbidden(gr, "p-x", errors.New("nope")))
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
-		assert.NotEqual(t, deniedFallbackMessage, ce.Message)
+		assert.NotEqual(t, deniedFallbackForbiddenMessage, ce.Message)
 		assert.Empty(t, ce.Hint, "an already-populated message must not gain the denied-fallback hint")
 	})
 

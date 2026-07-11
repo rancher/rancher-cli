@@ -124,24 +124,26 @@ func resolvedState(obj *unstructured.Unstructured) (value string, fromState bool
 }
 
 // waitSatisfied checks whether obj meets cond: state-kind matches
-// status.state, falling back to status.phase when status.state is absent
-// (case-insensitive — phase values are capitalized, e.g. "Running"), and
-// (when matched via status.state) requires status.transitioning != "yes";
-// condition-kind matches any status.conditions[] entry with the target
-// type+status.
+// status.state exactly, falling back to a case-insensitive match against
+// status.phase when status.state is absent (phase values are capitalized,
+// e.g. "Running" — exact status.state values are Rancher's own vocabulary
+// and stay exact-match), and (when matched via status.state) requires
+// status.transitioning != "yes"; condition-kind matches any
+// status.conditions[] entry with the target type+status.
 func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 	switch cond.kind {
 	case "state":
 		state, fromState := resolvedState(obj)
-		if !strings.EqualFold(state, cond.name) {
-			return false
-		}
 		if fromState {
+			if state != cond.name {
+				return false
+			}
 			if transitioning, ok, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); ok && transitioning == "yes" {
 				return false
 			}
+			return true
 		}
-		return true
+		return strings.EqualFold(state, cond.name)
 	case "condition":
 		status, ok := conditionStatus(obj, cond.name)
 		return ok && status == cond.status

@@ -2,8 +2,10 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -25,9 +27,11 @@ type patchClient struct {
 	obj     *unstructured.Unstructured
 	getErr  error
 	updates []updateCall
+	getName []string
 }
 
-func (p *patchClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+func (p *patchClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
+	p.getName = append(p.getName, name)
 	if p.getErr != nil {
 		return nil, p.getErr
 	}
@@ -210,6 +214,63 @@ func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 	}
 	assert.True(t, sawRemove, "a move must show the source cleared, got %+v", eff.Diff)
 	assert.True(t, sawAdd, "a move must show the destination added, got %+v", eff.Diff)
+}
+
+// TestPatchClusterResolvesDisplayName is the round-2 repro for finding 3:
+// patch must resolve a cluster's positional name the same way get does —
+// id hit, display hit, ambiguous, and miss — so the two commands agree on
+// what a name means for the managementcluster kind.
+func TestPatchClusterResolvesDisplayName(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-m-abc","resourceVersion":"1"},"spec":{"a":"x"}}`)
+
+	t.Run("id hit passes through unchanged", func(t *testing.T) {
+		t.Parallel()
+		client := &patchClient{obj: orig}
+		fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-m-abc"}}
+		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
+			input{args: []string{"c-m-abc"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"c-m-abc"}, client.getName)
+	})
+
+	t.Run("display name resolves to the cluster id before Get", func(t *testing.T) {
+		t.Parallel()
+		client := &patchClient{obj: orig}
+		fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-m-abc"}}
+		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
+			input{args: []string{"prod"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"c-m-abc"}, client.getName)
+	})
+
+	t.Run("ambiguous display name fails before Get", func(t *testing.T) {
+		t.Parallel()
+		client := &patchClient{obj: orig}
+		fac := &recFactory{client: client, resolveErr: map[string]error{
+			"prod": clierr.New(clierr.CodeAmbiguousSelection, `2 clusters have display name "prod"`),
+		}}
+		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
+			input{args: []string{"prod"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce))
+		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+		assert.Empty(t, client.getName, "Get must not be called on an ambiguous resolution")
+	})
+
+	t.Run("unresolvable name fails before Get", func(t *testing.T) {
+		t.Parallel()
+		client := &patchClient{obj: orig}
+		fac := &recFactory{client: client, resolveErr: map[string]error{
+			"missing": clierr.New(clierr.CodeNotFound, `cluster not found: "missing"`),
+		}}
+		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
+			input{args: []string{"missing"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce))
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
+	})
 }
 
 func TestPatchExactlyOneInputSource(t *testing.T) {

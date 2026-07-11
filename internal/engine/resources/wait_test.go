@@ -165,6 +165,18 @@ func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
 	assert.False(t, waitSatisfied(stateObj("provisioning", ""), cond))
 }
 
+// TestWaitSatisfiedStatusStateIsCaseSensitive is the round-2 repro for
+// finding 4: the case-insensitive compare belongs only to the status.phase
+// fallback. status.state is Rancher's own vocabulary (lowercase, e.g.
+// "active") and must stay an exact match — a case-insensitive compare
+// there would let a "state=Active" wait spuriously match "active" today,
+// then wrongly match "aCtIvE" tomorrow.
+func TestWaitSatisfiedStatusStateIsCaseSensitive(t *testing.T) {
+	t.Parallel()
+	cond := waitCond{kind: "state", name: "Active"}
+	assert.False(t, waitSatisfied(stateObj("active", "no"), cond), "status.state must be an exact match, not case-insensitive")
+}
+
 func TestWaitForFailsFastOnTransitioningError(t *testing.T) {
 	orig := pollInterval
 	pollInterval = time.Millisecond
