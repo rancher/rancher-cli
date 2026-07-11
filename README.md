@@ -200,6 +200,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·
   `3` auth · `4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
+  Rancher's proxy paths reject an invalid or insufficient token as a 403
+  (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
   `apiVersion`, the error-code enum, the global flags, and every command with
   its args, flags, `commandType`, and (for server ops) `tier`/`stability`,
