@@ -426,3 +426,14 @@ a third scope against the Rancher server itself. That port, `RancherClient`, is 
 now and added when the first consumer needs it: migrating `internal/token` off its
 hand-rolled Norman HTTP, the `auth check` preflight, and a future `rancher kubeconfig`
 command. The factory struct is the seam that will later hand out both.
+
+**Two-layer e2e test shim.** `e2e/harness_test.go`'s router — a bearer check plus the
+`/k8s/clusters/<id>` proxy into envtest — stays exactly what it always was: a router, not
+a Rancher emulator. `internal/testrancher` is a separate façade layered in front of it:
+the public auth endpoints (`/v1-public/authproviders`, `/v1-public/login`) and the
+ext.cattle.io/v1 Token store's imperative mint/revoke behavior are matched first and
+served by the façade; everything else falls through to the router untouched. Every txtar
+script gets its own façade + TLS server instance, composed over the one shared envtest
+reverse-proxy transport, so deterministic per-instance token names and secrets stay
+collision-free across parallel scripts. `internal/testrancher` is test-only by
+convention — `architecture_test.go` asserts no production package imports it.
