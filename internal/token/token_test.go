@@ -187,6 +187,119 @@ func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	assert.Equal(t, "tok-r2", cred.Status.Token, "get-token must return the token scoped to the requested server")
 }
 
+// TestGetTokenMintsFromStoredLoginCredential is the exercise-bug-4 repro: on
+// a cache miss, get-token must mint a cluster-scoped token from the stored
+// login credential for the matching configured server BEFORE ever touching
+// the interactive provider flow. authProviderHits stays at 0 to prove the
+// interactive path was provably not invoked.
+func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
+	var authProviderHits, mintHits int32
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
+			atomic.AddInt32(&authProviderHits, 1)
+			w.WriteHeader(http.StatusNotFound)
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+			atomic.AddInt32(&mintHits, 1)
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "ext/minted:secret", cred.Status.Token)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&mintHits))
+	assert.Equal(t, "Bearer stored-login-token", gotAuth, "the mint request must bear the stored login token, not a fresh session token")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "the interactive provider flow must not run when the stored credential mints successfully")
+}
+
+// TestGetTokenFallsBackToInteractiveWhenMintRejected covers the "mint is
+// rejected" half of the fallback: a stored credential exists but the mint
+// call fails, so get-token must still fall through to the interactive flow
+// (observed here as an authproviders hit) rather than surfacing the mint
+// error directly.
+func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
+	var authProviderHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
+			atomic.AddInt32(&authProviderHits, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	// SAML under a non-interactive prompter fast-fails AUTH — the point here
+	// is that the flow reached the provider dance at all.
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits), "a rejected mint must fall through to the interactive flow")
+}
+
+// TestGetTokenFallsBackToInteractiveWithNoStoredCredential covers the "no
+// stored credential exists" half of the fallback.
+func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
+	var authProviderHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			atomic.AddInt32(&authProviderHits, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits), "no stored credential must fall through to the interactive flow")
+}
+
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider"}}, &AuthProvider{Type: "pingProvider"}}

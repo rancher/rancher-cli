@@ -157,9 +157,12 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, err
 	}
 
-	rancherToken, err := loginAndGenerateCred(ctx, client, input, p)
-	if err != nil {
-		return runtime.Result{}, err
+	rancherToken, ok := t.storedCredToken(ctx, client, server, p)
+	if !ok {
+		rancherToken, err = loginAndGenerateCred(ctx, client, input, p)
+		if err != nil {
+			return runtime.Result{}, err
+		}
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token").
@@ -676,6 +679,112 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}
 	return server, caPEM, cluster, nil
+}
+
+// mintTokensPath and ErrExtGroupAbsent are reached ONLY through the Rancher
+// proxy path on the LOCAL cluster's apiserver — ext.cattle.io is an
+// aggregated/CRD API, never served at the server root, so a bare /apis/...
+// 404s on every Rancher.
+const MintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
+
+// ErrExtGroupAbsent signals a 404 on the mint call itself — the aggregated
+// ext.cattle.io API isn't served (an older Rancher), not that some other
+// resource is missing.
+var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
+
+// MintDerivedToken asks the ext Token store to mint a purpose-made derived
+// token (bearer bearerToken) and returns its status.bearerToken.
+// ErrExtGroupAbsent signals the group-level 404 that means an older Rancher.
+// ttlMs <= 0 omits spec.ttl entirely (server default). This is the SAME
+// derived-token path `auth login` uses (via resolveProviderLoginToken in
+// package commands), so get-token's stored-credential path mints exactly
+// the same shape of token.
+func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToken string, ttlMs int64) (string, error) {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "unknown"
+	}
+	spec := map[string]any{
+		"description": fmt.Sprintf("rancher-cli login @ %s", host),
+	}
+	if ttlMs > 0 {
+		spec["ttl"] = ttlMs
+	}
+	body, err := json.Marshal(map[string]any{"spec": spec})
+	if err != nil {
+		return "", fmt.Errorf("building mint request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+MintTokensPath, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("building mint request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+	resp, respBody, err := httpx.Do(client, req)
+	if err != nil {
+		return "", clierr.New(clierr.CodeGeneric, "minting derived token: "+err.Error())
+	}
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return "", ErrExtGroupAbsent
+	case http.StatusOK, http.StatusCreated:
+		bearer := gjson.GetBytes(respBody, "status.bearerToken").String()
+		if bearer == "" {
+			return "", clierr.New(clierr.CodeGeneric, "mint response carried no bearer token")
+		}
+		return bearer, nil
+	default:
+		return "", clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("minting derived token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
+}
+
+// storedTokenForServer finds the configured server entry (by name) whose URL
+// matches server (compared by scheme+host via kube.BaseURL) and has a stored
+// login token, and returns that name and token. Mirrors caForServer's
+// server-matching, but resolves the credential store's token instead of the
+// config's CA.
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server string) (name, tok string, ok bool) {
+	target := kube.BaseURL(server)
+	for n, s := range cfg.Servers {
+		if kube.BaseURL(s.URL) != target {
+			continue
+		}
+		t, err := store.GetToken(n)
+		if err == nil && strings.TrimSpace(t) != "" {
+			return n, t, true
+		}
+	}
+	return "", "", false
+}
+
+// storedCredToken mints a cluster-scoped token from the stored login
+// credential for server, non-interactively, using the same derived-token
+// path `auth login` uses. It reports ok=false — never an error — whenever
+// there is no usable stored credential or the mint is rejected, so the
+// caller falls through to the interactive provider flow exactly as if no
+// stored credential existed.
+func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server string, p runtime.Prompter) (Token, bool) {
+	cfg, err := config.Load(config.FilePath(t.dir))
+	if err != nil {
+		return Token{}, false
+	}
+	name, stored, ok := storedTokenForServer(cfg, t.store, server)
+	if !ok {
+		return Token{}, false
+	}
+	bearer, err := MintDerivedToken(ctx, client, kube.BaseURL(server), stored, 0)
+	if err != nil {
+		if errors.Is(err, ErrExtGroupAbsent) {
+			// Legacy Rancher with no ext.cattle.io: use the stored token
+			// itself, matching auth login's own fallback.
+			return Token{Token: stored}, true
+		}
+		p.Notice(fmt.Sprintf("minting from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
+		return Token{}, false
+	}
+	return Token{Token: bearer}, true
 }
 
 // caForServer returns the CA of the configured server entry whose URL

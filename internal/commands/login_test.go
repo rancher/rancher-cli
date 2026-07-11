@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -373,7 +374,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]string{"token": opts.sessionToken})
 
-		case r.URL.Path == mintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == token.MintTokensPath && r.Method == http.MethodPost:
 			if opts.mintBodyCh != nil {
 				b, _ := io.ReadAll(r.Body)
 				opts.mintBodyCh <- b
@@ -386,7 +387,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
 
-		case (strings.HasPrefix(r.URL.Path, v3TokensPath+"/") || strings.HasPrefix(r.URL.Path, mintTokensPath+"/")) && r.Method == http.MethodDelete:
+		case (strings.HasPrefix(r.URL.Path, v3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.MintTokensPath+"/")) && r.Method == http.MethodDelete:
 			if opts.revokedPathCh != nil {
 				opts.revokedPathCh <- r.URL.Path
 			}
