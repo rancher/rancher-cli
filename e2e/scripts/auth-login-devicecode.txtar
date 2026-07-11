@@ -4,7 +4,7 @@
 # credential is asserted by exercising it, never by string-matching the
 # token itself.
 exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider azureADProvider --auth-flow devicecode
-exists $RANCHER_CONFIG_DIR/config.yaml
+exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher get clusters -o json
 jsonquery stdout 'data.#' 1

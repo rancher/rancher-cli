@@ -26,12 +26,12 @@ const sampleLegacy = `{
 func TestLegacyPathsAlwaysIncludesDotRancher(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	t.Run("env unset", func(t *testing.T) {
-		t.Setenv("RANCHER_CONFIG_DIR", "")
+		t.Setenv("RANCHER_CLI_CONFIG_DIR", "")
 		paths := LegacyPaths()
 		assert.Contains(t, paths, filepath.Join(home, ".rancher", "cli2.json"))
 	})
 	t.Run("env set adds env path but keeps ~/.rancher", func(t *testing.T) {
-		t.Setenv("RANCHER_CONFIG_DIR", "/custom")
+		t.Setenv("RANCHER_CLI_CONFIG_DIR", "/custom")
 		paths := LegacyPaths()
 		assert.Equal(t, "/custom/cli2.json", paths[0])
 		assert.Contains(t, paths, filepath.Join(home, ".rancher", "cli2.json"))

@@ -39,7 +39,7 @@ func WritePin(dir, backend string) error {
 
 // EffectivePolicy resolves the declared policy: env > config > auto.
 func EffectivePolicy(cfgPolicy string) string {
-	if env := os.Getenv("RANCHER_CREDENTIAL_STORE"); env != "" {
+	if env := os.Getenv("RANCHER_CLI_CREDENTIAL_STORE"); env != "" {
 		return env
 	}
 	if cfgPolicy != "" {

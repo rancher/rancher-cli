@@ -1,5 +1,5 @@
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # NSNone + Scope Management: the empty-version ext.cattle.io kinds route to
 # LOCAL unconditionally — no --cluster flag is even generated (Downstream-only

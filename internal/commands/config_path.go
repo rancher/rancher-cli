@@ -12,7 +12,7 @@ type configPathCmd struct{ dir string }
 
 // NewConfigPath builds `config path` (local, no network/auth): prints the
 // resolved config file path — the agent-usable "where do I point tooling"
-// primitive. dir is already the flag > RANCHER_CONFIG_DIR > XDG-default
+// primitive. dir is already the flag > RANCHER_CLI_CONFIG_DIR > XDG-default
 // resolution (config.ResolveDir, run once by the CLI adapter's resolveDeps,
 // the single place every config command's dir comes from); a ResolveDir
 // failure there aborts before this command's Execute ever runs, so its

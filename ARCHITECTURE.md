@@ -284,7 +284,7 @@ reachable command.
 supplied token. The store backend is resolved by `config.OpenStore` with strict
 precedence:
 
-`RANCHER_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`
+`RANCHER_CLI_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`
 file > one-time probe.
 
 Under the default `auto` policy the backend is probed **once per machine** and the result
@@ -295,7 +295,7 @@ on plaintext. Re-probe happens **only at `auth login`** and is **upgrade-only**:
 (or absent) pin may re-pin to `keychain` if the keychain is now usable; a `keychain` pin
 is never re-probed, so a transiently locked keychain can never silently downgrade to
 plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint
-(`delete the pin to re-probe, or set RANCHER_CREDENTIAL_STORE=file`), never a silent
+(`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
 fallback. `auth check` surfaces `credentialStore: {policy, pinned}`.
 
 **Keyring read-through and logout drain.** With the keychain backend, `GetToken` falls
@@ -357,17 +357,17 @@ projects` edge above.
 
 | Variable | Effect |
 |---|---|
-| `RANCHER_URL` | Override the effective server URL. |
-| `RANCHER_TOKEN` | Override the bearer token directly — used as-is, never read from or written to the store. |
-| `RANCHER_CACERT` | Override the CA bundle. |
-| `RANCHER_CONTEXT` | Set the target cluster (and project, as `cluster:project`). |
-| `RANCHER_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
-| `RANCHER_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
+| `RANCHER_CLI_URL` | Override the effective server URL. |
+| `RANCHER_CLI_TOKEN` | Override the bearer token directly — used as-is, never read from or written to the store. |
+| `RANCHER_CLI_CACERT` | Override the CA bundle. |
+| `RANCHER_CLI_CONTEXT` | Set the target cluster (and project, as `cluster:project`). |
+| `RANCHER_CLI_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
+| `RANCHER_CLI_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
 
 **Legacy migration.** On a run whose config dir has no `config.yaml`, if a legacy
-`cli2.json` is found (`$RANCHER_CONFIG_DIR/cli2.json`, then `~/.rancher/cli2.json`), it is
+`cli2.json` is found (`$RANCHER_CLI_CONFIG_DIR/cli2.json`, then `~/.rancher/cli2.json`), it is
 imported **only** when the config dir was not explicitly overridden. An explicitly
-overridden dir (`--config` or `RANCHER_CONFIG_DIR`) never auto-imports — it logs a hint
+overridden dir (`--config` or `RANCHER_CLI_CONFIG_DIR`) never auto-imports — it logs a hint
 instead — so a run against a throwaway dir cannot silently pull in the real
 `~/.rancher/cli2.json`. `config purge-legacy` deletes the migrated plaintext file.
 

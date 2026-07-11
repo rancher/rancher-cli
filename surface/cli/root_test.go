@@ -51,7 +51,7 @@ func findCommand(cmds []*ucli.Command, name string) *ucli.Command {
 
 func schemaCommandNames(t *testing.T) []string {
 	t.Helper()
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func schemaCommandNames(t *testing.T) []string {
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("golden")
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestBuildRootWiresGeneratedCommands(t *testing.T) {
 // for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
 // projectScope: true, while a fixed command (schema itself) does not.
 func TestSchemaManifestExposesProjectScope(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 }
 
 func TestSchemaCommandEndToEnd(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 // a config-file-sourced readOnly must still reach the manifest — not just
 // env/flag sources.
 func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
 
@@ -363,12 +363,12 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 // cli2.json must not put a plain-text notice ahead of the error envelope —
 // stderr must parse as pure JSON, exactly as a scripted session relies on.
 func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
-	t.Setenv("RANCHER_URL", "")
-	t.Setenv("RANCHER_TOKEN", "")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_URL", "")
+	t.Setenv("RANCHER_CLI_TOKEN", "")
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cli2.json"), []byte("{}"), 0o600))
-	t.Setenv("RANCHER_CONFIG_DIR", dir) // explicit override AND FindLegacy's scan target
+	t.Setenv("RANCHER_CLI_CONFIG_DIR", dir) // explicit override AND FindLegacy's scan target
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -395,7 +395,7 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 }
 
 func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)

@@ -4,15 +4,15 @@
 # fast instead of hanging.
 [darwin] skip 'keychain probe hangs under the testscript HOME sandbox'
 
-# E2E-A-003: clears Setup's RANCHER_CREDENTIAL_STORE=file default so the
+# E2E-A-003: clears Setup's RANCHER_CLI_CREDENTIAL_STORE=file default so the
 # "auto" pin path actually runs — a script-side exemption since
 # testscript.Env carries no script name for Setup to special-case.
-env RANCHER_CREDENTIAL_STORE=
+env RANCHER_CLI_CREDENTIAL_STORE=
 
 stdin token.txt
 exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 stderr 'pinned credential store:'
-exists $RANCHER_CONFIG_DIR/credstore-pin
+exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
 
 exec rancher config current-context
 ! stderr 'pinned credential store:'

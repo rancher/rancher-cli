@@ -27,7 +27,7 @@ type errEnvelope struct {
 // -f -` must parse the `-f` alias, read the manifest from stdin, and fail with
 // VALIDATION on the unknown kind — proving the alias is wired end-to-end.
 func TestCreateResourceShortFlag(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -57,8 +57,8 @@ func TestCreateResourceShortFlag(t *testing.T) {
 // gate did not fire first, some other VALIDATION (missing input) would
 // surface instead.
 func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
-	t.Setenv("RANCHER_READONLY", "1")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_READONLY", "1")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 // must parse the `-f` alias on a generated patch command. The missing file is a
 // VALIDATION error, proving the alias reached the leaf (the flag parsed at all).
 func TestPatchShortFlag(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)

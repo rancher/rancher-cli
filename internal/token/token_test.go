@@ -1051,7 +1051,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	// opens a browser and waits ~5m on a loopback callback; forcing an invalid
 	// callback port makes it fail fast right after the gate, so the test proves
 	// the gate is bypassed for non-TTY without entering that wait.
-	t.Setenv("CATTLE_OAUTH_CALLBACK_PORT", "70000") // out of range -> getCallbackPort errors
+	t.Setenv("RANCHER_CLI_OAUTH_CALLBACK_PORT", "70000") // out of range -> getCallbackPort errors
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
 			w.Header().Set("Content-Type", "application/json")

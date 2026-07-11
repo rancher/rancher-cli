@@ -28,14 +28,14 @@ type IO struct {
 	IsTTY           bool
 
 	// ReadOnly is the OR of three sources — config `readOnly: true`, a
-	// non-empty RANCHER_READONLY, and --read-only — resolved once per
+	// non-empty RANCHER_CLI_READONLY, and --read-only — resolved once per
 	// invocation by the CLI adapter. Strictly one-way: no flag disables a
 	// config/env-sourced read-only. Run refuses every Mutating command
 	// while it is set, before Plan (which sends real write-verb requests
 	// unconditionally, including for --dry-run).
 	ReadOnly bool
 	// ReadOnlySources names the active source(s) ("config readOnly",
-	// "RANCHER_READONLY", "--read-only") for the refusal hint.
+	// "RANCHER_CLI_READONLY", "--read-only") for the refusal hint.
 	ReadOnlySources []string
 
 	// ServerIdentity, when set, resolves the server name for Effect.Server

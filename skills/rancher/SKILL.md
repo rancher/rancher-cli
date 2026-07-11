@@ -32,7 +32,7 @@ token), not an error condition; don't treat it as one. If it fails with
   its own purpose-made, individually revocable token behind the scenes (see
   the token taxonomy below).
 - Scripted/CI: pipe the token — `rancher auth login --server <url> --token-stdin < token.txt`,
-  or set `RANCHER_URL` + `RANCHER_TOKEN` env vars (no stored config needed).
+  or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path mints cached exec credentials,
@@ -206,8 +206,8 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - **Routing:** `--cluster` accepts a display name or id; `--namespace` scopes
   namespaced kinds. Contexts carry cluster+project defaults: switch persistently
   with `rancher config use-context` / `set-context`, or override for a single
-  invocation with the `RANCHER_CONTEXT` env var (`cluster[:project]`) or the
-  global `--context cluster[:project]` flag (flag > `RANCHER_CONTEXT` env >
+  invocation with the `RANCHER_CLI_CONTEXT` env var (`cluster[:project]`) or the
+  global `--context cluster[:project]` flag (flag > `RANCHER_CLI_CONTEXT` env >
   current context). Fleet kinds default to the `fleet-default` workspace.
 - **Project scope (`--project`):** the global `--project <id-or-name>` flag
   scopes Downstream namespaced kinds (`get`/`delete`/`patch`, plus `usage`)
@@ -217,12 +217,12 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   family and the non-project composites (`inspect pod`/`deployment`, `top
   node`, `images`) reject a non-empty `--project` with `VALIDATION` — it is
   never a silent no-op. Precedence: `--project` flag > the context's project
-  axis (set via `--context`/`RANCHER_CONTEXT`/`set-context`) > unscoped.
-- **Isolation for scripted sessions:** point `RANCHER_CONFIG_DIR` at a
-  temporary directory and set `RANCHER_CREDENTIAL_STORE=file` so a scripted run
+  axis (set via `--context`/`RANCHER_CLI_CONTEXT`/`set-context`) > unscoped.
+- **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
+  temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain.
 - **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
-  non-empty `RANCHER_READONLY` — including the literal `"false"`) refuses
+  non-empty `RANCHER_CLI_READONLY` — including the literal `"false"`) refuses
   every mutating command before any network call, one-way with no
   per-invocation override. `rancher schema -o json` reports
   `readOnly`/`readOnlySources`. For real enforcement pair it with a Rancher

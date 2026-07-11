@@ -19,7 +19,7 @@ import (
 // state. RESTConfig's own typed errors must pass through unchanged.
 func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	t.Parallel()
-	t.Run("no context and no RANCHER_URL stays CONTEXT_NOT_SET", func(t *testing.T) {
+	t.Run("no context and no RANCHER_CLI_URL stays CONTEXT_NOT_SET", func(t *testing.T) {
 		t.Parallel()
 		_, err := Preflight(context.Background(), config.Effective{})
 		var ce *clierr.Error

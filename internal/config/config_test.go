@@ -57,20 +57,20 @@ func TestCurrentServerUnsetIsContextNotSet(t *testing.T) {
 
 func TestResolveDirPrecedence(t *testing.T) {
 	t.Run("flag wins", func(t *testing.T) {
-		t.Setenv("RANCHER_CONFIG_DIR", "/env/dir")
+		t.Setenv("RANCHER_CLI_CONFIG_DIR", "/env/dir")
 		got, err := ResolveDir("/flag/dir")
 		require.NoError(t, err)
 		assert.Equal(t, "/flag/dir", got)
 	})
 	t.Run("env over xdg", func(t *testing.T) {
-		t.Setenv("RANCHER_CONFIG_DIR", "/env/dir")
+		t.Setenv("RANCHER_CLI_CONFIG_DIR", "/env/dir")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 		got, err := ResolveDir("")
 		require.NoError(t, err)
 		assert.Equal(t, "/env/dir", got)
 	})
 	t.Run("xdg when no env", func(t *testing.T) {
-		t.Setenv("RANCHER_CONFIG_DIR", "")
+		t.Setenv("RANCHER_CLI_CONFIG_DIR", "")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 		got, err := ResolveDir("")
 		require.NoError(t, err)

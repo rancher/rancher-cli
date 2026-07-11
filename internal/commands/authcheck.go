@@ -175,7 +175,7 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 var errLegacyToken = errors.New("legacy token — no ext metadata")
 
 // probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
-// never the stored credential directly, so a RANCHER_TOKEN override is
+// never the stored credential directly, so a RANCHER_CLI_TOKEN override is
 // always the one reported on). The "ext/" prefix sniff mirrors
 // login_ext.go's revokeSessionToken, applied here to the long-lived
 // effective credential rather than the transient session token. A
@@ -223,7 +223,7 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 // text (finding 1): a CodeNotFound on the token GET is ambiguous by error
 // code alone — it means either the ext.cattle.io group itself is absent
 // (below the 2.14 floor) or the group is present but the specific named
-// token object was deleted/rotated server-side (a stale RANCHER_TOKEN or
+// token object was deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or
 // credential-store id). supported (the version probe's PS-8 floor verdict)
 // resolves the ambiguity: once it has confirmed the server IS at or above
 // the floor, the same 404 can only be the latter, and the caller must

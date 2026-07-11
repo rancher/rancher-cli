@@ -49,8 +49,8 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	// Effective (not CurrentServer) so an env-only session (RANCHER_URL/
-	// RANCHER_TOKEN, no stored context) works exactly like every other
+	// Effective (not CurrentServer) so an env-only session (RANCHER_CLI_URL/
+	// RANCHER_CLI_TOKEN, no stored context) works exactly like every other
 	// command — kubeconfig used to be the one command that didn't.
 	eff, err := cfg.Effective(c.store)
 	if err != nil {
@@ -75,7 +75,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			WithHint("pass --cluster <id|name> or set a context")
 	}
 
-	// Effective already cleared eff.CA/eff.ServerName if RANCHER_URL diverged
+	// Effective already cleared eff.CA/eff.ServerName if RANCHER_CLI_URL diverged
 	// from the stored server — every command sharing this choke point, not
 	// just kubeconfig, so there is nothing kubeconfig-specific left to check
 	// here.

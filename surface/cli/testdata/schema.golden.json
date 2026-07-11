@@ -5512,7 +5512,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CONTEXT \u003e config; project axis is informational only",
+      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CLI_CONTEXT \u003e config; project axis is informational only",
       "name": "--context",
       "type": "string"
     },
@@ -5524,7 +5524,7 @@
     },
     {
       "appliesTo": "mutating",
-      "desc": "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_READONLY)",
+      "desc": "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)",
       "name": "--read-only",
       "type": "bool"
     }

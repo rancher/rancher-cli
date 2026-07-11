@@ -7,10 +7,10 @@ import (
 )
 
 // LegacyPaths returns candidate cli2.json locations, in probe order.
-// $RANCHER_CONFIG_DIR/cli2.json (if set) then always ~/.rancher/cli2.json.
+// $RANCHER_CLI_CONFIG_DIR/cli2.json (if set) then always ~/.rancher/cli2.json.
 func LegacyPaths() []string {
 	var paths []string
-	if dir := os.Getenv("RANCHER_CONFIG_DIR"); dir != "" {
+	if dir := os.Getenv("RANCHER_CLI_CONFIG_DIR"); dir != "" {
 		paths = append(paths, filepath.Join(dir, "cli2.json"))
 	}
 	if home, err := os.UserHomeDir(); err == nil {

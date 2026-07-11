@@ -1,5 +1,5 @@
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # dry-run renders the Effect and stops
 exec rancher create project e2e-loop --cluster testcluster --dry-run -o json

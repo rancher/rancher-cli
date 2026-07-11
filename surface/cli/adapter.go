@@ -27,9 +27,9 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "permit a deprecated-tier write"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
-		&ucli.StringFlag{Name: "context", Usage: "scope this invocation to cluster[:project] for server operations (overrides RANCHER_CONTEXT and the current context); a trailing colon (cluster:) clears the project; the project axis is informational only"},
+		&ucli.StringFlag{Name: "context", Usage: "scope this invocation to cluster[:project] for server operations (overrides RANCHER_CLI_CONTEXT and the current context); a trailing colon (cluster:) clears the project; the project axis is informational only"},
 		&ucli.StringFlag{Name: "project", Usage: "scope server operations to a project's namespaces (Downstream namespaced kinds only)"},
-		&ucli.BoolFlag{Name: "read-only", Usage: "refuse mutating commands for this session (one-way; also set via config readOnly or a non-empty RANCHER_READONLY)"},
+		&ucli.BoolFlag{Name: "read-only", Usage: "refuse mutating commands for this session (one-way; also set via config readOnly or a non-empty RANCHER_CLI_READONLY)"},
 	}
 }
 
@@ -134,8 +134,8 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 			sources = append(sources, "config readOnly")
 		}
 	}
-	if os.Getenv("RANCHER_READONLY") != "" {
-		sources = append(sources, "RANCHER_READONLY")
+	if os.Getenv("RANCHER_CLI_READONLY") != "" {
+		sources = append(sources, "RANCHER_CLI_READONLY")
 	}
 	if c.Bool("read-only") {
 		sources = append(sources, "--read-only")
@@ -185,12 +185,12 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 		return "", nil, err
 	}
 	// FindLegacy scans the real $HOME; only auto-migrate into the DEFAULT config
-	// dir. An explicitly overridden dir (--config or RANCHER_CONFIG_DIR) is
+	// dir. An explicitly overridden dir (--config or RANCHER_CLI_CONFIG_DIR) is
 	// deliberately isolated — legacy import advice is irrelevant there, and
 	// even a plain-text notice would corrupt a scripted session's stderr JSON
 	// (the error envelope, when one follows, must stay the only/last JSON
 	// object on stderr), so this case stays silent.
-	explicitDir := c.String("config") != "" || os.Getenv("RANCHER_CONFIG_DIR") != ""
+	explicitDir := c.String("config") != "" || os.Getenv("RANCHER_CLI_CONFIG_DIR") != ""
 	if !explicitDir {
 		if _, statErr := os.Stat(config.FilePath(dir)); os.IsNotExist(statErr) {
 			if legacy, ok := config.FindLegacy(); ok {

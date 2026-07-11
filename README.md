@@ -164,7 +164,7 @@ Every other command family (cluster-scoped kinds, management-plane kinds,
 and the composites `inspect pod`/`inspect deployment`/`top node`/`images`)
 rejects a non-empty `--project` with `VALIDATION` rather than silently
 ignoring it. Precedence: `--project` flag > the current context's project
-axis (`--context cluster:project` / `RANCHER_CONTEXT` / `config
+axis (`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
 set-context --project`) > unscoped.
 
 ## Output & the agent contract
@@ -240,14 +240,14 @@ every mutating command before any network call — strictly one-way, no
 per-invocation override exists:
 
 - Config: `readOnly: true` (top-level config field).
-- Env: `RANCHER_READONLY`, non-empty = on, including the literal string
+- Env: `RANCHER_CLI_READONLY`, non-empty = on, including the literal string
   `"false"` — every `RANCHER_*` var in this CLI follows non-empty-means-set;
   there is no boolean-env precedent, so this is a sharp edge worth calling
   out explicitly.
 - Flag: `--read-only` (global).
 
 Refusal is `VALIDATION`, naming the command and the active source(s) (e.g.
-"enabled by RANCHER_READONLY") — the one-way rule means you have to know
+"enabled by RANCHER_CLI_READONLY") — the one-way rule means you have to know
 which knob to turn off. `rancher schema -o json` reports the resolved state
 (`readOnly`, `readOnlySources`) so an agent can check before trying.
 
@@ -298,10 +298,10 @@ never depends on them.
 - **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`),
   kubeconfig-shaped (`current-context`, `contexts`, `servers`). Secrets are NOT
   stored here.
-- **Directory precedence:** `--config <dir>` > `RANCHER_CONFIG_DIR` >
+- **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
 - **Credential store:** OS keychain or a `0600` file. Precedence:
-  `RANCHER_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto` in config >
+  `RANCHER_CLI_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto` in config >
   a machine-local `credstore-pin` file > one-time probe. Under `auto` the backend
   is probed once and pinned; the pin is re-probed only at `auth login` and only to
   upgrade file→keychain, and a pinned-but-unusable backend is a hard error (never
@@ -310,14 +310,14 @@ never depends on them.
 
   | Var | Effect |
   |---|---|
-  | `RANCHER_URL` | server URL |
-  | `RANCHER_TOKEN` | token, used directly and never persisted |
-  | `RANCHER_CONTEXT` | `cluster:project` scope (colon-less = cluster only) |
-  | `RANCHER_CACERT` | CA bundle (PEM) |
-  | `RANCHER_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` |
-  | `RANCHER_CONFIG_DIR` | config directory |
+  | `RANCHER_CLI_URL` | server URL |
+  | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
+  | `RANCHER_CLI_CONTEXT` | `cluster:project` scope (colon-less = cluster only) |
+  | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
+  | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` |
+  | `RANCHER_CLI_CONFIG_DIR` | config directory |
 
-  The global `--context cluster[:project]` flag overrides `RANCHER_CONTEXT`
+  The global `--context cluster[:project]` flag overrides `RANCHER_CLI_CONTEXT`
   for a single invocation. `--context c:` (trailing colon, no project) clears
   the project for this invocation. The context's project axis is shown by
   `config current-context`/`auth check`, and is consulted for routing only as
@@ -325,7 +325,7 @@ never depends on them.
   wins when both are set) — see "Project scope" above.
 
 - **Migration:** on first run the CLI imports a legacy
-  `~/.rancher/cli2.json` (also `$RANCHER_CONFIG_DIR/cli2.json`) into the new
+  `~/.rancher/cli2.json` (also `$RANCHER_CLI_CONFIG_DIR/cli2.json`) into the new
   config + credential store, then warns you to remove the plaintext original
   with `rancher config purge-legacy`.
 
@@ -344,12 +344,12 @@ Clear them with `rancher auth delete-token [<name>]`. On a cache miss it first
 tries to mint from the stored `auth login` credential for the matching
 server; when that credential lives in the OS keychain, this can trigger a
 keychain-unlock prompt — CI and other non-interactive runs should use
-`RANCHER_CREDENTIAL_STORE=file` or a warm `--name` cache.
+`RANCHER_CLI_CREDENTIAL_STORE=file` or a warm `--name` cache.
 
 ## TLS & proxy
 
 Server connections verify TLS against the configured CA (`--cacert` /
-`RANCHER_CACERT`) or the system trust store by default — verification is never
+`RANCHER_CLI_CACERT`) or the system trust store by default — verification is never
 disabled implicitly. HTTP(S) proxies are honored from the environment.
 
 ## Development

@@ -29,9 +29,9 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "-o/--output", Type: "enum", Enum: []string{"table", "json", "yaml", "name", "template"}, AppliesTo: "all", Desc: "'name' = ids only"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "config dir override"},
 		{Name: "--debug", Type: "bool", AppliesTo: "all"},
-		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; flag > RANCHER_CONTEXT > config; project axis is informational only"},
+		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; flag > RANCHER_CLI_CONTEXT > config; project axis is informational only"},
 		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag > context; VALIDATION where it does not apply"},
-		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_READONLY)"},
+		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)"},
 	}
 }
 

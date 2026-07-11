@@ -279,7 +279,7 @@ type keyringStore struct {
 func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	hint := ""
 	if pinned {
-		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set RANCHER_CREDENTIAL_STORE=file)", PinPath(dir))
+		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file)", PinPath(dir))
 	}
 	return &keyringStore{cache: NewFileStore(dir), pinHint: hint}
 }
@@ -461,7 +461,7 @@ func ServerHost(raw string) string {
 }
 
 // OpenStore selects a store by policy. policy is the config-file-level
-// declaration; RANCHER_CREDENTIAL_STORE, when set, outranks it — same
+// declaration; RANCHER_CLI_CREDENTIAL_STORE, when set, outranks it — same
 // precedence as everywhere else env beats config — so an explicit "keychain"
 // argument here can still resolve to the file backend under that env var.
 // Explicit policies ("keychain"/"file") are honored directly and never
@@ -496,7 +496,7 @@ func OpenStore(policy, dir string) (CredStore, error) {
 		return NewFileStore(dir), nil
 	default:
 		// Format the EFFECTIVE value p, not the cfg argument — when an invalid
-		// RANCHER_CREDENTIAL_STORE overrides an empty/valid config value, the
+		// RANCHER_CLI_CREDENTIAL_STORE overrides an empty/valid config value, the
 		// error must name what was actually rejected.
 		return nil, fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
 	}

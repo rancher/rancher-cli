@@ -89,10 +89,10 @@ func TestRunRefusesMutatingUnderReadOnly(t *testing.T) {
 		sources []string
 	}{
 		{"config only", []string{"config readOnly"}},
-		{"env only", []string{"RANCHER_READONLY"}},
+		{"env only", []string{"RANCHER_CLI_READONLY"}},
 		{"flag only", []string{"--read-only"}},
-		{"config and env", []string{"config readOnly", "RANCHER_READONLY"}},
-		{"all three", []string{"config readOnly", "RANCHER_READONLY", "--read-only"}},
+		{"config and env", []string{"config readOnly", "RANCHER_CLI_READONLY"}},
+		{"all three", []string{"config readOnly", "RANCHER_CLI_READONLY", "--read-only"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestRunLocalCommandUnaffectedByReadOnlyMode(t *testing.T) {
 	cmd := fakeRead{d: Descriptor{Name: "auth login", CommandType: Local}, res: Result{Kind: "LoginResult"}}
 	var out, errBuf bytes.Buffer
 	ce := Run(context.Background(), cmd, mapInput{},
-		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"RANCHER_READONLY"}},
+		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"RANCHER_CLI_READONLY"}},
 		safety.Binding{})
 	require.Nil(t, ce)
 }

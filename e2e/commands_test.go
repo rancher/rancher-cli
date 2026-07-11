@@ -88,7 +88,7 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	if err != nil {
 		ts.Fatalf("seedexeccache: parsing TEST_RANCHER_URL: %v", err)
 	}
-	store := config.NewFileStore(ts.Getenv("RANCHER_CONFIG_DIR"))
+	store := config.NewFileStore(ts.Getenv("RANCHER_CLI_CONFIG_DIR"))
 	key := config.CacheKey(name, u.Host, cluster)
 	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, u.Host, cluster); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)

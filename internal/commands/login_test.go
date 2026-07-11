@@ -314,11 +314,11 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 
 func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	// Non-parallel: keyring.MockInit swaps a process-global in-memory backend.
-	// Isolate from the operator's shell: RANCHER_CREDENTIAL_STORE=file (this
+	// Isolate from the operator's shell: RANCHER_CLI_CREDENTIAL_STORE=file (this
 	// project's own recommended hermetic-manual-run setting) would otherwise
 	// outrank both the "auto" policy under test and the explicit "keychain"
 	// argument to OpenStore below (config.EffectivePolicy: env > argument).
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
 	keyring.MockInit()
 	dir := t.TempDir() // no config on disk → auto policy; mock keychain is usable
 	in := args{

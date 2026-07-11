@@ -13,7 +13,7 @@ var extTokensGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: 
 
 // TokenMetadata is the ext.cattle.io/v1 Token metadata `auth check`'s PS-2
 // token probe reads back for the EFFECTIVE token (eff.Token, never the
-// stored credential directly — RANCHER_TOKEN overrides the store and this
+// stored credential directly — RANCHER_CLI_TOKEN overrides the store and this
 // must report on whichever one is actually authenticating the request).
 // Kind carries the RAW spec.kind value ("session" for Rancher's own login
 // flow, empty for CLI-derived tokens per createTokenCmd) — the command

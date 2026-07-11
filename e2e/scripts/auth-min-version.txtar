@@ -1,5 +1,5 @@
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # PS-8: the server-version Setting is a cluster-scoped singleton shared
 # with every other concurrent txtar against this one envtest apiserver —

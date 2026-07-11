@@ -87,16 +87,16 @@ func TestEffectiveFromFile(t *testing.T) {
 		assert.Equal(t, "c-x", eff.Cluster)
 	})
 	t.Run("env token bypasses store and overrides", func(t *testing.T) {
-		t.Setenv("RANCHER_TOKEN", "env-id:env-secret")
-		t.Setenv("RANCHER_CONTEXT", "c-env:p-env")
+		t.Setenv("RANCHER_CLI_TOKEN", "env-id:env-secret")
+		t.Setenv("RANCHER_CLI_CONTEXT", "c-env:p-env")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "env-id:env-secret", eff.Token)
 		assert.Equal(t, "c-env", eff.Cluster)
 		assert.Equal(t, "p-env", eff.Project)
 	})
-	t.Run("bare RANCHER_CONTEXT (no colon) overrides cluster only, keeps file project", func(t *testing.T) {
-		t.Setenv("RANCHER_CONTEXT", "c-env")
+	t.Run("bare RANCHER_CLI_CONTEXT (no colon) overrides cluster only, keeps file project", func(t *testing.T) {
+		t.Setenv("RANCHER_CLI_CONTEXT", "c-env")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "c-env", eff.Cluster)
@@ -104,7 +104,7 @@ func TestEffectiveFromFile(t *testing.T) {
 	})
 }
 
-// Round-3 repro: a RANCHER_URL override pointing at a DIFFERENT server than
+// Round-3 repro: a RANCHER_CLI_URL override pointing at a DIFFERENT server than
 // the stored context's must never carry that stored server's CA or display
 // name into the new Effective — every command through Effective (get,
 // create, patch, delete, auth check, kubeconfig) shares this one choke
@@ -160,8 +160,8 @@ func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 		Servers:        map[string]Server{"prod": {URL: "https://prod.example.com", CA: "PROD-CA"}},
 	}
 
-	t.Run("divergent RANCHER_URL clears the stored CA and server name", func(t *testing.T) {
-		t.Setenv("RANCHER_URL", "https://staging.example.com")
+	t.Run("divergent RANCHER_CLI_URL clears the stored CA and server name", func(t *testing.T) {
+		t.Setenv("RANCHER_CLI_URL", "https://staging.example.com")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "https://staging.example.com", eff.URL)
@@ -169,16 +169,16 @@ func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 		assert.Empty(t, eff.ServerName, "must not carry the stored display name to a different server")
 	})
 
-	t.Run("RANCHER_CACERT still applies after a divergent RANCHER_URL clears the stored CA", func(t *testing.T) {
-		t.Setenv("RANCHER_URL", "https://staging.example.com")
-		t.Setenv("RANCHER_CACERT", "STAGING-CA")
+	t.Run("RANCHER_CLI_CACERT still applies after a divergent RANCHER_CLI_URL clears the stored CA", func(t *testing.T) {
+		t.Setenv("RANCHER_CLI_URL", "https://staging.example.com")
+		t.Setenv("RANCHER_CLI_CACERT", "STAGING-CA")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "STAGING-CA", eff.CA)
 	})
 
 	t.Run("trailing slash on the same server is not divergence", func(t *testing.T) {
-		t.Setenv("RANCHER_URL", "https://prod.example.com/")
+		t.Setenv("RANCHER_CLI_URL", "https://prod.example.com/")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "PROD-CA", eff.CA, "same server (trailing slash) must keep the stored CA")
@@ -186,14 +186,14 @@ func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 	})
 
 	t.Run("case-different scheme/host on the same server is not divergence", func(t *testing.T) {
-		t.Setenv("RANCHER_URL", "HTTPS://PROD.example.com")
+		t.Setenv("RANCHER_CLI_URL", "HTTPS://PROD.example.com")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "PROD-CA", eff.CA)
 		assert.Equal(t, "prod", eff.ServerName)
 	})
 
-	t.Run("no RANCHER_URL at all is unaffected", func(t *testing.T) {
+	t.Run("no RANCHER_CLI_URL at all is unaffected", func(t *testing.T) {
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "PROD-CA", eff.CA)
@@ -224,8 +224,8 @@ func TestSplitContext(t *testing.T) {
 }
 
 func TestEffectiveEnvOnlyNoFile(t *testing.T) {
-	t.Setenv("RANCHER_URL", "https://env.ex")
-	t.Setenv("RANCHER_TOKEN", "id:sec")
+	t.Setenv("RANCHER_CLI_URL", "https://env.ex")
+	t.Setenv("RANCHER_CLI_TOKEN", "id:sec")
 	eff, err := (&Config{}).Effective(NewFileStore(t.TempDir()))
 	require.NoError(t, err)
 	assert.Equal(t, "https://env.ex", eff.URL)
@@ -241,7 +241,7 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 	}
 
 	t.Run("flag beats env and file", func(t *testing.T) {
-		t.Setenv("RANCHER_CONTEXT", "c-env:p-env")
+		t.Setenv("RANCHER_CLI_CONTEXT", "c-env:p-env")
 		SetContextOverride("c-flag:p-flag")
 		t.Cleanup(func() { SetContextOverride("") })
 		eff, err := cfg.Effective(store)
@@ -252,7 +252,7 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 
 	t.Run("no override falls back to env then file", func(t *testing.T) {
 		SetContextOverride("")
-		t.Setenv("RANCHER_CONTEXT", "")
+		t.Setenv("RANCHER_CLI_CONTEXT", "")
 		eff, err := cfg.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "c-file", eff.Cluster)

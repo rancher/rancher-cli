@@ -1,13 +1,13 @@
 # The exercise-bug-4 regression (spec FA-4.3): a login's --cacert persists
 # that CA into the config's server entry (login.go), which is what a later
 # bare `auth get-token --server ...` call borrows via caForServer
-# (token.go's own resolveConn) — env RANCHER_CACERT never reaches that path.
+# (token.go's own resolveConn) — env RANCHER_CLI_CACERT never reaches that path.
 # `auth delete-token --all` clears only the exec-credential cache, never the
 # stored login credential — that asymmetry is what makes the cold mint
 # reachable non-interactively at all.
 stdin token.txt
 exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
-exists $RANCHER_CONFIG_DIR/config.yaml
+exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher auth delete-token --all -o json
 jsonquery stdout data.deleted all
@@ -23,7 +23,7 @@ jsonquery stdout data.deleted fac-token-1
 # Deterministic per-instance mint names/secrets (FA-1) let this replay the
 # just-revoked bearer verbatim — actual reuse of a dead credential, not an
 # inference.
-env RANCHER_TOKEN=ext/fac-token-1:fac-secret-1
+env RANCHER_CLI_TOKEN=ext/fac-token-1:fac-secret-1
 ! exec rancher get clusters -o json
 jsonquery stderr data.error.code AUTH
 

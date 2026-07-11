@@ -114,15 +114,15 @@ func TestKubeconfigFallsBackToContextCluster(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// Round-2 repro: RANCHER_URL overriding a stored context's server used to
+// Round-2 repro: RANCHER_CLI_URL overriding a stored context's server used to
 // keep pairing the NEW url with the STORED server's CA and entry name.
-// Overriding only RANCHER_URL against a stored context must fall back to
-// RANCHER_CACERT (or none) and a host-derived name — never a stored CA
+// Overriding only RANCHER_CLI_URL against a stored context must fall back to
+// RANCHER_CLI_CACERT (or none) and a host-derived name — never a stored CA
 // against a URL it was never issued for.
 func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
-	t.Setenv("RANCHER_URL", "https://staging.example.com")
+	t.Setenv("RANCHER_CLI_URL", "https://staging.example.com")
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
@@ -142,7 +142,7 @@ func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) {
 	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
-	t.Setenv("RANCHER_URL", "https://r.example.com")
+	t.Setenv("RANCHER_CLI_URL", "https://r.example.com")
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-ctx"})
 	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
@@ -156,14 +156,14 @@ func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) 
 }
 
 // DR-007 repro: kubeconfig used to call cfg.CurrentServer() directly, so an
-// env-only session (RANCHER_URL/RANCHER_CACERT, no stored context) failed
+// env-only session (RANCHER_CLI_URL/RANCHER_CLI_CACERT, no stored context) failed
 // with CONTEXT_NOT_SET even though every other command works from env alone.
 // It must now resolve via Effective like everything else, and synthesize an
 // entry name from the server host since no stored server name exists.
 func TestKubeconfigEnvOnlySession(t *testing.T) {
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
-	t.Setenv("RANCHER_URL", "https://env.example.com")
-	t.Setenv("RANCHER_CACERT", caPEM)
+	t.Setenv("RANCHER_CLI_URL", "https://env.example.com")
+	t.Setenv("RANCHER_CLI_CACERT", caPEM)
 	dir := t.TempDir() // no config.yaml at all — no stored context, no stored server
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{ctxCluster: "c-env"})
@@ -175,7 +175,7 @@ func TestKubeconfigEnvOnlySession(t *testing.T) {
 	cluster := kc.Clusters["env.example.com-c-env"]
 	require.NotNil(t, cluster, "entry name must synthesize from the server host, got %v", kc.Clusters)
 	assert.Equal(t, "https://env.example.com/k8s/clusters/c-env", cluster.Server)
-	assert.Equal(t, []byte(caPEM), cluster.CertificateAuthorityData, "RANCHER_CACERT must be baked in for an env-only session")
+	assert.Equal(t, []byte(caPEM), cluster.CertificateAuthorityData, "RANCHER_CLI_CACERT must be baked in for an env-only session")
 	assert.Equal(t, "env.example.com-c-env", kc.CurrentContext)
 }
 

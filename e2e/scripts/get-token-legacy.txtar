@@ -6,7 +6,7 @@
 # and the warm call emits nothing.
 stdin token.txt
 exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
-exists $RANCHER_CONFIG_DIR/config.yaml
+exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher auth delete-token --all -o json
 jsonquery stdout data.deleted all

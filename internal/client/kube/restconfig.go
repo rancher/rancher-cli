@@ -30,7 +30,7 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 		return nil, config.ErrContextNotSet()
 	}
 	if eff.Token == "" {
-		// eff.URL is resolved (a context or RANCHER_URL exists) but no token —
+		// eff.URL is resolved (a context or RANCHER_CLI_URL exists) but no token —
 		// a stored-but-tokenless context (never logged in, or a lost/expired
 		// token) rather than a missing context, so this is an auth gap, not a
 		// CONTEXT_NOT_SET one.

@@ -1,15 +1,15 @@
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # VALIDATION: missing required arg
 ! exec rancher create project -o json
 jsonquery stderr data.error.code VALIDATION
 
 # AUTH: wrong token
-env RANCHER_TOKEN=bad-token
+env RANCHER_CLI_TOKEN=bad-token
 ! exec rancher get project nope --cluster testcluster -o json
 jsonquery stderr data.error.code AUTH
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # NOT_FOUND: absent resource
 ! exec rancher get project does-not-exist --cluster testcluster -o json
@@ -35,10 +35,10 @@ jsonquery stderr data.error.code NOT_FOUND
 
 # CONTEXT_NOT_SET: a generated command with no stored context and no env
 # override must not surface as an unhinted GENERIC
-env RANCHER_URL=
-env RANCHER_TOKEN=
+env RANCHER_CLI_URL=
+env RANCHER_CLI_TOKEN=
 ! exec rancher get clusters -o json
 jsonquery stderr data.error.code CONTEXT_NOT_SET
 stderr 'auth login'
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN

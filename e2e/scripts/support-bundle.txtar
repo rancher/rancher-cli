@@ -1,5 +1,5 @@
-env RANCHER_URL=$TEST_RANCHER_URL
-env RANCHER_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # cattle-system is seeded by the harness (TestMain) — the logs and
 # support-bundle target tables both hardcode it. Targets webhook (not

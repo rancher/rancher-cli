@@ -11,12 +11,12 @@ import (
 )
 
 // ResolveDir returns the config directory using precedence:
-// flag > RANCHER_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > ~/.config/rancher.
+// flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > ~/.config/rancher.
 func ResolveDir(flagDir string) (string, error) {
 	if flagDir != "" {
 		return flagDir, nil
 	}
-	if env := os.Getenv("RANCHER_CONFIG_DIR"); env != "" {
+	if env := os.Getenv("RANCHER_CLI_CONFIG_DIR"); env != "" {
 		return env, nil
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
@@ -122,7 +122,7 @@ type Effective struct {
 }
 
 // Effective merges env vars over the current context/server. Env wins.
-// RANCHER_TOKEN is used directly and never read from the store.
+// RANCHER_CLI_TOKEN is used directly and never read from the store.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	var eff Effective
 	storedURL := ""
@@ -147,14 +147,14 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	}
 
 	// Env overrides (env > file).
-	if v := os.Getenv("RANCHER_URL"); v != "" {
+	if v := os.Getenv("RANCHER_CLI_URL"); v != "" {
 		if !SameServerURL(v, storedURL) {
-			// RANCHER_URL is pointing this invocation at a server other than
+			// RANCHER_CLI_URL is pointing this invocation at a server other than
 			// the one eff.CA/eff.ServerName belong to — never pair a CA (or a
 			// display name) with a server it was never issued for. This is
 			// the choke point every command shares (get/create/patch/delete,
 			// auth check, kubeconfig): clear both here, once, rather than at
-			// each caller. RANCHER_CACERT, checked next, still applies
+			// each caller. RANCHER_CLI_CACERT, checked next, still applies
 			// normally, exactly like a pure env-only session with no stored
 			// context at all.
 			eff.CA = ""
@@ -162,13 +162,13 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		}
 		eff.URL = v
 	}
-	if v := os.Getenv("RANCHER_CACERT"); v != "" {
+	if v := os.Getenv("RANCHER_CLI_CACERT"); v != "" {
 		eff.CA = v
 	}
-	if v := os.Getenv("RANCHER_TOKEN"); v != "" {
+	if v := os.Getenv("RANCHER_CLI_TOKEN"); v != "" {
 		eff.Token = v
 	}
-	if v := os.Getenv("RANCHER_CONTEXT"); v != "" {
+	if v := os.Getenv("RANCHER_CLI_CONTEXT"); v != "" {
 		cl, pr, hasProject := SplitContext(v)
 		eff.Cluster = cl
 		if hasProject {
@@ -188,7 +188,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 }
 
 // contextOverride carries the global --context flag value, set once by the
-// CLI adapter before dispatch. The flag outranks RANCHER_CONTEXT (env), which
+// CLI adapter before dispatch. The flag outranks RANCHER_CLI_CONTEXT (env), which
 // outranks the config file — the same env-over-file rule this block already
 // applies, extended one level up. eff.Project is informational only (display,
 // e.g. `config current-context`) — no routing or API-call code consumes it.
@@ -210,7 +210,7 @@ func ContextOverride() string {
 }
 
 // readOnlyActive and readOnlySources carry the process-wide resolved
-// read-only state (config readOnly + RANCHER_READONLY env + --read-only
+// read-only state (config readOnly + RANCHER_CLI_READONLY env + --read-only
 // flag, OR'd together), set once by the CLI adapter's root Before hook
 // before any command dispatches — the same stash pattern as contextOverride
 // above. internal/runtime must not import internal/config, so the runtime

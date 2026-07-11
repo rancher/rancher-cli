@@ -108,10 +108,10 @@ func runResolveDeps(t *testing.T, configFlag string) (string, error) {
 }
 
 func TestResolveDepsGuardsMigrationForOverriddenDir(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	legacyDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(legacyDir, "cli2.json"), []byte("{}"), 0o600))
-	t.Setenv("RANCHER_CONFIG_DIR", legacyDir) // makes FindLegacy discover the legacy file
+	t.Setenv("RANCHER_CLI_CONFIG_DIR", legacyDir) // makes FindLegacy discover the legacy file
 
 	freshDir := t.TempDir()
 
@@ -162,10 +162,10 @@ func TestResolveReadOnlyFlagSource(t *testing.T) {
 }
 
 func TestResolveReadOnlyEnvSourceNonEmptyIncludingFalse(t *testing.T) {
-	t.Setenv("RANCHER_READONLY", "false")
+	t.Setenv("RANCHER_CLI_READONLY", "false")
 	active, sources := runResolveReadOnly(t, []string{"x", "--config", t.TempDir()})
-	assert.True(t, active, "RANCHER_READONLY=false is still non-empty, so the one-way rule turns read-only ON")
-	assert.Equal(t, []string{"RANCHER_READONLY"}, sources)
+	assert.True(t, active, "RANCHER_CLI_READONLY=false is still non-empty, so the one-way rule turns read-only ON")
+	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, sources)
 }
 
 func TestResolveReadOnlyConfigSource(t *testing.T) {
@@ -179,14 +179,14 @@ func TestResolveReadOnlyConfigSource(t *testing.T) {
 func TestResolveReadOnlyAllThreeCombineOrdered(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
-	t.Setenv("RANCHER_READONLY", "1")
+	t.Setenv("RANCHER_CLI_READONLY", "1")
 	_, sources := runResolveReadOnly(t, []string{"x", "--config", dir, "--read-only"})
-	assert.Equal(t, []string{"config readOnly", "RANCHER_READONLY", "--read-only"}, sources)
+	assert.Equal(t, []string{"config readOnly", "RANCHER_CLI_READONLY", "--read-only"}, sources)
 }
 
 func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 	t.Cleanup(func() { config.SetReadOnlyOverride(false, nil) })
-	config.SetReadOnlyOverride(true, []string{"RANCHER_READONLY"})
+	config.SetReadOnlyOverride(true, []string{"RANCHER_CLI_READONLY"})
 
 	var got runtime.IO
 	cmd := &ucli.Command{
@@ -198,12 +198,12 @@ func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 	}
 	require.NoError(t, cmd.Run(context.Background(), []string{"x"}))
 	assert.True(t, got.ReadOnly)
-	assert.Equal(t, []string{"RANCHER_READONLY"}, got.ReadOnlySources)
+	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
 }
 
 func TestResolveDepsMigratesIntoDefaultDir(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "file")
-	t.Setenv("RANCHER_CONFIG_DIR", "")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv("RANCHER_CLI_CONFIG_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	home := t.TempDir()
 	t.Setenv("HOME", home)

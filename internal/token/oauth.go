@@ -47,7 +47,7 @@ type callbackResult struct {
 
 func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
 	if input.authFlow == "" {
-		input.authFlow = os.Getenv("CATTLE_OAUTH_AUTH_FLOW")
+		input.authFlow = os.Getenv("RANCHER_CLI_OAUTH_AUTH_FLOW")
 	}
 	input.authFlow = strings.ToLower(input.authFlow)
 
@@ -67,7 +67,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 }
 
 func getCallbackPort(p iruntime.Prompter) (int, error) {
-	env := os.Getenv("CATTLE_OAUTH_CALLBACK_PORT")
+	env := os.Getenv("RANCHER_CLI_OAUTH_CALLBACK_PORT")
 	if env == "" {
 		return 0, nil
 	}

@@ -61,7 +61,7 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 }
 
 func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // pin the effective policy to config/auto
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // pin the effective policy to config/auto
 	dir := t.TempDir()
 	require.NoError(t, config.WritePin(dir, "file"))
 	cmd := &authCheckCmd{
@@ -206,7 +206,7 @@ func alwaysOKVersion(context.Context, config.Effective) (string, error)   { retu
 
 // writeAuthCheckConfig gives Effective() a resolvable current context/server
 // (needed only when a test cares about the STORED token, e.g. proving env
-// wins over it; every other PS-2 test below sets RANCHER_TOKEN directly and
+// wins over it; every other PS-2 test below sets RANCHER_CLI_TOKEN directly and
 // skips this, matching TestAuthCheckUsesInjectedPreflight's config-free style).
 func writeAuthCheckConfig(t *testing.T, dir string) {
 	t.Helper()
@@ -223,7 +223,7 @@ func writeAuthCheckConfig(t *testing.T, dir string) {
 // probes returning full metadata decode into the AuthCheck envelope
 // alongside (never replacing) PS-8's rancherVersion/supported keys.
 func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := t.TempDir()
 
 	var gotName string
@@ -266,7 +266,7 @@ func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 // only raw value shown verbatim; every other value (including the empty
 // string createTokenCmd leaves for CLI-derived tokens) is labeled "derived".
 func TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "ext/name1:secret")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/name1:secret")
 	dir := t.TempDir()
 
 	cmd := &authCheckCmd{
@@ -285,7 +285,7 @@ func TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived(t *testing.T) {
 }
 
 // TestAuthCheckTokenEnvOverrideWinsOverStore proves the token probe is asked
-// for metadata on the EFFECTIVE token (post RANCHER_TOKEN override), never
+// for metadata on the EFFECTIVE token (post RANCHER_CLI_TOKEN override), never
 // the stored credential — the two carry different ext ids here so a probe
 // call on the wrong one is unambiguous.
 func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
@@ -293,7 +293,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 	writeAuthCheckConfig(t, dir)
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken("acme", "ext/stored-1:storedsecret"))
-	t.Setenv("RANCHER_TOKEN", "ext/env-1:envsecret")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/env-1:envsecret")
 
 	var gotName string
 	cmd := &authCheckCmd{
@@ -317,7 +317,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 // rule: a non-ext (legacy/norman) effective token nulls the token field with
 // a naming warning, and never calls the injected probe at all.
 func TestAuthCheckLegacyTokenDegradesToNullWithWarning(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "legacy-id:legacysecret")
+	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
 	dir := t.TempDir()
 
 	called := false
@@ -396,7 +396,7 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("RANCHER_TOKEN", "id:secret")
+			t.Setenv("RANCHER_CLI_TOKEN", "id:secret")
 			dir := t.TempDir()
 			cmd := &authCheckCmd{
 				dir: dir, store: config.NewFileStore(dir),
@@ -445,7 +445,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+			t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 			dir := t.TempDir()
 			cmd := &authCheckCmd{
 				dir: dir, store: config.NewFileStore(dir),
@@ -473,7 +473,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 // below-floor, the other implies the group exists) would be far more
 // surprising to a caller than a shared "can't tell" posture.
 func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := t.TempDir()
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -496,13 +496,13 @@ func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 // TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken pins finding 1's fix: once
 // the version probe has confirmed the server IS at or above the floor, the
 // same token-probe 404 can only mean the named token object itself was
-// deleted/rotated server-side (a stale RANCHER_TOKEN or credential-store id)
+// deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store id)
 // — never that ext.cattle.io itself is missing, which a >= 2.14 server
 // already contradicts. Before this fix, this case wrongly reused the
 // below-floor wording (see the "missing group/resource" row this replaced in
 // TestAuthCheckTokenDegradation).
 func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := t.TempDir()
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -527,7 +527,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 // Run with -race, this also exercises finding 4's no-shared-mutable-state
 // design (each goroutine writes only its own dedicated result variables).
 func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := t.TempDir()
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -558,7 +558,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 // read-only RBAC token degrades identity to null with the RBAC warning —
 // expected, not a bug, and the check still exits 0 with ok unaffected.
 func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
-	t.Setenv("RANCHER_TOKEN", "id:secret")
+	t.Setenv("RANCHER_CLI_TOKEN", "id:secret")
 	dir := t.TempDir()
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),

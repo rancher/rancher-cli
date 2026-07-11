@@ -33,7 +33,7 @@ func TestReadPinIgnoresGarbage(t *testing.T) {
 }
 
 func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
 	if err := WritePin(dir, "file"); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 // since the pin is now "file" not "keychain". Both calls must share one
 // memoized probe.
 func TestOpenStoreThenRepinForLoginShareOneProbe(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
 	dir := t.TempDir()
 	probes := 0
 	orig := keyringUsable
@@ -86,7 +86,7 @@ func TestOpenStoreThenRepinForLoginShareOneProbe(t *testing.T) {
 }
 
 func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate: env would otherwise outrank the explicit "file" policy under test
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate: env would otherwise outrank the explicit "file" policy under test
 	dir := t.TempDir()
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "file", cur)
@@ -96,7 +96,7 @@ func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
 }
 
 func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
-	t.Setenv("RANCHER_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
 	if err := WritePin(dir, "keychain"); err != nil {
 		t.Fatal(err)

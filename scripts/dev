@@ -9,5 +9,5 @@ cd "$(dirname "$0")/.."
 # is exactly how a real keychain got touched during review).
 dir="${RANCHER_DEV_CONFIG_DIR:-${TMPDIR:-/tmp}/rancher-dev-$(id -u)}"
 mkdir -p "$dir"
-export RANCHER_CONFIG_DIR="$dir" RANCHER_CREDENTIAL_STORE=file
+export RANCHER_CLI_CONFIG_DIR="$dir" RANCHER_CLI_CREDENTIAL_STORE=file
 exec go run . "$@"
