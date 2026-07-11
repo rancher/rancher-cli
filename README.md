@@ -129,9 +129,10 @@ read for a feature's actual state.
 
 `token` and `kubeconfig` are registered with an empty GVR version, resolved
 via discovery at call time (the same mechanism the CAPI kinds use) — on a
-Rancher older than 2.12 (no aggregated `ext.cattle.io` API), the generated
+Rancher older than 2.14 (the CLI's supported minimum), the generated
 `get`/`patch`/`delete` ops on these two kinds fail with a friendly `NOT_FOUND`
-pointing at `auth list-tokens` and the exec-credential `kubeconfig` instead.
+(`requires Rancher >= 2.14, the supported minimum`) pointing at `auth
+list-tokens` and the exec-credential `kubeconfig` instead.
 Every operation on these two kinds is also plain Kubernetes API — `kubectl
 get/create tokens.ext.cattle.io` / `kubeconfigs.ext.cattle.io` works too (with
 `--validate=false` for a standard user, since kubectl's CRD-schema validation
@@ -227,6 +228,66 @@ for the full pipeline, gates, and package-dependency model, and `rancher schema`
 for the machine-readable surface.
 
 Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
+
+## Read-only mode
+
+Three sources, OR'd together, put a session into read-only mode, refusing
+every mutating command before any network call — strictly one-way, no
+per-invocation override exists:
+
+- Config: `readOnly: true` (top-level config field).
+- Env: `RANCHER_READONLY`, non-empty = on, including the literal string
+  `"false"` — every `RANCHER_*` var in this CLI follows non-empty-means-set;
+  there is no boolean-env precedent, so this is a sharp edge worth calling
+  out explicitly.
+- Flag: `--read-only` (global).
+
+Refusal is `VALIDATION`, naming the command and the active source(s) (e.g.
+"enabled by RANCHER_READONLY") — the one-way rule means you have to know
+which knob to turn off. `rancher schema -o json` reports the resolved state
+(`readOnly`, `readOnlySources`) so an agent can check before trying.
+
+Scoping, stated honestly: read-only mode refuses `Mutating` commands only —
+the CLI's managed-resource surface. `auth login`, `auth check`, and local
+`config` commands stay usable; otherwise a read-only session couldn't even
+establish itself.
+
+The real enforcement is a Rancher token bound to read-only RBAC — read-only
+mode is a CLI-side courtesy layer on top of that, not a replacement for it.
+Two caveats:
+
+- `--dry-run` of a mutating command still sends write-verb requests
+  server-side (admission dry-run); a genuinely read-only RBAC token cannot
+  dry-run at all. Read-only mode doesn't special-case this — it refuses
+  mutating commands outright, `--dry-run` included.
+- Pair `--read-only` (or the config/env form) with a read-only RBAC token
+  for actual enforcement. The CLI-side gate alone stops an accidental
+  mutation from a well-behaved client; it is not a security boundary.
+
+## Supported server version
+
+The CLI declares a minimum supported Rancher version, `>= 2.14`
+(`rancher schema -o json` → `minRancherVersion`). Enforcement today is
+warn-only: `auth login` and `auth check` read the server's `server-version`
+setting and emit a warning — never a failure — when the connected server is
+below the floor, or when the version can't be determined at all. RBAC
+denial, a missing setting, or an unparseable value (e.g. a dev/head build)
+all assume "supported" and warn instead of refusing.
+
+Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
+`--allow-unsupported-server`-style flag) once there's real-use feedback on
+the warn-only period. Ledgered, future work.
+
+**`auth check` enrichment.** Beyond connectivity, `auth check -o json` also
+reports `rancherVersion`/`supported` (the version-floor check above),
+`identity` (the caller's `userID`, from a create-verb identity probe against
+`ext.cattle.io`), and `token` (the effective token's
+name/kind/provider/expiry/`current` marker — only for an `ext.cattle.io`
+token; a legacy/non-ext token reports `token: null` with a warning). Any of
+these fields degrading to `null` with a warning is expected, not a bug —
+including `identity` under a read-only-RBAC token, since the identity probe
+is itself a create-verb request. `auth check`'s connectivity result (`ok`)
+never depends on them.
 
 ## Configuration
 

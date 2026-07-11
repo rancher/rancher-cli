@@ -17,8 +17,13 @@ querying the CLI over guessing syntax.
 rancher auth check -o json
 ```
 
-Reports server, cluster context, server version, and credential-store state.
-If it fails with `AUTH` or `CONTEXT_NOT_SET`, establish a session:
+Reports server, cluster context, server version, `rancherVersion`/`supported`
+(the 2.14 minimum-version floor — warn-only, never fails login/check),
+`identity`/`token` metadata, and credential-store state. A `null` `identity`
+or `token` field plus a `warnings` entry is a normal degradation (e.g.
+`identity` is a create-verb probe — expect it null under a read-only-RBAC
+token), not an error condition; don't treat it as one. If it fails with
+`AUTH` or `CONTEXT_NOT_SET`, establish a session:
 
 - Interactive: `rancher auth login --server <url> --name <alias>` — no UI trip
   needed. With no piped/pasted token, it offers a choice: paste an existing
@@ -192,8 +197,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   an ordinary namespaced secret without hand-rolling base64.
 - `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` —
   writes into the project's backing namespace for Rancher to propagate into
-  every member namespace; a `warnings` entry means this Rancher may predate
-  2.12 and won't propagate it.
+  every member namespace; a `warnings` entry means propagation isn't
+  guaranteed on this server (requires Rancher >= 2.14, the supported
+  minimum) and it won't propagate.
 
 ## Conventions
 
@@ -215,6 +221,21 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - **Isolation for scripted sessions:** point `RANCHER_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain.
+- **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
+  non-empty `RANCHER_READONLY` — including the literal `"false"`) refuses
+  every mutating command before any network call, one-way with no
+  per-invocation override. `rancher schema -o json` reports
+  `readOnly`/`readOnlySources`. For real enforcement pair it with a Rancher
+  token bound to read-only RBAC — the CLI-side gate is a courtesy, not a
+  security boundary, and a read-only RBAC token can't `--dry-run` a mutation
+  either (dry-run still needs write verbs server-side), so read-only mode
+  refuses those outright too.
+- **`config path` / `config edit`:** `config path` prints the resolved
+  config file path — point other tooling at it. `config edit` opens the
+  config in `$VISUAL`/`$EDITOR` on a temp copy, validating referential
+  integrity before writing back — reach for it over several individual
+  `set-context`/`use-server` calls when reshaping multiple contexts/servers
+  at once; needs a TTY and `$VISUAL`/`$EDITOR` set.
 - **Secrets:** never echo tokens into commands or logs; use `--token-stdin` or
   env vars. Sensitive kinds (users, settings, role bindings, …) escalate
   mutations to the destructive gate — expect `--yes` to be demanded even for a
