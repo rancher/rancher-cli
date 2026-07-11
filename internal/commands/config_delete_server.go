@@ -58,12 +58,7 @@ func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ ru
 
 	srv, ok := cfg.Servers[name]
 	if !ok {
-		cands := make([]clierr.Candidate, 0, len(cfg.Servers))
-		for s := range cfg.Servers {
-			cands = append(cands, clierr.Candidate{ID: s, Name: s})
-		}
-		return runtime.Result{}, clierr.New(clierr.CodeNotFound, "server not found: "+name).
-			WithCandidates(cands)
+		return runtime.Result{}, serverNotFoundWithCandidates(cfg, name)
 	}
 
 	deletedFrom, deletedCache, err := d.drain(d.dir, name, srv.URL)

@@ -96,12 +96,7 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 		return targets, nil
 	case name != "":
 		if _, ok := cfg.Servers[name]; !ok {
-			cands := make([]clierr.Candidate, 0, len(cfg.Servers))
-			for s := range cfg.Servers {
-				cands = append(cands, clierr.Candidate{ID: s, Name: s})
-			}
-			return nil, clierr.New(clierr.CodeNotFound, "server not found: "+name).
-				WithCandidates(cands)
+			return nil, serverNotFoundWithCandidates(cfg, name)
 		}
 		return []string{name}, nil
 	default:

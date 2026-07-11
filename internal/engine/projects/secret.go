@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -146,7 +147,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 				if err != nil {
 					return res, err
 				}
-				res.Warnings = append(res.Warnings, "project-scoped secret propagation is not guaranteed (requires Rancher >= 2.14, the supported minimum)")
+				res.Warnings = append(res.Warnings, fmt.Sprintf("project-scoped secret propagation is not guaranteed (requires Rancher >= %s, the supported minimum)", config.MinRancherVersion))
 				return res, nil
 			}
 		}

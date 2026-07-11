@@ -3,9 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -40,16 +38,10 @@ type TokenMetadata struct {
 // caller's warn-only degradation — this probe's own success never gates
 // auth check's `ok`.
 func EffectiveTokenMetadata(ctx context.Context, eff config.Effective, name string) (TokenMetadata, error) {
-	eff.Cluster = engine.LocalCluster
-	rc, err := kube.RESTConfig(eff)
+	dyn, ctx, cancel, err := bootstrapLocalDynamic(ctx, eff)
 	if err != nil {
 		return TokenMetadata{}, err
 	}
-	dyn, err := kube.Dynamic(rc)
-	if err != nil {
-		return TokenMetadata{}, err
-	}
-	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	obj, err := dyn.Resource(extTokensGVR).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

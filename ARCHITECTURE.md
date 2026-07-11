@@ -154,6 +154,7 @@ graph TD
     projects --> runtime
     projects --> safety
     projects --> clierr
+    projects --> config
 
     extres --> engine
     extres --> kinds

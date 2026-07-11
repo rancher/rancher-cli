@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +26,29 @@ const requestTimeout = 30 * time.Second
 
 func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, requestTimeout)
+}
+
+// bootstrapLocalDynamic builds a dynamic client bound to the LOCAL cluster's
+// proxy plus a request-bounded context, for the small `auth check` probes
+// (Identity, EffectiveTokenMetadata, ServerVersionSetting) that each read a
+// single management-plane singleton. Settings and ext.cattle.io resources
+// live under the local cluster's proxy regardless of which downstream
+// cluster eff.Cluster currently points at — see ServerVersionSetting's doc
+// — so eff.Cluster is always overridden here, once, rather than by each
+// caller. The returned cancel func must be deferred by the caller exactly
+// like the opCtx it wraps.
+func bootstrapLocalDynamic(ctx context.Context, eff config.Effective) (dynamic.Interface, context.Context, context.CancelFunc, error) {
+	eff.Cluster = engine.LocalCluster
+	rc, err := kube.RESTConfig(eff)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	dyn, err := kube.Dynamic(rc)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	boundedCtx, cancel := opCtx(ctx)
+	return dyn, boundedCtx, cancel, nil
 }
 
 type dynamicClient struct {
@@ -109,7 +133,7 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 	}
 	if gvr.Group == "ext.cattle.io" {
 		return gvr, clierr.New(clierr.CodeNotFound,
-			"this Rancher does not serve ext.cattle.io (requires Rancher >= 2.14, the supported minimum)").
+			fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum)", config.MinRancherVersion)).
 			WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
 	}
 	return gvr, clierr.New(clierr.CodeNotFound, fmt.Sprintf("API group %q not served by the cluster", gvr.Group))

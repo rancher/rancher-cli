@@ -3,9 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -26,16 +24,10 @@ var selfUsersGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: 
 // returned clierr-mapped, already-classified for the caller's warn-only
 // degradation — this probe's own success never gates auth check's `ok`.
 func Identity(ctx context.Context, eff config.Effective) (string, error) {
-	eff.Cluster = engine.LocalCluster
-	rc, err := kube.RESTConfig(eff)
+	dyn, ctx, cancel, err := bootstrapLocalDynamic(ctx, eff)
 	if err != nil {
 		return "", err
 	}
-	dyn, err := kube.Dynamic(rc)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "ext.cattle.io/v1",

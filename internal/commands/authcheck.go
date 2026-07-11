@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"golang.org/x/sync/errgroup"
 )
 
 type authCheckCmd struct {
@@ -72,9 +73,47 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 		return runtime.Result{}, err
 	}
 
-	rancherVersion, supported, warning := a.checkMinRancherVersion(ctx, eff)
-	identity, idWarning := a.checkIdentity(ctx, eff)
-	token, tokenWarning := a.checkToken(ctx, eff)
+	// The three probes below are independent network calls (version, identity,
+	// token) with nothing but eff in common; run them concurrently via
+	// errgroup (already a repo dependency — internal/engine/inspect/images.go
+	// uses the same pattern) rather than tripling/quadrupling auth check's
+	// wall-clock latency running them one after another. Each probe writes
+	// only to its own dedicated result variables, so there is no data race
+	// between goroutines; none of them ever returns a real error to the
+	// group (they self-degrade to null+warning), so g.Wait()'s return is
+	// always nil. The result/warning ASSEMBLY below happens only after
+	// g.Wait() joins all three, in a FIXED field order (version, identity,
+	// token) — so the payload and warnings list stay deterministic
+	// regardless of which goroutine happens to finish first.
+	var (
+		rancherVersion *string
+		supported      *bool
+		warning        string
+		identity       any
+		idWarning      string
+		tokenRaw       any
+		tokenErr       error
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		rancherVersion, supported, warning = a.checkMinRancherVersion(gctx, eff)
+		return nil
+	})
+	g.Go(func() error {
+		identity, idWarning = a.checkIdentity(gctx, eff)
+		return nil
+	})
+	g.Go(func() error {
+		tokenRaw, tokenErr = a.probeToken(gctx, eff)
+		return nil
+	})
+	_ = g.Wait()
+
+	// tokenWarning needs supported (the version probe's PS-8 floor verdict,
+	// only known once the goroutines above have joined) to classify a
+	// token-probe 404, so it happens here rather than inside probeToken.
+	token := tokenRaw
+	tokenWarn := tokenWarning(tokenErr, supported)
 
 	res := runtime.Result{Kind: "AuthCheck", Data: map[string]any{
 		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
@@ -85,7 +124,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 			"pinned": pinned,
 		},
 	}}
-	for _, w := range []string{warning, idWarning, tokenWarning} {
+	for _, w := range []string{warning, idWarning, tokenWarn} {
 		if w != "" {
 			res.Warnings = append(res.Warnings, w)
 		}
@@ -130,34 +169,45 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 	return map[string]any{"userID": userID}, ""
 }
 
-// checkToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
+// errLegacyToken signals probeToken's no-v3-fallback case: a non-ext
+// (legacy/norman) effective token skips the probe entirely and degrades
+// with a fixed naming warning, never the ext.cattle.io lookup.
+var errLegacyToken = errors.New("legacy token — no ext metadata")
+
+// probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
 // never the stored credential directly, so a RANCHER_TOKEN override is
 // always the one reported on). The "ext/" prefix sniff mirrors
 // login_ext.go's revokeSessionToken, applied here to the long-lived
 // effective credential rather than the transient session token. A
-// non-ext (legacy/norman) token nulls the field with a naming warning and
-// never reaches the probe at all — no v3/legacy fallback lookup. An empty
-// eff.Token (no token at all) is not "legacy" — there is nothing to report
-// on, so this stays silently null: in practice unreachable once preflight
-// has actually succeeded (RESTConfig refuses an empty token before any of
-// this runs), but reachable in tests that stub preflight without a token. A
-// nil token field is the same "not wired for this check" case checkIdentity
-// documents for a.identity == nil.
-func (a authCheckCmd) checkToken(ctx context.Context, eff config.Effective) (any, string) {
+// non-ext (legacy/norman) token returns errLegacyToken and never reaches the
+// probe at all — no v3/legacy fallback lookup. An empty eff.Token (no token
+// at all) is not "legacy" — there is nothing to report on, so this returns
+// (nil, nil): in practice unreachable once preflight has actually succeeded
+// (RESTConfig refuses an empty token before any of this runs), but reachable
+// in tests that stub preflight without a token. A nil token field is the
+// same "not wired for this check" case checkIdentity documents for
+// a.identity == nil.
+//
+// probeToken returns the raw probe outcome rather than a classified
+// warning: classifying a NotFound (see tokenWarning) needs the version
+// probe's result, which — now that all three probes run concurrently
+// (finding 4) — is only known once every probe has joined, not from inside
+// this one.
+func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any, error) {
 	if eff.Token == "" {
-		return nil, ""
+		return nil, nil
 	}
 	id, _, _ := strings.Cut(eff.Token, ":")
 	name, ok := strings.CutPrefix(id, "ext/")
 	if !ok {
-		return nil, "legacy token — no ext metadata"
+		return nil, errLegacyToken
 	}
 	if a.token == nil {
-		return nil, ""
+		return nil, nil
 	}
 	meta, err := a.token(ctx, eff, name)
 	if err != nil {
-		return nil, degradeWarning("token", err)
+		return nil, err
 	}
 	kind := "derived"
 	if meta.Kind == "session" {
@@ -166,7 +216,33 @@ func (a authCheckCmd) checkToken(ctx context.Context, eff config.Effective) (any
 	return map[string]any{
 		"name": meta.Name, "kind": kind, "provider": meta.Provider,
 		"expiresAt": meta.ExpiresAt, "current": meta.Current,
-	}, ""
+	}, nil
+}
+
+// tokenWarning turns probeToken's raw outcome into the null-plus-warning
+// text (finding 1): a CodeNotFound on the token GET is ambiguous by error
+// code alone — it means either the ext.cattle.io group itself is absent
+// (below the 2.14 floor) or the group is present but the specific named
+// token object was deleted/rotated server-side (a stale RANCHER_TOKEN or
+// credential-store id). supported (the version probe's PS-8 floor verdict)
+// resolves the ambiguity: once it has confirmed the server IS at or above
+// the floor, the same 404 can only be the latter, and the caller must
+// re-authenticate — it must never also be told the group requires a newer
+// Rancher when the version probe just said otherwise. When supported is nil
+// or false, the group-absent wording (shared with degradeWarning's identity
+// case) is the only thing that can honestly be said.
+func tokenWarning(err error, supported *bool) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, errLegacyToken) {
+		return err.Error()
+	}
+	var ce *clierr.Error
+	if errors.As(err, &ce) && ce.Code == clierr.CodeNotFound && supported != nil && *supported {
+		return "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login"
+	}
+	return degradeWarning("token", err)
 }
 
 // degradeWarning turns a PS-2 probe failure into the null-plus-warning

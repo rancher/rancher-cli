@@ -119,6 +119,22 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 		Data: map[string]string{"current": name, "context": ctxName}}, nil
 }
 
+// serverNotFoundWithCandidates builds the NOT_FOUND error `config
+// delete-server` and `auth logout` both return for an unknown server name:
+// every currently configured server offered back as a selectable candidate
+// (finding 6 — this was byte-for-byte duplicated between the two commands).
+// `config use-server`'s own not-found path stays a plain NOT_FOUND with no
+// candidates (deliberately out of scope for this consolidation — ledgered
+// as a follow-up, not implemented here).
+func serverNotFoundWithCandidates(cfg *config.Config, name string) *clierr.Error {
+	cands := make([]clierr.Candidate, 0, len(cfg.Servers))
+	for s := range cfg.Servers {
+		cands = append(cands, clierr.Candidate{ID: s, Name: s})
+	}
+	return clierr.New(clierr.CodeNotFound, "server not found: "+name).
+		WithCandidates(cands)
+}
+
 // resolveContextForServer picks the context to activate for server name: the
 // current context if it already targets the server, else the
 // lexicographically first match, else "" (caller creates one). matches is the

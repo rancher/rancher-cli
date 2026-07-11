@@ -4,29 +4,33 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/rancher/rancher-cli/internal/client/httpx"
-	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/tidwall/gjson"
 )
 
 type loginCmd struct {
 	dir   string
 	store config.CredStore
 	// rancherVersion reads the server-version Setting for the PS-8 floor
-	// check, injectable for tests; defaults to probeServerVersion.
-	rancherVersion func(ctx context.Context, server, token, cacertFlag string) (string, error)
+	// check, injectable for tests; defaults to provider.ServerVersionSetting
+	// — the same PS-8 read `auth check` already uses (finding 7), rather
+	// than login re-implementing the local-cluster proxy path plus response
+	// decode via raw HTTP. The original "no engine client factory inside a
+	// Local command" objection doesn't apply here: ServerVersionSetting
+	// takes a bare config.Effective, no factory/cache construct, and login
+	// already has everything an Effective needs by this point (the server
+	// URL, --cacert, and the just-resolved/stored token).
+	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
 }
 
 // NewLogin builds the `auth login` command (local).
 func NewLogin(dir string, store config.CredStore) runtime.Command {
-	return &loginCmd{dir: dir, store: store, rancherVersion: probeServerVersion}
+	return &loginCmd{dir: dir, store: store, rancherVersion: provider.ServerVersionSetting}
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -127,17 +131,12 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]string{
 		"server": name, "url": u.String(), "context": name,
 	}}
-	if warning := l.warnBelowMinVersion(ctx, u.String(), token, in.String("cacert")); warning != "" {
+	versionEff := config.Effective{ServerName: name, URL: u.String(), CA: in.String("cacert"), Token: token}
+	if warning := l.warnBelowMinVersion(ctx, versionEff); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
 	}
 	return res, nil
 }
-
-// serverVersionSettingPath is reached ONLY through the local-cluster proxy:
-// management.cattle.io/v3 is an aggregated CRD API, never served at the
-// Rancher root, so a bare /apis/... GET 404s here exactly as it does for
-// the ext.cattle.io paths in login_ext.go.
-const serverVersionSettingPath = "/k8s/clusters/local/apis/management.cattle.io/v3/settings/server-version"
 
 // warnBelowMinVersion evaluates the server-version Setting read via
 // l.rancherVersion against config.MinRancherVersion (PS-8, warn-only floor).
@@ -145,52 +144,16 @@ const serverVersionSettingPath = "/k8s/clusters/local/apis/management.cattle.io/
 // connectivity — is folded into the same "cannot determine" posture as an
 // unparseable value (a dev/head build): this probe never turns a successful
 // login into a failure.
-func (l loginCmd) warnBelowMinVersion(ctx context.Context, server, token, cacertFlag string) string {
+func (l loginCmd) warnBelowMinVersion(ctx context.Context, eff config.Effective) string {
 	if l.rancherVersion == nil {
 		return config.UnknownServerVersionWarning
 	}
-	raw, err := l.rancherVersion(ctx, server, token, cacertFlag)
+	raw, err := l.rancherVersion(ctx, eff)
 	if err != nil {
 		return config.UnknownServerVersionWarning
 	}
 	_, warning := config.EvalMinVersionSupport(raw)
 	return warning
-}
-
-// probeServerVersion is the real server-version Setting read (PS-8) via a
-// direct HTTP GET with the just-stored token: login has no engine client
-// factory, so — unlike auth check's existing client path — this is
-// login_ext.go's direct-HTTP style, not provider.ServerVersionSetting.
-func probeServerVersion(ctx context.Context, server, token, cacertFlag string) (string, error) {
-	caPEM, err := config.ResolveCA(cacertFlag)
-	if err != nil {
-		return "", err
-	}
-	client, err := httpx.New(httpx.Options{CACert: caPEM})
-	if err != nil {
-		return "", err
-	}
-	return fetchServerVersionSetting(ctx, client, kube.BaseURL(server), token)
-}
-
-// fetchServerVersionSetting GETs the server-version Setting and returns its
-// top-level "value" field (Setting carries its value there, not under
-// spec/status).
-func fetchServerVersionSetting(ctx context.Context, client *http.Client, base, token string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+serverVersionSettingPath, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, body, err := httpx.Do(client, req)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", clierr.New(clierr.CodeGeneric,
-			"fetching server-version setting: "+resp.Status)
-	}
-	return gjson.GetBytes(body, "value").String(), nil
 }
 
 func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {

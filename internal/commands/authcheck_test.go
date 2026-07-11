@@ -420,8 +420,12 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 // TestAuthCheckTokenDegradation mirrors TestAuthCheckIdentityDegradation for
 // the token probe, independently: an ext-shaped effective token (so the
 // probe is actually invoked, not short-circuited by the legacy-token path)
-// whose lookup is denied, times out, or 404s all null the token field with a
-// naming warning and never fail the check.
+// whose lookup is denied or times out nulls the token field with a naming
+// warning and never fails the check. The 404 case is deliberately NOT in
+// this table (finding 1): the version probe is stubbed to alwaysOKVersion
+// here (supported == true), and that combination is now its own dedicated
+// test below rather than one row here, since a 404 alone can't tell
+// "group absent" and "object missing within a present group" apart.
 func TestAuthCheckTokenDegradation(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -437,11 +441,6 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 			name:    "timeout",
 			err:     context.DeadlineExceeded,
 			warning: "token metadata unavailable: context deadline exceeded",
-		},
-		{
-			name:    "missing group/resource",
-			err:     clierr.New(clierr.CodeNotFound, "tokens.ext.cattle.io \"derived-1\" not found"),
-			warning: "token metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)",
 		},
 	}
 	for _, tc := range cases {
@@ -464,6 +463,92 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 			assert.Nil(t, data["token"])
 			assert.Contains(t, res.Warnings, tc.warning)
 		})
+	}
+}
+
+// TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent pins finding 1's first
+// branch: a token-probe 404 when the version probe could NOT confirm the
+// server is at or above the ext.cattle.io floor (2.14) keeps the existing
+// group-absent wording — the two probes disagreeing here (one says
+// below-floor, the other implies the group exists) would be far more
+// surprising to a caller than a shared "can't tell" posture.
+func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
+	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	dir := t.TempDir()
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight: alwaysOKPreflight,
+		rancherVersion: func(context.Context, config.Effective) (string, error) {
+			return "v2.13.0", nil // below floor: supported == false
+		},
+		identity: func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		token: func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, "tokens.ext.cattle.io \"derived-1\" not found")
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err, "a token-probe failure must never fail the check")
+	data := res.Data.(map[string]any)
+	assert.Nil(t, data["token"])
+	assert.Contains(t, res.Warnings, "token metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)")
+}
+
+// TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken pins finding 1's fix: once
+// the version probe has confirmed the server IS at or above the floor, the
+// same token-probe 404 can only mean the named token object itself was
+// deleted/rotated server-side (a stale RANCHER_TOKEN or credential-store id)
+// — never that ext.cattle.io itself is missing, which a >= 2.14 server
+// already contradicts. Before this fix, this case wrongly reused the
+// below-floor wording (see the "missing group/resource" row this replaced in
+// TestAuthCheckTokenDegradation).
+func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
+	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	dir := t.TempDir()
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion, // v2.15.0: supported == true
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		token: func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, "tokens.ext.cattle.io \"derived-1\" not found")
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err, "a token-probe failure must never fail the check")
+	data := res.Data.(map[string]any)
+	assert.Nil(t, data["token"])
+	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
+}
+
+// TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes pins finding
+// 4's ordering contract: the version/identity/token probes now run
+// concurrently (errgroup), but the warnings list must always assemble in
+// this fixed order regardless of which goroutine happens to finish first.
+// Run with -race, this also exercises finding 4's no-shared-mutable-state
+// design (each goroutine writes only its own dedicated result variables).
+func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.T) {
+	t.Setenv("RANCHER_TOKEN", "ext/derived-1:secretvalue")
+	dir := t.TempDir()
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight: alwaysOKPreflight,
+		rancherVersion: func(context.Context, config.Effective) (string, error) {
+			return "v2.13.0", nil
+		},
+		identity: func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeRBAC, "selfusers.ext.cattle.io is forbidden")
+		},
+		token: func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "tokens.ext.cattle.io is forbidden")
+		},
+	}
+	for i := 0; i < 20; i++ {
+		res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+		require.NoError(t, err)
+		require.Len(t, res.Warnings, 3)
+		assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
+		assert.Equal(t, "identity metadata unavailable: denied by RBAC", res.Warnings[1])
+		assert.Equal(t, "token metadata unavailable: denied by RBAC", res.Warnings[2])
 	}
 }
 

@@ -84,7 +84,7 @@ func filePolicyDir(t *testing.T) (string, config.CredStore) {
 // aren't exercising the PS-8 version probe itself: it never dials out, so
 // login's success path can be tested against unresolvable/example hostnames
 // without a real network call.
-func stubRancherVersion(context.Context, string, string, string) (string, error) {
+func stubRancherVersion(context.Context, config.Effective) (string, error) {
 	return "v2.20.0", nil
 }
 
@@ -536,7 +536,11 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 // EXACTLY the server-version Setting path PS-8 requires — a regression
 // hitting a bare /apis/... path (management.cattle.io/v3 is never served at
 // the Rancher root) 404s here exactly as it would for real, landing the
-// probe in the same unknown-version path every time.
+// probe in the same unknown-version path every time. Since finding 7, login
+// reaches this path via provider.ServerVersionSetting's k8s dynamic client
+// (the same path auth check's version_test.go fakes hit), so a successful
+// response must carry "kind" — apimachinery's UnstructuredJSONScheme.Decode
+// rejects a body with no Kind, unlike the raw gjson read this replaced.
 func newVersionProbeFake(t *testing.T, value string, status int) *httptest.Server {
 	t.Helper()
 	if status == 0 {
@@ -550,7 +554,11 @@ func newVersionProbeFake(t *testing.T, value string, status int) *httptest.Serve
 		assert.Equal(t, "Bearer id:sec", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]string{"value": value})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"apiVersion": "management.cattle.io/v3", "kind": "Setting",
+			"metadata": map[string]string{"name": "server-version"},
+			"value":    value,
+		})
 	}))
 	t.Cleanup(srv.Close)
 	return srv
