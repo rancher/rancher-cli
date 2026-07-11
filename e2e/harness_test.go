@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rogpeppe/go-internal/testscript"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,25 +35,59 @@ import (
 )
 
 var (
-	binPath string
-	shimURL string
-	// shimCACertPEM is the shim's TLS certificate, PEM-encoded: client-go's
-	// exec-credential plugin (kubectl, `rancher auth get-token`) refuses to
-	// wire in exec auth over a plaintext http:// server (the same
-	// credential-hygiene rule that keeps bearer tokens off http), so the shim
-	// must be TLS and scripts must be able to trust it. Scripts get this as
-	// INLINE PEM, not a file path: config.Effective's CA and kube.RESTConfig
-	// consume eff.CA as raw PEM bytes directly (only auth get-token's and
-	// kubeconfig's own --cacert handling resolve a path via ResolveCA), so a
-	// path here would break every other command.
-	shimCACertPEM string
-	shimClient    *http.Client // trusts the shim's cert; use for Go-side HTTP calls to shimURL
-	dynCli        dynamic.Interface
+	binPath    string
+	shimURL    string
+	shimClient *http.Client // trusts the shim's cert; use for Go-side HTTP calls to shimURL
+	dynCli     dynamic.Interface
+	// proxy rewrites into the envtest apiserver; built once in TestMain
+	// (concurrency-safe) and shared by the global router AND every
+	// per-script router newRouter builds — only the bearer check varies per
+	// instance, never the transport.
+	proxy *httputil.ReverseProxy
 )
 
 // testToken must satisfy BOTH the shim bearer check AND auth login's
 // id:secret format (the auth-login scenario stores and replays it).
 const testToken = "e2e:secret"
+
+// legacyScripts marks per-script façade instances that must run in legacy
+// mode (the ext.cattle.io mint route 404s), keyed by txtar base name
+// (matched against the testscript WorkDir, "script-<name>").
+var legacyScripts = map[string]bool{
+	"get-token-legacy": true,
+}
+
+// newRouter builds the shim's cluster-proxy handler: a bearer check via
+// validBearer, then the /k8s/clusters/<id> prefix rewrite into the shared
+// envtest reverse proxy. It is a constructor, not a single shared instance,
+// because auth scenarios need their own façade's ValidBearer composed in
+// without a union of issued-token sets across scripts (FA-2/FA-3):
+// deterministic per-instance token names/secrets mean two scripts can hold
+// the literal same bearer, and a shared validity set would keep one
+// script's revoked bearer alive via another script's set.
+func newRouter(validBearer func(string) bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "Bearer "
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, prefix) || !validBearer(strings.TrimPrefix(auth, prefix)) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var trimmed string
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/local/"):
+			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/local")
+		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/c-test/"):
+			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		r.URL.Path = trimmed
+		r.Header.Del("Authorization") // transport injects envtest creds
+		proxy.ServeHTTP(w, r)
+	})
+}
 
 func TestMain(m *testing.M) {
 	tmp, err := os.MkdirTemp("", "rancher-e2e-*")
@@ -93,38 +129,21 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("parsing envtest host: " + err.Error())
 	}
-	proxy := &httputil.ReverseProxy{
+	proxy = &httputil.ReverseProxy{
 		Rewrite:   func(r *httputil.ProxyRequest) { r.SetURL(target) },
 		Transport: transport,
 	}
 
+	// The global TLS server stays alive for its own narrow job — flipstatus
+	// mutates shared envtest state through it (commands_test.go) — but no
+	// script's TEST_RANCHER_URL points at it anymore; TestScenarios' Setup
+	// gives every script its own façade-wrapped router instead.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+testToken {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		var trimmed string
-		switch {
-		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/local/"):
-			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/local")
-		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/c-test/"):
-			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		r.URL.Path = trimmed
-		r.Header.Del("Authorization") // transport injects envtest creds
-		proxy.ServeHTTP(w, r)
-	})
+	mux.Handle("/", newRouter(func(t string) bool { return t == testToken }))
 	mux.HandleFunc("PUT /_test/status/", handleStatusLever)
 	srv := httptest.NewTLSServer(mux)
 	shimURL = srv.URL
 	shimClient = srv.Client()
-
-	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	shimCACertPEM = string(caPEM)
 
 	dynCli, err = dynamic.NewForConfig(cfg)
 	if err != nil {
@@ -221,20 +240,118 @@ func TestBuildAndStartEnvNoErrorDoesNotStop(t *testing.T) {
 	assert.False(t, stopped)
 }
 
+// TestRouterValidatesSeedAndFacadeBearersAcrossRevocation proves the
+// per-script wiring TestScenarios' Setup builds: a router composed from
+// "seed OR this instance's façade.ValidBearer" authorizes both the static
+// seed token and a façade-minted bearer through the cluster proxy, and stops
+// authorizing the minted bearer the moment it is revoked.
+func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
+	var facade *testrancher.Facade
+	router := newRouter(func(tok string) bool {
+		return tok == testToken || (facade != nil && facade.ValidBearer(tok))
+	})
+	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken})
+	srv := httptest.NewTLSServer(facade)
+	defer srv.Close()
+	client := srv.Client()
+
+	const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
+	getClusters := func(bearer string) int {
+		req, err := http.NewRequest(http.MethodGet, srv.URL+clustersPath, nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode
+	}
+
+	assert.Equal(t, http.StatusOK, getClusters(testToken), "the seed token must still authorize through a per-script instance")
+
+	mintReq, err := http.NewRequest(http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens",
+		strings.NewReader(`{"spec":{}}`))
+	require.NoError(t, err)
+	mintReq.Header.Set("Authorization", "Bearer "+testToken)
+	mintResp, err := client.Do(mintReq)
+	require.NoError(t, err)
+	defer func() { _ = mintResp.Body.Close() }()
+	require.Equal(t, http.StatusCreated, mintResp.StatusCode)
+	var minted struct {
+		Status struct {
+			BearerToken string `json:"bearerToken"`
+		}
+	}
+	require.NoError(t, json.NewDecoder(mintResp.Body).Decode(&minted))
+	require.NotEmpty(t, minted.Status.BearerToken)
+
+	assert.Equal(t, http.StatusOK, getClusters(minted.Status.BearerToken), "a façade-minted bearer must authorize")
+
+	delReq, err := http.NewRequest(http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens/fac-token-1", nil)
+	require.NoError(t, err)
+	delReq.Header.Set("Authorization", "Bearer "+testToken)
+	delResp, err := client.Do(delReq)
+	require.NoError(t, err)
+	defer func() { _ = delResp.Body.Close() }()
+	require.Equal(t, http.StatusOK, delResp.StatusCode)
+
+	assert.Equal(t, http.StatusUnauthorized, getClusters(minted.Status.BearerToken), "the same bearer must 401 at the proxy after revocation")
+}
+
 func TestScenarios(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: "scripts",
 		Setup: func(e *testscript.Env) error {
 			e.Setenv("PATH", filepath.Dir(binPath)+string(os.PathListSeparator)+e.Getenv("PATH"))
-			e.Setenv("TEST_RANCHER_URL", shimURL)
+
+			// go-internal v1.14.1 names workdirs "script-<name>"
+			// (testscript.go:453); "<name>" is the txtar base name. Failing
+			// loudly on a mismatch (rather than silently defaulting to
+			// non-legacy) means a future testscript upgrade that changes
+			// this naming breaks Setup immediately instead of quietly
+			// running every script non-legacy.
+			scriptName := strings.TrimPrefix(filepath.Base(e.WorkDir), "script-")
+			if _, err := os.Stat(filepath.Join("scripts", scriptName+".txtar")); err != nil {
+				return fmt.Errorf("deriving script name from WorkDir %q: no scripts/%s.txtar: %w", e.WorkDir, scriptName, err)
+			}
+
+			// facade is assigned below, after router is built: validBearer
+			// only runs once real requests arrive, well after Setup returns,
+			// so the forward reference is safe.
+			var facade *testrancher.Facade
+			router := newRouter(func(t string) bool {
+				return t == testToken || (facade != nil && facade.ValidBearer(t))
+			})
+			facade = testrancher.New(testrancher.Options{
+				Fallthrough: router,
+				Legacy:      legacyScripts[scriptName],
+				SeedToken:   testToken,
+				EnableIdP:   true,
+			})
+			facadeSrv := httptest.NewTLSServer(facade)
+			e.Defer(facadeSrv.Close)
+			// client-go's exec-credential plugin (kubectl, `rancher auth
+			// get-token`) refuses to wire in exec auth over a plaintext
+			// http:// server (the same credential-hygiene rule that keeps
+			// bearer tokens off http), so the façade must be TLS and scripts
+			// must be able to trust it. Scripts get this as INLINE PEM, not
+			// a file path: config.Effective's CA and kube.RESTConfig
+			// consume eff.CA as raw PEM bytes directly (only auth
+			// get-token's and kubeconfig's own --cacert handling resolve a
+			// path via ResolveCA), so a path here would break every other
+			// command.
+			facadeCACertPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: facadeSrv.Certificate().Raw}))
+
+			e.Setenv("TEST_RANCHER_URL", facadeSrv.URL)
 			e.Setenv("TEST_RANCHER_TOKEN", testToken)
-			e.Setenv("TEST_RANCHER_CACERT", shimCACertPEM)
+			e.Setenv("TEST_RANCHER_CACERT", facadeCACertPEM)
 			// Global CA trust for every script (env-only and config-flow alike):
 			// RANCHER_CACERT is env-effective everywhere Effective() is consulted.
 			// It does NOT reach `rancher kubeconfig`'s embedded CA, which reads
 			// only the config FILE's server entry — config-flow scripts pass
 			// --cacert on login for that.
-			e.Setenv("RANCHER_CACERT", shimCACertPEM)
+			e.Setenv("RANCHER_CACERT", facadeCACertPEM)
+			e.Setenv("TEST_RANCHER_LOGIN_USER", "e2e-user")
+			e.Setenv("TEST_RANCHER_LOGIN_PASS", "e2e-pass")
 			e.Setenv("RANCHER_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
 			// E2E-A-003: credstore-pin.txtar clears this itself as its first
 			// line (`env RANCHER_CREDENTIAL_STORE=`) — testscript.Env carries

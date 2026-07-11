@@ -70,22 +70,23 @@ func cmdFlipStatus(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 // cmdSeedExecCache pre-warms the exec-credential cache `rancher auth
-// get-token` reads: seedexeccache <name> <cluster>. get-token's only paths
-// are a warm cache hit or a full Rancher login (authproviders + login),
-// which the shim — a router, not a Rancher emulator — cannot serve. Seeding
-// through the real config.CacheKey/SetCachedCred keeps the key composition
-// and file format guaranteed-consistent with what get-token reads; a
-// hand-written fixture can't work here since the cache key embeds the
-// shim's host:port, which is dynamic per test run.
+// get-token` reads: seedexeccache <name> <cluster>. Scenarios that want
+// warm-cache state without exercising login use this instead of the
+// façade's cold mint/login paths. Seeding through the real
+// config.CacheKey/SetCachedCred keeps the key composition and file format
+// guaranteed-consistent with what get-token reads; a hand-written fixture
+// can't work here since the cache key embeds the façade's host:port, which
+// is dynamic per test run AND per-script now (FA-3) — the host comes from
+// this script's own TEST_RANCHER_URL, not the global shim.
 func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 2 {
 		ts.Fatalf("usage: seedexeccache <name> <cluster>")
 	}
 	name, cluster := args[0], args[1]
 
-	u, err := url.Parse(shimURL)
+	u, err := url.Parse(ts.Getenv("TEST_RANCHER_URL"))
 	if err != nil {
-		ts.Fatalf("seedexeccache: parsing shim URL: %v", err)
+		ts.Fatalf("seedexeccache: parsing TEST_RANCHER_URL: %v", err)
 	}
 	store := config.NewFileStore(ts.Getenv("RANCHER_CONFIG_DIR"))
 	key := config.CacheKey(name, u.Host, cluster)
