@@ -1,0 +1,18 @@
+# TEMPORARY (Task 1 Step 1, spec FA-4.1): proves testscript's ttyin -stdin
+# drives a real pty into the paste-menu prompts — term.IsTerminal(stdin) AND
+# term.ReadPassword against the pty both fire before any network call, since
+# the paste branch (menu choice 1) skips provider discovery entirely. Deleted
+# in Task 3 once auth-login-local.txtar covers the same ground for real.
+[!unix] skip 'ttyin (real pty) is unix-only'
+
+ttyin -stdin ttyin.txt
+exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
+exists $RANCHER_CONFIG_DIR/config.yaml
+
+exec rancher auth check -o json
+jsonquery stdout data.ok true
+jsonquery stdout data.server default
+
+-- ttyin.txt --
+1
+e2e:secret
