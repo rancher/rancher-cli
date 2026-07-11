@@ -310,6 +310,46 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
 }
 
+// exercise bug 2 repro: unknown command "version" is the friction item — the
+// hint must point at --version, not the generic `rancher schema` hint.
+func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
+	origExiter := ucli.OsExiter
+	ucli.OsExiter = func(int) {}
+	defer func() { ucli.OsExiter = origExiter }()
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "version"}))
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Hint, "--version")
+}
+
+// exercise bug 2 repro: an unknown flag on a real command must surface the
+// standard VALIDATION envelope at exit 2, not urfave's own unhinted
+// "Incorrect Usage" text.
+func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+	runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--bogus-flag"})
+	require.Error(t, runErr)
+
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, "bogus-flag")
+}
+
 // DR-005 repro: an explicitly overridden config dir with a leftover legacy
 // cli2.json must not put a plain-text notice ahead of the error envelope —
 // stderr must parse as pure JSON, exactly as a scripted session relies on.

@@ -150,11 +150,12 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
 	return &ucli.Command{
-		Name:      leafName(d.Name),
-		Aliases:   d.Aliases,
-		Usage:     d.Usage,
-		ArgsUsage: argsUsage(d.Args),
-		Flags:     flagsFor(d),
+		Name:         leafName(d.Name),
+		Aliases:      d.Aliases,
+		Usage:        d.Usage,
+		ArgsUsage:    argsUsage(d.Args),
+		Flags:        flagsFor(d),
+		OnUsageError: onUsageError,
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b); ce != nil {
 				return exit(ce)
@@ -216,8 +217,26 @@ func exit(ce *clierr.Error) error {
 // and the process exit both happen here directly, mirroring how urfave's own
 // ShowRootCommandHelpAndExit calls OsExiter.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
+	hint := "run: rancher schema"
+	if name == "version" {
+		hint = "there is no `version` command; use --version"
+	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
-		WithHint("run: rancher schema")
+		WithHint(hint)
 	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
 	ucli.OsExiter(ce.ExitCode())
+}
+
+// onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,
+// bad value, missing value). Without it, urfave prints a plain-text
+// "Incorrect Usage: ..." line and falls through to help text — no JSON
+// envelope for a script to parse, mirroring the gap commandNotFound closes
+// for unmatched command names. Wired on the root command and on every leaf
+// and group command via the adapters, since urfave checks OnUsageError on
+// the command node whose own flags failed to parse, not the root's.
+func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
+	ce := clierr.New(clierr.CodeValidation, err.Error()).
+		WithHint("run: rancher schema; pass --help for usage")
+	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+	return exit(ce)
 }

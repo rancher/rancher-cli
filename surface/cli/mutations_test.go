@@ -18,6 +18,7 @@ type errEnvelope struct {
 		Error struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
+			Hint    string `json:"hint"`
 		} `json:"error"`
 	} `json:"data"`
 }
