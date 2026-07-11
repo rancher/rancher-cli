@@ -1,0 +1,27 @@
+# Local-provider login end to end, fed through a real pty (spec FA-4.1):
+# basicAuth's username/password prompts gate on CanPrompt() = isTTY &&
+# !noInput (ui/prompter.go, adapter.go), so a plain stdin heredoc dead-ends
+# before reading anything — ttyin-spike.txtar (Task 1) proved a pty drives
+# these prompts. --cacert is mandatory: provider login builds its HTTP
+# client from --cacert only (login_ext.go), and RANCHER_CACERT never reaches
+# it. FA-4 rule: assert data.* only, never warnings.* (the server-version
+# Setting is a shared singleton auth-min-version.txtar patches concurrently).
+[!unix] skip 'ttyin (real pty) is unix-only'
+
+ttyin -stdin creds.txt
+exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
+exists $RANCHER_CONFIG_DIR/config.yaml
+
+exec rancher get clusters -o json
+jsonquery stdout 'data.#' 1
+
+ttyin -stdin wrong.txt
+! exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider --name bad -o json
+jsonquery stderr data.error.code AUTH
+
+-- creds.txt --
+e2e-user
+e2e-pass
+-- wrong.txt --
+e2e-user
+not-the-password
