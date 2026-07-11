@@ -111,19 +111,35 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond)
 		WithRetryable(true)
 }
 
+// resolvedState reads status.state (the Rancher idiom); when absent it falls
+// back to status.phase (the core Kubernetes idiom, e.g. a Pod's "Running"),
+// reporting which field supplied the value so callers can gate the
+// Rancher-only status.transitioning check on the status.state path.
+func resolvedState(obj *unstructured.Unstructured) (value string, fromState bool) {
+	if s, ok, _ := unstructured.NestedString(obj.Object, "status", "state"); ok && s != "" {
+		return s, true
+	}
+	phase, _, _ := unstructured.NestedString(obj.Object, "status", "phase")
+	return phase, false
+}
+
 // waitSatisfied checks whether obj meets cond: state-kind matches
-// status.state exactly and (when the field exists) requires
-// status.transitioning != "yes"; condition-kind matches any
-// status.conditions[] entry with the target type+status.
+// status.state, falling back to status.phase when status.state is absent
+// (case-insensitive — phase values are capitalized, e.g. "Running"), and
+// (when matched via status.state) requires status.transitioning != "yes";
+// condition-kind matches any status.conditions[] entry with the target
+// type+status.
 func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 	switch cond.kind {
 	case "state":
-		state, _, _ := unstructured.NestedString(obj.Object, "status", "state")
-		if state != cond.name {
+		state, fromState := resolvedState(obj)
+		if !strings.EqualFold(state, cond.name) {
 			return false
 		}
-		if transitioning, ok, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); ok && transitioning == "yes" {
-			return false
+		if fromState {
+			if transitioning, ok, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); ok && transitioning == "yes" {
+				return false
+			}
 		}
 		return true
 	case "condition":
@@ -152,12 +168,14 @@ func conditionStatus(obj *unstructured.Unstructured, name string) (string, bool)
 	return "", false
 }
 
-// summarizeState renders the last-observed signal for the timeout error.
+// summarizeState renders the last-observed signal for the timeout error,
+// mirroring waitSatisfied's status.state -> status.phase fallback so the
+// message shows the real phase when a kind only carries one.
 func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 	switch cond.kind {
 	case "state":
-		s, ok, _ := unstructured.NestedString(obj.Object, "status", "state")
-		if !ok || s == "" {
+		s, _ := resolvedState(obj)
+		if s == "" {
 			return "<no state>"
 		}
 		return s

@@ -62,6 +62,13 @@ func stateObj(state, transitioning string) *unstructured.Unstructured {
 	}}
 }
 
+func phaseObj(phase string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "x"},
+		"status":   map[string]any{"phase": phase},
+	}}
+}
+
 func errorObj(msg string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "x"},
@@ -129,6 +136,33 @@ func TestWaitForPollsUntilState(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "active", mustState(got))
 	assert.Equal(t, 2, client.calls)
+}
+
+func TestWaitSatisfiedFallsBackToPodPhase(t *testing.T) {
+	t.Parallel()
+	cond := waitCond{kind: "state", name: "running"}
+	assert.True(t, waitSatisfied(phaseObj("Running"), cond), "state= matches status.phase case-insensitively when status.state is absent")
+	assert.False(t, waitSatisfied(phaseObj("Pending"), cond))
+}
+
+func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{phaseObj("Pending")}}
+	cond := waitCond{kind: "state", name: "running"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Pending", "timeout message shows the real phase, not <no state>")
+}
+
+func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
+	t.Parallel()
+	cond := waitCond{kind: "state", name: "active"}
+	assert.True(t, waitSatisfied(stateObj("active", "no"), cond))
+	assert.False(t, waitSatisfied(stateObj("active", "yes"), cond), "status.transitioning=yes still blocks satisfaction on the status.state path")
+	assert.False(t, waitSatisfied(stateObj("provisioning", ""), cond))
 }
 
 func TestWaitForFailsFastOnTransitioningError(t *testing.T) {
