@@ -42,6 +42,18 @@ func TestArchitectureDocMatchesImports(t *testing.T) {
 	}
 }
 
+// TestNoProductionPackageImportsTestRancher enforces internal/testrancher's
+// test-only convention: it fakes Rancher's auth surface for the e2e harness
+// and unit tests, and must never be reachable from production code.
+func TestNoProductionPackageImportsTestRancher(t *testing.T) {
+	t.Parallel()
+	for e := range realImportEdges(t) {
+		if strings.HasSuffix(e, "internal/testrancher") {
+			t.Errorf("production package edge %s: internal/testrancher is test-only", e)
+		}
+	}
+}
+
 var (
 	nodeRe = regexp.MustCompile(`(?m)^\s*(\w+)\["([^"]+)"\]`)
 	edgeRe = regexp.MustCompile(`(?m)^\s*(\w+)\s*-->\s*(\w+)`)
