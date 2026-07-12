@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -161,8 +162,12 @@ func buildRancherRecorder(t *testing.T) string {
 // TestPwshCompletionDeliversPayloadAsLiteralArgument proves the hostile word
 // reaches the binary as ONE literal argument, not merely that it goes
 // unevaluated: a dropped or split token would also leave no marker. The
-// recorder captures argv; the test asserts the $(...) payload appears verbatim
-// as a single recorded element.
+// payload is single-quoted and CONTAINS SPACES and a $(...) subexpression, and
+// the recorder captures argv so the test asserts the EXACT argv vector and
+// order - not just that some element matches. That catches whitespace
+// splitting, a duplicated or retained token, or any other surrounding-argv
+// corruption. The in-progress word "po" must be dropped, leaving exactly
+// [get, <payload>, --generate-shell-completion].
 func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
 	shell, ok := findPowerShell(t)
 	if !ok {
@@ -174,16 +179,22 @@ func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
 		t.Fatalf("writing pwsh.ps1: %v", err)
 	}
 	argvFile := filepath.Join(t.TempDir(), "argv")
-	payload := `$(Get-Date)`
+
+	// A single-quoted PowerShell string is literal (no expansion); the
+	// completer reads its .Value, so the binary receives the quote-stripped
+	// content as one argument. Spaces + a $(...) make split-or-eval visible.
+	payload := "a b $(Get-Date)"
+	line := "rancher get '" + payload + "' po"
+	want := []string{"get", payload, "--generate-shell-completion"}
 
 	driver := fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 $env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH
 $env:RANCHER_ARGV_FILE = %s
 . %s
-$line = 'rancher get %s po'
+$line = %s
 $null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
-`, psSingleQuote(binDir), psSingleQuote(argvFile), psSingleQuote(scriptPath), payload)
+`, psSingleQuote(binDir), psSingleQuote(argvFile), psSingleQuote(scriptPath), psSingleQuote(line))
 
 	driverPath := filepath.Join(t.TempDir(), "driver.ps1")
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
@@ -197,20 +208,11 @@ $null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
 	if err != nil {
 		t.Fatalf("recorder argv not written (binary never invoked as a literal command?): %v", err)
 	}
-	var args []string
-	for _, l := range strings.Split(string(recorded), "\n") {
-		if l != "" {
-			args = append(args, l)
-		}
-	}
-	found := false
-	for _, a := range args {
-		if a == payload {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("payload did not reach the binary as one literal argument; recorded argv=%q, want an element == %q", args, payload)
+	// The recorder joins argv with "\n"; the payload has no newline, so a
+	// literal split on "\n" recovers exactly one element per argument.
+	got := strings.Split(strings.TrimRight(string(recorded), "\n"), "\n")
+	if !slices.Equal(got, want) {
+		t.Errorf("argv vector mismatch: got %q, want %q (payload must arrive as one literal arg, po dropped, nothing else added)", got, want)
 	}
 }
 
