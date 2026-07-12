@@ -137,12 +137,16 @@ func promptReEdit(ctx context.Context, p runtime.Prompter) (bool, error) {
 	}
 }
 
-// resolveEditor reads $VISUAL, falling back to $EDITOR, and splits it into a
-// binary + leading args on whitespace (e.g. "code --wait").
+// resolveEditor reads $VISUAL, falling back to $EDITOR, then to the
+// per-OS defaultEditor (notepad on Windows, none elsewhere), and splits
+// the result into a binary + leading args on whitespace (e.g. "code --wait").
 func resolveEditor() (bin string, args []string, ok bool) {
 	v := os.Getenv("VISUAL")
 	if v == "" {
 		v = os.Getenv("EDITOR")
+	}
+	if strings.TrimSpace(v) == "" {
+		v = defaultEditor()
 	}
 	fields := strings.Fields(v)
 	if len(fields) == 0 {
