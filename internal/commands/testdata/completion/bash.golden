@@ -18,15 +18,19 @@ __rancher_init_completion() {
   fi
 }
 
+# Builds the completion request as an argv ARRAY in the global
+# __rancher_completion_request, never a string: COMP_WORDS[0] is the real
+# rancher binary, so the array is invoked directly and a pasted $(...) in
+# any word is passed as an inert argument rather than evaluated.
 __rancher_build_completion_request() {
-  local -a words_before_cursor=("${COMP_WORDS[@]:0:${COMP_CWORD}}")
+  __rancher_completion_request=("${COMP_WORDS[@]:0:${COMP_CWORD}}")
   local current_word="${COMP_WORDS[COMP_CWORD]}"
 
   if [[ "${current_word}" == "-"* ]]; then
-    printf '%s %s --generate-shell-completion' "${words_before_cursor[*]}" "${current_word}"
-  else
-    printf '%s --generate-shell-completion' "${words_before_cursor[*]}"
+    __rancher_completion_request+=("${current_word}")
   fi
+
+  __rancher_completion_request+=(--generate-shell-completion)
 }
 
 # Keep Bash 3 compatibility: associative arrays require Bash 4+, so
@@ -51,15 +55,15 @@ __rancher_bash_autocomplete() {
   if [[ "${words[0]}" != "source" ]]; then
     local cur opts
     local cword="${COMP_CWORD}"
-    local request_comp
+    local -a __rancher_completion_request
 
     COMPREPLY=()
     cur="${words[$cword]}"
 
     __rancher_init_completion -n "=:" || return
 
-    request_comp="$(__rancher_build_completion_request)"
-    opts=$(eval "${request_comp}" 2>/dev/null)
+    __rancher_build_completion_request
+    opts=$("${__rancher_completion_request[@]}" 2>/dev/null)
 
     # Completion output lines use "token:description" format; some of our
     # own commands print a bare token with no colon, handled below too.
