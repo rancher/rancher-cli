@@ -30,6 +30,25 @@ settings land in later Phase-1 waves.
     make build        # -> bin/rancher   (CGO disabled, static-ish)
     make test         # go test -race -cover ./...
 
+### Platforms
+
+macOS, Linux, and Windows (CGO-free static binary; the Linux build runs on
+any distro including musl/distroless).
+
+| | Config dir (default) | Credential store (default) | File fallback |
+|---|---|---|---|
+| macOS | `~/.config/rancher` | Keychain | `0600` file |
+| Linux | `~/.config/rancher` | Secret Service (D-Bus; absent when headless → file) | `0600` file |
+| Windows | `%APPDATA%\rancher` | Credential Manager | owner-only-ACL file |
+
+Precedence above the default everywhere: `--config` flag (`-c`) >
+`RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`. The credential
+backend is `auto` (probe once, pin) unless `RANCHER_CLI_CREDENTIAL_STORE`
+or the config `credentialStore` field says otherwise; headless machines
+(no D-Bus, locked keychain) keep working read-only against an existing
+file-stored token, while new logins there ask for an explicit
+`RANCHER_CLI_CREDENTIAL_STORE=file` opt-in.
+
 Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 `rancher/rancher`.
 
