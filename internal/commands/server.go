@@ -48,11 +48,7 @@ func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Promp
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	names := make([]string, 0, len(cfg.Servers))
-	for n := range cfg.Servers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	names := sortedKeys(cfg.Servers)
 	current := ""
 	if c, ok := cfg.Contexts[cfg.CurrentContext]; ok {
 		current = c.Server
@@ -125,23 +121,6 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 // instance adaptEntry type-asserts at wiring time.
 func (serverSwitchCmd) CompleteArgs(_ context.Context, dir string) []string {
 	return serverNames(dir)
-}
-
-// serverNames returns the configured server names, sorted
-// lexicographically — Go map iteration order is not stable, and completion
-// candidate order is pinned (external review finding 2). Shared by
-// `config use-server` and `config delete-server`.
-func serverNames(dir string) []string {
-	cfg, err := config.Load(config.FilePath(dir))
-	if err != nil {
-		return nil
-	}
-	names := make([]string, 0, len(cfg.Servers))
-	for n := range cfg.Servers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // serverNotFoundWithCandidates builds the NOT_FOUND error `config

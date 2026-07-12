@@ -3,12 +3,14 @@ package commands
 import (
 	"context"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,12 +48,15 @@ func TestCompletionEmitsGoldenScriptPerShell(t *testing.T) {
 	}
 }
 
+// TestCompletionUnknownShellIsValidation pins the generic Enum-validation
+// path (external review finding 6): completion.go no longer hand-rolls this
+// check, so the assertion must drive the full pipeline (runtime.Run) — its
+// own Execute no longer validates the shell argument at all.
 func TestCompletionUnknownShellIsValidation(t *testing.T) {
 	t.Parallel()
-	_, err := NewCompletion().(completionCmd).Execute(context.Background(), fakeInput{args: []string{"powershell-classic"}}, nil)
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
+	ce := runtime.Run(context.Background(), NewCompletion(), fakeInput{args: []string{"powershell-classic"}},
+		runtime.IO{Out: io.Discard, Err: io.Discard}, safety.Binding{})
+	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "powershell-classic")
 }

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -175,31 +174,17 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	assert.Empty(t, cfgAfter.Contexts, "config should not be corrupted with zero Context{}")
 }
 
-// TestContextUseCompleteArgsListsNamesInLexicographicOrder pins the
-// completion output order contract (external review finding 2): Go map
-// iteration order is not stable, so CompleteArgs must sort. The zero-value
-// receiver mirrors the zero-deps probe instance adaptEntry type-asserts at
-// wiring time — CompleteArgs must use only the dir parameter, never its own
-// (empty) dir field.
-func TestContextUseCompleteArgsListsNamesInLexicographicOrder(t *testing.T) {
+// TestContextUseCompleteArgsDelegatesToContextNames proves only the wiring:
+// sort order and the missing/corrupt-config degrade-to-empty behavior are
+// contextNames-level facts, pinned once in names_test.go (external review
+// findings 8+9). The zero-value receiver mirrors the zero-deps probe
+// instance adaptEntry type-asserts at wiring time — CompleteArgs must use
+// only the dir parameter, never its own (empty) dir field.
+func TestContextUseCompleteArgsDelegatesToContextNames(t *testing.T) {
 	dir := t.TempDir()
-	cfg := &config.Config{
-		Contexts: map[string]config.Context{
-			"zebra-ctx": {}, "alpha-ctx": {}, "mid-ctx": {},
-		},
-	}
+	cfg := &config.Config{Contexts: map[string]config.Context{"acme": {}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	got := contextUseCmd{}.CompleteArgs(context.Background(), dir)
-	assert.Equal(t, []string{"alpha-ctx", "mid-ctx", "zebra-ctx"}, got)
-}
-
-func TestContextUseCompleteArgsEmptyOnMissingOrCorruptConfig(t *testing.T) {
-	missing := t.TempDir()
-	assert.Empty(t, contextUseCmd{}.CompleteArgs(context.Background(), missing))
-
-	corrupt := t.TempDir()
-	require.NoError(t, os.WriteFile(config.FilePath(corrupt), []byte("not: [valid yaml\n"), 0o600))
-	assert.Empty(t, contextUseCmd{}.CompleteArgs(context.Background(), corrupt))
+	assert.Equal(t, contextNames(dir), contextUseCmd{}.CompleteArgs(context.Background(), dir))
 }

@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -113,25 +112,15 @@ func TestResolveContextForServer(t *testing.T) {
 	})
 }
 
-func TestServerSwitchCompleteArgsListsNamesInLexicographicOrder(t *testing.T) {
+// TestServerSwitchCompleteArgsDelegatesToServerNames proves only the
+// wiring: sort order and the missing/corrupt-config degrade-to-empty
+// behavior are serverNames-level facts, pinned once in names_test.go
+// (external review findings 8+9).
+func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	dir := t.TempDir()
-	cfg := &config.Config{
-		Servers: map[string]config.Server{
-			"zebra-srv": {}, "alpha-srv": {}, "mid-srv": {},
-		},
-	}
+	cfg := &config.Config{Servers: map[string]config.Server{"acme": {}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	got := serverSwitchCmd{}.CompleteArgs(context.Background(), dir)
-	assert.Equal(t, []string{"alpha-srv", "mid-srv", "zebra-srv"}, got)
-}
-
-func TestServerSwitchCompleteArgsEmptyOnMissingOrCorruptConfig(t *testing.T) {
-	missing := t.TempDir()
-	assert.Empty(t, serverSwitchCmd{}.CompleteArgs(context.Background(), missing))
-
-	corrupt := t.TempDir()
-	require.NoError(t, os.WriteFile(config.FilePath(corrupt), []byte("not: [valid yaml\n"), 0o600))
-	assert.Empty(t, serverSwitchCmd{}.CompleteArgs(context.Background(), corrupt))
+	assert.Equal(t, serverNames(dir), serverSwitchCmd{}.CompleteArgs(context.Background(), dir))
 }

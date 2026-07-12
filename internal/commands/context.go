@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -152,22 +151,6 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 // TAB time.
 func (contextUseCmd) CompleteArgs(_ context.Context, dir string) []string {
 	return contextNames(dir)
-}
-
-// contextNames returns the configured context names, sorted
-// lexicographically — Go map iteration order is not stable, and completion
-// candidate order is pinned (external review finding 2).
-func contextNames(dir string) []string {
-	cfg, err := config.Load(config.FilePath(dir))
-	if err != nil {
-		return nil
-	}
-	names := make([]string, 0, len(cfg.Contexts))
-	for n := range cfg.Contexts {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // rejectShadowedGlobalOverride guards against the CW-3 footgun: the global

@@ -162,10 +162,18 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			return nil
 		},
 	}
+	installShellComplete(rc, cmd)
+	return cmd
+}
+
+// installShellComplete type-asserts rc for runtime.ShellCompleter and, if it
+// implements it, installs the callback on cmd. Shared by Adapt here and
+// adaptEntry (engine.go) — the two sites that build a urfave leaf from a
+// runtime.Command — so the two paths cannot drift out of sync.
+func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 	if sc, ok := rc.(runtime.ShellCompleter); ok {
 		cmd.ShellComplete = shellCompleteFunc(sc)
 	}
-	return cmd
 }
 
 // shellCompleteFunc installs a runtime.ShellCompleter as a urfave
@@ -173,8 +181,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 // resolveDeps does, but via a pure config.Load — no store, no pin, no
 // prompt — and degrades to empty output on any resolution error
 // (missing/corrupt config included), per the completion contract (never
-// print error text, which a shell would offer as a candidate). Shared by
-// Adapt here and adaptEntry (engine.go) for the symmetric wiring.
+// print error text, which a shell would offer as a candidate).
 func shellCompleteFunc(sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
 	return func(ctx context.Context, c *ucli.Command) {
 		dir, err := config.ResolveDir(c.String("config"))

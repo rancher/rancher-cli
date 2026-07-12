@@ -16,11 +16,12 @@ import (
 type mapInput struct {
 	s map[string]string
 	b map[string]bool
+	a []string
 }
 
 func (m mapInput) String(k string) string { return m.s[k] }
 func (m mapInput) Bool(k string) bool     { return m.b[k] }
-func (m mapInput) Args() []string         { return nil }
+func (m mapInput) Args() []string         { return m.a }
 
 type fakeRead struct {
 	d   Descriptor
@@ -394,6 +395,27 @@ func TestValidateInput(t *testing.T) {
 		ce := Run(context.Background(), flaggedReadCmd(), in, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
+	})
+	// Positional args get the same Enum check Flags already had (external
+	// review finding 6) — a command like `completion <shell>` can rely on
+	// this generic path instead of hand-rolling its own.
+	t.Run("bad positional enum", func(t *testing.T) {
+		cmd := fakeRead{d: Descriptor{Name: "x", CommandType: Local, Args: []ArgSpec{
+			{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh"}},
+		}}, res: Result{Kind: "OK"}}
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), cmd, mapInput{a: []string{"powershell-classic"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "powershell-classic")
+	})
+	t.Run("good positional enum passes through", func(t *testing.T) {
+		cmd := fakeRead{d: Descriptor{Name: "x", CommandType: Local, Args: []ArgSpec{
+			{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh"}},
+		}}, res: Result{Kind: "OK"}}
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), cmd, mapInput{a: []string{"bash"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		assert.Nil(t, ce)
 	})
 }
 

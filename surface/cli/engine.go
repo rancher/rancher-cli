@@ -253,8 +253,6 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 			return nil
 		},
 	}
-	if sc, ok := probe.(runtime.ShellCompleter); ok {
-		cmd.ShellComplete = shellCompleteFunc(sc)
-	}
+	installShellComplete(probe, cmd)
 	return cmd
 }

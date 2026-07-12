@@ -146,10 +146,11 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:
-// required positional args must be present and non-empty; required flags must be
-// non-empty; enum flags must hold a listed value. Returns a structured VALIDATION
-// error (nil if valid). Commands wanting custom missing-input UX (e.g. a candidate
-// list) mark the field Required:false and validate it themselves in Execute.
+// required positional args must be present and non-empty; enum args/flags must
+// hold a listed value; required flags must be non-empty. Returns a structured
+// VALIDATION error (nil if valid). Commands wanting custom missing-input UX
+// (e.g. a candidate list) mark the field Required:false and validate it
+// themselves in Execute.
 func validateInput(d Descriptor, in Input) *clierr.Error {
 	args := in.Args()
 	for i, a := range d.Args {
@@ -157,6 +158,20 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 			return clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("argument <%s> is required", a.Name)).
 				WithHint(fmt.Sprintf("provide <%s>", a.Name))
+		}
+		if len(a.Enum) > 0 && i < len(args) && args[i] != "" {
+			ok := false
+			for _, e := range a.Enum {
+				if args[i] == e {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], strings.Join(a.Enum, "|"))).
+					WithHint(fmt.Sprintf("allowed: %s", strings.Join(a.Enum, ", ")))
+			}
 		}
 	}
 	for _, f := range d.Flags {

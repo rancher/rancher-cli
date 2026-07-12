@@ -2,10 +2,7 @@ package commands
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/completions"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -37,18 +34,12 @@ func (completionCmd) Describe() runtime.Descriptor {
 }
 
 // Execute renders the requested shell's script verbatim (RawBytes: no
-// envelope, identical output under every -o). shell is guaranteed present
-// and non-empty here — the missing-arg case is the free Required-arg
-// VALIDATION in runtime.validateInput, before Execute ever runs.
+// envelope, identical output under every -o). shell is guaranteed present,
+// non-empty, and one of runtime.ShellCompletionShells() here — both the
+// missing-arg and unknown-shell cases are the free Required/Enum VALIDATION
+// in runtime.validateInput, before Execute ever runs.
 func (completionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	shell := in.Args()[0]
-	script, ok := completions.Script(shell)
-	if !ok {
-		shells := runtime.ShellCompletionShells()
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("unknown shell %q", shell)).
-			WithHint("allowed: " + strings.Join(shells, ", "))
-	}
+	script, _ := completions.Script(in.Args()[0])
 	return runtime.Result{RawBytes: script}, nil
 }
 

@@ -150,25 +150,15 @@ func TestConfigDeleteServerDrainsExecCredentialCache(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrNoToken)
 }
 
-func TestConfigDeleteServerCompleteArgsListsServerNamesInLexicographicOrder(t *testing.T) {
+// TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
+// wiring: sort order and the missing/corrupt-config degrade-to-empty
+// behavior are serverNames-level facts, pinned once in names_test.go
+// (external review findings 8+9).
+func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	dir := t.TempDir()
-	cfg := &config.Config{
-		Servers: map[string]config.Server{
-			"zebra-srv": {}, "alpha-srv": {}, "mid-srv": {},
-		},
-	}
+	cfg := &config.Config{Servers: map[string]config.Server{"acme": {}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	got := configDeleteServerCmd{}.CompleteArgs(context.Background(), dir)
-	assert.Equal(t, []string{"alpha-srv", "mid-srv", "zebra-srv"}, got)
-}
-
-func TestConfigDeleteServerCompleteArgsEmptyOnMissingOrCorruptConfig(t *testing.T) {
-	missing := t.TempDir()
-	assert.Empty(t, configDeleteServerCmd{}.CompleteArgs(context.Background(), missing))
-
-	corrupt := t.TempDir()
-	require.NoError(t, os.WriteFile(config.FilePath(corrupt), []byte("not: [valid yaml\n"), 0o600))
-	assert.Empty(t, configDeleteServerCmd{}.CompleteArgs(context.Background(), corrupt))
+	assert.Equal(t, serverNames(dir), configDeleteServerCmd{}.CompleteArgs(context.Background(), dir))
 }

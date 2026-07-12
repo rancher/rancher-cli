@@ -256,18 +256,23 @@ func BuildRoot(version string) (*ucli.Command, error) {
 
 	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, order, groups)
 
-	// Alias-aware completion override, get/patch/delete ONLY: their kind
-	// leaves carry Aliases (resources/get.go), so `po<TAB>` should complete
-	// toward "pod" AND list "po"/"pods" themselves — urfave's own default
-	// command-suggestion listing prints only each leaf's canonical Name.
-	// NOT inspect/top: their leaves carry no Aliases today, and urfave only
-	// ever dispatches an alias actually listed on the command — suggesting
-	// one for a group whose leaves don't have it would offer an invocation
-	// that does not exist.
+	// Alias-aware completion override: any verb group whose leaves carry
+	// Aliases (today get/patch/delete, resources/get.go) gets it — `po<TAB>`
+	// should complete toward "pod" AND list "po"/"pods" themselves, where
+	// urfave's own default command-suggestion listing prints only each
+	// leaf's canonical Name. A structural check rather than a name allowlist
+	// so a future aliased verb group is covered by construction, not by
+	// remembering to add a case here. inspect/top fall through untouched:
+	// their leaves carry no Aliases today, and urfave only ever dispatches
+	// an alias actually listed on the command — suggesting one for a group
+	// whose leaves don't have it would offer an invocation that does not
+	// exist.
 	for _, cmd := range commandsList {
-		switch cmd.Name {
-		case "get", "patch", "delete":
-			cmd.ShellComplete = aliasAwareGroupComplete
+		for _, leaf := range cmd.Commands {
+			if len(leaf.Aliases) > 0 {
+				cmd.ShellComplete = aliasAwareGroupComplete
+				break
+			}
 		}
 	}
 
