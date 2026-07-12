@@ -7,11 +7,21 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
+// goos is runtime.GOOS behind a package var, so ResolveDir's
+// Windows-only default branch is unit-testable from any host.
+var goos = runtime.GOOS
+
 // ResolveDir returns the config directory using precedence:
-// flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > ~/.config/rancher.
+// flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > default.
+// The default is ~/.config/rancher, except on Windows where it is
+// os.UserConfigDir()/rancher (%APPDATA%\rancher) — the platform
+// convention. The Unix/macOS default is deliberately NOT moved to
+// UserConfigDir (that would relocate existing macOS users' config to
+// ~/Library/Application Support with no migration).
 func ResolveDir(flagDir string) (string, error) {
 	if flagDir != "" {
 		return flagDir, nil
@@ -21,6 +31,13 @@ func ResolveDir(flagDir string) (string, error) {
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "rancher"), nil
+	}
+	if goos == "windows" {
+		if dir, err := os.UserConfigDir(); err == nil {
+			return filepath.Join(dir, "rancher"), nil
+		}
+		// %AppData% unset (rare): fall through to the home-relative path
+		// rather than failing — same shape the CLI has always produced.
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

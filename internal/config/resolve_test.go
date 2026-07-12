@@ -268,6 +268,38 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 	})
 }
 
+// TestResolveDirWindowsDefault exercises the GOOS=windows final-fallback
+// branch cross-platform via the goos seam: with no flag/env/XDG, the
+// default must be os.UserConfigDir()/rancher (=%APPDATA%\rancher on a
+// real Windows host) instead of ~/.config/rancher.
+func TestResolveDirWindowsDefault(t *testing.T) {
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	orig := goos
+	goos = "windows"
+	t.Cleanup(func() { goos = orig })
+
+	got, err := ResolveDir("")
+	require.NoError(t, err)
+	ucd, err := os.UserConfigDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(ucd, "rancher"), got)
+}
+
+// TestResolveDirWindowsPrecedenceUnchanged pins that the Windows branch
+// sits BELOW flag/env/XDG: an explicit XDG_CONFIG_HOME still wins.
+func TestResolveDirWindowsPrecedenceUnchanged(t *testing.T) {
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
+	orig := goos
+	goos = "windows"
+	t.Cleanup(func() { goos = orig })
+
+	got, err := ResolveDir("")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "rancher"), got)
+}
+
 func TestReadOnlyOverrideStash(t *testing.T) {
 	t.Cleanup(func() { SetReadOnlyOverride(false, nil) })
 
