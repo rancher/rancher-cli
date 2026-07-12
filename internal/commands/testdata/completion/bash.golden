@@ -90,7 +90,18 @@ __rancher_bash_autocomplete() {
       (( ${#token} > longest )) && longest=${#token}
     done <<< "${opts}"
 
-    local matches=( $(compgen -W "${__rancher_completion_tokens[*]}" -- "${cur}") )
+    # Match by literal prefix in bash rather than `compgen -W "${tokens[*]}"`:
+    # compgen -W word-splits and command-substitutes its wordlist, so a
+    # candidate containing $(...) — e.g. a config context/server name the
+    # server-side completer echoes back — would execute on TAB. A quoted
+    # comparison keeps every candidate a literal.
+    local matches=()
+    local __rancher_candidate
+    for __rancher_candidate in "${__rancher_completion_tokens[@]}"; do
+      if [[ "${__rancher_candidate}" == "${cur}"* ]]; then
+        matches+=("${__rancher_candidate}")
+      fi
+    done
 
     # COMP_TYPE=63 means Bash is listing matches (usually on second TAB).
     if [[ "${COMP_TYPE:-}" == "63" && ${#matches[@]} -gt 0 ]]; then
