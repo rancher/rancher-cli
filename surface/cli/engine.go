@@ -222,9 +222,16 @@ type runDeps struct {
 // dir/store/client-independent); one that does would panic here rather than in
 // production.
 func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli.Command {
-	d := make(runDeps{}).Describe()
+	// probe is the SAME zero-runDeps instance used for both Describe() and the
+	// ShellCompleter type-assert below — its dir field is permanently "". A
+	// completer wired here is later called with this exact probe at real
+	// TAB time too, so CompleteArgs must use only its dir PARAMETER, never
+	// receiver state (a completer reading its own dir field would pass a unit
+	// test built with a real dir and return empty forever at real TAB time).
+	probe := make(runDeps{})
+	d := probe.Describe()
 	b := reg.Binding(d.Name)
-	return &ucli.Command{
+	cmd := &ucli.Command{
 		Name:         leafName(d.Name),
 		Aliases:      d.Aliases,
 		Usage:        d.Usage,
@@ -246,4 +253,8 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 			return nil
 		},
 	}
+	if sc, ok := probe.(runtime.ShellCompleter); ok {
+		cmd.ShellComplete = shellCompleteFunc(sc)
+	}
+	return cmd
 }

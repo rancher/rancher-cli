@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -133,6 +134,53 @@ var groupUsages = map[string]string{
 	"project": "Project membership operations",
 }
 
+// aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
+// verb group's own ShellComplete (the two branches: flag names when the
+// current word starts with "-", subcommand suggestions otherwise) but
+// additionally lists each leaf's Aliases: urfave's own default lists only
+// each leaf's canonical Name (printCommandSuggestions), so `po<TAB>` under
+// `get` would complete only toward the canonical "pod" form otherwise. The
+// lastArg computation mirrors DefaultCompleteWithFlags' own (unexported)
+// logic exactly, for the non-root case (cmd.parent != nil, cmd.Args().Slice()).
+func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
+	args := cmd.Args().Slice()
+	lastArg := ""
+	if n := len(args); n > 1 {
+		lastArg = args[n-2]
+	} else if n == 1 {
+		lastArg = args[0]
+	}
+	if lastArg == "--generate-shell-completion" {
+		lastArg = ""
+	}
+	if strings.HasPrefix(lastArg, "-") {
+		ucli.DefaultCompleteWithFlags(ctx, cmd)
+		return
+	}
+	w := cmd.Root().Writer
+	for _, leaf := range cmd.Commands {
+		if leaf.Hidden {
+			continue
+		}
+		printCompletionCandidate(w, leaf.Name, leaf.Usage)
+		for _, alias := range leaf.Aliases {
+			printCompletionCandidate(w, alias, leaf.Usage)
+		}
+	}
+}
+
+// printCompletionCandidate mirrors urfave's own printCommandSuggestions line
+// format ("name:usage", or a bare name when usage is empty) — unexported in
+// urfave, so reproduced here rather than golden-tested against its exact
+// output (which upstream ordering/format could shift on a version bump).
+func printCompletionCandidate(w io.Writer, name, usage string) {
+	if usage != "" {
+		_, _ = fmt.Fprintf(w, "%s:%s\n", name, usage)
+	} else {
+		_, _ = fmt.Fprintln(w, name)
+	}
+}
+
 // assembleCommands builds the root command list: the top-level commands
 // followed by one group command per group in first-appearance order. Leaves in
 // the "" group are attached at the top level.
@@ -207,6 +255,21 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	}
 
 	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, order, groups)
+
+	// Alias-aware completion override, get/patch/delete ONLY: their kind
+	// leaves carry Aliases (resources/get.go), so `po<TAB>` should complete
+	// toward "pod" AND list "po"/"pods" themselves — urfave's own default
+	// command-suggestion listing prints only each leaf's canonical Name.
+	// NOT inspect/top: their leaves carry no Aliases today, and urfave only
+	// ever dispatches an alias actually listed on the command — suggesting
+	// one for a group whose leaves don't have it would offer an invocation
+	// that does not exist.
+	for _, cmd := range commandsList {
+		switch cmd.Name {
+		case "get", "patch", "delete":
+			cmd.ShellComplete = aliasAwareGroupComplete
+		}
+	}
 
 	root := &ucli.Command{
 		Name:    "rancher",

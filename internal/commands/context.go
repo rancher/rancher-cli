@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -141,6 +142,32 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "Context", Data: map[string]string{"current": name}}, nil
+}
+
+// CompleteArgs implements runtime.ShellCompleter: `config use-context <TAB>`
+// completes context names. dir is the resolved config dir the TAB-time
+// callback passes in — never c.dir, which is empty on the zero-deps probe
+// instance adaptEntry type-asserts at wiring time, so reading it here would
+// pass unit tests built with a real dir and return empty forever at real
+// TAB time.
+func (contextUseCmd) CompleteArgs(_ context.Context, dir string) []string {
+	return contextNames(dir)
+}
+
+// contextNames returns the configured context names, sorted
+// lexicographically — Go map iteration order is not stable, and completion
+// candidate order is pinned (external review finding 2).
+func contextNames(dir string) []string {
+	cfg, err := config.Load(config.FilePath(dir))
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Contexts))
+	for n := range cfg.Contexts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // rejectShadowedGlobalOverride guards against the CW-3 footgun: the global

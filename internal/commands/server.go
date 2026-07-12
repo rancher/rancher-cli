@@ -119,6 +119,31 @@ func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 		Data: map[string]string{"current": name, "context": ctxName}}, nil
 }
 
+// CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`
+// completes server names. dir is the resolved config dir the TAB-time
+// callback passes in — never s.dir, which is empty on the zero-deps probe
+// instance adaptEntry type-asserts at wiring time.
+func (serverSwitchCmd) CompleteArgs(_ context.Context, dir string) []string {
+	return serverNames(dir)
+}
+
+// serverNames returns the configured server names, sorted
+// lexicographically — Go map iteration order is not stable, and completion
+// candidate order is pinned (external review finding 2). Shared by
+// `config use-server` and `config delete-server`.
+func serverNames(dir string) []string {
+	cfg, err := config.Load(config.FilePath(dir))
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Servers))
+	for n := range cfg.Servers {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // serverNotFoundWithCandidates builds the NOT_FOUND error `config
 // delete-server` and `auth logout` both return for an unknown server name:
 // every currently configured server offered back as a selectable candidate

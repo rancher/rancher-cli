@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -172,4 +173,33 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	cfgAfter, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Empty(t, cfgAfter.Contexts, "config should not be corrupted with zero Context{}")
+}
+
+// TestContextUseCompleteArgsListsNamesInLexicographicOrder pins the
+// completion output order contract (external review finding 2): Go map
+// iteration order is not stable, so CompleteArgs must sort. The zero-value
+// receiver mirrors the zero-deps probe instance adaptEntry type-asserts at
+// wiring time — CompleteArgs must use only the dir parameter, never its own
+// (empty) dir field.
+func TestContextUseCompleteArgsListsNamesInLexicographicOrder(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Contexts: map[string]config.Context{
+			"zebra-ctx": {}, "alpha-ctx": {}, "mid-ctx": {},
+		},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	got := contextUseCmd{}.CompleteArgs(context.Background(), dir)
+	assert.Equal(t, []string{"alpha-ctx", "mid-ctx", "zebra-ctx"}, got)
+}
+
+func TestContextUseCompleteArgsEmptyOnMissingOrCorruptConfig(t *testing.T) {
+	missing := t.TempDir()
+	assert.Empty(t, contextUseCmd{}.CompleteArgs(context.Background(), missing))
+
+	corrupt := t.TempDir()
+	require.NoError(t, os.WriteFile(config.FilePath(corrupt), []byte("not: [valid yaml\n"), 0o600))
+	assert.Empty(t, contextUseCmd{}.CompleteArgs(context.Background(), corrupt))
 }
