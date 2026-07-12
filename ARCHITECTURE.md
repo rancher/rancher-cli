@@ -41,7 +41,8 @@ what drifted the previous revision of this doc).
 |---|---|
 | `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
 | `surface/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
-| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `kubeconfig`. |
+| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `kubeconfig`, `completion`. |
+| `internal/commands/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
@@ -72,6 +73,7 @@ graph TD
     main["main"]
     cli["surface/cli"]
     commands["internal/commands"]
+    completions["internal/commands/completions"]
     token["internal/token"]
     runtime["internal/runtime"]
     safety["internal/runtime/safety"]
@@ -110,6 +112,7 @@ graph TD
     cli --> output
 
     commands --> runtime
+    commands --> completions
     commands --> config
     commands --> provider
     commands --> engine

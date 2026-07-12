@@ -103,6 +103,7 @@ or point any other agent's instructions file at it.
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 | `schema [command]` | Machine-readable capability manifest |
+| `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 
 `config use-server` switches to a context that targets the named server
 (creating one if needed); `config use-context` activates a named context
@@ -117,7 +118,7 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 
 Generated per kind from the 40-kind table: `get <kind>` (40), `patch <kind>`
 (40), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
-`token`, and `kubeconfig`) — 100 generated commands, 134 total together with
+`token`, and `kubeconfig`) — 100 generated commands, 135 total together with
 the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 

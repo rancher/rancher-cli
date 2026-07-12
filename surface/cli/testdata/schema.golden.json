@@ -165,6 +165,31 @@
       "usage": "Clear stored login credentials for a server"
     },
     {
+      "args": [
+        {
+          "enum": [
+            "bash",
+            "zsh",
+            "fish",
+            "pwsh"
+          ],
+          "name": "shell",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "source \u003c(rancher completion bash)",
+        "rancher completion fish \u003e ~/.config/fish/completions/rancher.fish"
+      ],
+      "name": "completion",
+      "network": false,
+      "toolset": "core",
+      "usage": "Print a shell completion script; -o is ignored, output is always the raw script (the kubeconfig precedent)"
+    },
+    {
       "auth": false,
       "commandType": "local",
       "name": "config current-context",
@@ -5523,5 +5548,11 @@
   ],
   "minRancherVersion": "2.14",
   "outputApiVersion": "cli.rancher.io/v1",
-  "readOnly": false
+  "readOnly": false,
+  "shellCompletion": [
+    "bash",
+    "zsh",
+    "fish",
+    "pwsh"
+  ]
 }

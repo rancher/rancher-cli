@@ -1,0 +1,46 @@
+# rancher shell completion (fish)
+#
+# Adapted from urfave/cli's embedded fish_autocomplete script
+# (https://github.com/urfave/cli), MIT License,
+# Copyright (c) 2023 urfave/cli maintainers.
+#
+# Enable completion:
+#   rancher completion fish > ~/.config/fish/completions/rancher.fish
+
+function __rancher_perform_completion
+    # Extract all args except the last one
+    set -l args (commandline -opc)
+    # Extract the last arg (partial input)
+    set -l lastArg (commandline -ct)
+
+    if string match -q -- "-*" $lastArg
+        set results ($args[1] $args[2..-1] $lastArg --generate-shell-completion 2> /dev/null)
+    else
+        set results ($args[1] $args[2..-1] --generate-shell-completion 2> /dev/null)
+    end
+
+    # Remove trailing empty lines
+    for line in $results[-1..1]
+        if test (string trim -- $line) = ""
+            set results $results[1..-2]
+        else
+            break
+        end
+    end
+
+    for line in $results
+        if not string match -q -- "rancher*" $line
+            set -l parts (string split -m 1 ":" -- "$line")
+            if test (count $parts) -eq 2
+                printf "%s\t%s\n" "$parts[1]" "$parts[2]"
+            else
+                printf "%s\n" "$line"
+            end
+        end
+    end
+end
+
+# Clear existing completions for rancher
+complete -c rancher -e
+# Register completion function
+complete -c rancher -f -a '(__rancher_perform_completion)'

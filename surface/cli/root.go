@@ -195,11 +195,18 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, config.ReadOnlyOverride)
 	reg.Register(schemaCmd)
 
+	// completion is a fixed command backed by the registry (no dir/store,
+	// no binding): reg.Register puts it in the manifest — Adapt alone
+	// registers nothing, and the command would silently vanish from
+	// `rancher schema` with no test failure.
+	completionCmd := commands.NewCompletion()
+	reg.Register(completionCmd)
+
 	if err := reg.Validate(); err != nil {
 		return nil, fmt.Errorf("command registry: %w", err)
 	}
 
-	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd)}, order, groups)
+	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, order, groups)
 
 	root := &ucli.Command{
 		Name:    "rancher",

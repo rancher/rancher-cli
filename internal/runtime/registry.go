@@ -18,6 +18,15 @@ type GlobalFlag struct {
 	Desc      string   `json:"desc,omitempty"`
 }
 
+// ShellCompletionShells is the single shared list of shells `completion
+// <shell>` emits scripts for — used both to populate the schema manifest's
+// shellCompletion field and by the completion command itself (its Enum,
+// unknown-shell error, and its own --generate-shell-completion), so the list
+// is never duplicated.
+func ShellCompletionShells() []string {
+	return []string{"bash", "zsh", "fish", "pwsh"}
+}
+
 // GlobalFlags is the confirmation/output model, discoverable via schema.
 func GlobalFlags() []GlobalFlag {
 	return []GlobalFlag{
@@ -109,6 +118,10 @@ type Manifest struct {
 	GlobalFlags     []GlobalFlag    `json:"globalFlags"`
 	EffectSchema    EffectSchema    `json:"effectSchema"`
 	Commands        []SchemaCommand `json:"commands"`
+	// ShellCompletion lists the shells `completion <shell>` emits scripts
+	// for — one capability field so an agent or docs tool can discover
+	// completion support without parsing the command list. Always present.
+	ShellCompletion []string `json:"shellCompletion"`
 }
 
 // Resolver maps operation names to their current tier binding. provider
@@ -180,6 +193,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		ErrorCodes:        clierr.AllCodes(),
 		GlobalFlags:       GlobalFlags(),
 		EffectSchema:      effectSchema(),
+		ShellCompletion:   ShellCompletionShells(),
 	}
 	for _, c := range reg.cmds {
 		d := c.Describe()

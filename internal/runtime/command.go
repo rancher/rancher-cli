@@ -101,3 +101,17 @@ type MutatingCommand interface {
 	Command
 	Plan(ctx context.Context, in Input) (safety.Effect, ExecuteFunc, error)
 }
+
+// ShellCompleter is an optional interface a Command implements to supply its
+// own shell completion candidates (e.g. `config use-context`'s context
+// names, or `completion`'s own fixed shell list). It is type-asserted at
+// adapter-wiring time and installed as the urfave leaf's ShellComplete
+// callback, which runs synchronously inside a shell TAB keystroke: dir is
+// the already-resolved config directory (config.ResolveDir's result, the
+// same resolution resolveDeps uses), and CompleteArgs must never prompt,
+// write, or touch the network — any error resolving dir degrades to no
+// candidates, never error text (an error line would be offered as a
+// candidate).
+type ShellCompleter interface {
+	CompleteArgs(ctx context.Context, dir string) []string
+}

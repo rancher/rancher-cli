@@ -143,12 +143,12 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 }
 
 // Adapt wraps a fixed runtime.Command that needs no per-run config dir/store
-// (e.g. `schema`). The binding is derived from the registry uniformly, so a
-// mutating command wired this way still runs under its gate.
+// (e.g. `schema`, `completion`). The binding is derived from the registry
+// uniformly, so a mutating command wired this way still runs under its gate.
 func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
-	return &ucli.Command{
+	cmd := &ucli.Command{
 		Name:         leafName(d.Name),
 		Aliases:      d.Aliases,
 		Usage:        d.Usage,
@@ -161,6 +161,29 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			}
 			return nil
 		},
+	}
+	if sc, ok := rc.(runtime.ShellCompleter); ok {
+		cmd.ShellComplete = shellCompleteFunc(sc)
+	}
+	return cmd
+}
+
+// shellCompleteFunc installs a runtime.ShellCompleter as a urfave
+// ShellComplete callback: it resolves the config dir the same way
+// resolveDeps does, but via a pure config.Load — no store, no pin, no
+// prompt — and degrades to empty output on any resolution error
+// (missing/corrupt config included), per the completion contract (never
+// print error text, which a shell would offer as a candidate). Shared by
+// Adapt here and adaptEntry (engine.go) for the symmetric wiring.
+func shellCompleteFunc(sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
+	return func(ctx context.Context, c *ucli.Command) {
+		dir, err := config.ResolveDir(c.String("config"))
+		if err != nil {
+			return
+		}
+		for _, cand := range sc.CompleteArgs(ctx, dir) {
+			_, _ = fmt.Fprintln(c.Root().Writer, cand)
+		}
 	}
 }
 
