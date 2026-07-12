@@ -1,0 +1,50 @@
+# Hermetic and network-free by construction: shell completion never touches
+# the server. Script emission is a unit-level golden concern (byte-exact) —
+# this only pins the substrings a real .bashrc source relies on.
+exec rancher completion bash
+stdout 'generate-shell-completion'
+stdout 'urfave/cli'
+
+! exec rancher completion nope-shell
+jsonquery stderr data.error.code VALIDATION
+
+# Callback driving: --generate-shell-completion must be LAST (checkShellCompleteFlag
+# looks only at the final argument). Default urfave suggestions and our
+# alias-aware override both arrive as "name:usage" lines — anchor on the name
+# prefix, never a whole line (urfave-owned ordering/usage text is not ours to
+# pin exactly).
+exec rancher get --generate-shell-completion
+stdout '(?m)^pod:'
+stdout '(?m)^po:'
+stdout '(?m)^pods:'
+
+# Seed a context via a direct config-file write (config-commands.txtar's
+# precedent) — no login flow needed just to populate config.yaml. The
+# config-local ShellCompleter path prints one BARE candidate per line (no
+# ":usage" suffix), so this anchors on the whole line.
+mkdir $RANCHER_CLI_CONFIG_DIR
+cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
+
+exec rancher config use-context --generate-shell-completion
+stdout '(?m)^acme$'
+
+# Corrupt config: the SC-1 hard requirement extends to the TAB-time
+# callback, not just the Before-path — a missing/corrupt config must
+# degrade to empty output, exit 0, never error text (an error line would be
+# offered as a shell candidate).
+cp garbage-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
+
+exec rancher config use-context --generate-shell-completion
+! stdout .
+
+-- seed-config.yaml --
+current-context: acme
+servers:
+  acme:
+    url: https://acme.example.com
+contexts:
+  acme:
+    server: acme
+
+-- garbage-config.yaml --
+not: [valid yaml

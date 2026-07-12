@@ -42,6 +42,20 @@ standard: install it into any skill-supporting harness — Claude Code
 (`~/.claude/skills/rancher/`) and GitHub Copilot CLI both load it natively —
 or point any other agent's instructions file at it.
 
+### Shell completion
+
+    source <(rancher completion bash)   # ~/.bashrc
+    source <(rancher completion zsh)    # ~/.zshrc
+    rancher completion fish > ~/.config/fish/completions/rancher.fish
+    rancher completion pwsh > path/to/rancher.ps1   # then run the script
+
+Completion is offline-only in v1: command/group/flag names are free (the
+whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
+and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-context`,
+`config use-server`, and `config delete-server` complete from the local
+config file. It never touches the network, prompts, or writes anything —
+a missing or unreadable config degrades to no candidates, never an error.
+
 ## Quickstart
 
     # Log in (token is the Rancher UI "id:secret" API key)
