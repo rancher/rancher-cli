@@ -390,6 +390,103 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	assert.Equal(t, "CONTEXT_NOT_SET", errObj["code"])
 }
 
+// TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback pins the SC-1 hard
+// requirement: resolveReadOnly already degrades to not-read-only on a config
+// load error (adapter.go:129-143) rather than failing the command, on BOTH a
+// before-only path (schema, Adapt-wired, no resolveDeps) and the completion
+// callback (Before runs, then completion returns before Action). This must
+// hold with no code change to resolveReadOnly/resolveDeps — the test only
+// pins existing behavior against regression.
+func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("not: [valid yaml\n"), 0o600))
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+	var env struct {
+		Data struct {
+			ReadOnly bool `json:"readOnly"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	assert.False(t, env.Data.ReadOnly, "a corrupt config must degrade to not-read-only, not fail schema")
+
+	out.Reset()
+	require.NoError(t, root.Run(context.Background(), []string{
+		"rancher", "--config", dir, "get", "--generate-shell-completion",
+	}))
+	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
+}
+
+// TestGenerateShellCompletionListsTopLevelCommandNames pins that
+// EnableShellCompletion activates default command-name completion for the
+// existing tree with no assembleCommands/wireEntry changes. Membership only —
+// urfave-owned ordering/format is not ours to golden-test.
+func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+
+	// urfave's DefaultCompleteWithFlags reads the real os.Args (not the argv
+	// passed to Run) when invoked at the root command — it always assumes the
+	// shell appended the completion flag last on the actual process args. Mirror
+	// that so the test drives the same code path a real TAB keystroke does.
+	argv := []string{"rancher", "--config", dir, "--generate-shell-completion"}
+	origArgs := os.Args
+	os.Args = argv
+	t.Cleanup(func() { os.Args = origArgs })
+
+	require.NoError(t, root.Run(context.Background(), argv))
+	assert.Contains(t, out.String(), "get")
+	assert.Contains(t, out.String(), "auth")
+}
+
+// TestHiddenCompletionCommandEmitsNoScriptMarkers pins that the renamed
+// built-in (__completion) remains invocable as machinery only: its
+// subcommands are stripped, so `rancher __completion bash` cannot emit
+// urfave's own divergent script. This pins the INTENT, not urfave's own
+// help-topic mechanism: post-strip, "bash" is an unmatched subcommand name on
+// __completion, which now routes through the repo's standard CommandNotFound
+// seam — a structured JSON VALIDATION envelope on stderr at a non-zero exit,
+// the same envelope-everywhere contract every other unmatched command name
+// gets (see TestUnknownCommandIsValidationNotExitThree), not urfave's own
+// unhinted "No help topic" text and not a custom help Action (the command is
+// machinery, not surface, per STOP adjudication 2026-07-12).
+func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
+	origExiter := ucli.OsExiter
+	var gotCode int
+	ucli.OsExiter = func(code int) { gotCode = code }
+	defer func() { ucli.OsExiter = origExiter }()
+
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "__completion", "bash"}))
+	assert.Equal(t, 2, gotCode, "an unmatched subcommand name is VALIDATION, exit 2, not urfave's own exit 3")
+
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, "bash")
+
+	combined := out.String() + errOut.String()
+	assert.NotContains(t, combined, "--generate-shell-completion",
+		"the hidden built-in must never emit urfave's own completion script")
+}
+
 func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()

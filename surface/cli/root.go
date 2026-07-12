@@ -212,6 +212,17 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,
 		OnUsageError:    onUsageError,
+		// urfave's auto-appended completion command is renamed and kept hidden
+		// machinery only: its subcommands are stripped so it can never emit
+		// urfave's own (divergent) scripts — `completion <shell>` (wired below,
+		// via Adapt like schema) is the one script-emitting surface.
+		EnableShellCompletion:      true,
+		ShellCompletionCommandName: "__completion",
+		ConfigureShellCompletionCommand: func(c *ucli.Command) {
+			c.Hidden = true
+			c.Commands = nil
+			c.CommandNotFound = commandNotFound
+		},
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
 			if c.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
