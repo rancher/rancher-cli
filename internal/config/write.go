@@ -43,6 +43,12 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 
+	if err := hardenACL(tmpPath); err != nil {
+		cleanup()
+		_ = tmp.Close()
+		return err
+	}
+
 	if _, err := tmp.Write(data); err != nil {
 		cleanup()
 		_ = tmp.Close()
