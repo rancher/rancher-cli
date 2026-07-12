@@ -287,30 +287,76 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	return &keyringStore{cache: NewFileStore(dir), pinHint: hint}
 }
 
+// keyringUnreachable reports whether err is a backend-unreachable keyring
+// failure — a transport/connection-class error (Linux: godbus "no session
+// bus" on headless; macOS: locked/unavailable Keychain; Windows:
+// Credential Manager transport) — as opposed to a clean miss
+// (keyring.ErrNotFound, which is NOT unreachable). go-keyring exposes no
+// typed transport errors, so any non-miss failure is treated as
+// unreachable; for reads that errs toward resilience, and the write path
+// hard-fails either way.
+func keyringUnreachable(err error) bool {
+	return err != nil && !errors.Is(err, keyring.ErrNotFound)
+}
+
 func (k *keyringStore) GetToken(server string) (string, error) {
 	tok, err := keyring.Get(keyringService, server)
+	if err == nil {
+		return tok, nil
+	}
 	if errors.Is(err, keyring.ErrNotFound) {
 		// Read-through: tokens stored under an earlier "file" pin keep
 		// working after an upgrade re-pin; they age out via logout/re-login.
 		return k.cache.GetToken(server)
 	}
-	if err != nil {
+	// Backend unreachable (XP-6): degrade the READ to the file store — a
+	// valid token in credentials.yaml must keep working on a machine whose
+	// pinned keychain is temporarily unusable (headless SSH, locked
+	// keychain). Reads create no new plaintext, so this is pure resilience;
+	// the WRITE path (SetToken) deliberately does not degrade.
+	ftok, ferr := k.cache.GetToken(server)
+	switch {
+	case ferr == nil:
+		return ftok, nil
+	case errors.Is(ferr, ErrNoToken):
+		// Double miss: surface the keyring error, not ErrNoToken — the
+		// token may exist in the unreachable keychain, and "no stored
+		// token" would misread as logged-out.
 		return "", fmt.Errorf("keyring get %q: %w%s", server, err, k.pinHint)
+	default:
+		// The file store FAILED (malformed/unreadable credentials.yaml) —
+		// a distinct problem the user must see; don't mask it as a
+		// keychain-only issue.
+		return "", fmt.Errorf("keyring get %q: %w%s; file credential store: %w", server, err, k.pinHint, ferr)
 	}
-	return tok, nil
 }
 
 func (k *keyringStore) SetToken(server, token string) error {
-	if err := keyring.Set(keyringService, server, token); err != nil {
-		return fmt.Errorf("keyring set %q: %w%s", server, err, k.pinHint)
+	err := keyring.Set(keyringService, server, token)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if keyringUnreachable(err) {
+		// XP-6 write path: NEVER silently degrade a login write to the
+		// plaintext file — the pin's guarantee is that a transient keychain
+		// failure cannot downgrade the machine's storage. Refuse with the
+		// explicit opt-in remedy instead.
+		return fmt.Errorf(
+			"keyring set %q: %w — credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
+			server, err, EnvCredentialStore, k.pinHint)
+	}
+	return fmt.Errorf("keyring set %q: %w%s", server, err, k.pinHint)
 }
 
 func (k *keyringStore) DeleteToken(server string) error {
 	err := keyring.Delete(keyringService, server)
-	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return fmt.Errorf("keyring delete %q: %w%s", server, err, k.pinHint)
+	if keyringUnreachable(err) {
+		// XP-6: treat unreachable like a miss — drain the file store below
+		// (removing plaintext is strictly safe) — but say so: the keychain
+		// copy, if any, could not be checked. auth logout's DrainLoginToken
+		// independently surfaces keyring errors, so nothing is silently
+		// left behind on that path.
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only%s", server, err, k.pinHint)
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).

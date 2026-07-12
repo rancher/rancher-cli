@@ -429,3 +429,94 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 	require.Len(t, list, 1)
 	assert.Equal(t, "live", list[0].Name, "live entry must be returned")
 }
+
+// TestKeyringUnreachableGetReadsThroughToFile: a backend-unreachable error
+// (NOT ErrNotFound) with a valid token in the file store must return the
+// file token — the headless-with-keychain-pin case (XP-6).
+func TestKeyringUnreachableGetReadsThroughToFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, NewFileStore(dir).SetToken("prod", "file-token"))
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	s := newPinnedKeyringStore(dir, true)
+	tok, err := s.GetToken("prod")
+	require.NoError(t, err)
+	assert.Equal(t, "file-token", tok)
+}
+
+// TestKeyringUnreachableGetDoubleMissKeepsKeyringError: when the file
+// store ALSO misses, the surfaced error must be the keyring transport
+// error (the token may exist in the unreachable keychain) — not
+// ErrNoToken, which would misread as "logged out".
+func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
+	dir := t.TempDir()
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	s := newPinnedKeyringStore(dir, true)
+	_, err := s.GetToken("prod")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNoToken)
+	assert.Contains(t, err.Error(), "no session bus")
+}
+
+// TestKeyringUnreachableGetSurfacesFileStoreFailure: an unreachable
+// keychain PLUS a broken credentials.yaml must surface both problems —
+// the file-store failure must not be masked as a keychain-only issue.
+func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("{not yaml: ["), 0o600))
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	s := newPinnedKeyringStore(dir, true)
+	_, err := s.GetToken("prod")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no session bus")
+	assert.Contains(t, err.Error(), "file credential store")
+}
+
+// TestKeyringUnreachableDeleteDrainsFile: delete under an unreachable
+// keychain still drains the file store and reports success (spec XP-6:
+// same as a miss; logout's DrainLoginToken independently surfaces
+// keyring errors) — and WARNS visibly, naming the unreachable keychain
+// and the file-only drain, so the undeletable keychain copy (if any) is
+// never silent.
+func TestKeyringUnreachableDeleteDrainsFile(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFileStore(dir)
+	require.NoError(t, fs.SetToken("prod", "file-token"))
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	var buf bytes.Buffer
+	orig := logrus.StandardLogger().Out
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(orig)
+
+	s := newPinnedKeyringStore(dir, true)
+	require.NoError(t, s.DeleteToken("prod"))
+	_, err := fs.GetToken("prod")
+	assert.ErrorIs(t, err, ErrNoToken)
+	assert.Contains(t, buf.String(), "keychain unreachable")
+	assert.Contains(t, buf.String(), "file store only")
+}
+
+// TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
+// unreachable keychain must hard-fail with the env-var remedy and must
+// NOT create a plaintext credentials file — the anti-silent-downgrade
+// guarantee (XP-6, decided: guarantee wins on the write path).
+func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
+	dir := t.TempDir()
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	s := newPinnedKeyringStore(dir, true)
+	err := s.SetToken("prod", "new-token")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unreachable")
+	assert.Contains(t, err.Error(), EnvCredentialStore+"=file")
+	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "plaintext credentials.yaml must not be created")
+}
