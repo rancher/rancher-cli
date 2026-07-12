@@ -124,3 +124,170 @@ func splitNonEmpty(s string) []string {
 	}
 	return out
 }
+
+// buildRancherRecorder builds a stand-in `rancher` that records the exact argv
+// it receives (one element per line, to $RANCHER_ARGV_FILE) and prints a few
+// candidates. It lets a test prove not just that a payload was not executed
+// but that it reached the binary as one literal argument. Returns the dir to
+// prepend to PATH.
+func buildRancherRecorder(t *testing.T) string {
+	t.Helper()
+	src := "package main\n" +
+		"import (\"fmt\"; \"os\"; \"strings\")\n" +
+		"func main() {\n" +
+		"  if f := os.Getenv(\"RANCHER_ARGV_FILE\"); f != \"\" {\n" +
+		"    _ = os.WriteFile(f, []byte(strings.Join(os.Args[1:], \"\\n\")), 0o644)\n" +
+		"  }\n" +
+		"  fmt.Println(\"pod\"); fmt.Println(\"pods\"); fmt.Println(\"po\")\n" +
+		"}\n"
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatalf("writing recorder source: %v", err)
+	}
+	binDir := t.TempDir()
+	binName := "rancher"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "main.go")
+	build.Dir = srcDir
+	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GO111MODULE=off")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building rancher recorder: %s", out)
+	}
+	return binDir
+}
+
+// TestPwshCompletionDeliversPayloadAsLiteralArgument proves the hostile word
+// reaches the binary as ONE literal argument, not merely that it goes
+// unevaluated: a dropped or split token would also leave no marker. The
+// recorder captures argv; the test asserts the $(...) payload appears verbatim
+// as a single recorded element.
+func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
+	shell, ok := findPowerShell(t)
+	if !ok {
+		t.Skip("neither pwsh nor powershell found on PATH")
+	}
+	binDir := buildRancherRecorder(t)
+	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
+	if err := os.WriteFile(scriptPath, pwshScript, 0o644); err != nil {
+		t.Fatalf("writing pwsh.ps1: %v", err)
+	}
+	argvFile := filepath.Join(t.TempDir(), "argv")
+	payload := `$(Get-Date)`
+
+	driver := fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH
+$env:RANCHER_ARGV_FILE = %s
+. %s
+$line = 'rancher get %s po'
+$null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
+`, psSingleQuote(binDir), psSingleQuote(argvFile), psSingleQuote(scriptPath), payload)
+
+	driverPath := filepath.Join(t.TempDir(), "driver.ps1")
+	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
+		t.Fatalf("writing driver.ps1: %v", err)
+	}
+	if out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput(); err != nil {
+		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
+	}
+
+	recorded, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("recorder argv not written (binary never invoked as a literal command?): %v", err)
+	}
+	var args []string
+	for _, l := range strings.Split(string(recorded), "\n") {
+		if l != "" {
+			args = append(args, l)
+		}
+	}
+	found := false
+	for _, a := range args {
+		if a == payload {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("payload did not reach the binary as one literal argument; recorded argv=%q, want an element == %q", args, payload)
+	}
+}
+
+// TestPwshCompletionRespectsCursorAndLiteralWildcards exercises the two
+// behaviors 0e34e5a added with no execution coverage: cursor-boundary
+// truncation (a token typed after the cursor must not affect completion) and
+// literal-wildcard prefix matching (a '*' in the typed word must not act as a
+// glob).
+func TestPwshCompletionRespectsCursorAndLiteralWildcards(t *testing.T) {
+	shell, ok := findPowerShell(t)
+	if !ok {
+		t.Skip("neither pwsh nor powershell found on PATH")
+	}
+	binDir := t.TempDir()
+	binName := "rancher"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "../../..")
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building rancher: %s", out)
+	}
+	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
+	if err := os.WriteFile(scriptPath, pwshScript, 0o644); err != nil {
+		t.Fatalf("writing pwsh.ps1: %v", err)
+	}
+
+	// midline: cursor sits right after "pod" in "rancher get pod deployment";
+	// the trailing "deployment" is past the cursor and must not corrupt the
+	// completion of "pod". literal: "p*" must be matched as a literal prefix,
+	// so no kind (pod/pods/...) is offered - a glob would match them all.
+	driver := fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH
+. %s
+
+$mid = 'rancher get pod deployment'
+$cur = ('rancher get pod').Length
+$rm = TabExpansion2 -inputScript $mid -cursorColumn $cur
+Write-Output ('MIDLINE:' + (($rm.CompletionMatches | Where-Object { $_.ResultType -eq 'ParameterValue' } | ForEach-Object { $_.CompletionText }) -join ','))
+
+$glob = 'rancher get p*'
+$rg = TabExpansion2 -inputScript $glob -cursorColumn $glob.Length
+Write-Output ('GLOB:' + (($rg.CompletionMatches | Where-Object { $_.ResultType -eq 'ParameterValue' } | ForEach-Object { $_.CompletionText }) -join ','))
+`, psSingleQuote(binDir), psSingleQuote(scriptPath))
+
+	driverPath := filepath.Join(t.TempDir(), "driver.ps1")
+	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
+		t.Fatalf("writing driver.ps1: %v", err)
+	}
+	out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
+	}
+
+	var midline, glob []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "MIDLINE:"):
+			midline = splitNonEmpty(strings.TrimPrefix(line, "MIDLINE:"))
+		case strings.HasPrefix(line, "GLOB:"):
+			glob = splitNonEmpty(strings.TrimPrefix(line, "GLOB:"))
+		}
+	}
+
+	hasPod := false
+	for _, m := range midline {
+		if m == "pod" {
+			hasPod = true
+		}
+	}
+	if !hasPod {
+		t.Errorf("mid-line completion of \"pod\" did not offer \"pod\"; a token past the cursor likely leaked into the request. got %q; full output:\n%s", midline, out)
+	}
+	if len(glob) != 0 {
+		t.Errorf("literal-wildcard prefix \"p*\" matched %q; the * was treated as a glob instead of a literal. full output:\n%s", glob, out)
+	}
+}
