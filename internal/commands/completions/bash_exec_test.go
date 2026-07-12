@@ -10,18 +10,19 @@ import (
 	"testing"
 )
 
-// TestBashCompletionScriptExecutesSafely shells out to a real bash to run the
-// emitted bash.sh exactly where the command-injection lived: it sources the
-// script, drives __rancher_build_completion_request + the argv-array
-// invocation directly (the two lines the fix changed), and asserts a $(...)
-// payload sitting in a completion word is passed as an inert argument rather
-// than executed. It deliberately does NOT route through
-// __rancher_init_completion, which depends on the bash-completion package a
-// bare environment need not have - the security-relevant surface is the
-// request build + invocation, and that is what this exercises. A third case
-// reproduces the old `eval` form and asserts it WOULD have created the marker,
-// so the test proves it can discriminate rather than passing vacuously. Skips
-// only where bash itself is absent.
+// TestBashCompletionScriptExecutesSafely drives the FULL production callback
+// __rancher_bash_autocomplete (not the request builder in isolation, so a
+// regression that reintroduced eval inside the callback would be caught) with
+// a $(...) payload sitting in a completion word. The rancher it invokes is a
+// fake that RECORDS its exact argv, so the test proves the payload reached the
+// binary as ONE literal argument - a marker-absence check alone would also
+// pass if the word were dropped, split, or the command simply failed to run.
+// It asserts three things: the completer still returns candidates, no marker
+// file was created (nothing executed), and the recorded argv contains the
+// payload verbatim as a single element. A minimal _get_comp_words_by_ref stub
+// stands in for the bash-completion package a bare environment need not have;
+// it only resolves cur/prev/words/cword and cannot touch the injection
+// surface. Skips only where bash itself is absent.
 func TestBashCompletionScriptExecutesSafely(t *testing.T) {
 	t.Parallel()
 
@@ -30,78 +31,89 @@ func TestBashCompletionScriptExecutesSafely(t *testing.T) {
 		t.Skip("bash not found on PATH; skipping live bash completion execution test")
 	}
 
-	binDir := t.TempDir()
-	binPath := filepath.Join(binDir, "rancher")
-	build := exec.Command("go", "build", "-o", binPath, "../../..")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building rancher: %s", out)
-	}
-
 	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
 	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {
 		t.Fatalf("writing bash.sh: %v", err)
 	}
 	work := t.TempDir()
 	marker := filepath.Join(work, "pwn_marker")
-	evalMarker := filepath.Join(work, "eval_marker")
+	argvFile := filepath.Join(work, "argv")
+	payload := fmt.Sprintf("$(touch %s)", marker)
+
+	// A fake rancher that appends each received argument, one per line, to
+	// argvFile, then emits candidates so completion still returns something.
+	fakeDir := t.TempDir()
+	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\nprintf '%%s\\n' 'pod' 'pods'\n", argvFile)
+	if err := os.WriteFile(filepath.Join(fakeDir, "rancher"), []byte(fake), 0o755); err != nil {
+		t.Fatalf("writing fake rancher: %v", err)
+	}
 
 	driver := fmt.Sprintf(`
 set +e
 export PATH=%q:"$PATH"
+_get_comp_words_by_ref() { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"; words=("${COMP_WORDS[@]}"); cword="${COMP_CWORD}"; }
 source %q
 
-# Functional: a clean line still yields kind names.
-COMP_WORDS=(rancher get "")
-COMP_CWORD=2
-__rancher_build_completion_request
-kinds=$("${__rancher_completion_request[@]}" 2>/dev/null)
-printf 'KINDS:%%s\n' "$(printf '%%s' "$kinds" | tr '\n' ',')"
-
-# Injection safety: a word carrying $(...) must reach the binary as a
-# literal argument, never be evaluated.
 rm -f %q
-COMP_WORDS=(rancher get '$(touch %q)' "")
+COMP_WORDS=(rancher get '$(touch %s)' "")
 COMP_CWORD=3
-__rancher_build_completion_request
-"${__rancher_completion_request[@]}" >/dev/null 2>&1
+COMP_TYPE=""
+__rancher_bash_autocomplete
+printf 'REPLY:%%s\n' "$(printf '%%s,' "${COMPREPLY[@]}")"
 printf 'MARKER:%%s\n' "$([ -e %q ] && echo true || echo false)"
-
-# Discrimination: the old eval form WOULD execute the payload.
-rm -f %q
-bad='rancher get $(touch %q) --generate-shell-completion'
-eval "$bad" >/dev/null 2>&1
-printf 'EVALMARKER:%%s\n' "$([ -e %q ] && echo true || echo false)"
-`, binDir, scriptPath, marker, marker, marker, evalMarker, evalMarker, evalMarker)
+`, fakeDir, scriptPath, marker, marker, marker)
 
 	out, err := exec.Command(bash, "-c", driver).CombinedOutput()
 	if err != nil {
 		t.Fatalf("running bash driver: %v\noutput:\n%s", err, out)
 	}
 
-	var kinds []string
-	var markerCreated, evalMarkerCreated bool
+	var reply string
+	var markerCreated bool
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
-		case strings.HasPrefix(line, "KINDS:"):
-			kinds = splitNonEmpty(strings.TrimPrefix(line, "KINDS:"))
+		case strings.HasPrefix(line, "REPLY:"):
+			reply = strings.TrimPrefix(line, "REPLY:")
 		case strings.HasPrefix(line, "MARKER:"):
 			markerCreated, _ = strconv.ParseBool(strings.TrimPrefix(line, "MARKER:"))
-		case strings.HasPrefix(line, "EVALMARKER:"):
-			evalMarkerCreated, _ = strconv.ParseBool(strings.TrimPrefix(line, "EVALMARKER:"))
 		}
 	}
 
-	if len(kinds) == 0 {
-		t.Errorf("expected completion candidates for %q, got none; full output:\n%s", "rancher get ", out)
+	if len(splitNonEmpty(reply)) == 0 {
+		t.Errorf("expected completion candidates, got none; full output:\n%s", out)
 	}
 	if markerCreated {
-		t.Errorf("injection marker was created: the completer evaluated attacker-controlled text instead of passing it as a literal argument; full output:\n%s", out)
+		t.Errorf("injection marker was created: the completer executed attacker-controlled text instead of passing it as a literal argument; full output:\n%s", out)
 	}
-	if !evalMarkerCreated {
-		t.Errorf("discrimination check failed: the reference eval form did not create its marker, so a passing MARKER assertion would be vacuous; full output:\n%s", out)
+
+	recorded, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("reading recorded argv (the fake rancher was never invoked?): %v\nfull output:\n%s", err, out)
 	}
+	args := splitLines(string(recorded))
+	if !containsExact(args, payload) {
+		t.Errorf("payload did not reach the binary as one literal argument; recorded argv=%q, want an element == %q; full output:\n%s", args, payload, out)
+	}
+}
+
+func splitLines(s string) []string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func containsExact(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestBashCompletionDoesNotExecuteServerCandidates guards the second
