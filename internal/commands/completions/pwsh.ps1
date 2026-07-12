@@ -18,8 +18,16 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     # and commandAst is the real, already-parsed CommandAst for the whole
     # line - not a string. Reading its CommandElements gives quote-aware
     # tokens without ever handing typed text to an interpreter.
+    #
+    # Only elements ending at or before the cursor are kept, mirroring
+    # bash.sh's COMP_WORDS[0:COMP_CWORD] slice: editing an earlier word with
+    # more already typed after it must not leak those later tokens into the
+    # request. The command name (index 0) is always kept even if a filter
+    # would otherwise drop it, so a single-token line never empties out.
     if ($commandAst -is [System.Management.Automation.Language.CommandAst] -and $commandAst.CommandElements.Count -gt 0) {
-        $tokens = @(foreach ($element in $commandAst.CommandElements) {
+        $inRange = @($commandAst.CommandElements | Where-Object { $_.Extent.EndOffset -le $cursorPosition })
+        if ($inRange.Count -eq 0) { $inRange = @($commandAst.CommandElements[0]) }
+        $tokens = @(foreach ($element in $inRange) {
             if ($null -ne $element.Value) { $element.Value.ToString() } else { $element.Extent.Text }
         })
     } else {
@@ -29,17 +37,24 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     # Mirror bash.sh/zsh.sh/fish.sh: the in-progress word is dropped from the
     # request (so `rancher get po` asks for the "get" kind list, not "po"
     # itself) unless it looks like a flag, where it's kept so flag names
-    # complete. Results are then filtered by prefix below, since (unlike
-    # cmdlet parameter completion) native completers get no automatic
-    # prefix filtering from PowerShell.
+    # complete. The command name itself (index 0) is never dropped this way,
+    # so $exe below always resolves to a real command. Results are then
+    # filtered by prefix, since (unlike cmdlet parameter completion) native
+    # completers get no automatic prefix filtering from PowerShell.
     $base = $tokens
-    if ($tokens.Count -gt 0 -and $wordToComplete -ne '' -and $tokens[$tokens.Count - 1] -eq $wordToComplete) {
+    if ($tokens.Count -gt 1 -and $wordToComplete -ne '' -and $tokens[$tokens.Count - 1] -eq $wordToComplete) {
         $base = @($tokens | Select-Object -First ($tokens.Count - 1))
     }
     $requestTokens = @(if ($wordToComplete -like '-*') { @($base) + @($wordToComplete) } else { $base })
 
     $exe = $requestTokens[0]
     $rest = @($requestTokens | Select-Object -Skip 1)
+
+    # The prefix filter below is a literal match, not a glob: escape any
+    # wildcard metacharacters (*, ?, [, ]) the user actually typed so e.g.
+    # completing "p*" filters on the two literal characters "p*", not "any
+    # number of any characters starting with p".
+    $escapedWord = [System.Management.Automation.WildcardPattern]::Escape($wordToComplete)
 
     & $exe @rest --generate-shell-completion 2>$null | ForEach-Object {
         $parts = $_.Split(':', 2)
@@ -50,7 +65,7 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
             $completion = $_.Trim()
             $description = $_.Trim()
         }
-        if ($completion -like "$wordToComplete*") {
+        if ($completion -like "$escapedWord*") {
             [System.Management.Automation.CompletionResult]::new($completion, $completion, 'ParameterValue', $description)
         }
     }

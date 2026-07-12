@@ -33,8 +33,10 @@ func psSingleQuote(s string) string {
 // a real TAB keypress invokes). It is the durable regression guard for the
 // command-injection fix - a unit test alone can't prove the fix holds
 // through PowerShell's own completer dispatch, only a live shell can. Skips
-// where no PowerShell is installed (the CI gate for this repo runs on
-// Linux without one).
+// only where neither pwsh nor powershell is reachable at all (a minimal
+// container or self-hosted runner without either installed) - GitHub's
+// hosted ubuntu-latest image ships pwsh by default, so this is expected to
+// run rather than skip on this repo's own CI.
 func TestPwshCompletionScriptExecutesSafely(t *testing.T) {
 	shell, ok := findPowerShell(t)
 	if !ok {
