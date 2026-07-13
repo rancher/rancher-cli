@@ -9,12 +9,22 @@
 # testscript.Env carries no script name for Setup to special-case.
 env RANCHER_CLI_CREDENTIAL_STORE=
 
+# Headless is the ONLY environment this script runs in (see the darwin skip),
+# so the auto probe always fails fast here: expect the "file" pin and the
+# plaintext-fallback notice — NOT the usable-branch "pinned credential store:
+# keychain" notice, which needs a real keychain session no CI/container has.
+# The usable branch's coverage is the unit test
+# TestLoginChoreographyFreshAutoUsableKeychain plus interactive macOS use.
+# (First-ever execution of this script — Linux acceptance 2026-07-13 — found
+# it asserting the usable-branch notice; adjudication gist 6252584.)
 stdin token.txt
 exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
-stderr 'pinned credential store:'
+stderr 'keychain unavailable; credentials will be stored in plaintext'
 exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
+grep '^file$' $RANCHER_CLI_CONFIG_DIR/credstore-pin
 
 exec rancher config current-context
+! stderr 'keychain unavailable'
 ! stderr 'pinned credential store:'
 
 -- token.txt --
