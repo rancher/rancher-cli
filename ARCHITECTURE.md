@@ -438,3 +438,19 @@ script gets its own façade + TLS server instance, composed over the one shared 
 reverse-proxy transport, so deterministic per-instance token names and secrets stay
 collision-free across parallel scripts. `internal/testrancher` is test-only by
 convention — `architecture_test.go` asserts no production package imports it.
+
+**Dynamic client, not typed Rancher structs.** Every resource flows through
+the Kubernetes dynamic client and unstructured objects; the CLI imports no
+rancher/rancher code. One binary serves many server versions — the CLI
+declares a warn-only minimum (2.14) and the server's schema is authoritative
+at request time, where compiled-in typed structs would encode exactly one
+release's shape. The safety model already leans on the server for
+correctness (previews are server-computed dry-runs under real admission and
+RBAC), the kind table's generated verbs are only possible untyped, and parts
+of the surface (ext.cattle.io, CAPI) resolve served versions by discovery at
+call time. The stated cost is no compile-time field safety; the mitigations
+are structural — field paths verified against Rancher source during design
+review, conformance tests pinning the vocabulary, live acceptance exercises
+against real servers, and thin hand-owned structs (a few fields, decoded
+locally) where a specific shape matters. kubectl makes the same choice for
+its generic verbs.
