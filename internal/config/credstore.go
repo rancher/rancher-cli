@@ -78,10 +78,14 @@ var warnedLoosePerm sync.Map // path -> struct{}
 // warnLoosePerm notices on stderr when a credential file is group/world
 // readable, so a plaintext token in a 0644 file does not sit unremarked (CS-1).
 // It warns at most once per path per process. On Windows this Unix-perm
-// check is a documented no-op (NTFS ignores mode bits; Mode().Perm() is
-// synthetic there) — the owner-only DACL set by hardenACL at write time
-// is the guarantee on that platform.
+// check is SKIPPED via permCheckApplicable (NTFS ignores mode bits;
+// Mode().Perm() is synthetic there and would false-positive on every
+// file) — the owner-only DACL set by hardenACL at write time is the
+// guarantee on that platform.
 func warnLoosePerm(path string) {
+	if !permCheckApplicable() {
+		return
+	}
 	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o077 != 0 {
 		if _, seen := warnedLoosePerm.LoadOrStore(path, struct{}{}); !seen {
 			logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
