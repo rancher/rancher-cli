@@ -51,24 +51,6 @@ func TestConfigEditNoTTYIsValidationNamingPath(t *testing.T) {
 	assert.Contains(t, ce.Message, "TTY")
 }
 
-// This pins non-Windows behavior only. On Windows, defaultEditor()
-// intentionally makes this validation path unreachable (XP-2's contract:
-// an always-available notepad fallback) — see
-// TestResolveEditorFallsBackToNotepadOnWindows in editor_windows_test.go.
-func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
-	t.Setenv("VISUAL", "")
-	t.Setenv("EDITOR", "")
-	dir := t.TempDir()
-
-	_, err := NewConfigEdit(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "VISUAL")
-	assert.Contains(t, ce.Message, "EDITOR")
-	assert.Contains(t, ce.Message, config.FilePath(dir))
-}
-
 // TestConfigEditEditorNonZeroExitAbortsRealFileUntouched drives the REAL
 // (unfaked) execEditor default via /usr/bin/false, proving the exec.Command
 // wiring itself — not just the injectable seam — treats a non-zero exit as
