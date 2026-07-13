@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,12 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		info, err := os.Stat(path)
 		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		if runtime.GOOS != "windows" {
+			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
+			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// the 0600 assertion is meaningless on that platform.
+			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		}
 
 		b, err := os.ReadFile(path)
 		require.NoError(t, err)
@@ -55,7 +61,12 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		info, err := os.Stat(path)
 		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		if runtime.GOOS != "windows" {
+			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
+			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// the 0600 assertion is meaningless on that platform.
+			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		}
 
 		b, err := os.ReadFile(path)
 		require.NoError(t, err)
@@ -71,7 +82,12 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		info, err := os.Stat(path)
 		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		if runtime.GOOS != "windows" {
+			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
+			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// the 0600 assertion is meaningless on that platform.
+			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		}
 	})
 
 	// TestAtomicWriteFileHardenACLFailureLeavesNoTempFile exercises the

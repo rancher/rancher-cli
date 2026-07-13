@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +189,10 @@ func TestFileStoreListCachedCreds(t *testing.T) {
 }
 
 func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("loose-permission warning is intentionally disabled on Windows (permcheck_windows.go); ACL enforcement is the guarantee there")
+	}
+
 	orig := logrus.StandardLogger().Out
 	var buf bytes.Buffer
 	logrus.SetOutput(&buf)

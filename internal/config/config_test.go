@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -23,7 +24,12 @@ func TestWriteThenLoadRoundTrip(t *testing.T) {
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		// On Windows os.FileInfo.Mode() synthesizes mode bits regardless of
+		// the real NTFS DACL (hardenACL is the enforcement there), so the
+		// 0600 assertion is meaningless on that platform.
+		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
 
 	got, err := Load(path)
 	require.NoError(t, err)
@@ -74,6 +80,6 @@ func TestResolveDirPrecedence(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 		got, err := ResolveDir("")
 		require.NoError(t, err)
-		assert.Equal(t, "/xdg/rancher", got)
+		assert.Equal(t, filepath.Join("/xdg", "rancher"), got)
 	})
 }

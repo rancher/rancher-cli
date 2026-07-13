@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -17,8 +18,16 @@ func TestPinRoundTrip(t *testing.T) {
 	if got := ReadPin(dir); got != "keychain" {
 		t.Errorf("ReadPin = %q, want keychain", got)
 	}
-	if fi, err := os.Stat(filepath.Join(dir, "credstore-pin")); err != nil || fi.Mode().Perm() != 0o600 {
+	fi, err := os.Stat(filepath.Join(dir, "credstore-pin"))
+	if err != nil {
 		t.Errorf("pin file mode/err: %v %v", fi, err)
+	} else if runtime.GOOS != "windows" {
+		// On Windows os.FileInfo.Mode() synthesizes mode bits regardless of
+		// the real NTFS DACL (hardenACL is the enforcement there), so the
+		// 0600 assertion is meaningless on that platform.
+		if fi.Mode().Perm() != 0o600 {
+			t.Errorf("pin file mode/err: %v %v", fi, err)
+		}
 	}
 }
 
