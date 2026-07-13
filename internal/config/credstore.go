@@ -424,7 +424,14 @@ func DrainLoginToken(dir, server string) ([]string, error) {
 	)
 	if kerr := keyring.Delete(keyringService, server); kerr == nil {
 		from = append(from, "keychain")
-	} else if !errors.Is(kerr, keyring.ErrNotFound) {
+	} else if errors.Is(kerr, keyring.ErrNotFound) {
+		// nothing stored in the keychain backend — fine
+	} else if keyringUnreachable(kerr) {
+		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
+		// keychain must not turn `auth logout` into a hard failure when
+		// the file store still drains cleanly.
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only", server, kerr)
+	} else {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, kerr))
 	}
 	fs := NewFileStore(dir)

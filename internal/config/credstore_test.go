@@ -401,17 +401,27 @@ func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also drain the file store")
 }
 
-func TestDrainTokenJoinsKeychainErrorButStillDrainsFile(t *testing.T) {
+// TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile: DrainLoginToken
+// now shares keyringStore.DeleteToken's XP-6 degrade — an unreachable
+// keychain warns rather than turning `auth logout` into a hard failure,
+// as long as the file store drains cleanly.
+func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain boom"))
 	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
 
+	var buf bytes.Buffer
+	orig := logrus.StandardLogger().Out
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(orig)
+
 	from, _, err := DrainToken(dir, "prod", "https://prod.ex")
-	require.Error(t, err, "a keychain delete error must surface, not be swallowed")
-	assert.Contains(t, from, "file", "file backend must still be drained despite the keychain error")
+	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store drains")
+	assert.Contains(t, from, "file", "file backend must still be drained")
 	_, gerr := NewFileStore(dir).GetToken("prod")
-	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain errored")
+	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
+	assert.Contains(t, buf.String(), "keychain unreachable", "the unreachable keychain must still be visibly warned about")
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
