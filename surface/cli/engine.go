@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -140,7 +141,9 @@ func (f *clientFactory) clusters(ctx context.Context) (*unstructured.Unstructure
 }
 
 // ResolveCluster accepts a cluster id or display name (agents pass names;
-// rancher-ai-mcp accepts both — keep the semantics aligned).
+// rancher-ai-mcp accepts both — keep the semantics aligned). The matching now
+// delegates to projects.MatchByIDOrDisplay — the same contract token minting
+// and project/member resolution already share (this was the 4th copy).
 func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (string, error) {
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
@@ -155,45 +158,28 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 	if err != nil {
 		return "", err
 	}
-	// Collect id and display matches separately: an exact id match must not
-	// silently shadow a different cluster whose display name equals the query.
-	var idMatch string
-	var idFound bool
-	var displayMatches []string
+	var ids []string
+	displayByID := map[string]string{}
 	var cands []clierr.Candidate
 	for i := range list.Items {
 		id := list.Items[i].GetName()
 		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
-		cands = append(cands, clierr.Candidate{ID: id, Name: display})
-		if id == nameOrID {
-			idMatch, idFound = id, true
-		}
-		if display == nameOrID {
-			displayMatches = append(displayMatches, id)
-		}
-	}
-	matched := map[string]bool{}
-	if idFound {
-		matched[idMatch] = true
-	}
-	for _, id := range displayMatches {
-		matched[id] = true
-	}
-	var ids []string
-	for id := range matched {
 		ids = append(ids, id)
+		displayByID[id] = display
+		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
-	switch len(ids) {
+	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
+	switch len(matched) {
 	case 1:
 		f.mu.Lock()
-		f.resolved[nameOrID] = ids[0]
+		f.resolved[nameOrID] = matched[0]
 		f.mu.Unlock()
-		return ids[0], nil
+		return matched[0], nil
 	case 0:
 		return "", clierr.New(clierr.CodeNotFound, "cluster not found: "+nameOrID).
 			WithCandidates(cands).WithHint("pass a cluster id or display name")
 	default:
-		msg := fmt.Sprintf("%d clusters have display name %q", len(displayMatches), nameOrID)
+		msg := fmt.Sprintf("%d clusters have display name %q", displayMatchCount, nameOrID)
 		if idFound {
 			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", nameOrID)
 		}
