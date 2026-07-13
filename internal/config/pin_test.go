@@ -1,10 +1,14 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 )
 
 func TestPinRoundTrip(t *testing.T) {
@@ -128,5 +132,40 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 	}
 	if s != cur {
 		t.Errorf("expected the injected store returned unchanged, got %T", s)
+	}
+}
+
+// TestRepinForLoginFreshPinNotices pins the R1-1 contract: the FIRST pin
+// written by a fresh-auto login emits the same notice eager OpenStore used
+// to emit before login ran — without it, lazy resolution silently loses
+// the e2e-asserted "pinned credential store: keychain" line.
+func TestRepinForLoginFreshPinNotices(t *testing.T) {
+	dir := t.TempDir()
+	resetKeyringUsableCache()
+	origUsable := keyringUsable
+	keyringUsable = func() bool { return true }
+	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
+
+	var buf bytes.Buffer
+	origOut := logrus.StandardLogger().Out
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(origOut)
+
+	current := NewFileStore(dir)
+	store, err := RepinForLogin(dir, "", current)
+	if err != nil {
+		t.Fatalf("RepinForLogin: %v", err)
+	}
+	if store == current {
+		t.Fatalf("expected an upgraded keyring store, got the input store")
+	}
+	if got := ReadPin(dir); got != "keychain" {
+		t.Errorf("pin = %q, want keychain", got)
+	}
+	if !strings.Contains(buf.String(), "pinned credential store: keychain") {
+		t.Errorf("missing first-pin notice; stderr log: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "re-pinned") {
+		t.Errorf("fresh pin must not use the re-pin message; got %q", buf.String())
 	}
 }

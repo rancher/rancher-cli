@@ -1,13 +1,18 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 // TestLazyStoreResolvesBackendExactlyOnce pins the sync.Once contract: many
@@ -93,4 +98,76 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	require.NoError(t, err)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr), "construction must not create the config dir or pin")
+}
+
+// TestLoginChoreographyFreshAutoUsableKeychain drives login's store
+// sequence (NewLazyStore → RepinForLogin → SetToken) on a fresh auto
+// profile with a usable keychain: exactly one probe, keychain pin,
+// exactly one first-pin notice, token in the keychain and no plaintext
+// file — the lazy store never resolves (RepinForLogin returned the
+// concrete upgraded store).
+func TestLoginChoreographyFreshAutoUsableKeychain(t *testing.T) {
+	dir := t.TempDir()
+	keyring.MockInit()
+	resetKeyringUsableCache()
+	probes := 0
+	origUsable := keyringUsable
+	keyringUsable = func() bool { probes++; return true }
+	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
+
+	var buf bytes.Buffer
+	origOut := logrus.StandardLogger().Out
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(origOut)
+
+	lazy, err := NewLazyStore("", dir)
+	require.NoError(t, err)
+	store, err := RepinForLogin(dir, "", lazy)
+	require.NoError(t, err)
+	require.NoError(t, store.SetToken("prod", "tok"))
+
+	assert.Equal(t, 1, probes)
+	assert.Equal(t, "keychain", ReadPin(dir))
+	assert.Equal(t, 1, strings.Count(buf.String(), "pinned credential store: keychain"))
+	tok, err := keyring.Get(keyringService, "prod")
+	require.NoError(t, err)
+	assert.Equal(t, "tok", tok)
+	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "usable keychain must not produce a plaintext file")
+}
+
+// TestLoginChoreographyFreshAutoUnusableKeychain: same sequence with an
+// unusable keychain. RepinForLogin returns the lazy store unchanged;
+// SetToken resolves it — file pin, exactly one plaintext notice, no
+// first-pin-keychain notice, token in credentials.yaml. The single
+// probe count proves keyringUsableOnce's memo is shared between
+// RepinForLogin and the deferred resolution.
+func TestLoginChoreographyFreshAutoUnusableKeychain(t *testing.T) {
+	dir := t.TempDir()
+	keyring.MockInit()
+	resetKeyringUsableCache()
+	probes := 0
+	origUsable := keyringUsable
+	keyringUsable = func() bool { probes++; return false }
+	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
+
+	var buf bytes.Buffer
+	origOut := logrus.StandardLogger().Out
+	logrus.SetOutput(&buf)
+	defer logrus.SetOutput(origOut)
+
+	lazy, err := NewLazyStore("", dir)
+	require.NoError(t, err)
+	store, err := RepinForLogin(dir, "", lazy)
+	require.NoError(t, err)
+	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
+	require.NoError(t, store.SetToken("prod", "tok"))
+
+	assert.Equal(t, 1, probes)
+	assert.Equal(t, "file", ReadPin(dir))
+	assert.Equal(t, 1, strings.Count(buf.String(), "keychain unavailable; credentials will be stored in plaintext"))
+	assert.NotContains(t, buf.String(), "pinned credential store: keychain")
+	tok, err := NewFileStore(dir).GetToken("prod")
+	require.NoError(t, err)
+	assert.Equal(t, "tok", tok)
 }
