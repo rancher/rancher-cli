@@ -23,6 +23,15 @@ func WriteRawConfig(path string, data []byte) error {
 // real Windows host.
 var hardenACLHook = hardenACL
 
+// HardenTempFileACL exposes hardenACL to other internal packages whose own
+// temp files hold config/credential content but which don't go through
+// atomicWriteFile — e.g. the config-edit scratch file (newTempCopy), which
+// sits open in the editor for the duration of an edit and deserves the same
+// owner-only DACL as atomicWriteFile's real writes.
+func HardenTempFileACL(path string) error {
+	return hardenACLHook(path)
+}
+
 // atomicWriteFile writes data to path with perm atomically, refusing symlinks and enforcing perms.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)

@@ -195,6 +195,10 @@ func newTempCopy(realPath string) (string, error) {
 		cleanup()
 		return "", err
 	}
+	if err := config.HardenTempFileACL(tmpPath); err != nil {
+		cleanup()
+		return "", err
+	}
 	if _, err := tmp.Write(content); err != nil {
 		cleanup()
 		return "", err
