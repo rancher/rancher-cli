@@ -295,12 +295,14 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 // failure — a transport/connection-class error (Linux: godbus "no session
 // bus" on headless; macOS: locked/unavailable Keychain; Windows:
 // Credential Manager transport) — as opposed to a clean miss
-// (keyring.ErrNotFound, which is NOT unreachable). go-keyring exposes no
-// typed transport errors, so any non-miss failure is treated as
-// unreachable; for reads that errs toward resilience, and the write path
-// hard-fails either way.
+// (keyring.ErrNotFound, which is NOT unreachable) or an oversized-value
+// failure (keyring.ErrSetDataTooBig — wincred rejects a Set over 2560
+// bytes, macOS's security CLI over 4096 — a data-size problem, not a
+// connectivity one). go-keyring exposes no typed transport errors, so any
+// other non-miss failure is treated as unreachable; for reads that errs
+// toward resilience, and the write path hard-fails either way.
 func keyringUnreachable(err error) bool {
-	return err != nil && !errors.Is(err, keyring.ErrNotFound)
+	return err != nil && !errors.Is(err, keyring.ErrNotFound) && !errors.Is(err, keyring.ErrSetDataTooBig)
 }
 
 func (k *keyringStore) GetToken(server string) (string, error) {

@@ -513,6 +513,22 @@ func TestKeyringUnreachableDeleteDrainsFile(t *testing.T) {
 	assert.Contains(t, buf.String(), "file store only")
 }
 
+// TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized
+// token must surface go-keyring's own message plainly, not the
+// "unreachable... locked keychain? no D-Bus session?" remedy — a
+// data-size failure is not a connectivity one (XP-6 fix round, finding 6).
+func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
+	dir := t.TempDir()
+	keyring.MockInitWithError(keyring.ErrSetDataTooBig)
+	t.Cleanup(keyring.MockInit)
+
+	s := newPinnedKeyringStore(dir, true)
+	err := s.SetToken("prod", "oversized-token")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "unreachable")
+	assert.Contains(t, err.Error(), keyring.ErrSetDataTooBig.Error())
+}
+
 // TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
 // unreachable keychain must hard-fail with the env-var remedy and must
 // NOT create a plaintext credentials file — the anti-silent-downgrade
