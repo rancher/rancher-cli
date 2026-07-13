@@ -531,7 +531,15 @@ func ServerHost(raw string) string {
 // the outcome, and notices on stderr — loudly when the outcome is plaintext.
 // Unknown policies are hard errors (CS-6).
 func OpenStore(policy, dir string) (CredStore, error) {
-	p := EffectivePolicy(policy)
+	return openStoreResolved(EffectivePolicy(policy), dir)
+}
+
+// openStoreResolved is OpenStore's body operating on an ALREADY-EFFECTIVE
+// policy value: the lazy store validates and captures the effective policy
+// at construction, and deferring through this function guarantees the
+// policy opened is the policy validated even if the environment changes
+// between construction and first use.
+func openStoreResolved(p, dir string) (CredStore, error) {
 	switch p {
 	case "file":
 		return NewFileStore(dir), nil
