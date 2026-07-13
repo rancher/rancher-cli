@@ -536,9 +536,8 @@ func OpenStore(policy, dir string) (CredStore, error) {
 
 // checkPolicy returns CS-6's error for an unknown effective policy value p.
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
-// allowlist is defined exactly once — adding a new backend to openStoreResolved
-// without updating this function is a compile-time impossible, not a silent
-// divergence.
+// allowlist is defined exactly once — adding a new backend means updating
+// this one allowlist — both paths share it, so they cannot silently diverge.
 func checkPolicy(p string) error {
 	switch p {
 	case "file", "keychain", "auto":
