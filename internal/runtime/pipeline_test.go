@@ -256,6 +256,34 @@ func TestRunNormanWarningOnApply(t *testing.T) {
 	assert.Contains(t, warnings[0].(string), "no conflict detection")
 }
 
+// TestRunNormanWarningOnDryRun covers the dry-run half of the
+// ARCHITECTURE.md promise that the norman-tier/no-conflict-detection
+// warning rides BOTH the dry-run Effect and the applied Result — the
+// applied half is TestRunNormanWarningOnApply above; this half had zero
+// coverage (DR-014: deleting renderEffect's warning append kept the
+// suite green).
+func TestRunNormanWarningOnDryRun(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:   mutatingDesc(),
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", ConflictDetection: false},
+		exec: func(context.Context) (Result, error) {
+			t.Error("dry-run must not execute")
+			return Result{}, nil
+		},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true},
+		safety.Binding{Tier: safety.TierNorman, Stability: safety.Stable})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok, "effect envelope must carry warnings")
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0].(string), "no conflict detection")
+}
+
 func TestRunExecClosureResultRendered(t *testing.T) {
 	t.Parallel()
 	called := 0
