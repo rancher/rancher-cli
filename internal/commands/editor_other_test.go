@@ -33,3 +33,12 @@ func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 	assert.Contains(t, ce.Message, "EDITOR")
 	assert.Contains(t, ce.Message, config.FilePath(dir))
 }
+
+// TestDefaultEditorEmptyOffWindows pins the non-Windows contract: no
+// baked-in editor default, so resolveEditor's VISUAL/EDITOR validation
+// path (tested above) stays reachable. The "notepad" value is the
+// Windows build's concern (editor_windows.go), exercised by the Windows
+// acceptance pass — it cannot execute here.
+func TestDefaultEditorEmptyOffWindows(t *testing.T) {
+	assert.Equal(t, "", defaultEditor())
+}

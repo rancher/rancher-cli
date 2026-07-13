@@ -197,15 +197,6 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	assert.Equal(t, target, link)
 }
 
-// TestDefaultEditorEmptyOffWindows pins the non-Windows contract: no
-// baked-in editor default, so resolveEditor's VISUAL/EDITOR validation
-// path (tested above) stays reachable. The "notepad" value is the
-// Windows build's concern (editor_windows.go), exercised by the Windows
-// acceptance pass — it cannot execute here.
-func TestDefaultEditorEmptyOffWindows(t *testing.T) {
-	assert.Equal(t, "", defaultEditor())
-}
-
 const validConfigYAML = "current-context: prod\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  prod:\n    server: acme\n"
 
 func seedConfigFile(t *testing.T, dir, content string) {
