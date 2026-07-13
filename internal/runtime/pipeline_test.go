@@ -265,12 +265,9 @@ func TestRunNormanWarningOnApply(t *testing.T) {
 func TestRunNormanWarningOnDryRun(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
-		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", ConflictDetection: false},
-		exec: func(context.Context) (Result, error) {
-			t.Error("dry-run must not execute")
-			return Result{}, nil
-		},
+		d:    mutatingDesc(),
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", ConflictDetection: false},
+		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
 	ce := Run(context.Background(), cmd, mapInput{},
