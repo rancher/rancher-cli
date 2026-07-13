@@ -534,18 +534,38 @@ func OpenStore(policy, dir string) (CredStore, error) {
 	return openStoreResolved(EffectivePolicy(policy), dir)
 }
 
+// checkPolicy returns CS-6's error for an unknown effective policy value p.
+// Both openStoreResolved and NewLazyStore call this so the valid-policy
+// allowlist is defined exactly once — adding a new backend to openStoreResolved
+// without updating this function is a compile-time impossible, not a silent
+// divergence.
+func checkPolicy(p string) error {
+	switch p {
+	case "file", "keychain", "auto":
+		return nil
+	default:
+		// Format the EFFECTIVE value p, not the cfg argument — when an invalid
+		// RANCHER_CLI_CREDENTIAL_STORE overrides an empty/valid config value, the
+		// error must name what was actually rejected.
+		return fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
+	}
+}
+
 // openStoreResolved is OpenStore's body operating on an ALREADY-EFFECTIVE
 // policy value: the lazy store validates and captures the effective policy
 // at construction, and deferring through this function guarantees the
 // policy opened is the policy validated even if the environment changes
 // between construction and first use.
 func openStoreResolved(p, dir string) (CredStore, error) {
+	if err := checkPolicy(p); err != nil {
+		return nil, err
+	}
 	switch p {
 	case "file":
 		return NewFileStore(dir), nil
 	case "keychain":
 		return newPinnedKeyringStore(dir, false), nil
-	case "auto":
+	default: // "auto"
 		switch ReadPin(dir) {
 		case "keychain":
 			return newPinnedKeyringStore(dir, true), nil
@@ -564,11 +584,6 @@ func openStoreResolved(p, dir string) (CredStore, error) {
 		}
 		logrus.Warnf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
 		return NewFileStore(dir), nil
-	default:
-		// Format the EFFECTIVE value p, not the cfg argument — when an invalid
-		// RANCHER_CLI_CREDENTIAL_STORE overrides an empty/valid config value, the
-		// error must name what was actually rejected.
-		return nil, fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
 	}
 }
 

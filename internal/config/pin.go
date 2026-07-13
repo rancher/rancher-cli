@@ -78,10 +78,12 @@ func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, error) 
 	if pinned != "" {
 		logrus.Warnf("credential store re-pinned: %s → keychain", pinned)
 	} else {
-		// First pin: under lazy store resolution login reaches this point
-		// before anything else resolves the store, so this is now the one
-		// place the first-pin notice can come from (it used to be eager
-		// OpenStore's, emitted before login ran).
+		// First pin on the login path: login reaches here before any
+		// credential call resolves the lazy store, so this is where the
+		// notice fires for login. Non-login commands that do touch
+		// credentials get the notice from openStoreResolved when their
+		// lazy store first resolves. (Eager OpenStore used to emit it
+		// before any command ran.)
 		logrus.Warnf("pinned credential store: keychain")
 	}
 	return newPinnedKeyringStore(dir, true), nil

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -27,10 +26,8 @@ type lazyStore struct {
 // the environment changes mid-process (spec R1-4).
 func NewLazyStore(policy, dir string) (CredStore, error) {
 	p := EffectivePolicy(policy)
-	switch p {
-	case "file", "keychain", "auto":
-	default:
-		return nil, fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
+	if err := checkPolicy(p); err != nil {
+		return nil, err
 	}
 	return &lazyStore{resolve: func() (CredStore, error) { return openStoreResolved(p, dir) }}, nil
 }
