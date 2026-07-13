@@ -206,8 +206,13 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// Load before OpenStore so the declared policy drives store selection.
-	store, err := config.OpenStore(cfg.CredentialStore, dir)
+	// Load first so the declared policy drives store selection. The store
+	// is LAZY: policy-name validation happens here (fail fast on every
+	// resolveDeps-backed command), but the auto probe / credstore-pin
+	// write / config-dir creation defer to the first credential call — an
+	// invocation that never touches credentials leaves no store-init
+	// side effects (spec LS-1; Windows acceptance FAIL 2).
+	store, err := config.NewLazyStore(cfg.CredentialStore, dir)
 	if err != nil {
 		return "", nil, err
 	}

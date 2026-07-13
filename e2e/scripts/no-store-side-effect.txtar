@@ -1,0 +1,11 @@
+# LS-1 regression (Windows acceptance FAIL 2): an informational command must
+# not probe the keychain, write credstore-pin, or create the config dir.
+# Clears Setup's RANCHER_CLI_CREDENTIAL_STORE=file default so the auto path
+# is what's under test — under the lazy store it never resolves, so this is
+# safe even on darwin (no probe ever runs; contrast credstore-pin.txtar's
+# skip, which guards a test that DOES resolve the store).
+env RANCHER_CLI_CREDENTIAL_STORE=
+
+exec rancher config path
+! exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
+! exists $RANCHER_CLI_CONFIG_DIR

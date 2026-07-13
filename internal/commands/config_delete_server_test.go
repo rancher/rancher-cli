@@ -150,6 +150,24 @@ func TestConfigDeleteServerDrainsExecCredentialCache(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrNoToken)
 }
 
+// TestConfigDeleteServerWritesNoCredstorePin is SUPPLEMENTARY coverage of
+// the drain's own store-independence (spec R2-1): it bypasses resolveDeps
+// by construction, so it passes before AND after the adapter swap — the
+// real resolveDeps regression lives in surface/cli's through-the-root
+// tests (Task 3 Step 0). This one pins that the command itself never
+// resolves the injected store.
+func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
+	t.Setenv(config.EnvCredentialStore, "")
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme"}, map[string]string{"acme": "acme"})
+
+	_, err := NewConfigDeleteServer(dir).(*configDeleteServerCmd).Execute(
+		context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(config.PinPath(dir))
+	assert.True(t, os.IsNotExist(statErr), "drain must not write a credstore pin")
+}
+
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
 // wiring: sort order and the missing/corrupt-config degrade-to-empty
 // behavior are serverNames-level facts, pinned once in names_test.go
