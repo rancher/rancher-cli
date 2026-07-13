@@ -117,7 +117,10 @@ func packagesOnDisk(t *testing.T) map[string]bool {
 				return err
 			}
 			if hasGoFiles(t, path) {
-				out[path] = true
+				// filepath.WalkDir yields OS-native separators (backslash on
+				// Windows), but ARCHITECTURE.md's mermaid edges and node
+				// names always use "/", so normalize here at the source.
+				out[filepath.ToSlash(path)] = true
 			}
 			return nil
 		}); err != nil {
