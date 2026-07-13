@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -71,5 +72,28 @@ func TestAtomicWriteFile(t *testing.T) {
 		info, err := os.Stat(path)
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	})
+
+	// TestAtomicWriteFileHardenACLFailureLeavesNoTempFile exercises the
+	// hardenACL failure path via hardenACLHook: the temp file must be
+	// closed before it is removed, or the removal silently fails on
+	// Windows (no FILE_SHARE_DELETE by default) and leaks the temp file.
+	// Close-before-remove is correct on every platform; this test just
+	// makes the ordering observable without a real Windows host.
+	t.Run("hardenACL failure leaves no temp file behind", func(t *testing.T) {
+		orig := hardenACLHook
+		hardenACLHook = func(string) error { return fmt.Errorf("boom") }
+		t.Cleanup(func() { hardenACLHook = orig })
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+
+		err := atomicWriteFile(path, []byte("new"), 0600)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "boom")
+
+		entries, rerr := os.ReadDir(dir)
+		require.NoError(t, rerr)
+		assert.Empty(t, entries, "no stray temp file must remain after a hardenACL failure")
 	})
 }

@@ -18,6 +18,11 @@ func WriteRawConfig(path string, data []byte) error {
 	return atomicWriteFile(path, data, 0600)
 }
 
+// hardenACLHook is hardenACL behind a package var, so a test can inject a
+// failure to exercise atomicWriteFile's error-cleanup ordering without a
+// real Windows host.
+var hardenACLHook = hardenACL
+
 // atomicWriteFile writes data to path with perm atomically, refusing symlinks and enforcing perms.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
@@ -35,39 +40,41 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
+	// closeAndRemove closes before removing — Windows can't remove an open
+	// file (no FILE_SHARE_DELETE by default), so Remove-before-Close
+	// silently leaks the temp file there.
+	closeAndRemove := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}
 
 	if err := tmp.Chmod(perm); err != nil {
-		cleanup()
-		_ = tmp.Close()
+		closeAndRemove()
 		return err
 	}
 
-	if err := hardenACL(tmpPath); err != nil {
-		cleanup()
-		_ = tmp.Close()
+	if err := hardenACLHook(tmpPath); err != nil {
+		closeAndRemove()
 		return err
 	}
 
 	if _, err := tmp.Write(data); err != nil {
-		cleanup()
-		_ = tmp.Close()
+		closeAndRemove()
 		return err
 	}
 
 	if err := tmp.Sync(); err != nil {
-		cleanup()
-		_ = tmp.Close()
+		closeAndRemove()
 		return err
 	}
 
 	if err := tmp.Close(); err != nil {
-		cleanup()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		cleanup()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 
