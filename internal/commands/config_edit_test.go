@@ -51,6 +51,10 @@ func TestConfigEditNoTTYIsValidationNamingPath(t *testing.T) {
 	assert.Contains(t, ce.Message, "TTY")
 }
 
+// This pins non-Windows behavior only. On Windows, defaultEditor()
+// intentionally makes this validation path unreachable (XP-2's contract:
+// an always-available notepad fallback) — see
+// TestResolveEditorFallsBackToNotepadOnWindows in editor_windows_test.go.
 func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")

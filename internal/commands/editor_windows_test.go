@@ -1,0 +1,18 @@
+//go:build windows
+
+package commands
+
+import "testing"
+
+// TestResolveEditorFallsBackToNotepadOnWindows pins the Windows-only
+// positive contract that makes the non-Windows validation-error test
+// (config_edit_test.go) inapplicable there: with both VISUAL and EDITOR
+// unset, resolveEditor must resolve to notepad, not fail.
+func TestResolveEditorFallsBackToNotepadOnWindows(t *testing.T) {
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "")
+	bin, args, ok := resolveEditor()
+	if !ok || bin != "notepad" || len(args) != 0 {
+		t.Fatalf("resolveEditor() = %q, %v, %v; want \"notepad\", [], true", bin, args, ok)
+	}
+}
