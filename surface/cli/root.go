@@ -308,6 +308,13 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// composing it again here would collide in ComposeResolvers below.
 	delOverrides := runtime.MapResolver{}
 	for key, ov := range kindOverrideTable {
+		// Skip get/patch-only entries before the lookup, same as before this
+		// predicate was shared: only a del-bearing entry can possibly need a
+		// manual binding, so an invalid key on a get/patch-only override
+		// (nothing to do with delete bindings) must not fail BuildRoot here.
+		if ov.del == nil {
+			continue
+		}
 		row, ok := kinds.Lookup(key)
 		if !ok {
 			return nil, fmt.Errorf("kind table: %q kind not found", key)
