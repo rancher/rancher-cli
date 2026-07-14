@@ -92,7 +92,7 @@ func buildEntries() []entry {
 			}
 			return resources.NewPatch(k, d.clients, d.src)
 		}})
-		if k.Deletable || o.del != nil {
+		if k.Deletable || delOverrideOnNonDeletable(k, o) {
 			entries = append(entries, entry{group: "delete", make: func(d runDeps) runtime.Command {
 				if o.del != nil {
 					return o.del(k, d)
@@ -114,6 +114,18 @@ type kindOverride struct {
 	get   func(k kinds.Kind, d runDeps) runtime.Command
 	patch func(k kinds.Kind, d runDeps) runtime.Command
 	del   func(k kinds.Kind, d runDeps) runtime.Command
+}
+
+// delOverrideOnNonDeletable reports whether ov installs a del override for a
+// kind whose own row stays Deletable: false — the one combination both
+// buildEntries (does a delete command get generated at all) and BuildRoot's
+// delOverrides loop (does an extra resolver binding need composing, since
+// kinds.Bindings() never emits "delete <name>" for a non-Deletable row)
+// need to agree on. Single source over the two underlying facts (k.Deletable,
+// ov.del != nil) so an edit to one call site can't silently desync from the
+// other.
+func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
+	return ov.del != nil && !k.Deletable
 }
 
 // kindOverrideTable is the override registry, keyed by kinds.Kind.Key. A
@@ -296,14 +308,11 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// composing it again here would collide in ComposeResolvers below.
 	delOverrides := runtime.MapResolver{}
 	for key, ov := range kindOverrideTable {
-		if ov.del == nil {
-			continue
-		}
 		row, ok := kinds.Lookup(key)
 		if !ok {
 			return nil, fmt.Errorf("kind table: %q kind not found", key)
 		}
-		if row.Deletable {
+		if !delOverrideOnNonDeletable(row, ov) {
 			continue
 		}
 		delOverrides["delete "+row.Name] = row.Binding
