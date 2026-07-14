@@ -290,44 +290,69 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// Each distro's release fetch and default-version setting read, plus
 	// the shared supported-range setting read, depend only on the
 	// already-resolved root/client above, never on each other, so they run
-	// concurrently via errgroup rather than paying 5 sequential round trips
-	// (same idiom as internal/engine/inspect/images.go's --all-clusters
-	// fan-out and internal/commands/authcheck.go's 3 concurrent probes).
-	// Every goroutine below writes only to its own distroSpecs[i] slot (or,
-	// for rangeRaw, its own dedicated variable), so there is no data race
-	// between them; the ASSEMBLY into rows/warnings happens only after
-	// g.Wait() joins all five, iterating distroSpecs in its fixed order —
-	// so output stays deterministic regardless of which goroutine happens
-	// to finish first.
+	// concurrently via a PLAIN errgroup.Group — never errgroup.WithContext
+	// (review finding 2): WithContext's shared derived context cancels
+	// every sibling goroutine's in-flight request the instant ANY of them
+	// returns a non-nil error, which would turn a genuine hard failure on
+	// one distro into a raced, possibly "context canceled"-wrapped error on
+	// the other. Every goroutine below runs against the SAME uncanceled ctx
+	// and writes only to its own distroSpecs[i] slot (releaseErrs for a
+	// hard release-fetch failure, warningPerDistro for a 404-degrade,
+	// versions/defaults for a success; rangeRaw is its own dedicated
+	// variable), so there is no data race between them and g.Wait()'s own
+	// error is always nil. The precedence rules below apply only AFTER
+	// every goroutine has joined, reading the per-distro slots in
+	// distroSpecs' fixed order — so which error (if any) surfaces never
+	// depends on which goroutine happened to finish first.
 	versions := make([][]string, len(distroSpecs))
 	warningPerDistro := make([]string, len(distroSpecs))
+	releaseErrs := make([]error, len(distroSpecs))
 	defaults := make([]string, len(distroSpecs))
 	var rangeRaw string
 
-	g, gctx := errgroup.WithContext(ctx)
+	var g errgroup.Group
 	for i, d := range distroSpecs {
+		i, d := i, d
 		g.Go(func() error {
-			vs, err := fetchReleaseVersions(gctx, root, d.releasePath)
+			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {
-				if !isNotFoundError(err) {
-					return err
+				if isNotFoundError(err) {
+					warningPerDistro[i] = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
+					return nil
 				}
-				warningPerDistro[i] = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
-				vs = nil
+				releaseErrs[i] = err
+				return nil
 			}
 			versions[i] = vs
 			return nil
 		})
 		g.Go(func() error {
-			defaults[i] = getSettingValue(gctx, client, d.defaultSetting)
+			defaults[i] = getSettingValue(ctx, client, d.defaultSetting)
 			return nil
 		})
 	}
 	g.Go(func() error {
-		rangeRaw = getSettingValue(gctx, client, supportedRangeSetting)
+		rangeRaw = getSettingValue(ctx, client, supportedRangeSetting)
 		return nil
 	})
-	if err := g.Wait(); err != nil {
+	_ = g.Wait() // every goroutine above self-degrades into its own slot; the group's own error is always nil.
+
+	// A hard (non-404) release-fetch error surfaces deterministically: the
+	// first one in distroSpecs' fixed order (rke2 before k3s) wins —
+	// matching the pre-parallelization sequential behavior, where rke2's
+	// error was always seen first because k3s was never even attempted in
+	// that failure path. A hard failure on the OTHER distro too is never
+	// silently dropped: it is folded into the same error's message.
+	for i := range distroSpecs {
+		if releaseErrs[i] == nil {
+			continue
+		}
+		err := releaseErrs[i]
+		for j := i + 1; j < len(distroSpecs); j++ {
+			if releaseErrs[j] != nil {
+				err = fmt.Errorf("%w (%s release fetch also failed: %v)", err, distroSpecs[j].distro, releaseErrs[j])
+			}
+		}
 		return nil, "", nil, err
 	}
 

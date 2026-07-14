@@ -249,6 +249,36 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 	})
 }
 
+// TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically
+// pins review finding 2: when BOTH distros' release fetch hard-fails at
+// close to the same time (not a 404-degrade — a genuine 500), the returned
+// error must be rke2's (distroSpecs' fixed first entry), deterministically,
+// never whichever goroutine happened to race to completion first, and never
+// wrapped in "context canceled" by a sibling's cancellation (the bug an
+// errgroup.WithContext-based fan-out introduced). The k3s failure must still
+// be visible somewhere rather than silently dropped.
+func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := settingsClient(nil)
+	factory := fakeFactory{c: client}
+
+	_, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "context canceled", "a sibling's hard failure must never cancel this distro's in-flight request")
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce, "the rke2 error must still be reachable through any wrapping")
+	assert.Contains(t, ce.Message, rke2ReleasePath, "the surfaced error must be rke2's — the deterministic winner, never whichever raced first")
+	assert.NotContains(t, ce.Message, k3sReleasePath, "the unwrapped error must be rke2's alone, not a merged/generic one")
+
+	assert.Contains(t, err.Error(), k3sReleasePath, "the k3s failure must be visible somewhere, not silently dropped")
+}
+
 // TestNewGetKubernetesVersionsDescribe pins the Descriptor shape: a
 // bespoke read-only entry under the "get" verb group, network+auth true.
 func TestNewGetKubernetesVersionsDescribe(t *testing.T) {
