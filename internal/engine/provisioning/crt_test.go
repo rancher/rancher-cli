@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -401,31 +402,31 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 	assert.Equal(t, "", eff.Target)
 }
 
-// TestNewGetCRTDescribeMirrorsGenericGet pins the schema-parity contract:
-// the override's Descriptor must be indistinguishable from what
-// resources.NewGet(k, ...) would have generated for this row, since only
-// execution is overridden (golden manifest must stay unchanged).
+// TestNewGetCRTDescribeMirrorsGenericGet pins the schema-parity contract
+// (finding 6): the override's Descriptor must be STRUCT-EQUAL to what the
+// LIVE resources.NewGet(k, ...) generates for this row — not to a
+// hand-duplicated literal that can silently drift out of sync with the
+// generator (resources/get.go's getFlags) while still passing. Mirrors
+// deletecluster_test.go's TestDeleteProvisioningClusterDescribeMirrorsGeneric
+// pattern. Describe() never touches its clients argument, so nil is safe
+// here (verified by reading getCmd.Describe()/patchCmd.Describe()).
 func TestNewGetCRTDescribeMirrorsGenericGet(t *testing.T) {
 	t.Parallel()
 	k := crtKind(t)
-	d := NewGetCRT(k, fakeRootFactory{}).Describe()
-	assert.Equal(t, "get clusterregistrationtoken", d.Name)
-	assert.ElementsMatch(t, []string{"clusterregistrationtokens", "crt"}, d.Aliases)
-	assert.Equal(t, runtime.ReadOnly, d.CommandType)
-	assert.False(t, d.ProjectScope)
-	require.Len(t, d.Flags, 4)
-	assert.Equal(t, "namespace", d.Flags[0].Name)
-	assert.False(t, d.Flags[0].Required)
+	generic := resources.NewGet(k, nil).Describe()
+	override := NewGetCRT(k, nil).Describe()
+	assert.Equal(t, generic, override)
+	assert.Equal(t, "get clusterregistrationtoken", override.Name)
 }
 
+// TestNewRefuseCRTPatchDescribeMirrorsGenericPatch is finding 6's
+// struct-equality parity test for the patch override, against the LIVE
+// resources.NewPatch(k, ...) generator.
 func TestNewRefuseCRTPatchDescribeMirrorsGenericPatch(t *testing.T) {
 	t.Parallel()
 	k := crtKind(t)
-	d := NewRefuseCRTPatch(k).Describe()
-	assert.Equal(t, "patch clusterregistrationtoken", d.Name)
-	assert.Equal(t, runtime.Mutating, d.CommandType)
-	assert.Equal(t, "false", d.Destructive)
-	require.Len(t, d.Flags, 6)
-	assert.Equal(t, "namespace", d.Flags[0].Name)
-	assert.True(t, d.Flags[0].Required)
+	generic := resources.NewPatch(k, nil, nil).Describe()
+	override := NewRefuseCRTPatch(k).Describe()
+	assert.Equal(t, generic, override)
+	assert.Equal(t, "patch clusterregistrationtoken", override.Name)
 }

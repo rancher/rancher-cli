@@ -173,37 +173,6 @@ func (r crtRows) Rows() [][]string {
 	return out
 }
 
-// crtFlags is exactly getFlags(k) would generate for the clusterregistrationtoken
-// row (NSPlain, Management scope: --namespace, never --cluster) plus the
-// wait/for/timeout trio every generic get carries. Reproduced literally
-// rather than calling into package resources (getFlags is unexported)
-// because the override must keep the row's schema output identical to what
-// resources.NewGet would have generated — only execution changes.
-func crtGetFlags() []runtime.ArgSpec {
-	return []runtime.ArgSpec{
-		{Name: resources.FlagNamespace, Type: "string"},
-		{Name: "wait", Type: "bool"},
-		{Name: "for", Type: "string"},
-		{Name: "timeout", Type: "string"},
-	}
-}
-
-// crtPatchFlags is exactly patchFlags(k) would generate for this row: the
-// get flag set with --namespace marked Required (patch is always a named
-// op — resources.deleteFlags' rule), plus --patch/-f.
-func crtPatchFlags() []runtime.ArgSpec {
-	flags := crtGetFlags()
-	for i := range flags {
-		if flags[i].Name == resources.FlagNamespace {
-			flags[i].Required = true
-		}
-	}
-	return append(flags,
-		runtime.ArgSpec{Name: "patch", Type: "string"},
-		runtime.ArgSpec{Name: "filename", Type: "string", Aliases: []string{"f"}},
-	)
-}
-
 type getCRTCmd struct {
 	k     kinds.Kind
 	roots engine.RootClientFactory
@@ -219,19 +188,14 @@ func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
 	return &getCRTCmd{k: k, roots: roots}
 }
 
+// Describe derives the row's Descriptor from the LIVE generic
+// resources.NewGet(k, ...) rather than hand-duplicating its flag-generation
+// logic (finding 6): a future change to getFlags automatically propagates
+// here too, instead of requiring this override to be updated in lockstep by
+// discipline alone. resources.NewGet's Describe() is a pure function of k —
+// it never touches its clients argument — so nil is safe to pass here.
 func (c *getCRTCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{
-		Name:         "get " + c.k.Name,
-		Aliases:      c.k.Aliases,
-		Usage:        "List " + c.k.Name + "s or show one",
-		CommandType:  runtime.ReadOnly,
-		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:        crtGetFlags(),
-		Toolset:      "core",
-		Network:      true,
-		Auth:         true,
-		ProjectScope: kinds.ProjectScopable(c.k),
-	}
+	return resources.NewGet(c.k, nil).Describe()
 }
 
 func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -342,24 +306,13 @@ func NewRefuseCRTPatch(k kinds.Kind) runtime.Command {
 	return &refuseCRTPatchCmd{k: k}
 }
 
+// Describe derives the row's Descriptor from the LIVE generic
+// resources.NewPatch(k, ...) rather than hand-duplicating its flag-
+// generation logic (finding 6), for the same reason as getCRTCmd.Describe
+// above. resources.NewPatch's Describe() is a pure function of k — it never
+// touches its clients/src arguments — so nil is safe to pass for both here.
 func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
-	destructive := "false"
-	if c.k.Sensitive {
-		destructive = "true"
-	}
-	return runtime.Descriptor{
-		Name:         "patch " + c.k.Name,
-		Aliases:      c.k.Aliases,
-		Usage:        "Patch a " + c.k.Name + " with an RFC 6902 JSON patch",
-		CommandType:  runtime.Mutating,
-		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:        crtPatchFlags(),
-		Destructive:  destructive,
-		Toolset:      "core",
-		Network:      true,
-		Auth:         true,
-		ProjectScope: kinds.ProjectScopable(c.k),
-	}
+	return resources.NewPatch(c.k, nil, nil).Describe()
 }
 
 func (c *refuseCRTPatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
