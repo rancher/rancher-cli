@@ -1,0 +1,40 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Task 8 (spec D-5): patching a provisioningcluster's machine pool previews
+# the etcd-quorum impact as an advisory warning, never a gate. Seed a
+# node-driver-shaped cluster (full manifest, not `create cluster` — spec
+# D-8 wants pool-scaling coverage through the generic manifest path too)
+# with a 3-member etcd pool; provisioningcluster is Sensitive, so --apply
+# alone is refused.
+exec rancher create resource -f scale-cluster.yaml --apply --yes
+
+# scaling the etcd pool from 3 to 2 crosses the old quorum majority AND
+# lands on an even count — both notes fire, and neither gates the dry run.
+exec rancher patch provisioning-cluster e2e-scale --patch '[{"op":"replace","path":"/spec/rkeConfig/machinePools/0/quantity","value":2}]' --dry-run -o json
+cp stdout scale-eff.json
+jsonquery scale-eff.json warnings.0 'etcd member count changes from 3 to 2; even etcd counts do not improve fault tolerance; removing this many etcd members loses quorum majority'
+stdout quorum
+
+# a patch that doesn't touch the etcd pool carries no quorum warning.
+exec rancher patch provisioning-cluster e2e-scale --patch '[{"op":"replace","path":"/spec/kubernetesVersion","value":"v1.30.6+rke2r1"}]' --dry-run -o json
+jsonquery stdout warnings ''
+
+-- scale-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-scale
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig:
+    machinePools:
+    - name: pool1
+      etcdRole: true
+      controlPlaneRole: true
+      workerRole: true
+      quantity: 3
+      machineConfigRef:
+        kind: Amazonec2Config
+        name: mycfg

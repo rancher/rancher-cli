@@ -17,9 +17,11 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // entry is one command's declarative registration: its verb group and a single
@@ -125,6 +127,18 @@ var kindOverrideTable = map[string]kindOverride{
 	"clusterregistrationtoken": {
 		get:   func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
 		patch: func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
+	},
+	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
+	// diff/redaction/RV-precondition behavior — only an advisory etcd-quorum
+	// preview is added, via the EffectEnricher seam, never a gate.
+	"provisioningcluster": {
+		patch: func(k kinds.Kind, d runDeps) runtime.Command {
+			return resources.NewPatch(k, d.clients, d.src, func(orig, patched *unstructured.Unstructured, eff *safety.Effect) {
+				if delta, ok := provisioning.ComputeQuorumDelta(orig, patched); ok {
+					eff.Warnings = append(eff.Warnings, delta.Note)
+				}
+			})
+		},
 	},
 }
 

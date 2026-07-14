@@ -273,6 +273,58 @@ func TestPatchClusterResolvesDisplayName(t *testing.T) {
 	})
 }
 
+// TestPatchEffectEnricherObservesObjectsAndWarns is Task 8's hook coverage:
+// an enricher passed to NewPatch is invoked with the exact orig/patched
+// objects Plan computed, and a warning it appends survives into the
+// returned Effect. This is the seam the provisioningcluster quorum-preview
+// override (surface/cli/root.go) is built on.
+func TestPatchEffectEnricherObservesObjectsAndWarns(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+
+	var gotOrig, gotPatched *unstructured.Unstructured
+	enrich := func(o, p *unstructured.Unstructured, eff *safety.Effect) {
+		gotOrig, gotPatched = o, p
+		eff.Warnings = append(eff.Warnings, "marker-warning")
+	}
+	cmd := NewPatch(mustKind(t, "deployment"), fac, nil, enrich)
+
+	eff, _, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+	}})
+	require.NoError(t, err)
+	assert.Contains(t, eff.Warnings, "marker-warning")
+
+	require.NotNil(t, gotOrig, "enricher must receive the original object")
+	require.NotNil(t, gotPatched, "enricher must receive the patched object")
+	origReplicas, _, _ := unstructured.NestedInt64(gotOrig.Object, "spec", "replicas")
+	patchedReplicas, _, _ := unstructured.NestedInt64(gotPatched.Object, "spec", "replicas")
+	assert.EqualValues(t, 1, origReplicas, "enricher's orig must be the fetched object, unmodified")
+	assert.EqualValues(t, 3, patchedReplicas, "enricher's patched must reflect the applied patch")
+}
+
+// TestPatchNoEnricherLeavesWarningsUnset is the regression proof the
+// variadic enrich parameter doesn't alter default behavior: every existing
+// call site passes zero enrichers, and the Effect it gets back must carry
+// no warnings from this mechanism.
+func TestPatchNoEnricherLeavesWarningsUnset(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "deployment"), fac, nil)
+
+	eff, _, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+	}})
+	require.NoError(t, err)
+	assert.Empty(t, eff.Warnings)
+}
+
 func TestPatchExactlyOneInputSource(t *testing.T) {
 	t.Parallel()
 	fac := &recFactory{client: &patchClient{obj: objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c1"}}`)}}

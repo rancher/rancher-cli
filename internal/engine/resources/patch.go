@@ -18,15 +18,27 @@ type patchCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
 	src     engine.FileSource
+	enrich  []EffectEnricher
 }
+
+// EffectEnricher lets a per-kind override append advisory content to a
+// patch's Effect after the server dry-run built it (e.g. the
+// provisioningcluster override's etcd-quorum preview, Task 8). It receives
+// the original and patched objects Plan already computed and a pointer to
+// the Effect about to be returned; it never gates — Action/Destructive/
+// Stability remain the only gating fields — it only informs.
+type EffectEnricher func(orig, patched *unstructured.Unstructured, eff *safety.Effect)
 
 // NewPatch builds `patch <kind> <name>` (mutating) from a Kind. It applies an
 // RFC 6902 JSON patch locally against the fetched object, diffs the original
 // and patched objects field-by-field, and updates with the fetched
 // resourceVersion as a precondition. Destructiveness is per-kind (Sensitive),
 // not a constant — patching a setting or identity kind requires --yes.
-func NewPatch(k kinds.Kind, clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
-	return &patchCmd{k: k, clients: clients, src: src}
+// enrich is optional (variadic keeps every existing call site compiling
+// unchanged); each enricher runs, in order, after PlanUpdate builds the
+// Effect and before Plan returns it.
+func NewPatch(k kinds.Kind, clients engine.ClusterClientFactory, src engine.FileSource, enrich ...EffectEnricher) runtime.Command {
+	return &patchCmd{k: k, clients: clients, src: src, enrich: enrich}
 }
 
 func (c patchCmd) Describe() runtime.Descriptor {
@@ -121,7 +133,14 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
 	// per-kind destructiveness.
-	return engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, resultKind(c.k), diff, c.k.Sensitive)
+	eff, exec, err := engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, resultKind(c.k), diff, c.k.Sensitive)
+	if err != nil {
+		return eff, exec, err
+	}
+	for _, e := range c.enrich {
+		e(orig, patched, &eff)
+	}
+	return eff, exec, nil
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,-f} rule and decodes the
