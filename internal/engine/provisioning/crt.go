@@ -60,20 +60,28 @@ type crtView struct {
 	} `json:"status"`
 }
 
-// guardedFields returns the seven command/manifest fields the Steve
-// formatter's ReplaceAll protects, paired with their JSON field name for the
-// guard's error message. Token and ExpiresAt are deliberately excluded:
-// they are not template strings the formatter substitutes into — Token IS
-// the substitution source.
-func (v crtView) guardedFields() []struct{ name, val string } {
-	return []struct{ name, val string }{
-		{"command", v.Status.Command},
-		{"insecureCommand", v.Status.InsecureCommand},
-		{"nodeCommand", v.Status.NodeCommand},
-		{"insecureNodeCommand", v.Status.InsecureNodeCommand},
-		{"windowsNodeCommand", v.Status.WindowsNodeCommand},
-		{"insecureWindowsNodeCommand", v.Status.InsecureWindowsNodeCommand},
-		{"manifestUrl", v.Status.ManifestURL},
+// guardedFieldPtrs returns pointers into the seven command/manifest fields
+// the Steve formatter's ReplaceAll protects, paired with their JSON field
+// name — the single definition both guardPlaceholders (named-get: reject)
+// and sanitizeCRTView (list: blank+warn, finding 3) enumerate from, so the
+// guarded-field set can never drift between the two call shapes. Token and
+// ExpiresAt are deliberately excluded: they are not template strings the
+// formatter substitutes into — Token IS the substitution source.
+func (v *crtView) guardedFieldPtrs() []struct {
+	name string
+	val  *string
+} {
+	return []struct {
+		name string
+		val  *string
+	}{
+		{"command", &v.Status.Command},
+		{"insecureCommand", &v.Status.InsecureCommand},
+		{"nodeCommand", &v.Status.NodeCommand},
+		{"insecureNodeCommand", &v.Status.InsecureNodeCommand},
+		{"windowsNodeCommand", &v.Status.WindowsNodeCommand},
+		{"insecureWindowsNodeCommand", &v.Status.InsecureWindowsNodeCommand},
+		{"manifestUrl", &v.Status.ManifestURL},
 	}
 }
 
@@ -81,15 +89,38 @@ func (v crtView) guardedFields() []struct{ name, val string } {
 // "{token}" placeholder in any of the seven protected fields — never pass a
 // placeholder through as data (spec D-4). path is included for a useful
 // error message; it is the Steve path the object was read from.
+//
+// This is the SINGLE-OBJECT (named get) contract only: one bad object IS
+// the one thing the caller asked for, so failing loud is correct. The list
+// path does not call this — see sanitizeCRTView for its degrade-not-abort
+// contract (finding 3).
 func guardPlaceholders(path string, v crtView) error {
-	for _, f := range v.guardedFields() {
-		if strings.Contains(f.val, placeholderToken) {
+	for _, f := range v.guardedFieldPtrs() {
+		if strings.Contains(*f.val, placeholderToken) {
 			return clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("clusterregistrationtoken at %s: field %q still carries the unformatted %s placeholder — the server never spliced in the real token",
 					path, f.name, placeholderToken))
 		}
 	}
 	return nil
+}
+
+// sanitizeCRTView blanks any of v's seven guarded fields that still carry
+// the unspliced "{token}" placeholder, returning the JSON field names that
+// were blanked (nil when v was clean). This is the LIST path's contract
+// (finding 3): a single bad row must never abort the whole `get
+// clusterregistrationtoken` list — the placeholder ban still holds (a
+// placeholder never reaches output as data), but the mechanism is "omit the
+// broken field, warn, keep going" rather than "abort everything".
+func sanitizeCRTView(v *crtView) []string {
+	var blanked []string
+	for _, f := range v.guardedFieldPtrs() {
+		if strings.Contains(*f.val, placeholderToken) {
+			*f.val = ""
+			blanked = append(blanked, f.name)
+		}
+	}
+	return blanked
 }
 
 // crtRow is one `get clusterregistrationtoken` row: every field crtView
@@ -250,16 +281,23 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return runtime.Result{}, err
 	}
 	rows := make(crtRows, 0, len(views))
-	for _, v := range views {
+	var warnings []string
+	for i := range views {
+		v := &views[i]
 		if ns != "" && v.Metadata.Namespace != ns {
 			continue
 		}
-		if err := guardPlaceholders(crtCollectionPath, v); err != nil {
-			return runtime.Result{}, err
+		// Finding 3: a bad row degrades in place — blank the offending
+		// field(s) and warn — rather than aborting the entire list, which
+		// would hide every healthy row behind one unspliced token.
+		for _, field := range sanitizeCRTView(v) {
+			warnings = append(warnings, fmt.Sprintf(
+				"registration token %s/%s: %s not formatted by the server; omitted",
+				v.Metadata.Namespace, v.Metadata.Name, field))
 		}
-		rows = append(rows, crtRowFrom(v))
+		rows = append(rows, crtRowFrom(*v))
 	}
-	return runtime.Result{Kind: "ClusterRegistrationTokenList", Data: rows}, nil
+	return runtime.Result{Kind: "ClusterRegistrationTokenList", Data: rows, Warnings: warnings}, nil
 }
 
 // decodeCRTObject decodes a single Steve object body. A malformed body

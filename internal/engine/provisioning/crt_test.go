@@ -299,6 +299,89 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	assert.False(t, strings.Contains(out, "c-bbb"), "the other namespace must never leak into filtered output")
 }
 
+// TestNewGetCRTListDegradesBadRowInsteadOfAborting is finding 3's fix: a
+// list containing one row with an unspliced "{token}" placeholder must NOT
+// abort the whole result (the pre-fix behavior — one bad row hid every
+// healthy row). Instead the bad row's offending field is blanked, a warning
+// names the row and field, and the two healthy rows survive untouched. The
+// placeholder itself must still never reach output as data anywhere in the
+// marshaled result — the fix changes the mechanism (abort -> blank+warn),
+// never the placeholder ban itself.
+func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
+	t.Parallel()
+	badStatus := splicedStatus("tok-bad")
+	badStatus["command"] = placeholderToken // this one field never got spliced
+	objs := []map[string]any{
+		crtObject("c-aaa", "good-1", splicedStatus("tok-aaa")),
+		crtObject("c-bbb", "bad-1", badStatus),
+		crtObject("c-ccc", "good-2", splicedStatus("tok-ccc")),
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSONFixture(t, w, map[string]any{"data": objs})
+	}))
+	defer srv.Close()
+
+	cmd := NewGetCRT(crtKind(t), rootsFor(srv))
+	rc := cmd.(runtime.ReadCommand)
+	res, err := rc.Execute(context.Background(), crtInput{}, nil)
+	require.NoError(t, err, "one bad row must not abort the whole list")
+
+	rows, ok := res.Data.(crtRows)
+	require.True(t, ok)
+	require.Len(t, rows, 3, "all three rows, including the bad one, must be present")
+
+	byName := map[string]crtRow{}
+	for _, row := range rows {
+		byName[row.Name] = row
+	}
+	good1, bad1, good2 := byName["good-1"], byName["bad-1"], byName["good-2"]
+
+	assert.Contains(t, good1.Command, "tok-aaa", "a healthy row before the bad one is unaffected")
+	assert.Contains(t, good2.Command, "tok-ccc", "a healthy row after the bad one is unaffected")
+
+	assert.Equal(t, "", bad1.Command, "the offending field must be blanked, never left carrying the placeholder")
+	assert.Contains(t, bad1.NodeCommand, "tok-bad", "only the offending field is blanked; the row's other healthy fields survive")
+
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "c-bbb/bad-1", "the warning must name the offending row")
+	assert.Contains(t, res.Warnings[0], "command", "the warning must name the offending field")
+
+	b, err := json.Marshal(res)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), placeholderToken, "the placeholder must never reach output as data")
+}
+
+// TestNewGetCRTNamedGetOnBadRowStaysStrict is finding 3's regression proof
+// for the branch the fix must NOT touch: a single-object get ("named"
+// branch, with a name arg) on a row carrying an unspliced placeholder must
+// still fail loud with the typed CodeGeneric error — the list-degrade
+// behavior above applies only to the no-name-arg list path.
+// TestNewGetCRTPlaceholderGuardTable already exercises this exhaustively
+// over all seven guarded fields; this test pins the same contract narrowly
+// so a future change to the list path can't accidentally soften the
+// named-get path without a dedicated test catching it.
+func TestNewGetCRTNamedGetOnBadRowStaysStrict(t *testing.T) {
+	t.Parallel()
+	status := splicedStatus("tok-aaa")
+	status["command"] = placeholderToken
+	obj := crtObject("c-aaa", "default-token", status)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSONFixture(t, w, obj)
+	}))
+	defer srv.Close()
+
+	cmd := NewGetCRT(crtKind(t), rootsFor(srv))
+	rc := cmd.(runtime.ReadCommand)
+	res, err := rc.Execute(context.Background(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
+
+	require.Error(t, err, "a single-object get on a bad row must still fail loud, not degrade")
+	ce, ok := err.(*clierr.Error)
+	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, "command")
+	assert.Equal(t, runtime.Result{}, res, "an unspliced placeholder must never surface as a Result on the named path")
+}
+
 // TestNewRefuseCRTPatchRejectsAsReadOnly proves the patch override never
 // touches the network: Plan refuses immediately with a VALIDATION error
 // naming the row read-only.
