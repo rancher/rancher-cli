@@ -110,6 +110,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 		return renderErr(streams, toClierr(err).WithPhase("execute"))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
+	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
 	if b.Tier == safety.TierNorman && !eff.ConflictDetection {
 		res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
 	}

@@ -377,6 +377,64 @@ func TestRenderEffectWarningsCombineWithTierWarning(t *testing.T) {
 	})
 }
 
+// TestRunApplyRendersEffectWarnings covers Finding 1 of the adjudicated
+// review (pipeline.go:96): runMutating rendered eff.Warnings only inside the
+// streams.DryRun branch (via renderEffect); the --apply path went
+// exec(ctx) -> renderResult(streams, res), which never saw eff.Warnings at
+// all. A real --apply --yes delete/patch/create must carry every advisory
+// warning (cascade-delete, quorum-impact, version-mismatch) forward onto the
+// applied Result, exactly once.
+func TestRunApplyRendersEffectWarnings(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:   mutatingDesc(),
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		exec: func(context.Context) (Result, error) {
+			return Result{Kind: "ScaleResult"}, nil
+		},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true},
+		safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok, "applied Result envelope must carry the effect's warnings")
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "note-a", warnings[0])
+	assert.Equal(t, 1, strings.Count(out.String(), "note-a"))
+}
+
+// TestRunApplyCombinesEffectWarningAndTierWarning covers Finding 1's ordering
+// requirement: an Effect.Warnings note and the existing
+// TierNorman/no-conflict-detection warning ride together on the applied
+// Result, each appearing exactly once, with the effect warning ordered
+// BEFORE the tier warning.
+func TestRunApplyCombinesEffectWarningAndTierWarning(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:   mutatingDesc(),
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", ConflictDetection: false, Warnings: []string{"note-a"}},
+		exec: func(context.Context) (Result, error) {
+			return Result{Kind: "ScaleResult"}, nil
+		},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true},
+		safety.Binding{Tier: safety.TierNorman, Stability: safety.Stable})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok)
+	require.Len(t, warnings, 2)
+	assert.Equal(t, "note-a", warnings[0], "effect warnings must precede the tier warning")
+	assert.Contains(t, warnings[1], "no conflict detection")
+	assert.Equal(t, 1, strings.Count(out.String(), "note-a"))
+	assert.Equal(t, 1, strings.Count(out.String(), "no conflict detection"))
+}
+
 func TestRunExecClosureResultRendered(t *testing.T) {
 	t.Parallel()
 	called := 0
