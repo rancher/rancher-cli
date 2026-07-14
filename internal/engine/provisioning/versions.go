@@ -19,7 +19,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -247,18 +246,6 @@ func isNotFoundError(err error) bool {
 	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound
 }
 
-// settingValue reads a Setting object's "value" field, falling back to
-// "default" when value is absent or empty (rancher setting.go convention;
-// mirrors internal/client/provider's ServerVersionSetting reading the same
-// top-level "value" field).
-func settingValue(obj *unstructured.Unstructured) string {
-	if v, found, _ := unstructured.NestedString(obj.Object, "value"); found && v != "" {
-		return v
-	}
-	v, _, _ := unstructured.NestedString(obj.Object, "default")
-	return v
-}
-
 // getSettingValue reads the named management.cattle.io/v3 Setting and
 // returns its value; ANY failure (not found, RBAC, decode) degrades to ""
 // rather than propagating — a missing/empty setting means "no default
@@ -268,7 +255,7 @@ func getSettingValue(ctx context.Context, client engine.ClusterClient, name stri
 	if err != nil || obj == nil {
 		return ""
 	}
-	return settingValue(obj)
+	return engine.SettingValue(obj)
 }
 
 // fetchVersionsDetailed is FetchVersions' full implementation, additionally

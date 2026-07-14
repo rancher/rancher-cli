@@ -334,11 +334,7 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 		if err != nil {
 			continue
 		}
-		if v, found, _ := unstructured.NestedString(obj.Object, "value"); found && v != "" {
-			values[name] = v
-			continue
-		}
-		if v, found, _ := unstructured.NestedString(obj.Object, "default"); found {
+		if v := engine.SettingValue(obj); v != "" {
 			values[name] = v
 		}
 	}
