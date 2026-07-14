@@ -282,6 +282,9 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	if err != nil {
 		return nil, "", nil, err
 	}
+	// Resolved before the fan-out below, deliberately: a client-resolution
+	// failure is shown over a simultaneous release-fetch failure because it
+	// is the more fundamental root cause (review finding 1).
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return nil, "", nil, err

@@ -66,12 +66,22 @@ var _ engine.ClusterClient = (*fakeClient)(nil)
 // fakeFactory hands back a fixed ClusterClient for any cluster id.
 type fakeFactory struct {
 	c engine.ClusterClient
+	// clusterErr, when set, makes Cluster return this error instead of c —
+	// the injectable-error seam review finding 1 needs to pin
+	// clients.Cluster()'s precedence over a simultaneous release-fetch
+	// failure (versions.go's fetchVersionsDetailed).
+	clusterErr error
 }
 
-func (f fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
-func (f fakeFactory) ContextCluster() (string, error)                               { return "", nil }
-func (f fakeFactory) ContextProject() (string, error)                               { return "", nil }
-func (f fakeFactory) ResolveCluster(_ context.Context, s string) (string, error)    { return s, nil }
+func (f fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
+	if f.clusterErr != nil {
+		return nil, f.clusterErr
+	}
+	return f.c, nil
+}
+func (f fakeFactory) ContextCluster() (string, error)                            { return "", nil }
+func (f fakeFactory) ContextProject() (string, error)                            { return "", nil }
+func (f fakeFactory) ResolveCluster(_ context.Context, s string) (string, error) { return s, nil }
 
 var _ engine.ClusterClientFactory = (*fakeFactory)(nil)
 

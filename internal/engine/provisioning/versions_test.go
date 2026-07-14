@@ -279,6 +279,30 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 	assert.Contains(t, err.Error(), k3sReleasePath, "the k3s failure must be visible somewhere, not silently dropped")
 }
 
+// TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure
+// pins review finding 1: clients.Cluster() now resolves BEFORE the
+// release-fetch fan-out starts, so when it fails at the same time a release
+// fetch would also have failed, the caller must see the client-resolution
+// error — the more fundamental root cause — never a release-fetch error.
+// This is deliberate, accepted-as-is behavior (not something to "fix"); this
+// test exists only so a future change cannot silently flip the precedence
+// without a test failing.
+func TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Both release routes would also hard-fail, if the fan-out ever
+		// reached them.
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	clusterErr := clierr.New(clierr.CodeGeneric, "cluster resolution failed")
+	factory := fakeFactory{clusterErr: clusterErr}
+
+	_, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.ErrorIs(t, err, clusterErr, "a clients.Cluster() failure must precede a simultaneous release-fetch failure")
+}
+
 // TestNewGetKubernetesVersionsDescribe pins the Descriptor shape: a
 // bespoke read-only entry under the "get" verb group, network+auth true.
 func TestNewGetKubernetesVersionsDescribe(t *testing.T) {
