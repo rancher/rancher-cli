@@ -912,6 +912,19 @@ func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearer
 		if idFound {
 			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", clusterID)
 		}
+		// This intentionally does NOT call projects.MatchOneOrError, whose
+		// contract is to return the caller's full candidate list on
+		// ambiguity. Here the candidates are narrowed down to only the
+		// colliding ids (matchedSet/matchedCandidates below) so the error
+		// shows just the clusters that collided, not every cluster in the
+		// account. That's arguably the better UX, and it predates the
+		// MatchOneOrError extraction, so it was kept as-is rather than
+		// folded into the shared helper. A mechanical migration of this
+		// call site onto MatchOneOrError would silently widen the
+		// AMBIGUOUS_SELECTION candidate list back to "every cluster" --
+		// see MatchOneOrError's doc comment in
+		// internal/engine/projects/resolve.go for the other side of this
+		// note. There is no test pinning this narrowing today.
 		matchedSet := make(map[string]bool, len(matched))
 		for _, id := range matched {
 			matchedSet[id] = true
