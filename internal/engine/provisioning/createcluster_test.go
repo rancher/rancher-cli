@@ -9,7 +9,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -341,21 +340,26 @@ func TestCreateClusterNodeDriverMalformedMachineConfigIsValidation(t *testing.T)
 	_ = requireValidation(t, err)
 }
 
-// TestMachineConfigKindsTracksKindsTable proves machineConfigKinds() is
-// DERIVED from kinds.All() rather than a hardcoded copy: it must contain
-// exactly the kind Names whose GVR.Group is rke-machine-config.cattle.io, no
-// more and no fewer, so if Task 3's rows ever change, the real
-// --machine-config validation logic and this test move together
-// automatically — no separate hand-maintained list to fall out of sync.
+// TestMachineConfigKindsTracksKindsTable proves machineConfigKinds() returns
+// exactly the five node-driver config kinds Task 3 specifies. The expected
+// set is spelled out here as literal kind keys — deliberately NOT
+// recomputed by filtering kinds.All() on kinds.MachineConfigGroup, which
+// would just be the production code's own selection restated: a partial
+// edit to only one of kinds.go's five machine-config rows (e.g. a typo'd
+// GVR.Group on one row) would then change both the expectation and the
+// result together, and this test would never notice. Listing the keys
+// explicitly gives an independent source, so that kind of regression makes
+// machineConfigKinds() drop or gain a key relative to this fixed list and
+// the test fails.
 func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
 	t.Parallel()
-	want := map[string]bool{}
-	for _, k := range kinds.All() {
-		if k.GVR.Group == "rke-machine-config.cattle.io" {
-			want[k.Name] = true
-		}
+	want := map[string]bool{
+		"amazonec2config":     true,
+		"azureconfig":         true,
+		"digitaloceanconfig":  true,
+		"harvesterconfig":     true,
+		"vmwarevsphereconfig": true,
 	}
-	require.NotEmpty(t, want, "kinds.go must carry at least one rke-machine-config.cattle.io row")
 
 	got := machineConfigKinds()
 	assert.Equal(t, want, got)

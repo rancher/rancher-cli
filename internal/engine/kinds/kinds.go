@@ -66,6 +66,12 @@ type Kind struct {
 	Columns     []Column // extra table columns beyond NAME
 }
 
+// MachineConfigGroup is the GVR group shared by every rke-machine-config
+// kind row below (amazonec2config, azureconfig, digitaloceanconfig,
+// harvesterconfig, vmwarevsphereconfig) — the single source createcluster.go
+// filters kinds.All() on to derive the --machine-config kind set.
+const MachineConfigGroup = "rke-machine-config.cattle.io"
+
 var table = []Kind{
 	{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
@@ -358,31 +364,31 @@ var table = []Kind{
 		// (region, size, image) for the node driver; credentials live in the
 		// driver's cc-* Secret, not on this resource.
 		Key: "amazonec2config", Name: "amazonec2config", Aliases: []string{"amazonec2configs"},
-		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "amazonec2configs"},
+		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "amazonec2configs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Amazonec2Config", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "azureconfig", Name: "azureconfig", Aliases: []string{"azureconfigs"},
-		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "azureconfigs"},
+		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "azureconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "AzureConfig", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "digitaloceanconfig", Name: "digitaloceanconfig", Aliases: []string{"digitaloceanconfigs"},
-		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "digitaloceanconfigs"},
+		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "digitaloceanconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "DigitaloceanConfig", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "harvesterconfig", Name: "harvesterconfig", Aliases: []string{"harvesterconfigs"},
-		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "harvesterconfigs"},
+		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "harvesterconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "HarvesterConfig", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "vmwarevsphereconfig", Name: "vmwarevsphereconfig", Aliases: []string{"vmwarevsphereconfigs"},
-		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "vmwarevsphereconfigs"},
+		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "vmwarevsphereconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "VmwarevsphereConfig", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},

@@ -28,24 +28,19 @@ var provisioningClusterGVR = schema.GroupVersionResource{Group: "provisioning.ca
 // cluster` has no --namespace flag, unlike the generic NSWorkspace commands.
 const clusterNamespace = "fleet-default"
 
-// machineConfigKindGroup is the GVR group every Task 3 machine-config kind
-// row shares in kinds.go — the set `--machine-config <kind>/<name>` accepts
-// is derived from kinds.All() filtered on this group, not hand-copied, so a
-// future machine-config driver row added to kinds.go is picked up here
-// automatically.
-const machineConfigKindGroup = "rke-machine-config.cattle.io"
-
 // machineConfigKinds derives the closed set of machine-config kind keys
 // `--machine-config <kind>/<name>` accepts from kinds.All() — a strict
 // subset of the kind table, so an otherwise-valid kind key (e.g. "pod") is
 // still rejected here. Recomputed on every call: kinds.All() is a cheap
 // slice copy over a handful of rows, and nothing else in this codebase
 // memoizes a derived kind table (kinds.Bindings() itself recomputes fresh on
-// every call).
+// every call). kinds.MachineConfigGroup is the single source every Task 3
+// machine-config kind row shares in kinds.go, so a future machine-config
+// driver row added there is picked up here automatically.
 func machineConfigKinds() map[string]bool {
 	out := map[string]bool{}
 	for _, k := range kinds.All() {
-		if k.GVR.Group == machineConfigKindGroup {
+		if k.GVR.Group == kinds.MachineConfigGroup {
 			out[k.Name] = true
 		}
 	}
