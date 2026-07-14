@@ -1,0 +1,29 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# get clusterregistrationtoken is a Steve /v1 read (Task 5, spec D-4): the
+# façade's fixture spans two namespaces, and every command/manifest field
+# carries the REAL spliced token — never the k8s proxy's own "{token}"
+# placeholder.
+exec rancher get clusterregistrationtoken -o json
+stdout e2e-crt-real-token-c-fixture
+stdout e2e-crt-real-token-c-other
+! stdout '\{token\}'
+jsonquery stdout data.0.namespace c-fixture
+
+# --namespace narrows to one fixture; the other namespace's token never
+# leaks into the filtered output.
+exec rancher get clusterregistrationtoken default-token --namespace c-fixture -o json
+stdout e2e-crt-real-token-c-fixture
+! stdout e2e-crt-real-token-c-other
+! stdout '\{token\}'
+jsonquery stdout data.0.namespace c-fixture
+jsonquery stdout data.0.clusterName c-fixture
+
+# The row is read-only surface: patch is refused with a VALIDATION error,
+# never reaching the network. --namespace is passed (NSPlain requires it)
+# so the refusal itself is what's under test, not flag validation firing
+# first for the wrong reason.
+! exec rancher patch clusterregistrationtoken default-token --namespace c-fixture --patch '[]'
+jsonquery stderr data.error.code VALIDATION
+stderr 'read-only'

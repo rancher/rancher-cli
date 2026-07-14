@@ -112,12 +112,19 @@ type kindOverride struct {
 	del   func(k kinds.Kind, d runDeps) runtime.Command
 }
 
-// kindOverrideTable is the override registry, keyed by kinds.Kind.Key.
-// Empty today (this task lands the mechanism only); later tasks populate
-// it with an init-free literal. A package var rather than a literal
-// inside kindOverrides so tests can install a marker override and restore
-// the original on cleanup.
-var kindOverrideTable = map[string]kindOverride{}
+// kindOverrideTable is the override registry, keyed by kinds.Kind.Key. A
+// package var rather than a literal inside kindOverrides so tests can
+// install a marker override and restore the original on cleanup.
+//
+// clusterregistrationtoken (Task 5, spec D-4): get is a Steve /v1 read (the
+// only place the real token is spliced into the command/manifest fields);
+// patch is refused outright — the row is read-only surface.
+var kindOverrideTable = map[string]kindOverride{
+	"clusterregistrationtoken": {
+		get:   func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
+		patch: func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
+	},
+}
 
 // kindOverrides returns the override registry. The FUNCTION is the loop's
 // seam — buildEntries calls this, never the var directly — so later tasks

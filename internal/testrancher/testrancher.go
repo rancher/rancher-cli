@@ -29,6 +29,13 @@ const (
 	mintTokensPath = token.MintTokensPath
 
 	defaultMintTTL = 15 * time.Minute
+
+	// crtCollectionPath is the Steve /v1 collection route for
+	// clusterregistrationtokens (Task 5, spec D-4). Must match
+	// internal/engine/provisioning's own crtCollectionPath — duplicated here
+	// rather than imported, since testrancher is test-only fixture code, not
+	// a consumer of the production package's execution logic.
+	crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
 )
 
 // Options configures a Facade instance. Every façade instance is meant to be
@@ -59,6 +66,14 @@ type Options struct {
 	// existing e2e script already authenticates with (FA-1: "the mint
 	// requires a valid façade-issued (or seed) bearer").
 	SeedToken string
+	// CRTUnformatted makes the clusterregistrationtoken Steve route serve
+	// its fixture objects with the seven command/manifest fields still
+	// carrying the k8s proxy's own literal "{token}" placeholder — i.e. as
+	// if Steve's splicing formatter never ran (rancher
+	// clusterregistrationtoken.go:24-72). Exercises `get
+	// clusterregistrationtoken`'s placeholder guard end-to-end; false
+	// (the default) serves fully spliced fixtures.
+	CRTUnformatted bool
 }
 
 // record is one façade-issued token.
@@ -132,6 +147,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleNamedGet(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
 		f.handleDelete(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
+	case r.Method == http.MethodGet && r.URL.Path == crtCollectionPath:
+		f.handleCRTCollection(w, r)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, crtCollectionPath+"/"):
+		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, crtCollectionPath+"/"))
 	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/devicecode":
 		f.idp.handleDeviceCode(w, r)
 	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
@@ -311,6 +330,97 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	delete(f.tokens, name)
 	f.mu.Unlock()
 	writeJSON(w, http.StatusOK, tokenCRBody(rec))
+}
+
+// crtFixture is one façade-served clusterregistrationtoken. Token is the
+// deterministic real value spliced into the seven command/manifest fields,
+// mirroring rancher's own steve formatter (clusterregistrationtoken.go:
+// 24-72, the ReplaceAll at :69). ClusterName mirrors the real CRD's
+// spec.clusterName, which always equals the CRT's own management namespace.
+type crtFixture struct {
+	Namespace string
+	Name      string
+	Token     string
+}
+
+// crtFixtures spans TWO namespaces (Task 5, spec D-4 review R3-3's
+// namespace-filter test fixture set): "c-fixture" is the namespace
+// e2e/scripts/registration-token.txtar addresses; "c-other" exists purely
+// so a bare `get clusterregistrationtoken` (no --namespace) proves more
+// than one namespace is present, and so a --namespace c-fixture read never
+// leaks c-other's token.
+var crtFixtures = []crtFixture{
+	{Namespace: "c-fixture", Name: "default-token", Token: "e2e-crt-real-token-c-fixture"},
+	{Namespace: "c-other", Name: "default-token", Token: "e2e-crt-real-token-c-other"},
+}
+
+// crtStatus builds a clusterregistrationtoken status block. unformatted
+// serves the k8s proxy's own literal "{token}" placeholder in the seven
+// command/manifest fields instead of splicing in token — as if Steve's
+// formatter never ran — for CRTUnformatted's placeholder-guard path.
+// status.token is never the placeholder itself: it is the splice SOURCE the
+// real formatter reads to perform the ReplaceAll.
+func crtStatus(token string, unformatted bool) map[string]any {
+	val := token
+	if unformatted {
+		val = "{token}"
+	}
+	return map[string]any{
+		"command":                    "curl --insecure -sfL https://rancher.example/v3/import/" + val + ".yaml | kubectl apply -f -",
+		"insecureCommand":            "curl -sfL https://rancher.example/v3/import/" + val + ".yaml | kubectl apply -f -",
+		"nodeCommand":                "sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token " + val,
+		"insecureNodeCommand":        "sudo docker run -d --name=cattle-agent rancher/rancher-agent --token " + val,
+		"windowsNodeCommand":         "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + val,
+		"insecureWindowsNodeCommand": "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + val,
+		"manifestUrl":                "https://rancher.example/v3/import/" + val + ".yaml",
+		"token":                      token,
+		"expiresAt":                  "2099-01-01T00:00:00Z",
+	}
+}
+
+func crtBody(fx crtFixture, unformatted bool) map[string]any {
+	return map[string]any{
+		"id":       fx.Namespace + "/" + fx.Name,
+		"metadata": map[string]any{"namespace": fx.Namespace, "name": fx.Name},
+		"spec":     map[string]any{"clusterName": fx.Namespace},
+		"status":   crtStatus(fx.Token, unformatted),
+	}
+}
+
+// handleCRTCollection serves the Steve /v1 collection envelope for every
+// fixture in crtFixtures — the caller (NewGetCRT) filters by namespace
+// locally, so the façade always returns the full set regardless of query
+// string.
+func (f *Facade) handleCRTCollection(w http.ResponseWriter, r *http.Request) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	data := make([]map[string]any, 0, len(crtFixtures))
+	for _, fx := range crtFixtures {
+		data = append(data, crtBody(fx, f.opts.CRTUnformatted))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+// handleCRTSingle serves one fixture at its namespaced single-object path
+// ("<ns>/<name>", already trimmed of the collection prefix); an unknown
+// namespace/name pair 404s.
+func (f *Facade) handleCRTSingle(w http.ResponseWriter, r *http.Request, rest string) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	ns, name, ok := strings.Cut(rest, "/")
+	if ok {
+		for _, fx := range crtFixtures {
+			if fx.Namespace == ns && fx.Name == name {
+				writeJSON(w, http.StatusOK, crtBody(fx, f.opts.CRTUnformatted))
+				return
+			}
+		}
+	}
+	http.NotFound(w, r)
 }
 
 func (f *Facade) authorizedBearer(r *http.Request) bool {

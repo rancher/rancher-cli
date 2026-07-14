@@ -1,0 +1,333 @@
+// crt.go implements the D-4 override for the clusterregistrationtoken row:
+// `get clusterregistrationtoken` reads Steve directly (the ONLY place the
+// real token is spliced into the command/manifest fields — the k8s proxy's
+// own object carries the literal "{token}" placeholder in those fields;
+// rancher's steve formatter clusterregistrationtoken.go:24-72 does the
+// ReplaceAll at :69 using the object's own status.token as the real value),
+// and `patch clusterregistrationtoken` is refused outright (the row is
+// read-only surface).
+package provisioning
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+)
+
+// crtCollectionPath is the Steve /v1 collection route for
+// clusterregistrationtokens. A single object's path appends "/<ns>/<name>".
+const crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
+
+// placeholderToken is the literal string the k8s proxy's own object carries
+// in the seven command/manifest fields until Steve's formatter splices in
+// the real token. Surfacing it as data would hand back a non-functional
+// command, so guardPlaceholders rejects it instead (spec D-4).
+const placeholderToken = "{token}"
+
+// crtView is the thin local decode of a Steve clusterregistrationtoken
+// object: only the fields `get clusterregistrationtoken` reads (the
+// dynamic-client design position — no generated type for this kind). ALL
+// SEVEN formatter-protected fields (rancher clusterregistrationtoken.go's
+// commandFields set) plus Token and ExpiresAt are modeled, so none silently
+// vanishes from output or evades the placeholder guard below.
+type crtView struct {
+	ID       string `json:"id"`
+	Metadata struct {
+		Namespace string `json:"namespace"`
+		Name      string `json:"name"`
+	} `json:"metadata"`
+	Spec struct {
+		ClusterName string `json:"clusterName"`
+	} `json:"spec"`
+	Status struct {
+		Command                    string `json:"command"`
+		InsecureCommand            string `json:"insecureCommand"`
+		NodeCommand                string `json:"nodeCommand"`
+		InsecureNodeCommand        string `json:"insecureNodeCommand"`
+		WindowsNodeCommand         string `json:"windowsNodeCommand"`
+		InsecureWindowsNodeCommand string `json:"insecureWindowsNodeCommand"`
+		ManifestURL                string `json:"manifestUrl"`
+		Token                      string `json:"token"`
+		ExpiresAt                  string `json:"expiresAt"`
+	} `json:"status"`
+}
+
+// guardedFields returns the seven command/manifest fields the Steve
+// formatter's ReplaceAll protects, paired with their JSON field name for the
+// guard's error message. Token and ExpiresAt are deliberately excluded:
+// they are not template strings the formatter substitutes into — Token IS
+// the substitution source.
+func (v crtView) guardedFields() []struct{ name, val string } {
+	return []struct{ name, val string }{
+		{"command", v.Status.Command},
+		{"insecureCommand", v.Status.InsecureCommand},
+		{"nodeCommand", v.Status.NodeCommand},
+		{"insecureNodeCommand", v.Status.InsecureNodeCommand},
+		{"windowsNodeCommand", v.Status.WindowsNodeCommand},
+		{"insecureWindowsNodeCommand", v.Status.InsecureWindowsNodeCommand},
+		{"manifestUrl", v.Status.ManifestURL},
+	}
+}
+
+// guardPlaceholders rejects a decoded object carrying an unspliced
+// "{token}" placeholder in any of the seven protected fields — never pass a
+// placeholder through as data (spec D-4). path is included for a useful
+// error message; it is the Steve path the object was read from.
+func guardPlaceholders(path string, v crtView) error {
+	for _, f := range v.guardedFields() {
+		if strings.Contains(f.val, placeholderToken) {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("clusterregistrationtoken at %s: field %q still carries the unformatted %s placeholder — the server never spliced in the real token",
+					path, f.name, placeholderToken))
+		}
+	}
+	return nil
+}
+
+// crtRow is one `get clusterregistrationtoken` row: every field crtView
+// carries, so -o json/-o yaml show the full command/manifest set even
+// though the table only renders NAME/CLUSTER/EXPIRES.
+type crtRow struct {
+	Namespace                  string `json:"namespace"`
+	Name                       string `json:"name"`
+	ClusterName                string `json:"clusterName"`
+	Command                    string `json:"command"`
+	InsecureCommand            string `json:"insecureCommand"`
+	NodeCommand                string `json:"nodeCommand"`
+	InsecureNodeCommand        string `json:"insecureNodeCommand"`
+	WindowsNodeCommand         string `json:"windowsNodeCommand"`
+	InsecureWindowsNodeCommand string `json:"insecureWindowsNodeCommand"`
+	ManifestURL                string `json:"manifestUrl"`
+	Token                      string `json:"token"`
+	ExpiresAt                  string `json:"expiresAt"`
+}
+
+func crtRowFrom(v crtView) crtRow {
+	return crtRow{
+		Namespace:                  v.Metadata.Namespace,
+		Name:                       v.Metadata.Name,
+		ClusterName:                v.Spec.ClusterName,
+		Command:                    v.Status.Command,
+		InsecureCommand:            v.Status.InsecureCommand,
+		NodeCommand:                v.Status.NodeCommand,
+		InsecureNodeCommand:        v.Status.InsecureNodeCommand,
+		WindowsNodeCommand:         v.Status.WindowsNodeCommand,
+		InsecureWindowsNodeCommand: v.Status.InsecureWindowsNodeCommand,
+		ManifestURL:                v.Status.ManifestURL,
+		Token:                      v.Status.Token,
+		ExpiresAt:                  v.Status.ExpiresAt,
+	}
+}
+
+// crtRows is `get clusterregistrationtoken`'s payload; it implements
+// output.Tabular so `-o table` shows NAME/CLUSTER/EXPIRES — the full
+// command/manifest set is still in the envelope Data for -o json/-o yaml.
+type crtRows []crtRow
+
+func (r crtRows) Columns() []string { return []string{"NAME", "CLUSTER", "EXPIRES"} }
+
+func (r crtRows) Rows() [][]string {
+	out := make([][]string, 0, len(r))
+	for _, row := range r {
+		out = append(out, []string{row.Name, row.ClusterName, row.ExpiresAt})
+	}
+	return out
+}
+
+// crtFlags is exactly getFlags(k) would generate for the clusterregistrationtoken
+// row (NSPlain, Management scope: --namespace, never --cluster) plus the
+// wait/for/timeout trio every generic get carries. Reproduced literally
+// rather than calling into package resources (getFlags is unexported)
+// because the override must keep the row's schema output identical to what
+// resources.NewGet would have generated — only execution changes.
+func crtGetFlags() []runtime.ArgSpec {
+	return []runtime.ArgSpec{
+		{Name: resources.FlagNamespace, Type: "string"},
+		{Name: "wait", Type: "bool"},
+		{Name: "for", Type: "string"},
+		{Name: "timeout", Type: "string"},
+	}
+}
+
+// crtPatchFlags is exactly patchFlags(k) would generate for this row: the
+// get flag set with --namespace marked Required (patch is always a named
+// op — resources.deleteFlags' rule), plus --patch/-f.
+func crtPatchFlags() []runtime.ArgSpec {
+	flags := crtGetFlags()
+	for i := range flags {
+		if flags[i].Name == resources.FlagNamespace {
+			flags[i].Required = true
+		}
+	}
+	return append(flags,
+		runtime.ArgSpec{Name: "patch", Type: "string"},
+		runtime.ArgSpec{Name: "filename", Type: "string", Aliases: []string{"f"}},
+	)
+}
+
+type getCRTCmd struct {
+	k     kinds.Kind
+	roots engine.RootClientFactory
+}
+
+// NewGetCRT builds the get override for the clusterregistrationtoken row: a
+// Steve /v1 read instead of the generic dynamic-client Get/List, since only
+// Steve splices the real token into the command/manifest fields. Its
+// Descriptor mirrors resources.NewGet(k, ...) exactly (same Name, args,
+// flags) so the row's schema output is unchanged from Task 3 — only
+// execution is overridden.
+func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
+	return &getCRTCmd{k: k, roots: roots}
+}
+
+func (c *getCRTCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:         "get " + c.k.Name,
+		Aliases:      c.k.Aliases,
+		Usage:        "List " + c.k.Name + "s or show one",
+		CommandType:  runtime.ReadOnly,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Flags:        crtGetFlags(),
+		Toolset:      "core",
+		Network:      true,
+		Auth:         true,
+		ProjectScope: kinds.ProjectScopable(c.k),
+	}
+}
+
+func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	if in.Bool("wait") {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait is not supported for "+c.k.Name).
+			WithHint("omit --wait")
+	}
+	root, err := c.roots.Root()
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	ns := in.String(resources.FlagNamespace)
+	named := len(in.Args()) > 0 && in.Args()[0] != ""
+
+	if named {
+		if ns == "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"--namespace is required to address a "+c.k.Name+" by name").
+				WithHint("pass --namespace <namespace>")
+		}
+		name := in.Args()[0]
+		path := crtCollectionPath + "/" + ns + "/" + name
+		body, err := root.GetJSON(ctx, path)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		view, err := decodeCRTObject(path, body)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		if err := guardPlaceholders(path, view); err != nil {
+			return runtime.Result{}, err
+		}
+		return runtime.Result{Kind: "ClusterRegistrationToken", Data: crtRows{crtRowFrom(view)}}, nil
+	}
+
+	// NAMESPACE SEMANTICS (spec D-4/R3-3): always GET the root collection and
+	// filter the DECODED objects locally by metadata.namespace when
+	// --namespace is set — deterministic, and avoids assuming Steve's
+	// query-filter grammar.
+	body, err := root.GetJSON(ctx, crtCollectionPath)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	views, err := decodeCRTCollection(crtCollectionPath, body)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	rows := make(crtRows, 0, len(views))
+	for _, v := range views {
+		if ns != "" && v.Metadata.Namespace != ns {
+			continue
+		}
+		if err := guardPlaceholders(crtCollectionPath, v); err != nil {
+			return runtime.Result{}, err
+		}
+		rows = append(rows, crtRowFrom(v))
+	}
+	return runtime.Result{Kind: "ClusterRegistrationTokenList", Data: rows}, nil
+}
+
+// decodeCRTObject decodes a single Steve object body. A malformed body
+// (never valid JSON, or JSON of the wrong shape) is a typed CodeGeneric
+// error naming the path — never a panic, never an empty Result standing in
+// for a decode failure.
+func decodeCRTObject(path string, body []byte) (crtView, error) {
+	var v crtView
+	if err := json.Unmarshal(body, &v); err != nil {
+		return crtView{}, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("decoding %s: %v", path, err))
+	}
+	return v, nil
+}
+
+// decodeCRTCollection decodes a Steve collection envelope ({"data": [...]}).
+// Same malformed-body contract as decodeCRTObject.
+func decodeCRTCollection(path string, body []byte) ([]crtView, error) {
+	var env struct {
+		Data []crtView `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("decoding %s: %v", path, err))
+	}
+	return env.Data, nil
+}
+
+var _ runtime.ReadCommand = (*getCRTCmd)(nil)
+
+type refuseCRTPatchCmd struct {
+	k kinds.Kind
+}
+
+// NewRefuseCRTPatch builds the patch override for the clusterregistrationtoken
+// row: a VALIDATION refusal — the row is read-only surface, and patching
+// registration tokens is not supported. Its Descriptor mirrors
+// resources.NewPatch(k, ...) exactly (same Name, args, flags) so the row's
+// schema output is unchanged from Task 3; Plan refuses before ever touching
+// the network.
+func NewRefuseCRTPatch(k kinds.Kind) runtime.Command {
+	return &refuseCRTPatchCmd{k: k}
+}
+
+func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
+	destructive := "false"
+	if c.k.Sensitive {
+		destructive = "true"
+	}
+	return runtime.Descriptor{
+		Name:         "patch " + c.k.Name,
+		Aliases:      c.k.Aliases,
+		Usage:        "Patch a " + c.k.Name + " with an RFC 6902 JSON patch",
+		CommandType:  runtime.Mutating,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Flags:        crtPatchFlags(),
+		Destructive:  destructive,
+		Toolset:      "core",
+		Network:      true,
+		Auth:         true,
+		ProjectScope: kinds.ProjectScopable(c.k),
+	}
+}
+
+func (c *refuseCRTPatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+		c.k.Name+" is read-only: patching a clusterregistrationtoken is not supported").
+		WithHint("registration tokens are consumed, not edited — create a new one instead")
+}
+
+var _ runtime.MutatingCommand = (*refuseCRTPatchCmd)(nil)
