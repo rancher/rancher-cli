@@ -54,22 +54,20 @@ func resolveUser(ctx context.Context, clients engine.ClusterClientFactory, nameO
 		principalsByID[uid] = pids
 	}
 
-	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
-	switch len(matched) {
-	case 1:
-		return matched[0], principalsByID[matched[0]], nil
-	case 0:
-		return "", nil, clierr.New(clierr.CodeNotFound, "user not found: "+nameOrID).
-			WithCandidates(cands).
-			WithHint("run: rancher get users")
-	default:
-		msg := fmt.Sprintf("%d users have display name %q", displayMatchCount, nameOrID)
-		if idFound {
-			msg = fmt.Sprintf("%q matches both a user id and a different user's display name", nameOrID)
-		}
-		return "", nil, clierr.New(clierr.CodeAmbiguousSelection, msg).
-			WithCandidates(cands).WithHint("pass the user id")
+	id, err = MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
+		"user not found: "+nameOrID,
+		"run: rancher get users",
+		func(idFound bool, displayMatchCount int) string {
+			if idFound {
+				return fmt.Sprintf("%q matches both a user id and a different user's display name", nameOrID)
+			}
+			return fmt.Sprintf("%d users have display name %q", displayMatchCount, nameOrID)
+		},
+		"pass the user id")
+	if err != nil {
+		return "", nil, err
 	}
+	return id, principalsByID[id], nil
 }
 
 // memberArgs validates the shared add/remove-member positional + --project

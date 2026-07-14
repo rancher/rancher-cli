@@ -226,8 +226,10 @@ func (f *clientFactory) clusters(ctx context.Context) (*unstructured.Unstructure
 
 // ResolveCluster accepts a cluster id or display name (agents pass names;
 // rancher-ai-mcp accepts both — keep the semantics aligned). The matching now
-// delegates to projects.MatchByIDOrDisplay — the same contract token minting
-// and project/member resolution already share (this was the 4th copy).
+// delegates to projects.MatchOneOrError — the same match/error-construction
+// contract ResolveProject and resolveUser already share (this was one of the
+// last two unmigrated copies; see MatchOneOrError's doc comment for the one
+// caller that deliberately still diverges).
 func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (string, error) {
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
@@ -252,24 +254,23 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 		displayByID[id] = display
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
-	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
-	switch len(matched) {
-	case 1:
-		f.mu.Lock()
-		f.resolved[nameOrID] = matched[0]
-		f.mu.Unlock()
-		return matched[0], nil
-	case 0:
-		return "", clierr.New(clierr.CodeNotFound, "cluster not found: "+nameOrID).
-			WithCandidates(cands).WithHint("pass a cluster id or display name")
-	default:
-		msg := fmt.Sprintf("%d clusters have display name %q", displayMatchCount, nameOrID)
-		if idFound {
-			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", nameOrID)
-		}
-		return "", clierr.New(clierr.CodeAmbiguousSelection, msg).
-			WithCandidates(cands).WithHint("pass the cluster id")
+	id, err := projects.MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
+		"cluster not found: "+nameOrID,
+		"pass a cluster id or display name",
+		func(idFound bool, displayMatchCount int) string {
+			if idFound {
+				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", nameOrID)
+			}
+			return fmt.Sprintf("%d clusters have display name %q", displayMatchCount, nameOrID)
+		},
+		"pass the cluster id")
+	if err != nil {
+		return "", err
 	}
+	f.mu.Lock()
+	f.resolved[nameOrID] = id
+	f.mu.Unlock()
+	return id, nil
 }
 
 // runDeps bundles everything a command constructor might need for one run: the

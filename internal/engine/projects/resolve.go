@@ -55,6 +55,13 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 // idFound/displayMatchCount so each caller keeps its own id-collision vs.
 // N-way-display-collision wording. This eliminates the duplicated switch
 // without changing either caller's user-visible text.
+//
+// internal/token.go's resolveMintClusterID deliberately does NOT call this:
+// on ambiguity it narrows WithCandidates to only the colliding cluster ids,
+// while this helper always returns the caller's full candidate list. Do not
+// "helpfully" migrate that call site onto MatchOneOrError without reading
+// the divergence comment at its switch statement first — doing so would
+// silently widen its AMBIGUOUS_SELECTION candidate list.
 func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) string, cands []clierr.Candidate, notFoundMsg, notFoundHint string, ambiguousMsg func(idFound bool, displayMatchCount int) string, ambiguousHint string) (string, error) {
 	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, displayOf)
 	switch len(matched) {
