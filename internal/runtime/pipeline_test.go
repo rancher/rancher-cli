@@ -735,6 +735,97 @@ func TestRenderResultRejectsTextAndRaw(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
+// TestRenderResultEnvelopeWarningsTableStderr covers Finding 4 of the
+// adjudicated review (pipeline.go:251): renderResult's envelope path set
+// env.Warnings but never wrote anything to stderr, and renderTable
+// (output/render.go) only ever reads env.Data — so in default/table format
+// every Result's warnings silently vanished (e.g. `top node`'s
+// metrics-server-absent warning, `inspect` warnings). This is pre-existing
+// and broader than provisioning. Table/default mode must now write each
+// warning to stderr as "# warning: <w>", stdout must not carry it, and each
+// warning must appear exactly once total.
+func TestRenderResultEnvelopeWarningsTableStderr(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get thing", CommandType: ReadOnly},
+		res: Result{Kind: "Thing", Data: map[string]string{"a": "b"}, Warnings: []string{"note-a"}},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Contains(t, errBuf.String(), "# warning: note-a\n")
+	assert.NotContains(t, out.String(), "note-a")
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "note-a"),
+		"note-a must appear exactly once total across both streams")
+}
+
+// TestRenderResultEnvelopeWarningsJSONEnvelopeOnly covers the -o json/-o yaml
+// half of Finding 4: warnings stay inside the envelope only, with no
+// duplicate stderr "# warning:" write.
+func TestRenderResultEnvelopeWarningsJSONEnvelopeOnly(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get thing", CommandType: ReadOnly},
+		res: Result{Kind: "Thing", Data: map[string]string{"a": "b"}, Warnings: []string{"note-a"}},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok)
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "note-a", warnings[0])
+	assert.NotContains(t, errBuf.String(), "# warning:", "json mode must not also print warnings to stderr")
+	assert.Empty(t, errBuf.String())
+}
+
+// nodeMetricsRows mirrors inspect.nodeRows (internal/engine/inspect/topnode.go):
+// `top node`'s output.Tabular payload of {"node", "usage"} maps, rendering
+// NAME/CPU/MEMORY with "<none>" for a degraded row.
+type nodeMetricsRows []map[string]string
+
+func (n nodeMetricsRows) Columns() []string { return []string{"NAME", "CPU", "MEMORY"} }
+
+func (n nodeMetricsRows) Rows() [][]string {
+	out := make([][]string, 0, len(n))
+	for _, row := range n {
+		out = append(out, []string{row["name"], "<none>", "<none>"})
+	}
+	return out
+}
+
+// TestTopNodeShapedResultWarningsSurviveTableOutput is the regression proof
+// requested by the adjudication for Finding 4: it demonstrates the
+// pre-existing bug (every command's warnings vanished in default/table
+// output, not just provisioning's) is fixed, using a Result shaped exactly
+// like `top node`'s real output — Kind "NodeMetrics", an output.Tabular Data
+// payload, and the one metrics.k8s.io-unavailable warning
+// (inspect.metricsUnavailableWarning) topnode.go emits when metrics-server is
+// absent. Before the fix, this warning was silently dropped in table/default
+// format; a user running `rancher-cli top node` with no metrics-server saw
+// no indication their CPU/MEMORY columns were "<none>" because metrics were
+// unreachable, not because usage was legitimately zero.
+func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
+	t.Parallel()
+	warning := "metrics.k8s.io unavailable on cluster c-abc123"
+	cmd := fakeRead{
+		d: Descriptor{Name: "top node", CommandType: ReadOnly},
+		res: Result{
+			Kind:     "NodeMetrics",
+			Data:     nodeMetricsRows{{"name": "node-1"}, {"name": "node-2"}},
+			Warnings: []string{warning},
+		},
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Contains(t, out.String(), "node-1", "the table must still render the node rows")
+	assert.Contains(t, errBuf.String(), "# warning: "+warning+"\n")
+	assert.NotContains(t, out.String(), "metrics.k8s.io unavailable")
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
+}
+
 func TestRenderErrAlwaysJSON(t *testing.T) {
 	t.Parallel()
 	for _, format := range []string{"", "json", "yaml", "name", "table", "{{.error.code}}"} {

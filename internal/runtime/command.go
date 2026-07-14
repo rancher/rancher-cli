@@ -59,8 +59,13 @@ type Input interface {
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
 // single ExecCredential object.
 type Result struct {
-	Kind     string
-	Data     any
+	Kind string
+	Data any
+	// Warnings render to stderr as "# warning: <w>" lines under format ""/
+	// "table", for BOTH paths renderResult supports: the Text branch below
+	// and the envelope (Data-driven) branch. json/yaml/name/template modes
+	// carry Warnings inside the envelope only — no stderr write, no double
+	// print.
 	Warnings []string
 	Raw      bool
 	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope
@@ -69,7 +74,7 @@ type Result struct {
 	// Result that sets both.
 	RawBytes []byte
 	// Text, when non-empty, is written verbatim to stdout under format ""/
-	// "table" (with Warnings rendered to stderr as "# warning: <w>" lines);
+	// "table" (with Warnings rendered to stderr per the field's doc above);
 	// json/yaml/template/name render the envelope over Data as usual.
 	// Mutually exclusive with RawBytes; renderResult rejects a Result that
 	// sets both.

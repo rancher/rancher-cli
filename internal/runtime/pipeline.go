@@ -255,6 +255,15 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
+	// renderTable (output/render.go) only ever reads env.Data, so an
+	// envelope-level warning would otherwise vanish exactly where a
+	// default/table-format user looks. Mirror the "# warning: <w>" stderr
+	// convention the res.Text branch above already uses.
+	if streams.Format == "" || streams.Format == "table" {
+		for _, w := range res.Warnings {
+			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
+		}
+	}
 	return nil
 }
 
