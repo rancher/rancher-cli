@@ -3,8 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
+	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -18,6 +21,11 @@ import (
 )
 
 var clustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
+
+// rootTimeout bounds the rootClient's HTTP requests. A package var (rather
+// than a constant) so tests can shrink it — mirrors keyringProbeTimeout's
+// test-shrinkable pattern in internal/config/credstore.go.
+var rootTimeout = 30 * time.Second
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
 // Config + credentials resolve exactly once (RF-1): one server, one token,
@@ -44,6 +52,13 @@ type clientFactory struct {
 	mu       sync.Mutex
 	cache    map[string]engine.ClusterClient
 	resolved map[string]string // ResolveCluster memo: nameOrID → cluster id
+
+	// rootOnce memoizes the root client (and its underlying httpx-built
+	// http.Client) exactly once per invocation, same rationale as the
+	// per-cluster cache above: one TLS-configured client, not one per call.
+	rootOnce sync.Once
+	root     engine.RootClient
+	rootErr  error
 }
 
 func newClientFactory(dir string, store config.CredStore) *clientFactory {
@@ -112,6 +127,75 @@ func (f *clientFactory) ContextProject() (string, error) {
 		return "", err
 	}
 	return eff.Project, nil
+}
+
+// Root resolves the memoized engine.RootClient for this invocation, building
+// the underlying httpx client at most once (RF-1: one server, one token, one
+// TLS config per invocation).
+func (f *clientFactory) Root() (engine.RootClient, error) {
+	f.rootOnce.Do(func() {
+		eff, err := f.resolve()
+		if err != nil {
+			f.rootErr = err
+			return
+		}
+		caPEM, err := config.ResolveCA(eff.CA)
+		if err != nil {
+			f.rootErr = err
+			return
+		}
+		hc, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: rootTimeout})
+		if err != nil {
+			f.rootErr = err
+			return
+		}
+		f.root = &rootClient{base: kube.BaseURL(eff.URL), token: eff.Token, hc: hc}
+	})
+	return f.root, f.rootErr
+}
+
+// rootClient implements engine.RootClient over httpx: one TLS-configured
+// http.Client, bearer always attached (one policy — even for routes that
+// are unauthenticated server-side), GET only.
+type rootClient struct {
+	base  string
+	token string
+	hc    *http.Client
+}
+
+func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.base+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, body, err := httpx.Do(r.hc, req)
+	if err != nil {
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %v", path, err))
+	}
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return body, nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status))
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path))
+	default:
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %s: %s", path, resp.Status, excerpt(body, 200)))
+	}
+}
+
+// excerpt truncates b to at most n bytes for inclusion in an error message,
+// appending "…" when truncated.
+func excerpt(b []byte, n int) string {
+	s := string(b)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func (f *clientFactory) Identity() (string, error) {
@@ -195,6 +279,7 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 // wiring switch.
 type runDeps struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	src     engine.FileSource
 	dir     string
 	store   config.CredStore
@@ -232,7 +317,7 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 			f := newClientFactory(dir, store)
 			io := buildIO(c)
 			io.ServerIdentity = f.Identity
-			cmd := make(runDeps{clients: f, src: newFileSource(io.In), dir: dir, store: store})
+			cmd := make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store})
 			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
 				return exit(ce)
 			}

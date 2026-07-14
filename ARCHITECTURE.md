@@ -12,12 +12,14 @@ without reading docs, and non-interactive output is a stable, versioned JSON env
 `/k8s/clusters/local` for management-plane kinds, `/k8s/clusters/<id>` for downstream
 clusters. There is no Norman/`v3` code on the resource path.
 
-**One documented exception: interactive auth-provider login.** `auth get-token` (the
-kubectl exec-credential plugin) authenticates against Rancher's legacy public
-endpoints — `/v1-public/authproviders` — because no Kubernetes-native login equivalent
-exists yet. This is the only subsystem that talks to Rancher's non-k8s API; migrating
-it is the intended first job of the reserved `RancherClient` port (see [Key design
-decisions](#key-design-decisions)).
+**Two documented exceptions: interactive auth-provider login, and root reads.** `auth
+get-token` (the kubectl exec-credential plugin) authenticates against Rancher's legacy
+public endpoints — `/v1-public/authproviders` — because no Kubernetes-native login
+equivalent exists yet; migrating it is the intended first job of the reserved
+`RancherClient` port (see [Key design decisions](#key-design-decisions)). The other is
+`engine.RootClient`, a GET-only read port for Steve `/v1` collections and the
+channel-server release routes that no per-cluster `/k8s/clusters/<id>` proxy can reach —
+writes remain CRD-through-proxy exclusively; nothing on this port can mutate state.
 
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
@@ -56,7 +58,7 @@ what drifted the previous revision of this doc).
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
-| `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used only by `internal/token`'s auth-provider HTTP flows. |
+| `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
@@ -110,6 +112,7 @@ graph TD
     cli --> config
     cli --> clierr
     cli --> output
+    cli --> httpx
 
     commands --> runtime
     commands --> completions

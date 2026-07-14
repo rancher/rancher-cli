@@ -74,3 +74,24 @@ type ClusterClientFactory interface {
 	// short-circuit to LocalCluster. Memoized per invocation.
 	ResolveCluster(ctx context.Context, nameOrID string) (string, error)
 }
+
+// RootClient is the GET-only port for reads against the Rancher server
+// ROOT (Steve /v1 collections, the channel-server release routes) — the
+// surfaces ClusterClient's per-cluster /k8s/clusters/<id> proxy cannot
+// reach. GET-only BY DESIGN: no write verb exists on this port, keeping
+// the tranche's zero-Norman / writes-through-CRDs posture structural
+// (spec D-10). Every call sends the session's credentials, including to
+// routes that happen to be unauthenticated server-side — one policy, no
+// anonymous special-casing (spec D-10).
+type RootClient interface {
+	// GetJSON GETs path (absolute, starting "/") against the server root
+	// and returns the response body. Non-2xx maps to a clierr code:
+	// 401/403 → auth, 404 → not-found, else generic with a body excerpt.
+	GetJSON(ctx context.Context, path string) ([]byte, error)
+}
+
+// RootClientFactory hands out the root client at call time, mirroring
+// ClusterClientFactory's deferred-network shape.
+type RootClientFactory interface {
+	Root() (RootClient, error)
+}
