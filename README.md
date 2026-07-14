@@ -428,3 +428,34 @@ PATH enables the kubectl-interop scenario; otherwise it skips.
 **Conventions:** direct `t.Run` subtests where mocks/per-case setup are
 involved, table-driven for pure functions; tests are hermetic (never touch the
 real OS keychain).
+
+## Support, Discussion, and Community
+
+If you need any help with the Rancher CLI, please join us at either our
+[Rancher forums](http://forums.rancher.com/) or [Slack](https://slack.rancher.io/)
+where most of our team hangs out at.
+
+Please submit any bugs, issues, and feature requests to
+[rancher/rancher](https://github.com/rancher/rancher/issues).
+
+For security issues, please first check our
+[security policy](https://github.com/rancher/rancher/security) and email
+security-rancher@suse.com instead of posting a public issue in GitHub. You
+may (but are not required to) use the GPG key located on
+[Keybase](https://keybase.io/rancher).
+
+# License
+
+Copyright (c) 2025 [SUSE](http://rancher.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+[http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
