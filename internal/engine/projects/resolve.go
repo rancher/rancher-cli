@@ -45,6 +45,32 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 	return matched, idFound, displayMatchCount
 }
 
+// MatchOneOrError is the shared List-derived-candidates -> MatchByIDOrDisplay
+// -> switch assembly ResolveProject and provisioning.resolveCredentialObj
+// both need: given the ids/displayOf/candidates already built from a List
+// call, it runs MatchByIDOrDisplay and turns the result into either the
+// single matched id, or a clierr NOT_FOUND / AMBIGUOUS_SELECTION error.
+// Message wording stays entirely the caller's: notFoundMsg/notFoundHint are
+// used verbatim, and ambiguousMsg is called with MatchByIDOrDisplay's own
+// idFound/displayMatchCount so each caller keeps its own id-collision vs.
+// N-way-display-collision wording. This eliminates the duplicated switch
+// without changing either caller's user-visible text.
+func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) string, cands []clierr.Candidate, notFoundMsg, notFoundHint string, ambiguousMsg func(idFound bool, displayMatchCount int) string, ambiguousHint string) (string, error) {
+	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, displayOf)
+	switch len(matched) {
+	case 1:
+		return matched[0], nil
+	case 0:
+		return "", clierr.New(clierr.CodeNotFound, notFoundMsg).
+			WithCandidates(cands).
+			WithHint(notFoundHint)
+	default:
+		return "", clierr.New(clierr.CodeAmbiguousSelection, ambiguousMsg(idFound, displayMatchCount)).
+			WithCandidates(cands).
+			WithHint(ambiguousHint)
+	}
+}
+
 // ResolveProject maps a project display name or id to its metadata.name.
 func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, clusterID, nameOrID string) (string, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
@@ -68,22 +94,16 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
-	switch len(matched) {
-	case 1:
-		return matched[0], nil
-	case 0:
-		return "", clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID).
-			WithCandidates(cands).
-			WithHint(fmt.Sprintf("run: rancher get projects --cluster %s", clusterID))
-	default:
-		msg := fmt.Sprintf("%d projects have display name %q", displayMatchCount, nameOrID)
-		if idFound {
-			msg = fmt.Sprintf("%q matches both a project id and a different project's display name", nameOrID)
-		}
-		return "", clierr.New(clierr.CodeAmbiguousSelection, msg).
-			WithCandidates(cands).WithHint("pass the project id")
-	}
+	return MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
+		"project not found: "+nameOrID,
+		fmt.Sprintf("run: rancher get projects --cluster %s", clusterID),
+		func(idFound bool, displayMatchCount int) string {
+			if idFound {
+				return fmt.Sprintf("%q matches both a project id and a different project's display name", nameOrID)
+			}
+			return fmt.Sprintf("%d projects have display name %q", displayMatchCount, nameOrID)
+		},
+		"pass the project id")
 }
 
 // BackingNamespace returns the namespace projectroletemplatebindings and
