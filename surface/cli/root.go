@@ -70,21 +70,58 @@ func buildEntries() []entry {
 		{group: "", make: func(d runDeps) runtime.Command { return commands.NewKubeconfig(d.dir, d.store, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return observe.NewLogs(d.clients) }},
 	}
+	ov := kindOverrides()
 	for _, k := range kinds.All() {
 		k := k
+		o := ov[k.Key]
 		entries = append(entries, entry{group: "get", make: func(d runDeps) runtime.Command {
+			if o.get != nil {
+				return o.get(k, d)
+			}
 			return resources.NewGet(k, d.clients)
 		}})
 		entries = append(entries, entry{group: "patch", make: func(d runDeps) runtime.Command {
+			if o.patch != nil {
+				return o.patch(k, d)
+			}
 			return resources.NewPatch(k, d.clients, d.src)
 		}})
-		if k.Deletable {
+		if k.Deletable || o.del != nil {
 			entries = append(entries, entry{group: "delete", make: func(d runDeps) runtime.Command {
+				if o.del != nil {
+					return o.del(k, d)
+				}
 				return resources.NewDelete(k, d.clients)
 			}})
 		}
 	}
 	return entries
+}
+
+// kindOverride replaces the GENERIC constructor for exactly the verbs it
+// sets, for exactly one kind row. The row remains the single source of
+// schema/completion/routing identity; only execution changes. A kind
+// whose row would not generate a verb (Deletable:false + del override)
+// still gets the override's command — that is how provisioningcluster
+// delete ships guarded without a bare Deletable flip (spec D-R1-3).
+type kindOverride struct {
+	get   func(k kinds.Kind, d runDeps) runtime.Command
+	patch func(k kinds.Kind, d runDeps) runtime.Command
+	del   func(k kinds.Kind, d runDeps) runtime.Command
+}
+
+// kindOverrideTable is the override registry, keyed by kinds.Kind.Key.
+// Empty today (this task lands the mechanism only); later tasks populate
+// it with an init-free literal. A package var rather than a literal
+// inside kindOverrides so tests can install a marker override and restore
+// the original on cleanup.
+var kindOverrideTable = map[string]kindOverride{}
+
+// kindOverrides returns the override registry. The FUNCTION is the loop's
+// seam — buildEntries calls this, never the var directly — so later tasks
+// (and tests) have exactly one place to swap the table.
+func kindOverrides() map[string]kindOverride {
+	return kindOverrideTable
 }
 
 // wireEntry validates one entry and returns its urfave leaf. It probes

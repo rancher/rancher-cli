@@ -67,4 +67,13 @@ type Effect struct {
 	Destructive       bool        `json:"destructive"`
 	Tier              Tier        `json:"tier,omitempty"`
 	Stability         Stability   `json:"stability,omitempty"`
+	// Warnings are advisory preview notes rendered with the Effect BEFORE
+	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
+	// cascade). They never gate — gating is Action/Destructive/Stability's
+	// job — they inform the user/agent deciding whether to --apply.
+	// json:"-" DELIBERATELY (review R2-6): the Effect marshals inside the
+	// envelope's data field, and renderEffect copies these into the
+	// envelope's top-level warnings — serializing here too would emit
+	// every warning twice (data.warnings + warnings).
+	Warnings []string `json:"-"`
 }

@@ -40,3 +40,17 @@ func TestEffectJSONShape(t *testing.T) {
 		assert.Contains(t, string(b), key, "Effect JSON")
 	}
 }
+
+// TestEffectWarningsNeverSerialize pins the json:"-" tag deliberately kept on
+// Warnings (review R2-6): the Effect marshals inside the envelope's data
+// field, and renderEffect (internal/runtime/pipeline.go) copies these into
+// the envelope's top-level warnings — serializing here too would emit every
+// warning twice (data.warnings + warnings).
+func TestEffectWarningsNeverSerialize(t *testing.T) {
+	t.Parallel()
+	eff := Effect{Action: ActionUpdate, Target: "x", Warnings: []string{"note-a"}}
+	b, err := json.Marshal(eff)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "note-a")
+	assert.NotContains(t, string(b), "warnings")
+}

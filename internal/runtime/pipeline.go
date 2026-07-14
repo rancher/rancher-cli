@@ -260,11 +260,21 @@ func renderResult(streams IO, res Result) *clierr.Error {
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
 	env.Tier, env.Stability = string(eff.Tier), string(eff.Stability)
+	env.Warnings = append(env.Warnings, eff.Warnings...)
 	if !eff.ConflictDetection && eff.Tier == safety.TierNorman {
 		env.Warnings = append(env.Warnings, "served via norman tier: no conflict detection")
 	}
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
+	}
+	// Table/default rendering encodes env.Data alone (render.go's renderTable),
+	// so envelope-level warnings would otherwise vanish exactly where a user
+	// looks. Mirror the same "# warning: <w>" stderr convention Result
+	// already documents for table mode (command.go's Text field).
+	if streams.Format == "" || streams.Format == "table" {
+		for _, w := range env.Warnings {
+			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
+		}
 	}
 	return nil
 }

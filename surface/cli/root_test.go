@@ -7,11 +7,13 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,6 +115,91 @@ func TestBuildRootWiresGeneratedCommands(t *testing.T) {
 	assert.Contains(t, names, "get pod")
 	assert.Contains(t, names, "delete project")
 	assert.NotContains(t, names, "delete cluster", "clusters are not deletable")
+}
+
+// TestKindOverridesReplaceExactlyTheirVerb pins the override mechanism: an
+// overridden verb+kind resolves to the override's command, every other verb
+// of that kind and every other kind stays generic, and no command name is
+// registered twice. With the empty kindOverrideTable this task ships, this
+// is a pure regression net for later tasks' overrides.
+func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
+	t.Parallel()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	names := map[string]int{}
+	var walk func(cmds []*ucli.Command, prefix string)
+	walk = func(cmds []*ucli.Command, prefix string) {
+		for _, c := range cmds {
+			names[strings.TrimSpace(prefix+" "+c.Name)]++
+			walk(c.Commands, prefix+" "+c.Name)
+		}
+	}
+	walk(root.Commands, "")
+	for n, count := range names {
+		assert.Equal(t, 1, count, "command %q registered %d times", n, count)
+	}
+}
+
+// markerCmd stands in for a real override: Describe().Name matches the
+// generic constructor's name (the override contract kinds.Bindings() depends
+// on — BINDING NOTE in the plan) while Usage carries a marker string so
+// tests can tell it apart from the generic command. It implements
+// ReadCommand (not just Command) because reg.Validate requires every
+// registered command to satisfy ReadCommand or MutatingCommand.
+type markerCmd struct{ k kinds.Kind }
+
+func (m markerCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{Name: "get " + m.k.Name, CommandType: runtime.ReadOnly, Usage: "MARKER"}
+}
+
+func (m markerCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
+	return runtime.Result{}, nil
+}
+
+// TestKindOverrideSubstitutesExactlyItsVerb installs a marker override for
+// one control kind and proves: the overridden verb resolves to the marker
+// command, the kind's OTHER verbs stay generic, and an untouched kind is
+// byte-identical. NOT t.Parallel — it mutates the package-level
+// kindOverrideTable.
+func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
+	orig := kindOverrideTable
+	kindOverrideTable = map[string]kindOverride{
+		"gitrepo": {get: func(k kinds.Kind, d runDeps) runtime.Command { return markerCmd{k} }},
+	}
+	t.Cleanup(func() { kindOverrideTable = orig })
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	getGroup := findCommand(root.Commands, "get")
+	require.NotNil(t, getGroup)
+	gitrepoGet := findCommand(getGroup.Commands, "gitrepo")
+	require.NotNil(t, gitrepoGet, "get gitrepo must still be registered")
+	assert.Equal(t, "MARKER", gitrepoGet.Usage, "get gitrepo must resolve to the override marker, not the generic constructor")
+
+	gitrepoKind, ok := kinds.Lookup("gitrepo")
+	require.True(t, ok)
+	genericPatch := resources.NewPatch(gitrepoKind, nil, nil).Describe()
+	genericDelete := resources.NewDelete(gitrepoKind, nil).Describe()
+
+	patchGroup := findCommand(root.Commands, "patch")
+	require.NotNil(t, patchGroup)
+	gitrepoPatch := findCommand(patchGroup.Commands, "gitrepo")
+	require.NotNil(t, gitrepoPatch)
+	assert.Equal(t, genericPatch.Usage, gitrepoPatch.Usage, "patch gitrepo must stay generic when only get is overridden")
+
+	deleteGroup := findCommand(root.Commands, "delete")
+	require.NotNil(t, deleteGroup)
+	gitrepoDelete := findCommand(deleteGroup.Commands, "gitrepo")
+	require.NotNil(t, gitrepoDelete)
+	assert.Equal(t, genericDelete.Usage, gitrepoDelete.Usage, "delete gitrepo must stay generic when only get is overridden")
+
+	bundleKind, ok := kinds.Lookup("bundle")
+	require.True(t, ok)
+	genericBundleGet := resources.NewGet(bundleKind, nil).Describe()
+	bundleGet := findCommand(getGroup.Commands, "bundle")
+	require.NotNil(t, bundleGet)
+	assert.Equal(t, genericBundleGet.Usage, bundleGet.Usage, "get bundle (an untouched kind) must be byte-identical to the generic")
 }
 
 // TestSchemaManifestExposesProjectScope pins PS-6: a generated get command

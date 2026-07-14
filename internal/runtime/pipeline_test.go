@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -279,6 +280,101 @@ func TestRunNormanWarningOnDryRun(t *testing.T) {
 	require.True(t, ok, "effect envelope must carry warnings")
 	require.Len(t, warnings, 1)
 	assert.Contains(t, warnings[0].(string), "no conflict detection")
+}
+
+// TestRenderEffectWarningsJSONOnce covers case (a) from the plan (D-10b,
+// review R2-6): an Effect.Warnings note rides the -o json dry-run envelope's
+// top-level "warnings" exactly once — Effect.Warnings' json:"-" tag must not
+// let it leak into env.data too.
+func TestRenderEffectWarningsJSONOnce(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:    mutatingDesc(),
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		exec: unusedExec(t),
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true},
+		safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok, "effect envelope must carry warnings")
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "note-a", warnings[0])
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "note-a"),
+		"note-a must appear exactly once across stdout+stderr")
+}
+
+// TestRenderEffectWarningsTableStderrOnly covers case (b): table output
+// (render.go) encodes env.Data alone, so an Effect.Warnings note would
+// otherwise vanish for a user looking at default/table dry-run output.
+// renderEffect must write it to stderr as "# warning: <w>" — the same
+// convention Result documents for table mode (command.go) — and it must
+// NOT also appear on stdout.
+func TestRenderEffectWarningsTableStderrOnly(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d:    mutatingDesc(),
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		exec: unusedExec(t),
+	}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "", DryRun: true},
+		safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable})
+	require.Nil(t, ce)
+	assert.Contains(t, errBuf.String(), "# warning: note-a\n")
+	assert.NotContains(t, out.String(), "note-a")
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "note-a"),
+		"note-a must appear exactly once total across both streams")
+}
+
+// TestRenderEffectWarningsCombineWithTierWarning covers case (c): an
+// Effect.Warnings note and the existing TierNorman/no-conflict-detection
+// warning ride together, each appearing exactly once, in both -o json and
+// default/table dry-run output, with the Effect warning ordered BEFORE the
+// tier warning.
+func TestRenderEffectWarningsCombineWithTierWarning(t *testing.T) {
+	newCmd := func() fakeMutating {
+		return fakeMutating{
+			d:    mutatingDesc(),
+			eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", ConflictDetection: false, Warnings: []string{"note-a"}},
+			exec: unusedExec(t),
+		}
+	}
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{},
+			IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true},
+			safety.Binding{Tier: safety.TierNorman, Stability: safety.Stable})
+		require.Nil(t, ce)
+		env := decodeEnvelope(t, out.Bytes())
+		warnings, ok := env["warnings"].([]any)
+		require.True(t, ok)
+		require.Len(t, warnings, 2)
+		assert.Equal(t, "note-a", warnings[0], "effect warnings must precede the tier warning")
+		assert.Contains(t, warnings[1], "no conflict detection")
+		assert.Equal(t, 1, strings.Count(out.String(), "note-a"))
+		assert.Equal(t, 1, strings.Count(out.String(), "no conflict detection"))
+	})
+
+	t.Run("table", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), newCmd(), mapInput{},
+			IO{Out: &out, Err: &errBuf, Format: "", DryRun: true},
+			safety.Binding{Tier: safety.TierNorman, Stability: safety.Stable})
+		require.Nil(t, ce)
+		assert.Contains(t, errBuf.String(), "# warning: note-a\n")
+		assert.Contains(t, errBuf.String(), "# warning: served via norman tier: no conflict detection\n")
+		combined := out.String() + errBuf.String()
+		assert.Equal(t, 1, strings.Count(combined, "note-a"))
+		assert.Equal(t, 1, strings.Count(combined, "no conflict detection"))
+	})
 }
 
 func TestRunExecClosureResultRendered(t *testing.T) {
