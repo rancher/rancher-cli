@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
@@ -379,6 +380,67 @@ func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 
 	names := schemaCommandNames(t)
 	assert.Contains(t, names, "delete provisioning-cluster")
+}
+
+// markerDelCmd stands in for a real bespoke delete override on a
+// hypothetical SECOND Deletable: false kind, proving BuildRoot's
+// del-override resolver loop generalizes past provisioningcluster (its only
+// production instance today). Describe().Name matches the generic delete
+// constructor's name for k (the override contract kinds.Bindings() depends
+// on); it implements MutatingCommand, like every real delete command.
+type markerDelCmd struct{ k kinds.Kind }
+
+func (m markerDelCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{Name: "delete " + m.k.Name, CommandType: runtime.Mutating, Usage: "MARKER-DEL"}
+}
+
+func (m markerDelCmd) Plan(context.Context, runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	return safety.Effect{}, nil, nil
+}
+
+// TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster pins Finding
+// 5 (round 2)'s fix: BuildRoot's extra delete-binding resolver is derived by
+// looping kindOverrideTable for every del override on a Deletable: false
+// row, not by naming "provisioningcluster" and its op literally. "node"
+// (Deletable: false, no del override in production) stands in for a
+// hypothetical second such kind: installing a del override for it here
+// must, with zero BuildRoot code changes, wire "delete node" and resolve it
+// to node's own row Binding — proving the loop's generality rather than a
+// coincidence that only happens to work for the one production entry. NOT
+// t.Parallel — it mutates the package-level kindOverrideTable (same
+// constraint as TestKindOverrideSubstitutesExactlyItsVerb).
+func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T) {
+	orig := kindOverrideTable
+	nodeKind, ok := kinds.Lookup("node")
+	require.True(t, ok)
+	require.False(t, nodeKind.Deletable, "node must stay non-deletable for this test to exercise the del-override path")
+
+	overrides := make(map[string]kindOverride, len(orig)+1)
+	for k, v := range orig {
+		overrides[k] = v
+	}
+	overrides["node"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
+	kindOverrideTable = overrides
+	t.Cleanup(func() { kindOverrideTable = orig })
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	delGroup := findCommand(root.Commands, "delete")
+	require.NotNil(t, delGroup)
+	nodeDelete := findCommand(delGroup.Commands, "node")
+	require.NotNil(t, nodeDelete, "delete node must be wired from a del override on a Deletable: false row")
+	assert.Equal(t, "MARKER-DEL", nodeDelete.Usage)
+
+	tier, stability, found := schemaCommandBinding(t, "delete node")
+	require.True(t, found, "delete node must resolve a binding derived from node's own row")
+	assert.Equal(t, string(nodeKind.Binding.Tier), tier)
+	assert.Equal(t, string(nodeKind.Binding.Stability), stability)
+
+	// provisioningcluster's own del override must still resolve too — the
+	// loop composes every matching row, not just the last one iterated.
+	pcDelete := findCommand(delGroup.Commands, "provisioning-cluster")
+	require.NotNil(t, pcDelete, "delete provisioning-cluster must still be wired alongside the new override")
 }
 
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {

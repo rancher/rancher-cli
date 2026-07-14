@@ -285,18 +285,30 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolver: %w", err)
 	}
-	// provisioningcluster's row stays Deletable: false, so kinds.Bindings()
-	// above never emits "delete provisioning-cluster" — the kindOverride
-	// table still supplies a bespoke delete command for it (D-R1-3), which
-	// needs a binding to pass wireEntry's check. Rather than hand-copy the
-	// row's Binding into a literal that could silently drift from an edit to
-	// the row, derive this one-entry resolver from the row itself, read at
-	// composition time.
-	pcRow, ok := kinds.Lookup("provisioningcluster")
-	if !ok {
-		return nil, fmt.Errorf("kind table: provisioningcluster kind not found")
+	// A kindOverrideTable row whose del override sits on a Deletable: false
+	// kind (D-R1-3) never gets a binding from kinds.Bindings() above — the
+	// row is not Deletable, so kinds.Bindings() skips "delete <name>" for it —
+	// which would otherwise fail wireEntry's check. Rather than hand-copy
+	// each such row's Binding into a literal that could silently drift from
+	// an edit to the row, derive one resolver entry per override, read from
+	// the row itself at composition time; a Deletable: true row is skipped
+	// since kinds.Bindings() already covers its "delete <name>" op, and
+	// composing it again here would collide in ComposeResolvers below.
+	delOverrides := runtime.MapResolver{}
+	for key, ov := range kindOverrideTable {
+		if ov.del == nil {
+			continue
+		}
+		row, ok := kinds.Lookup(key)
+		if !ok {
+			return nil, fmt.Errorf("kind table: %q kind not found", key)
+		}
+		if row.Deletable {
+			continue
+		}
+		delOverrides["delete "+row.Name] = row.Binding
 	}
-	resolver, err = runtime.ComposeResolvers(resolver, runtime.MapResolver{"delete provisioning-cluster": pcRow.Binding})
+	resolver, err = runtime.ComposeResolvers(resolver, delOverrides)
 	if err != nil {
 		return nil, fmt.Errorf("resolver: %w", err)
 	}
