@@ -174,6 +174,31 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	assert.Equal(t, "AWS Prod", cerr.Candidates[0].Name)
 }
 
+// TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID pins
+// finding 2: a legacy secret with no cc- prefix (credential-shaped only by
+// its *credentialConfig- data key) must resolve via BOTH its bare name and
+// its "cattle-global-data:<name>" namespaced form. Before the fix, the
+// namespaced form fell through the List path and matched against the
+// unstripped nameOrID, which never equals a bare object id — NOT_FOUND.
+func TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID(t *testing.T) {
+	t.Parallel()
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*secretObj("my-legacy-cred", nil, map[string]any{"amazonec2credentialConfig-accessKey": []byte("dummy")}),
+	}}
+	client := &fakeClient{list: list}
+	factory := fakeFactory{c: client}
+
+	bare, err := ResolveCloudCredential(context.Background(), factory, "my-legacy-cred")
+	require.NoError(t, err)
+	assert.Equal(t, "cattle-global-data:my-legacy-cred", bare.ID)
+
+	namespaced, err := ResolveCloudCredential(context.Background(), factory, "cattle-global-data:my-legacy-cred")
+	require.NoError(t, err)
+	assert.Equal(t, "cattle-global-data:my-legacy-cred", namespaced.ID)
+
+	assert.Equal(t, bare, namespaced)
+}
+
 func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	t.Parallel()
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{

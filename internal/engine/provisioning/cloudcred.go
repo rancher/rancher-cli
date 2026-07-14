@@ -103,7 +103,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(nameOrID, ids, func(id string) string { return displayByID[id] })
+	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(name, ids, func(id string) string { return displayByID[id] })
 	switch len(matched) {
 	case 1:
 		return objByID[matched[0]], nil
