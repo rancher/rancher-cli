@@ -526,6 +526,84 @@
     },
     {
       "aliases": [
+        "amazonec2configs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete amazonec2config",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a amazonec2config"
+    },
+    {
+      "aliases": [
+        "azureconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete azureconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a azureconfig"
+    },
+    {
+      "aliases": [
         "configmaps",
         "cm"
       ],
@@ -709,6 +787,45 @@
     },
     {
       "aliases": [
+        "digitaloceanconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete digitaloceanconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a digitaloceanconfig"
+    },
+    {
+      "aliases": [
         "gitrepos"
       ],
       "args": [
@@ -745,6 +862,45 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Delete a gitrepo"
+    },
+    {
+      "aliases": [
+        "harvesterconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete harvesterconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a harvesterconfig"
     },
     {
       "aliases": [
@@ -1396,6 +1552,119 @@
     },
     {
       "aliases": [
+        "vmwarevsphereconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete vmwarevsphereconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a vmwarevsphereconfig"
+    },
+    {
+      "aliases": [
+        "amazonec2configs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get amazonec2config",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List amazonec2configs or show one"
+    },
+    {
+      "aliases": [
+        "azureconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get azureconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List azureconfigs or show one"
+    },
+    {
+      "aliases": [
         "bundles"
       ],
       "args": [
@@ -1574,6 +1843,44 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List clustergroups or show one"
+    },
+    {
+      "aliases": [
+        "clusterregistrationtokens",
+        "crt"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get clusterregistrationtoken",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List clusterregistrationtokens or show one"
     },
     {
       "aliases": [
@@ -1782,6 +2089,43 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List deployments or show one"
+    },
+    {
+      "aliases": [
+        "digitaloceanconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get digitaloceanconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List digitaloceanconfigs or show one"
     },
     {
       "aliases": [
@@ -1998,6 +2342,43 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "List globalrolebindings or show one"
+    },
+    {
+      "aliases": [
+        "harvesterconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get harvesterconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List harvesterconfigs or show one"
     },
     {
       "aliases": [
@@ -2928,6 +3309,43 @@
       "usage": "List users or show one"
     },
     {
+      "aliases": [
+        "vmwarevsphereconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get vmwarevsphereconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List vmwarevsphereconfigs or show one"
+    },
+    {
       "auth": true,
       "commandType": "readOnly",
       "flags": [
@@ -3093,6 +3511,106 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+    },
+    {
+      "aliases": [
+        "amazonec2configs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch amazonec2config",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a amazonec2config with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "azureconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch azureconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a azureconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3339,6 +3857,58 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a clustergroup with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "clusterregistrationtokens",
+        "crt"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch clusterregistrationtoken",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a clusterregistrationtoken with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3617,6 +4187,56 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a deployment with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "digitaloceanconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch digitaloceanconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a digitaloceanconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3912,6 +4532,56 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a globalrolebinding with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "harvesterconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch harvesterconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a harvesterconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5164,6 +5834,56 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch a user with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "vmwarevsphereconfigs"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch vmwarevsphereconfig",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch a vmwarevsphereconfig with an RFC 6902 JSON patch"
     },
     {
       "args": [

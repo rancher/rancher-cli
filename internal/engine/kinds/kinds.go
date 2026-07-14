@@ -345,6 +345,59 @@ var table = []Kind{
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
 		},
 	},
+
+	{
+		// K8sKind casing: derived from rancher's convert.Capitalize(driverName +
+		// "Config") rule (dynamicschema.go:66-84,304-337; driver names from
+		// machinedriver_data.go:24-39). "Amazonec2Config" is literal-confirmed in
+		// rancher's own tests (status_test.go:70); the other four machine-config
+		// kinds below follow the same capitalization rule but are not individually
+		// literal-confirmed — verify against a real server before relying on the
+		// exact casing in a live/Windows acceptance pass.
+		// Sensitive: false deliberately — these CONFIGS carry instance parameters
+		// (region, size, image) for the node driver; credentials live in the
+		// driver's cc-* Secret, not on this resource.
+		Key: "amazonec2config", Name: "amazonec2config", Aliases: []string{"amazonec2configs"},
+		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "amazonec2configs"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Amazonec2Config", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "azureconfig", Name: "azureconfig", Aliases: []string{"azureconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "azureconfigs"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "AzureConfig", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "digitaloceanconfig", Name: "digitaloceanconfig", Aliases: []string{"digitaloceanconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "digitaloceanconfigs"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "DigitaloceanConfig", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "harvesterconfig", Name: "harvesterconfig", Aliases: []string{"harvesterconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "harvesterconfigs"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "HarvesterConfig", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+	{
+		Key: "vmwarevsphereconfig", Name: "vmwarevsphereconfig", Aliases: []string{"vmwarevsphereconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "vmwarevsphereconfigs"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "VmwarevsphereConfig", Scope: Management, Deletable: true,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+
+	{
+		// Namespace = the cluster's management namespace; NSPlain gives the
+		// --namespace flag. Deletable: false — CRTs are consumed, not deleted, in
+		// the generic verb surface. This row carries identity only: its get is
+		// overridden to a Steve read and its patch is refused (Task 5).
+		Key: "clusterregistrationtoken", Name: "clusterregistrationtoken", Aliases: []string{"clusterregistrationtokens", "crt"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens"},
+		Policy: NSPlain, K8sKind: "ClusterRegistrationToken", Scope: Management, Deletable: false,
+		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns: []Column{{Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
+	},
 }
 
 func All() []Kind { out := make([]Kind, len(table)); copy(out, table); return out }

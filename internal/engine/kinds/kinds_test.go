@@ -10,6 +10,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
+// the pinned vocabulary snapshot (mcp-kinds-050e375.json): the tranche-D
+// provisioning surface predates MCP provisioning tools. Revisit when the
+// MCP vocabulary grows provisioning kinds — a key appearing in BOTH this
+// set and a future fixture must fail, so stale exemptions cannot linger.
+var cliOnlyKinds = map[string]bool{
+	"amazonec2config": true, "azureconfig": true, "digitaloceanconfig": true,
+	"harvesterconfig": true, "vmwarevsphereconfig": true,
+	"clusterregistrationtoken": true,
+}
+
 func TestConformsToMCPVocabulary(t *testing.T) {
 	t.Parallel()
 	b, err := os.ReadFile("testdata/mcp-kinds-050e375.json")
@@ -23,6 +34,9 @@ func TestConformsToMCPVocabulary(t *testing.T) {
 	have := map[string]Kind{}
 	for _, k := range All() {
 		have[k.Key] = k
+		if cliOnlyKinds[k.Key] {
+			continue
+		}
 		w, ok := want[k.Key]
 		if !ok {
 			t.Errorf("kind %q not in the MCP fixture — vocabulary drift", k.Key)
@@ -37,6 +51,14 @@ func TestConformsToMCPVocabulary(t *testing.T) {
 	for key := range want {
 		if _, ok := have[key]; !ok {
 			t.Errorf("fixture kind %q missing from the table", key)
+		}
+	}
+	// Staleness guard: a cliOnlyKinds exemption must not linger once the MCP
+	// vocabulary actually grows to cover that kind — if it appears in the
+	// fixture, the exemption is stale and must be removed.
+	for key := range cliOnlyKinds {
+		if _, ok := want[key]; ok {
+			t.Errorf("cliOnlyKinds %q now present in the MCP fixture — remove the stale exemption", key)
 		}
 	}
 }
