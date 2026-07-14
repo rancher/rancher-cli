@@ -443,6 +443,47 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	require.NotNil(t, pcDelete, "delete provisioning-cluster must still be wired alongside the new override")
 }
 
+// TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision pins Finding 3
+// (fix-round 3): the delOverrides loop's "if row.Deletable { continue }"
+// branch had no test ever exercising it — every del override in production,
+// and TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster's own
+// "node" stand-in, sits on a Deletable: false row. The comment above the
+// loop claims composing an extra "delete <name>" entry for a Deletable: true
+// row would collide with kinds.Bindings()'s own entry for that op — this
+// test proves that claim rather than leaving it asserted-but-unverified.
+// "project" (Deletable: true, no override in production) stands in for a
+// hypothetical del override installed on an already-deletable kind:
+// installing one here and still getting a successful BuildRoot demonstrates
+// the branch genuinely prevents the ComposeResolvers duplicate-binding
+// error, not just "happens not to matter today" (verified during TDD by
+// temporarily removing the branch, which turned this test's BuildRoot call
+// into the "operation \"delete project\" resolved by both resolvers" error).
+// NOT t.Parallel — it mutates the package-level kindOverrideTable (same
+// constraint as the sibling tests in this file).
+func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
+	orig := kindOverrideTable
+	projectKind, ok := kinds.Lookup("project")
+	require.True(t, ok)
+	require.True(t, projectKind.Deletable, "project must stay deletable for this test to exercise the collision-avoidance branch")
+
+	overrides := make(map[string]kindOverride, len(orig)+1)
+	for k, v := range orig {
+		overrides[k] = v
+	}
+	overrides["project"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
+	kindOverrideTable = overrides
+	t.Cleanup(func() { kindOverrideTable = orig })
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err, "a del override on a Deletable: true row must not collide with kinds.Bindings()'s own entry for that op")
+
+	delGroup := findCommand(root.Commands, "delete")
+	require.NotNil(t, delGroup)
+	projectDelete := findCommand(delGroup.Commands, "project")
+	require.NotNil(t, projectDelete, "delete project must still be wired")
+	assert.Equal(t, "MARKER-DEL", projectDelete.Usage, "the override's del constructor must still be used for the generated command")
+}
+
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	t.Parallel()
 	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
