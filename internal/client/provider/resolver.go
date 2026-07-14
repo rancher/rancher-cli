@@ -27,15 +27,6 @@ func NewResolver() *Resolver {
 		"create kubeconfig":        {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create cluster":           {Tier: safety.TierCRD, Stability: safety.Beta},
 
-		// delete provisioning-cluster (Task 9, spec D-6): the
-		// provisioningcluster row stays Deletable: false (kinds.go), so
-		// kinds.Bindings() never emits a binding for this op — this manual
-		// entry is the ONLY binding source for it. It mirrors the row's
-		// own Binding value, the same one kinds.Bindings() would have used
-		// had the row been Deletable. ComposeResolvers' duplicate-key check
-		// cannot fire here since Bindings() skips this op entirely.
-		"delete provisioning-cluster": {Tier: safety.TierCRD, Stability: safety.Beta},
-
 		"inspect pod":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment":      {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect project":         {Tier: safety.TierPublic, Stability: safety.Beta},

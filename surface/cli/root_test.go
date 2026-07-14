@@ -76,6 +76,59 @@ func schemaCommandNames(t *testing.T) []string {
 	return names
 }
 
+// schemaCommandBinding returns the tier/stability the schema manifest
+// reports for op, and whether op was found at all.
+func schemaCommandBinding(t *testing.T, op string) (tier, stability string, found bool) {
+	t.Helper()
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data struct {
+			Commands []struct {
+				Name      string `json:"name"`
+				Tier      string `json:"tier"`
+				Stability string `json:"stability"`
+			} `json:"commands"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	for _, c := range env.Data.Commands {
+		if c.Name == op {
+			return c.Tier, c.Stability, true
+		}
+	}
+	return "", "", false
+}
+
+// TestDeleteProvisioningClusterBindingTracksKindRow pins Finding 5's fix:
+// "delete provisioning-cluster" has no generic binding (kinds.Bindings()
+// skips it — the row is Deletable: false), so BuildRoot must compose an
+// EXTRA resolver entry for it derived from the provisioningcluster row's own
+// Binding, read via kinds.Lookup at composition time — never a hand-copied
+// literal, which has no machine-checked link back to the row and can
+// silently drift from a future edit to the row's Binding in kinds.go. This
+// test asserts the schema-reported tier/stability for the op equals
+// kinds.Lookup("provisioningcluster").Binding exactly; before the fix (a
+// hand-copied literal in provider.NewResolver), temporarily editing the
+// row's Binding in kinds.go to a different tier/stability made this test
+// fail while the hand-copied literal silently kept the stale value — the
+// exact drift this composition now closes.
+func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
+	pcRow, ok := kinds.Lookup("provisioningcluster")
+	require.True(t, ok)
+
+	tier, stability, found := schemaCommandBinding(t, "delete provisioning-cluster")
+	require.True(t, found, "delete provisioning-cluster must be wired despite Deletable: false")
+	assert.Equal(t, string(pcRow.Binding.Tier), tier)
+	assert.Equal(t, string(pcRow.Binding.Stability), stability)
+}
+
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
@@ -305,12 +358,13 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 // TestBuildRootWiresProvisioningClusterDelete pins the D-6/R1-1 gotcha for
 // real: provisioningcluster's row stays Deletable: false, so
 // kinds.Bindings() never emits "delete provisioning-cluster" — the ONLY
-// reason BuildRoot succeeds with the del override registered is
-// provider.NewResolver's manual entry for that exact op string. Before that
-// manual entry existed, this test failed with wireEntry's "no resolver
-// binding" error (verified during TDD and again at self-review by
-// temporarily removing the entry) — the regression net this test now stands
-// guard for.
+// reason BuildRoot succeeds with the del override registered is the extra
+// resolver entry BuildRoot composes for that exact op string, derived from
+// the row's own Binding (see TestDeleteProvisioningClusterBindingTracksKindRow
+// for the derivation check). Before that entry existed in any form, this test
+// failed with wireEntry's "no resolver binding" error (verified during TDD
+// and again at self-review by temporarily removing the entry) — the
+// regression net this test now stands guard for.
 func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
 	// combined with t.Parallel (same constraint TestBuildRootWiresGeneratedCommands

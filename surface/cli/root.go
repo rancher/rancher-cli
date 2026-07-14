@@ -142,10 +142,10 @@ var kindOverrideTable = map[string]kindOverride{
 		// del (Task 9, spec D-6): the row stays Deletable: false (no generic
 		// verb would be generated), but the override still supplies a
 		// bespoke, guarded delete command — the exact D-R1-3 point. See
-		// provider.NewResolver's manual "delete provisioning-cluster" entry:
-		// kinds.Bindings() never emits a binding for this op since the row
-		// is not Deletable, so wireEntry would otherwise reject this command
-		// at BuildRoot startup.
+		// BuildRoot's extra "delete provisioning-cluster" resolver, derived
+		// from this row's own Binding: kinds.Bindings() never emits a
+		// binding for this op since the row is not Deletable, so wireEntry
+		// would otherwise reject this command at BuildRoot startup.
 		del: func(k kinds.Kind, d runDeps) runtime.Command {
 			return provisioning.NewDeleteProvisioningCluster(k, d.clients)
 		},
@@ -282,6 +282,21 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		return nil, fmt.Errorf("kind table: %w", err)
 	}
 	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	if err != nil {
+		return nil, fmt.Errorf("resolver: %w", err)
+	}
+	// provisioningcluster's row stays Deletable: false, so kinds.Bindings()
+	// above never emits "delete provisioning-cluster" — the kindOverride
+	// table still supplies a bespoke delete command for it (D-R1-3), which
+	// needs a binding to pass wireEntry's check. Rather than hand-copy the
+	// row's Binding into a literal that could silently drift from an edit to
+	// the row, derive this one-entry resolver from the row itself, read at
+	// composition time.
+	pcRow, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		return nil, fmt.Errorf("kind table: provisioningcluster kind not found")
+	}
+	resolver, err = runtime.ComposeResolvers(resolver, runtime.MapResolver{"delete provisioning-cluster": pcRow.Binding})
 	if err != nil {
 		return nil, fmt.Errorf("resolver: %w", err)
 	}
