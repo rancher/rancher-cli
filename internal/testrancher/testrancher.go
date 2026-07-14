@@ -36,6 +36,13 @@ const (
 	// rather than imported, since testrancher is test-only fixture code, not
 	// a consumer of the production package's execution logic.
 	crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
+
+	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
+	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
+	// rke2ReleasePath/k3sReleasePath constants — duplicated here for the
+	// same reason as crtCollectionPath above.
+	rke2ReleasePath = "/v1-rke2-release/release"
+	k3sReleasePath  = "/v1-k3s-release/release"
 )
 
 // Options configures a Facade instance. Every façade instance is meant to be
@@ -151,6 +158,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleCRTCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, crtCollectionPath+"/"):
 		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, crtCollectionPath+"/"))
+	case r.Method == http.MethodGet && r.URL.Path == rke2ReleasePath:
+		f.handleRelease(w, rke2ReleaseFixture)
+	case r.Method == http.MethodGet && r.URL.Path == k3sReleasePath:
+		f.handleRelease(w, k3sReleaseFixture)
 	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/devicecode":
 		f.idp.handleDeviceCode(w, r)
 	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
@@ -421,6 +432,34 @@ func (f *Facade) handleCRTSingle(w http.ResponseWriter, r *http.Request, rest st
 		}
 	}
 	http.NotFound(w, r)
+}
+
+// rke2ReleaseFixture/k3sReleaseFixture are the two deterministic versions
+// each channel-server route serves (Task 6, spec D-7): raw
+// "vMAJOR.MINOR.PATCH+<distro>rN"-shaped strings, exactly the form
+// internal/engine/provisioning's normalizeVersion strips down to
+// MAJOR.MINOR.PATCH before any supported-range comparison.
+var (
+	rke2ReleaseFixture = []string{"v1.30.5+rke2r1", "v1.30.6+rke2r1"}
+	k3sReleaseFixture  = []string{"v1.30.5+k3s1", "v1.30.6+k3s1"}
+)
+
+// handleRelease serves a channel-server release collection envelope
+// ({"data":[{"version": "..."}, ...]}) — the "data" key is pinned to match
+// internal/engine/provisioning's fetchReleaseVersions decode (channelserver
+// model/config.go:22-30's own collection key; the acceptance pass against a
+// real server corrects this fixture if the real shape differs). Unlike the
+// façade's other routes, this one is deliberately UNAUTHENTICATED: rancher's
+// routes.go:139-140 registers it as a bare mux route server-side, so no
+// authorizedBearer check gates it here — RootClient still sends credentials
+// to it (spec D-10's one-policy rule), but the fixture must accept the
+// request regardless, exactly like the real server would.
+func (f *Facade) handleRelease(w http.ResponseWriter, versions []string) {
+	data := make([]map[string]any, 0, len(versions))
+	for _, v := range versions {
+		data = append(data, map[string]any{"version": v})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
 func (f *Facade) authorizedBearer(r *http.Request) bool {

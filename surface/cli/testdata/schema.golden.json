@@ -2557,6 +2557,16 @@
       "usage": "List kubeconfigs or show one"
     },
     {
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get kubernetes-versions",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List available Kubernetes versions (rke2/k3s) merged with the server's default and supported-range settings"
+    },
+    {
       "aliases": [
         "machines"
       ],
