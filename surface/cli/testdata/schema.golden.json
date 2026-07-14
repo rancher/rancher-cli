@@ -303,6 +303,80 @@
       "usage": "Switch the current server"
     },
     {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "false",
+      "examples": [
+        "rancher create cluster imported-1 --import --apply",
+        "rancher create cluster custom-1 --custom --k8s-version v1.30.5+rke2r1 --apply",
+        "rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential aws-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply"
+      ],
+      "flags": [
+        {
+          "desc": "imported cluster: spec.rkeConfig omitted entirely",
+          "name": "import",
+          "type": "bool"
+        },
+        {
+          "desc": "custom cluster: spec.rkeConfig: {}, nodes register out of band",
+          "name": "custom",
+          "type": "bool"
+        },
+        {
+          "desc": "node-driver cluster: \u003ckind\u003e/\u003cname\u003e, e.g. amazonec2config/mycfg",
+          "name": "machine-config",
+          "type": "string"
+        },
+        {
+          "desc": "node-driver cluster: --cloud-credential \u003cname-or-id\u003e",
+          "name": "cloud-credential",
+          "type": "string"
+        },
+        {
+          "name": "k8s-version",
+          "type": "string"
+        },
+        {
+          "desc": "node-driver pool name (default: pool1)",
+          "name": "pool-name",
+          "type": "string"
+        },
+        {
+          "desc": "node-driver pool: etcd role",
+          "name": "etcd",
+          "type": "bool"
+        },
+        {
+          "desc": "node-driver pool: control-plane role",
+          "name": "controlplane",
+          "type": "bool"
+        },
+        {
+          "desc": "node-driver pool: worker role",
+          "name": "worker",
+          "type": "bool"
+        },
+        {
+          "desc": "node-driver pool size (default: 1)",
+          "name": "quantity",
+          "type": "string"
+        }
+      ],
+      "name": "create cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Create a provisioning cluster: --import, --custom, or node-driver (a single machine pool — repeatable flags are not supported yet; a multi-pool cluster must go through `create resource -f` with a full manifest)"
+    },
+    {
       "auth": true,
       "commandType": "mutating",
       "destructive": "true",

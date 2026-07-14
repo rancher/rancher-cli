@@ -162,6 +162,7 @@ func TestMain(m *testing.M) {
 	}
 	seedManagementCluster()
 	seedNamespaces()
+	seedCloudCredential()
 
 	code := m.Run()
 	srv.Close()
@@ -406,10 +407,12 @@ func seedManagementCluster() {
 // the namespace object to exist before a namespaced create succeeds.
 // "cattle-system" is seeded here (not per-script) because the logs and
 // support-bundle target tables both hardcode it, and per-script creation
-// races across scripts sharing this one apiserver.
+// races across scripts sharing this one apiserver. "cattle-global-data" is
+// Task 7's cloud-credential namespace (seedCloudCredential's Secret lives
+// there) — seeded here for the same reason.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system"} {
+	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system", "cattle-global-data"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
@@ -418,6 +421,33 @@ func seedNamespaces() {
 		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
 			panic("seeding namespace " + name + ": " + err.Error())
 		}
+	}
+}
+
+// seedCloudCredential creates ONE fixture cloud-credential Secret,
+// cc-e2etest, in cattle-global-data — global and one-time (Task 7, review
+// R2-2): `create cluster`'s node-driver e2e scenario resolves
+// --cloud-credential by display name ("e2e-cred"), and a per-script Setup
+// creating this same fixture would race AlreadyExists across every script
+// sharing this one envtest apiserver. The data key/value mirror
+// cloudcred.go's driver-detection contract (<driver>credentialConfig-<key>)
+// for the amazonec2 driver; "ZHVtbXk=" is the base64 encoding of "dummy" —
+// ResolveCloudCredential never reads a data VALUE (spec D-R2-1), so the
+// content is an arbitrary placeholder.
+func seedCloudCredential() {
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Secret",
+		"metadata": map[string]any{
+			"name":        "cc-e2etest",
+			"namespace":   "cattle-global-data",
+			"annotations": map[string]any{"field.cattle.io/name": "e2e-cred"},
+		},
+		"data": map[string]any{"amazonec2credentialConfig-accessKey": "ZHVtbXk="},
+	}}
+	if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		panic("seeding cloud credential secret cc-e2etest: " + err.Error())
 	}
 }
 

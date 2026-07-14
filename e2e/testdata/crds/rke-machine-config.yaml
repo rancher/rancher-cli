@@ -1,0 +1,94 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: amazonec2configs.rke-machine-config.cattle.io
+spec:
+  group: rke-machine-config.cattle.io
+  names: {kind: Amazonec2Config, listKind: Amazonec2ConfigList, plural: amazonec2configs, singular: amazonec2config}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:   {type: object, x-kubernetes-preserve-unknown-fields: true}
+            status: {type: object, x-kubernetes-preserve-unknown-fields: true}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: azureconfigs.rke-machine-config.cattle.io
+spec:
+  group: rke-machine-config.cattle.io
+  names: {kind: AzureConfig, listKind: AzureConfigList, plural: azureconfigs, singular: azureconfig}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:   {type: object, x-kubernetes-preserve-unknown-fields: true}
+            status: {type: object, x-kubernetes-preserve-unknown-fields: true}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: digitaloceanconfigs.rke-machine-config.cattle.io
+spec:
+  group: rke-machine-config.cattle.io
+  names: {kind: DigitaloceanConfig, listKind: DigitaloceanConfigList, plural: digitaloceanconfigs, singular: digitaloceanconfig}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:   {type: object, x-kubernetes-preserve-unknown-fields: true}
+            status: {type: object, x-kubernetes-preserve-unknown-fields: true}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: harvesterconfigs.rke-machine-config.cattle.io
+spec:
+  group: rke-machine-config.cattle.io
+  names: {kind: HarvesterConfig, listKind: HarvesterConfigList, plural: harvesterconfigs, singular: harvesterconfig}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:   {type: object, x-kubernetes-preserve-unknown-fields: true}
+            status: {type: object, x-kubernetes-preserve-unknown-fields: true}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vmwarevsphereconfigs.rke-machine-config.cattle.io
+spec:
+  group: rke-machine-config.cattle.io
+  names: {kind: VmwarevsphereConfig, listKind: VmwarevsphereConfigList, plural: vmwarevsphereconfigs, singular: vmwarevsphereconfig}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:   {type: object, x-kubernetes-preserve-unknown-fields: true}
+            status: {type: object, x-kubernetes-preserve-unknown-fields: true}
