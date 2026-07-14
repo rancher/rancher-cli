@@ -469,3 +469,20 @@ review, conformance tests pinning the vocabulary, live acceptance exercises
 against real servers, and thin hand-owned structs (a few fields, decoded
 locally) where a specific shape matters. kubectl makes the same choice for
 its generic verbs.
+
+**No inter-process lock on the config directory.** Every config-dir mutation is a
+load-modify-write cycle, and nothing serializes that cycle across processes: two
+concurrent `rancher` invocations can each read the config, each write it, and the
+second silently discards the first's change. `atomicWriteFile`'s temp-and-rename
+keeps any single file from being torn or half-written, but it does not make the
+surrounding read-modify-write atomic. The absence is deliberate. An advisory
+`flock` on a dedicated `.lock` file was designed and built, then rejected.
+kubectl's experience with kubeconfig locking is the cautionary one: it takes a lock
+on every file in `KUBECONFIG`, so a read-only entry the command never intends to
+write turns an otherwise valid operation into a hard `permission denied`
+(kubernetes/kubectl#708); its flock implementation is unix-only; and upstream has
+since added an opt-out and now advises separate files where concurrent access is a
+risk, rather than leaning on the lock. The trade only pays when independent
+processes share the config. Here the CLI is the sole writer of its own config dir,
+so the residual race is a user racing themselves: two `rancher` commands mutating
+the same config at the same instant.
