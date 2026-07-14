@@ -258,6 +258,19 @@ func getSettingValue(ctx context.Context, client engine.ClusterClient, name stri
 	return engine.SettingValue(obj)
 }
 
+// distroResult carries one distro's full concurrent-fetch outcome: its
+// release list (on success), a 404-degrade warning, a hard release-fetch
+// error, and its default-version setting value. One struct, one slice
+// (results[i], indexed by distroSpecs[i]) rather than four parallel slices —
+// each distro's outcome lives in one place instead of being reconstructed by
+// tracking a positional index across separate slices.
+type distroResult struct {
+	versions       []string
+	warning        string
+	err            error
+	defaultVersion string
+}
+
 // fetchVersionsDetailed is FetchVersions' full implementation, additionally
 // returning the raw supported-range setting (for the command envelope's
 // transparency field) and any degraded-fetch warnings. FetchVersions itself
@@ -286,18 +299,15 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// returns a non-nil error, which would turn a genuine hard failure on
 	// one distro into a raced, possibly "context canceled"-wrapped error on
 	// the other. Every goroutine below runs against the SAME uncanceled ctx
-	// and writes only to its own distroSpecs[i] slot (releaseErrs for a
-	// hard release-fetch failure, warningPerDistro for a 404-degrade,
-	// versions/defaults for a success; rangeRaw is its own dedicated
+	// and writes only to its own results[i] slot (err for a hard
+	// release-fetch failure, warning for a 404-degrade, versions and
+	// defaultVersion for a success; rangeRaw is its own dedicated
 	// variable), so there is no data race between them and g.Wait()'s own
 	// error is always nil. The precedence rules below apply only AFTER
 	// every goroutine has joined, reading the per-distro slots in
 	// distroSpecs' fixed order — so which error (if any) surfaces never
 	// depends on which goroutine happened to finish first.
-	versions := make([][]string, len(distroSpecs))
-	warningPerDistro := make([]string, len(distroSpecs))
-	releaseErrs := make([]error, len(distroSpecs))
-	defaults := make([]string, len(distroSpecs))
+	results := make([]distroResult, len(distroSpecs))
 	var rangeRaw string
 
 	var g errgroup.Group
@@ -307,17 +317,17 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {
 				if isNotFoundError(err) {
-					warningPerDistro[i] = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
+					results[i].warning = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
 					return nil
 				}
-				releaseErrs[i] = err
+				results[i].err = err
 				return nil
 			}
-			versions[i] = vs
+			results[i].versions = vs
 			return nil
 		})
 		g.Go(func() error {
-			defaults[i] = getSettingValue(ctx, client, d.defaultSetting)
+			results[i].defaultVersion = getSettingValue(ctx, client, d.defaultSetting)
 			return nil
 		})
 	}
@@ -334,33 +344,33 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// that failure path. A hard failure on the OTHER distro too is never
 	// silently dropped: it is folded into the same error's message.
 	for i := range distroSpecs {
-		if releaseErrs[i] == nil {
+		if results[i].err == nil {
 			continue
 		}
-		err := releaseErrs[i]
+		err := results[i].err
 		for j := i + 1; j < len(distroSpecs); j++ {
-			if releaseErrs[j] != nil {
-				err = fmt.Errorf("%w (%s release fetch also failed: %v)", err, distroSpecs[j].distro, releaseErrs[j])
+			if results[j].err != nil {
+				err = fmt.Errorf("%w (%s release fetch also failed: %v)", err, distroSpecs[j].distro, results[j].err)
 			}
 		}
 		return nil, "", nil, err
 	}
 
 	var warnings []string
-	for _, w := range warningPerDistro {
-		if w != "" {
-			warnings = append(warnings, w)
+	for _, r := range results {
+		if r.warning != "" {
+			warnings = append(warnings, r.warning)
 		}
 	}
 
 	total := 0
-	for _, vs := range versions {
-		total += len(vs)
+	for _, r := range results {
+		total += len(r.versions)
 	}
 	rows := make([]Version, 0, total)
 	for i, d := range distroSpecs {
-		for _, v := range versions[i] {
-			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == defaults[i], Supported: versionSupported(rangeRaw, v)})
+		for _, v := range results[i].versions {
+			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == results[i].defaultVersion, Supported: versionSupported(rangeRaw, v)})
 		}
 	}
 	return rows, rangeRaw, warnings, nil
