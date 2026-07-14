@@ -334,18 +334,12 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 		if err != nil {
 			continue
 		}
-		// SettingValue's value-or-default fallback would collapse "default
-		// key present but empty" and "default key absent" into the same ""
-		// — collectSettings distinguishes them (an explicit empty default,
-		// e.g. server-url pre-setup, still shows up as a blank value in the
-		// bundle rather than looking unqueried), so it keeps its own
-		// presence check and only reuses SettingValue for the value itself.
-		if _, found, _ := unstructured.NestedString(obj.Object, "value"); found {
-			values[name] = engine.SettingValue(obj)
+		if v, found, _ := unstructured.NestedString(obj.Object, "value"); found && v != "" {
+			values[name] = v
 			continue
 		}
-		if _, found, _ := unstructured.NestedString(obj.Object, "default"); found {
-			values[name] = engine.SettingValue(obj)
+		if v, found, _ := unstructured.NestedString(obj.Object, "default"); found {
+			values[name] = v
 		}
 	}
 	data, _ := json.Marshal(values)
