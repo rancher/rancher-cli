@@ -166,6 +166,59 @@ func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 	require.NotEmpty(t, res.Warnings, "the omitted distro must be surfaced as a warning, not silently dropped")
 }
 
+// TestFetchVersionsDegradesEachDistroIndependently proves the table-driven
+// fetch (each distro's release call now runs concurrently with the other,
+// finding 7/8) still degrades each distro on its own: a 404 on k3s alone,
+// on rke2 alone, and on both at once all yield the OTHER distro's rows (or
+// none, for "both") plus one warning per omitted distro — never an error,
+// and never a false warning for the distro that DID resolve.
+func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		routes      map[string][]string
+		wantDistros []string
+		wantWarns   int
+	}{
+		{
+			name:        "k3s missing",
+			routes:      map[string][]string{rke2ReleasePath: {"v1.30.5+rke2r1"}},
+			wantDistros: []string{"rke2"},
+			wantWarns:   1,
+		},
+		{
+			name:        "rke2 missing",
+			routes:      map[string][]string{k3sReleasePath: {"v1.30.5+k3s1"}},
+			wantDistros: []string{"k3s"},
+			wantWarns:   1,
+		},
+		{
+			name:        "both missing",
+			routes:      map[string][]string{},
+			wantDistros: nil,
+			wantWarns:   2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(releaseHandler(t, tc.routes))
+			defer srv.Close()
+
+			factory := fakeFactory{c: settingsClient(nil)}
+			rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+			require.NoError(t, err, "a 404 on either (or both) distro's route must never surface as an error")
+
+			var gotDistros []string
+			for _, r := range rows {
+				gotDistros = append(gotDistros, r.Distro)
+			}
+			assert.Equal(t, tc.wantDistros, gotDistros)
+			assert.Len(t, warnings, tc.wantWarns)
+		})
+	}
+}
+
 // TestFetchVersionsMalformedReleaseBody is spec D-10's transport case
 // (Task 5's precedent, review R2-5): a body that is not valid JSON must
 // decode to a typed CodeGeneric error naming "decoding" — never a panic,

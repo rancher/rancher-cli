@@ -48,6 +48,19 @@ const (
 // (cluster-scoped: ns "" on ClusterClient.Get).
 var settingsGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"}
 
+// distroSpecs drives fetchVersionsDetailed's per-distro fetch and
+// row-building loop: rke2 and k3s differ only in their release path and
+// default-version setting name, so a single table (rather than two
+// hand-copied blocks) is the only thing that changes per distro.
+var distroSpecs = []struct {
+	distro         string
+	releasePath    string
+	defaultSetting string
+}{
+	{"rke2", rke2ReleasePath, rke2DefaultVersionSetting},
+	{"k3s", k3sReleasePath, k3sDefaultVersionSetting},
+}
+
 // Version carries one merged `get kubernetes-versions` row; also consumed by
 // Task 7's warn-only create-time validation.
 type Version struct {
@@ -274,56 +287,42 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 		return nil, "", nil, err
 	}
 
-	// The two release fetches and the three setting reads below depend only
-	// on the already-resolved root/client above, never on each other, so
-	// they run concurrently via errgroup rather than paying 5 sequential
-	// round trips (same idiom as internal/engine/inspect/images.go's
-	// --all-clusters fan-out and internal/commands/authcheck.go's 3
-	// concurrent probes). Each goroutine writes only to its own dedicated
-	// result variable(s), so there is no data race between them; the
-	// ASSEMBLY into rows/warnings below happens only after g.Wait() joins
-	// all five, in the same fixed order (rke2 then k3s) the original
-	// sequential code produced — so output stays deterministic regardless
-	// of which goroutine happens to finish first.
-	var (
-		rke2Versions, k3sVersions []string
-		rke2Warning, k3sWarning   string
-		rke2Default, k3sDefault   string
-		rangeRaw                  string
-	)
+	// Each distro's release fetch and default-version setting read, plus
+	// the shared supported-range setting read, depend only on the
+	// already-resolved root/client above, never on each other, so they run
+	// concurrently via errgroup rather than paying 5 sequential round trips
+	// (same idiom as internal/engine/inspect/images.go's --all-clusters
+	// fan-out and internal/commands/authcheck.go's 3 concurrent probes).
+	// Every goroutine below writes only to its own distroSpecs[i] slot (or,
+	// for rangeRaw, its own dedicated variable), so there is no data race
+	// between them; the ASSEMBLY into rows/warnings happens only after
+	// g.Wait() joins all five, iterating distroSpecs in its fixed order —
+	// so output stays deterministic regardless of which goroutine happens
+	// to finish first.
+	versions := make([][]string, len(distroSpecs))
+	warningPerDistro := make([]string, len(distroSpecs))
+	defaults := make([]string, len(distroSpecs))
+	var rangeRaw string
+
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		vs, err := fetchReleaseVersions(gctx, root, rke2ReleasePath)
-		if err != nil {
-			if !isNotFoundError(err) {
-				return err
+	for i, d := range distroSpecs {
+		g.Go(func() error {
+			vs, err := fetchReleaseVersions(gctx, root, d.releasePath)
+			if err != nil {
+				if !isNotFoundError(err) {
+					return err
+				}
+				warningPerDistro[i] = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
+				vs = nil
 			}
-			rke2Warning = "channel server route " + rke2ReleasePath + " not found (older server?): rke2 versions omitted"
-			vs = nil
-		}
-		rke2Versions = vs
-		return nil
-	})
-	g.Go(func() error {
-		vs, err := fetchReleaseVersions(gctx, root, k3sReleasePath)
-		if err != nil {
-			if !isNotFoundError(err) {
-				return err
-			}
-			k3sWarning = "channel server route " + k3sReleasePath + " not found (older server?): k3s versions omitted"
-			vs = nil
-		}
-		k3sVersions = vs
-		return nil
-	})
-	g.Go(func() error {
-		rke2Default = getSettingValue(gctx, client, rke2DefaultVersionSetting)
-		return nil
-	})
-	g.Go(func() error {
-		k3sDefault = getSettingValue(gctx, client, k3sDefaultVersionSetting)
-		return nil
-	})
+			versions[i] = vs
+			return nil
+		})
+		g.Go(func() error {
+			defaults[i] = getSettingValue(gctx, client, d.defaultSetting)
+			return nil
+		})
+	}
 	g.Go(func() error {
 		rangeRaw = getSettingValue(gctx, client, supportedRangeSetting)
 		return nil
@@ -333,19 +332,21 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	}
 
 	var warnings []string
-	if rke2Warning != "" {
-		warnings = append(warnings, rke2Warning)
-	}
-	if k3sWarning != "" {
-		warnings = append(warnings, k3sWarning)
+	for _, w := range warningPerDistro {
+		if w != "" {
+			warnings = append(warnings, w)
+		}
 	}
 
-	rows := make([]Version, 0, len(rke2Versions)+len(k3sVersions))
-	for _, v := range rke2Versions {
-		rows = append(rows, Version{Distro: "rke2", Version: v, Default: v == rke2Default, Supported: versionSupported(rangeRaw, v)})
+	total := 0
+	for _, vs := range versions {
+		total += len(vs)
 	}
-	for _, v := range k3sVersions {
-		rows = append(rows, Version{Distro: "k3s", Version: v, Default: v == k3sDefault, Supported: versionSupported(rangeRaw, v)})
+	rows := make([]Version, 0, total)
+	for i, d := range distroSpecs {
+		for _, v := range versions[i] {
+			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == defaults[i], Supported: versionSupported(rangeRaw, v)})
+		}
 	}
 	return rows, rangeRaw, warnings, nil
 }
