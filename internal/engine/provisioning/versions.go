@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -268,32 +269,76 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	if err != nil {
 		return nil, "", nil, err
 	}
-
-	var warnings []string
-	rke2Versions, err := fetchReleaseVersions(ctx, root, rke2ReleasePath)
-	if err != nil {
-		if !isNotFoundError(err) {
-			return nil, "", nil, err
-		}
-		warnings = append(warnings, "channel server route "+rke2ReleasePath+" not found (older server?): rke2 versions omitted")
-		rke2Versions = nil
-	}
-	k3sVersions, err := fetchReleaseVersions(ctx, root, k3sReleasePath)
-	if err != nil {
-		if !isNotFoundError(err) {
-			return nil, "", nil, err
-		}
-		warnings = append(warnings, "channel server route "+k3sReleasePath+" not found (older server?): k3s versions omitted")
-		k3sVersions = nil
-	}
-
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	rke2Default := getSettingValue(ctx, client, rke2DefaultVersionSetting)
-	k3sDefault := getSettingValue(ctx, client, k3sDefaultVersionSetting)
-	rangeRaw := getSettingValue(ctx, client, supportedRangeSetting)
+
+	// The two release fetches and the three setting reads below depend only
+	// on the already-resolved root/client above, never on each other, so
+	// they run concurrently via errgroup rather than paying 5 sequential
+	// round trips (same idiom as internal/engine/inspect/images.go's
+	// --all-clusters fan-out and internal/commands/authcheck.go's 3
+	// concurrent probes). Each goroutine writes only to its own dedicated
+	// result variable(s), so there is no data race between them; the
+	// ASSEMBLY into rows/warnings below happens only after g.Wait() joins
+	// all five, in the same fixed order (rke2 then k3s) the original
+	// sequential code produced — so output stays deterministic regardless
+	// of which goroutine happens to finish first.
+	var (
+		rke2Versions, k3sVersions []string
+		rke2Warning, k3sWarning   string
+		rke2Default, k3sDefault   string
+		rangeRaw                  string
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		vs, err := fetchReleaseVersions(gctx, root, rke2ReleasePath)
+		if err != nil {
+			if !isNotFoundError(err) {
+				return err
+			}
+			rke2Warning = "channel server route " + rke2ReleasePath + " not found (older server?): rke2 versions omitted"
+			vs = nil
+		}
+		rke2Versions = vs
+		return nil
+	})
+	g.Go(func() error {
+		vs, err := fetchReleaseVersions(gctx, root, k3sReleasePath)
+		if err != nil {
+			if !isNotFoundError(err) {
+				return err
+			}
+			k3sWarning = "channel server route " + k3sReleasePath + " not found (older server?): k3s versions omitted"
+			vs = nil
+		}
+		k3sVersions = vs
+		return nil
+	})
+	g.Go(func() error {
+		rke2Default = getSettingValue(gctx, client, rke2DefaultVersionSetting)
+		return nil
+	})
+	g.Go(func() error {
+		k3sDefault = getSettingValue(gctx, client, k3sDefaultVersionSetting)
+		return nil
+	})
+	g.Go(func() error {
+		rangeRaw = getSettingValue(gctx, client, supportedRangeSetting)
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return nil, "", nil, err
+	}
+
+	var warnings []string
+	if rke2Warning != "" {
+		warnings = append(warnings, rke2Warning)
+	}
+	if k3sWarning != "" {
+		warnings = append(warnings, k3sWarning)
+	}
 
 	rows := make([]Version, 0, len(rke2Versions)+len(k3sVersions))
 	for _, v := range rke2Versions {
