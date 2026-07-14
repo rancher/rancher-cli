@@ -9,6 +9,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -338,6 +339,26 @@ func TestCreateClusterNodeDriverMalformedMachineConfigIsValidation(t *testing.T)
 		b: map[string]bool{"worker": true},
 	})
 	_ = requireValidation(t, err)
+}
+
+// TestMachineConfigKindsTracksKindsTable proves machineConfigKinds() is
+// DERIVED from kinds.All() rather than a hardcoded copy: it must contain
+// exactly the kind Names whose GVR.Group is rke-machine-config.cattle.io, no
+// more and no fewer, so if Task 3's rows ever change, the real
+// --machine-config validation logic and this test move together
+// automatically — no separate hand-maintained list to fall out of sync.
+func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
+	t.Parallel()
+	want := map[string]bool{}
+	for _, k := range kinds.All() {
+		if k.GVR.Group == "rke-machine-config.cattle.io" {
+			want[k.Name] = true
+		}
+	}
+	require.NotEmpty(t, want, "kinds.go must carry at least one rke-machine-config.cattle.io row")
+
+	got := machineConfigKinds()
+	assert.Equal(t, want, got)
 }
 
 // TestCreateClusterModeExclusivity covers every combination the brief names:
