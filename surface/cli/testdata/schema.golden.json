@@ -1362,6 +1362,45 @@
     },
     {
       "aliases": [
+        "provisioningclusters"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete provisioning-cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete a provisioning-cluster"
+    },
+    {
+      "aliases": [
         "replicasets",
         "rs"
       ],

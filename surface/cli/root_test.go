@@ -302,6 +302,31 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	assert.Contains(t, werr.Error(), "token")
 }
 
+// TestBuildRootWiresProvisioningClusterDelete pins the D-6/R1-1 gotcha for
+// real: provisioningcluster's row stays Deletable: false, so
+// kinds.Bindings() never emits "delete provisioning-cluster" — the ONLY
+// reason BuildRoot succeeds with the del override registered is
+// provider.NewResolver's manual entry for that exact op string. Before that
+// manual entry existed, this test failed with wireEntry's "no resolver
+// binding" error (verified during TDD and again at self-review by
+// temporarily removing the entry) — the regression net this test now stands
+// guard for.
+func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
+	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
+	// combined with t.Parallel (same constraint TestBuildRootWiresGeneratedCommands
+	// and TestSchemaManifestExposesProjectScope already observe).
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	delGroup := findCommand(root.Commands, "delete")
+	require.NotNil(t, delGroup)
+	leaf := findCommand(delGroup.Commands, "provisioning-cluster")
+	require.NotNil(t, leaf, "delete provisioning-cluster must be wired despite Deletable: false")
+
+	names := schemaCommandNames(t)
+	assert.Contains(t, names, "delete provisioning-cluster")
+}
+
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	t.Parallel()
 	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))

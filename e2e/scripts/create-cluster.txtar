@@ -31,3 +31,21 @@ jsonquery stderr data.error.code VALIDATION
 ! exec rancher create cluster bad-3 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1
 jsonquery stderr data.error.code VALIDATION
 stderr 'at least one role'
+
+# Task 9 (spec D-6): guarded provisioning-cluster delete. "local" is refused
+# outright, before any --apply/--yes gate is even reached.
+! exec rancher delete provisioning-cluster local --apply --yes
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'refusing to delete the local cluster'
+
+# dry-run previews the cascade warning without deleting imported-1 (this
+# script's own imported cluster, created above).
+exec rancher delete provisioning-cluster imported-1 --dry-run -o json
+cp stdout delete-eff.json
+jsonquery delete-eff.json warnings.0 'deleting this provisioning cluster cascades: the provisioning controller removes the linked CAPI Cluster, which takes its Machines and RKEControlPlane with it, and separately removes the corresponding management Cluster'
+
+# the real delete, then confirm it is gone.
+exec rancher delete provisioning-cluster imported-1 --apply --yes
+
+! exec rancher get provisioning-cluster imported-1 -o json
+jsonquery stderr data.error.code NOT_FOUND

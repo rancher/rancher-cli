@@ -139,6 +139,16 @@ var kindOverrideTable = map[string]kindOverride{
 				}
 			})
 		},
+		// del (Task 9, spec D-6): the row stays Deletable: false (no generic
+		// verb would be generated), but the override still supplies a
+		// bespoke, guarded delete command — the exact D-R1-3 point. See
+		// provider.NewResolver's manual "delete provisioning-cluster" entry:
+		// kinds.Bindings() never emits a binding for this op since the row
+		// is not Deletable, so wireEntry would otherwise reject this command
+		// at BuildRoot startup.
+		del: func(k kinds.Kind, d runDeps) runtime.Command {
+			return provisioning.NewDeleteProvisioningCluster(k, d.clients)
+		},
 	},
 }
 
