@@ -53,6 +53,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`, `top node`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
+| `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
@@ -84,6 +85,7 @@ graph TD
     resources["internal/engine/resources"]
     inspect["internal/engine/inspect"]
     projects["internal/engine/projects"]
+    provisioning["internal/engine/provisioning"]
     extres["internal/engine/extres"]
     observe["internal/engine/observe"]
     config["internal/config"]
@@ -103,6 +105,7 @@ graph TD
     cli --> engine
     cli --> kinds
     cli --> projects
+    cli --> provisioning
     cli --> extres
     cli --> observe
     cli --> resources
@@ -164,6 +167,11 @@ graph TD
     projects --> safety
     projects --> clierr
     projects --> config
+
+    provisioning --> engine
+    provisioning --> projects
+    provisioning --> runtime
+    provisioning --> clierr
 
     extres --> engine
     extres --> kinds

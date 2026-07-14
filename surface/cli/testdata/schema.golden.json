@@ -1775,6 +1775,22 @@
       "usage": "List capi-clusters or show one"
     },
     {
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "name": "get cloud-credential",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List cloud credentials or show one (secret material never shown)"
+    },
+    {
       "aliases": [
         "clusters"
       ],
