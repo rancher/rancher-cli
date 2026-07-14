@@ -1,5 +1,8 @@
 package inspect
 
+// Deliberately plain-stdlib (no testify): shared test helpers without
+// assertions, nothing to convert.
+
 import (
 	"context"
 	"fmt"

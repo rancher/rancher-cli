@@ -5,52 +5,37 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPinRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	if got := ReadPin(dir); got != "" {
-		t.Fatalf("ReadPin on empty dir = %q, want empty", got)
-	}
-	if err := WritePin(dir, "keychain"); err != nil {
-		t.Fatal(err)
-	}
-	if got := ReadPin(dir); got != "keychain" {
-		t.Errorf("ReadPin = %q, want keychain", got)
-	}
+	assert.Empty(t, ReadPin(dir), "ReadPin on empty dir")
+	require.NoError(t, WritePin(dir, "keychain"))
+	assert.Equal(t, "keychain", ReadPin(dir))
 	fi, err := os.Stat(filepath.Join(dir, "credstore-pin"))
-	if err != nil {
-		t.Errorf("pin file mode/err: %v %v", fi, err)
-	} else if runtime.GOOS != "windows" {
+	if assert.NoError(t, err, "pin file mode/err") && runtime.GOOS != "windows" {
 		// On Windows os.FileInfo.Mode() synthesizes mode bits regardless of
 		// the real NTFS DACL (hardenACL is the enforcement there), so the
 		// 0600 assertion is meaningless on that platform.
-		if fi.Mode().Perm() != 0o600 {
-			t.Errorf("pin file mode/err: %v %v", fi, err)
-		}
+		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
 	}
 }
 
 func TestReadPinIgnoresGarbage(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "credstore-pin"), []byte("keyChain\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := ReadPin(dir); got != "" {
-		t.Errorf("garbage pin = %q, want empty (re-probe)", got)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "credstore-pin"), []byte("keyChain\n"), 0o600))
+	assert.Empty(t, ReadPin(dir), "garbage pin should re-probe")
 }
 
 func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
-	if err := WritePin(dir, "file"); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, WritePin(dir, "file"))
 	orig := keyringUsable
 	keyringUsable = func() bool { return true } // keychain now works
 	resetKeyringUsableCache()                   // fresh probe, not a result cached by an earlier test
@@ -58,15 +43,9 @@ func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "", cur)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := ReadPin(dir); got != "keychain" {
-		t.Errorf("pin after login re-probe = %q, want keychain", got)
-	}
-	if _, ok := s.(*keyringStore); !ok {
-		t.Errorf("store after upgrade = %T, want keyringStore", s)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "keychain", ReadPin(dir), "pin after login re-probe")
+	assert.IsType(t, &keyringStore{}, s, "store after upgrade")
 }
 
 // Reviewer repro: a fresh unpinned dir with an unusable keychain previously
@@ -84,18 +63,11 @@ func TestOpenStoreThenRepinForLoginShareOneProbe(t *testing.T) {
 	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
 	store, err := OpenStore("auto", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := ReadPin(dir); got != "file" {
-		t.Fatalf("pin after OpenStore = %q, want file", got)
-	}
-	if _, err := RepinForLogin(dir, "", store); err != nil {
-		t.Fatal(err)
-	}
-	if probes != 1 {
-		t.Errorf("probes = %d, want 1 (RepinForLogin must reuse OpenStore's memoized probe)", probes)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "file", ReadPin(dir), "pin after OpenStore")
+	_, err = RepinForLogin(dir, "", store)
+	require.NoError(t, err)
+	assert.Equal(t, 1, probes, "RepinForLogin must reuse OpenStore's memoized probe")
 }
 
 func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
@@ -103,17 +75,14 @@ func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
 	dir := t.TempDir()
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "file", cur)
-	if err != nil || s != cur {
-		t.Fatalf("explicit policy must not re-probe: %v %v", s, err)
-	}
+	require.NoError(t, err, "explicit policy must not re-probe")
+	require.Equal(t, cur, s, "explicit policy must not re-probe")
 }
 
 func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate from the operator's shell (env outranks the "" policy under test)
 	dir := t.TempDir()
-	if err := WritePin(dir, "keychain"); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, WritePin(dir, "keychain"))
 	probes := 0
 	orig := keyringUsable
 	keyringUsable = func() bool { probes++; return false } // keychain "broken" this run
@@ -121,18 +90,10 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 
 	cur := NewFileStore(dir)
 	s, err := RepinForLogin(dir, "", cur)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if probes != 0 {
-		t.Errorf("keychain-pinned login must not probe, got %d probes", probes)
-	}
-	if got := ReadPin(dir); got != "keychain" {
-		t.Errorf("pin downgraded to %q; a transient keychain hiccup must not flip to plaintext", got)
-	}
-	if s != cur {
-		t.Errorf("expected the injected store returned unchanged, got %T", s)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, probes, "keychain-pinned login must not probe")
+	assert.Equal(t, "keychain", ReadPin(dir), "pin downgraded; a transient keychain hiccup must not flip to plaintext")
+	assert.Equal(t, cur, s, "expected the injected store returned unchanged")
 }
 
 // TestRepinForLoginFreshPinNotices pins the R1-1 contract: the FIRST pin
@@ -153,19 +114,9 @@ func TestRepinForLoginFreshPinNotices(t *testing.T) {
 
 	current := NewFileStore(dir)
 	store, err := RepinForLogin(dir, "", current)
-	if err != nil {
-		t.Fatalf("RepinForLogin: %v", err)
-	}
-	if store == current {
-		t.Fatalf("expected an upgraded keyring store, got the input store")
-	}
-	if got := ReadPin(dir); got != "keychain" {
-		t.Errorf("pin = %q, want keychain", got)
-	}
-	if !strings.Contains(buf.String(), "pinned credential store: keychain") {
-		t.Errorf("missing first-pin notice; stderr log: %q", buf.String())
-	}
-	if strings.Contains(buf.String(), "re-pinned") {
-		t.Errorf("fresh pin must not use the re-pin message; got %q", buf.String())
-	}
+	require.NoError(t, err, "RepinForLogin")
+	require.NotEqual(t, current, store, "expected an upgraded keyring store, got the input store")
+	assert.Equal(t, "keychain", ReadPin(dir))
+	assert.Contains(t, buf.String(), "pinned credential store: keychain", "missing first-pin notice")
+	assert.NotContains(t, buf.String(), "re-pinned", "fresh pin must not use the re-pin message")
 }

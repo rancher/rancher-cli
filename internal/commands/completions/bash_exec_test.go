@@ -1,5 +1,8 @@
 package completions
 
+// Deliberately plain-stdlib (no testify): this test executes under a real
+// external bash and is kept dependency-light on purpose.
+
 import (
 	"fmt"
 	"os"

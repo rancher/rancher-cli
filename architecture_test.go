@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const modulePrefix = "github.com/rancher/rancher-cli/"
@@ -19,26 +22,18 @@ const modulePrefix = "github.com/rancher/rancher-cli/"
 func TestArchitectureDocMatchesImports(t *testing.T) {
 	t.Parallel()
 	doc, err := os.ReadFile("ARCHITECTURE.md")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	nodes, docEdges := parseMermaid(t, string(doc))
 	realEdges := realImportEdges(t)
 
 	for e := range docEdges {
-		if !realEdges[e] {
-			t.Errorf("doc claims edge %s — not present in code", e)
-		}
+		assert.True(t, realEdges[e], "doc claims edge %s — not present in code", e)
 	}
 	for e := range realEdges {
-		if !docEdges[e] {
-			t.Errorf("code has edge %s — missing from ARCHITECTURE.md", e)
-		}
+		assert.True(t, docEdges[e], "code has edge %s — missing from ARCHITECTURE.md", e)
 	}
 	for pkg := range packagesOnDisk(t) {
-		if !nodes[pkg] {
-			t.Errorf("package %s exists but is not in the diagram", pkg)
-		}
+		assert.True(t, nodes[pkg], "package %s exists but is not in the diagram", pkg)
 	}
 }
 
@@ -48,9 +43,7 @@ func TestArchitectureDocMatchesImports(t *testing.T) {
 func TestNoProductionPackageImportsTestRancher(t *testing.T) {
 	t.Parallel()
 	for e := range realImportEdges(t) {
-		if strings.HasSuffix(e, "internal/testrancher") {
-			t.Errorf("production package edge %s: internal/testrancher is test-only", e)
-		}
+		assert.False(t, strings.HasSuffix(e, "internal/testrancher"), "production package edge %s: internal/testrancher is test-only", e)
 	}
 }
 
@@ -75,9 +68,7 @@ func parseMermaid(t *testing.T, doc string) (map[string]bool, map[string]bool) {
 	for _, m := range edgeRe.FindAllStringSubmatch(block, -1) {
 		from, okF := ids[m[1]]
 		to, okT := ids[m[2]]
-		if !okF || !okT {
-			t.Fatalf("edge %s --> %s references an undeclared node id", m[1], m[2])
-		}
+		require.True(t, okF && okT, "edge %s --> %s references an undeclared node id", m[1], m[2])
 		edges[from+" -> "+to] = true
 	}
 	return nodes, edges
@@ -95,15 +86,13 @@ func graphBlock(t *testing.T, doc string) string {
 		}
 		body := rest[open+len("```mermaid"):]
 		end := strings.Index(body, "\n```")
-		if end < 0 {
-			t.Fatal("unterminated mermaid block in ARCHITECTURE.md")
-		}
+		require.GreaterOrEqual(t, end, 0, "unterminated mermaid block in ARCHITECTURE.md")
 		if block := body[:end]; strings.Contains(block, "graph TD") {
 			return block
 		}
 		rest = body[end+len("\n```"):]
 	}
-	t.Fatal("no `graph TD` mermaid block in ARCHITECTURE.md")
+	require.Fail(t, "no `graph TD` mermaid block in ARCHITECTURE.md")
 	return ""
 }
 
@@ -124,7 +113,7 @@ func packagesOnDisk(t *testing.T) map[string]bool {
 			}
 			return nil
 		}); err != nil {
-			t.Fatal(err)
+			require.NoError(t, err)
 		}
 	}
 	return out
@@ -133,9 +122,7 @@ func packagesOnDisk(t *testing.T) map[string]bool {
 func hasGoFiles(t *testing.T, dir string) bool {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
 			return true
@@ -157,17 +144,13 @@ func realImportEdges(t *testing.T) map[string]bool {
 			dir = "."
 		}
 		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 				continue
 			}
 			f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ImportsOnly)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			for _, imp := range f.Imports {
 				p := strings.Trim(imp.Path.Value, `"`)
 				if strings.HasPrefix(p, modulePrefix) {

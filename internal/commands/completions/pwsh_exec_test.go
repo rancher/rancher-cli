@@ -1,5 +1,8 @@
 package completions
 
+// Deliberately plain-stdlib (no testify): these tests execute under a real
+// external PowerShell and are kept dependency-light on purpose.
+
 import (
 	"fmt"
 	"os"

@@ -1,5 +1,8 @@
 //go:build e2e
 
+// Deliberately plain-stdlib (no testify): the fatal checks here run on
+// *testscript.TestScript, which does not satisfy testify's TestingT (no
+// Errorf), so conversion would be a type error, not a style choice.
 package e2e
 
 import (

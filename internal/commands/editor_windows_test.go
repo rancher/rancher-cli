@@ -2,6 +2,9 @@
 
 package commands
 
+// Deliberately plain-stdlib (no testify): this file only compiles/runs on
+// Windows builds and stays minimal.
+
 import "testing"
 
 // TestResolveEditorFallsBackToNotepadOnWindows pins the Windows-only
