@@ -150,9 +150,14 @@ func TestSchemaManifestGolden(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 	var manifest any
 	require.NoError(t, json.Unmarshal(env.Data, &manifest))
-	got, err := json.MarshalIndent(manifest, "", "  ")
-	require.NoError(t, err)
-	got = append(got, '\n')
+	// Match the runtime -o json contract: indented, HTML escaping disabled so
+	// `<`, `>`, `&` in descriptions stay literal rather than < / > / &.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	require.NoError(t, enc.Encode(manifest))
+	got := buf.Bytes()
 
 	golden := filepath.Join("testdata", "schema.golden.json")
 	if *update {

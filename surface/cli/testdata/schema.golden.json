@@ -93,7 +93,7 @@
       "auth": false,
       "commandType": "local",
       "examples": [
-        "rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 \u003c token.txt"
+        "rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 < token.txt"
       ],
       "flags": [
         {
@@ -181,8 +181,8 @@
       "auth": false,
       "commandType": "local",
       "examples": [
-        "source \u003c(rancher completion bash)",
-        "rancher completion fish \u003e ~/.config/fish/completions/rancher.fish"
+        "source <(rancher completion bash)",
+        "rancher completion fish > ~/.config/fish/completions/rancher.fish"
       ],
       "name": "completion",
       "network": false,
@@ -330,12 +330,12 @@
           "type": "bool"
         },
         {
-          "desc": "node-driver cluster: \u003ckind\u003e/\u003cname\u003e, e.g. amazonec2config/mycfg",
+          "desc": "node-driver cluster: <kind>/<name>, e.g. amazonec2config/mycfg",
           "name": "machine-config",
           "type": "string"
         },
         {
-          "desc": "node-driver cluster: --cloud-credential \u003cname-or-id\u003e",
+          "desc": "node-driver cluster: --cloud-credential <name-or-id>",
           "name": "cloud-credential",
           "type": "string"
         },
@@ -381,7 +381,7 @@
       "commandType": "mutating",
       "destructive": "true",
       "examples": [
-        "rancher create kubeconfig --clusters prod,staging --ttl 30d --apply \u003e ci.yaml"
+        "rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml"
       ],
       "flags": [
         {
@@ -3591,7 +3591,7 @@
       "auth": true,
       "commandType": "local",
       "examples": [
-        "rancher kubeconfig --cluster prod \u003e prod.yaml"
+        "rancher kubeconfig --cluster prod > prod.yaml"
       ],
       "flags": [
         {
@@ -6358,7 +6358,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "never prompt; ambiguity -\u003e error",
+      "desc": "never prompt; ambiguity -> error",
       "name": "--no-input",
       "type": "bool"
     },
@@ -6388,13 +6388,13 @@
     },
     {
       "appliesTo": "all",
-      "desc": "scope: cluster[:project]; flag \u003e RANCHER_CLI_CONTEXT \u003e config; project axis is informational only",
+      "desc": "scope: cluster[:project]; flag > RANCHER_CLI_CONTEXT > config; project axis is informational only",
       "name": "--context",
       "type": "string"
     },
     {
       "appliesTo": "all",
-      "desc": "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag \u003e context; VALIDATION where it does not apply",
+      "desc": "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag > context; VALIDATION where it does not apply",
       "name": "--project",
       "type": "string"
     },

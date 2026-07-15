@@ -24,12 +24,7 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	case "", "table":
 		return renderTable(w, env)
 	case "json":
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		// This JSON is a CLI/agent contract read raw, not embedded in HTML — keep
-		// `<`, `>`, `&` literal instead of < / > / &.
-		enc.SetEscapeHTML(false)
-		return enc.Encode(env)
+		return EncodeJSON(w, env)
 	case "yaml":
 		b, err := yaml.Marshal(env)
 		if err != nil {
@@ -68,13 +63,21 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	}
 }
 
+// EncodeJSON writes v to w as indented JSON with HTML escaping disabled. This
+// JSON is a CLI/agent contract read raw, not embedded in HTML, so `<`, `>`, `&`
+// stay literal instead of becoming < / > / &.
+func EncodeJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	return enc.Encode(v)
+}
+
 func renderTable(w io.Writer, env *Envelope) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
 		// Fallback: pretty JSON so table mode never loses data.
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(env.Data)
+		return EncodeJSON(w, env.Data)
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	cols := t.Columns()

@@ -91,3 +91,45 @@ func TestRenderTemplateUsesJSONView(t *testing.T) {
 	require.NoError(t, Render(&buf, "{{.name}}", env))
 	assert.Equal(t, "m\n", buf.String())
 }
+
+// TestRenderJSONNoHTMLEscape above pins the -o json path. The two below cover
+// the paths it does not: the shared EncodeJSON helper and the default/table
+// fallback for a non-Tabular payload — the fallback is what actually regressed
+// (bare `schema` emitted the escaped form for the `>` in descriptions).
+
+const escapeProbe = "a < b > c & d"
+
+func assertNotHTMLEscaped(t *testing.T, out string) {
+	t.Helper()
+	assert.Contains(t, out, escapeProbe, "raw < > & must survive verbatim")
+	// Go's default JSON encoder escapes <, >, and & into their unicode form;
+	// the u003c/u003e/u0026 substrings below appear only if that escaping ran.
+	assert.NotContains(t, out, "u003c", "must not HTML-escape <")
+	assert.NotContains(t, out, "u003e", "must not HTML-escape >")
+	assert.NotContains(t, out, "u0026", "must not HTML-escape &")
+}
+
+func TestEncodeJSONKeepsAngleAndAmpLiteral(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	require.NoError(t, EncodeJSON(&buf, map[string]string{"desc": escapeProbe}))
+	assertNotHTMLEscaped(t, buf.String())
+}
+
+func TestRenderTableFallbackKeepsAngleAndAmpLiteral(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"", "table"} {
+		format := format
+		name := format
+		if name == "" {
+			name = "empty"
+		}
+		t.Run("format="+name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			env := NewEnvelope("probe", map[string]string{"desc": escapeProbe})
+			require.NoError(t, Render(&buf, format, env))
+			assertNotHTMLEscaped(t, buf.String())
+		})
+	}
+}
