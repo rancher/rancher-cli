@@ -197,7 +197,7 @@ Every other command family (cluster-scoped kinds, management-plane kinds,
 and the composites `inspect pod`/`inspect deployment`/`top node`/`images`)
 rejects a non-empty `--project` with `VALIDATION` rather than silently
 ignoring it. Precedence: `--project` flag > the current context's project
-axis (`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
+(`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
 set-context --project`) > unscoped.
 
 ## Output & the agent contract
@@ -349,10 +349,12 @@ never depends on them.
   | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
   | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` |
   | `RANCHER_CLI_CONFIG_DIR` | config directory |
+  | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
+  | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
 
   The global `--context cluster[:project]` flag overrides `RANCHER_CLI_CONTEXT`
   for a single invocation. `--context c:` (trailing colon, no project) clears
-  the project for this invocation. The context's project axis is shown by
+  the project for this invocation. The context's project is shown by
   `config current-context`/`auth check`, and is consulted for routing only as
   a fallback: an unset `--project` flag falls back to it (`--project` always
   wins when both are set) — see "Project scope" above.
@@ -446,7 +448,7 @@ may (but are not required to) use the GPG key located on
 
 # License
 
-Copyright (c) 2025 [SUSE](http://rancher.com)
+Copyright (c) 2026 [SUSE](http://rancher.com)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

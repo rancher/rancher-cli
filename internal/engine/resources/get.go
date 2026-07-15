@@ -32,6 +32,31 @@ const (
 
 const defaultWaitTimeout = 120 * time.Second
 
+// plural returns the English plural of a lowercase kind name for usage strings:
+// sibilant endings take -es, a consonant followed by -y takes -ies, everything
+// else -s. Kind names are simple lowercase tokens (some hyphenated), so this
+// covers the table without pulling in a pluralization library.
+func plural(name string) string {
+	switch {
+	case strings.HasSuffix(name, "s"), strings.HasSuffix(name, "x"),
+		strings.HasSuffix(name, "z"), strings.HasSuffix(name, "ch"),
+		strings.HasSuffix(name, "sh"):
+		return name + "es"
+	case len(name) > 1 && strings.HasSuffix(name, "y") && !isVowel(name[len(name)-2]):
+		return name[:len(name)-1] + "ies"
+	default:
+		return name + "s"
+	}
+}
+
+func isVowel(b byte) bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
+	}
+	return false
+}
+
 type getCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
@@ -48,7 +73,7 @@ func (c getCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:         "get " + c.k.Name,
 		Aliases:      c.k.Aliases,
-		Usage:        "List " + c.k.Name + "s or show one",
+		Usage:        "List " + plural(c.k.Name) + " or show one",
 		CommandType:  runtime.ReadOnly,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Flags:        getFlags(c.k),
@@ -67,28 +92,39 @@ func (c getCmd) Describe() runtime.Descriptor {
 //
 // Every kind additionally gains --wait/--for/--timeout (named-get only; see
 // Execute).
+// clusterFlag and namespaceFlag are the single source for the two routing
+// flags shared across get/delete/patch (via getFlags) and create, so their
+// schema/TTY description lives in one place.
+func clusterFlag() runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"}
+}
+
+func namespaceFlag() runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagNamespace, Type: "string", Desc: "`namespace` to operate in"}
+}
+
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	var flags []runtime.ArgSpec
 	switch k.Policy {
 	case kinds.NSCluster:
-		flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
+		flags = []runtime.ArgSpec{clusterFlag()}
 	case kinds.NSWorkspace:
-		flags = []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
+		flags = []runtime.ArgSpec{namespaceFlag()}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}, {Name: FlagNamespace, Type: "string"}}
+			flags = []runtime.ArgSpec{clusterFlag(), namespaceFlag()}
 		} else {
-			flags = []runtime.ArgSpec{{Name: FlagNamespace, Type: "string"}}
+			flags = []runtime.ArgSpec{namespaceFlag()}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{{Name: FlagCluster, Type: "string"}}
+			flags = []runtime.ArgSpec{clusterFlag()}
 		}
 	}
 	return append(flags,
-		runtime.ArgSpec{Name: flagWait, Type: "bool"},
-		runtime.ArgSpec{Name: flagFor, Type: "string"},
-		runtime.ArgSpec{Name: flagTimeout, Type: "string"},
+		runtime.ArgSpec{Name: flagWait, Type: "bool", Desc: "wait for the resource to reach --for before returning"},
+		runtime.ArgSpec{Name: flagFor, Type: "string", Desc: "wait `condition`, e.g. state=active or condition=Ready"},
+		runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "wait `timeout`, e.g. 5m (default 120s)"},
 	)
 }
 

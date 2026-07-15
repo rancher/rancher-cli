@@ -207,8 +207,10 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 // contextOverride carries the global --context flag value, set once by the
 // CLI adapter before dispatch. The flag outranks RANCHER_CLI_CONTEXT (env), which
 // outranks the config file — the same env-over-file rule this block already
-// applies, extended one level up. eff.Project is informational only (display,
-// e.g. `config current-context`) — no routing or API-call code consumes it.
+// applies, extended one level up. eff.Project is the effective project scope:
+// ContextProject() returns it and EffectiveProject falls back to it when
+// --project is absent, so a context :project scopes downstream namespaced
+// reads. It is also what `config current-context` displays.
 var contextOverride string
 
 // SetContextOverride records the global --context (cluster[:project]) flag

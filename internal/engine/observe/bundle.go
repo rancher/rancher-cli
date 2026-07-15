@@ -90,13 +90,13 @@ func NewSupportBundle(clients engine.ClusterClientFactory, schema func() any) ru
 func (c *supportBundleCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "support-bundle",
-		Usage: "Pack the API-reachable triage plane into one tar.gz for support",
+		Usage: "Collect diagnostics reachable through the API into one tar.gz for support",
 		Flags: []runtime.ArgSpec{
-			{Name: flagTargets, Type: "string"},
-			{Name: flagClusters, Type: "string"},
-			{Name: flagSince, Type: "string"},
-			{Name: flagTail, Type: "string"},
-			{Name: flagFilename, Type: "string", Aliases: []string{"f"}},
+			{Name: flagTargets, Type: "string", Desc: "comma-separated log targets, or `all` (the default)"},
+			{Name: flagClusters, Type: "string", Desc: "downstream cluster ids/names to include (comma-separated)"},
+			{Name: flagSince, Type: "string", Desc: "collect logs newer than this `duration` (default 24h)"},
+			{Name: flagTail, Type: "string", Desc: "max log `lines` per target (default 10000)"},
+			{Name: flagFilename, Type: "string", Aliases: []string{"f"}, Desc: "write the tar.gz archive to `file`"},
 		},
 		CommandType: runtime.ReadOnly,
 		Examples: []string{

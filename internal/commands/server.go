@@ -72,8 +72,9 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		// Required:false — a missing name is handled here with an AMBIGUOUS_SELECTION
 		// candidate list (server names), richer than the generic validateInput error.
-		Args:    []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Toolset: "core",
+		Args:     []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Toolset:  "core",
+		Examples: []string{"rancher config use-server prod"},
 	}
 }
 func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {

@@ -39,36 +39,55 @@
     {
       "auth": true,
       "commandType": "local",
+      "examples": [
+        "rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod"
+      ],
       "flags": [
         {
+          "desc": "Rancher server `url`",
+          "env": [
+            "RANCHER_CLI_URL"
+          ],
           "name": "server",
           "type": "string"
         },
         {
+          "desc": "cluster `id|name`",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "stored server `name` to use",
           "name": "name",
           "type": "string"
         },
         {
+          "desc": "auth provider `name` to sign in with",
           "name": "auth-provider",
           "type": "string"
         },
         {
+          "desc": "identity-provider `flow`",
           "enum": [
             "devicecode",
             "authcode"
+          ],
+          "env": [
+            "RANCHER_CLI_OAUTH_AUTH_FLOW"
           ],
           "name": "auth-flow",
           "type": "string"
         },
         {
+          "desc": "PEM CA bundle, a `path` or the literal PEM",
+          "env": [
+            "RANCHER_CLI_CACERT"
+          ],
           "name": "cacert",
           "type": "string"
         },
         {
+          "desc": "skip TLS verification (insecure)",
           "name": "skip-verify",
           "type": "bool"
         }
@@ -76,7 +95,7 @@
       "name": "auth get-token",
       "network": true,
       "toolset": "core",
-      "usage": "Authenticate and emit a kubeconfig ExecCredential"
+      "usage": "Authenticate and print a kubeconfig ExecCredential"
     },
     {
       "auth": false,
@@ -97,39 +116,50 @@
       ],
       "flags": [
         {
+          "desc": "Rancher server `url` (scheme required)",
           "name": "server",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "read the API token (id:secret) from stdin",
           "name": "token-stdin",
           "type": "bool"
         },
         {
+          "desc": "`name` for the saved server entry",
           "name": "name",
           "type": "string"
         },
         {
+          "desc": "PEM CA bundle, a `path` or the literal PEM",
           "name": "cacert",
           "type": "string"
         },
         {
+          "desc": "initial scope `cluster[:project]` for the new context",
           "name": "context",
           "type": "string"
         },
         {
+          "desc": "auth provider `name` to sign in with",
           "name": "auth-provider",
           "type": "string"
         },
         {
+          "desc": "identity-provider `flow`",
           "enum": [
             "devicecode",
             "authcode"
+          ],
+          "env": [
+            "RANCHER_CLI_OAUTH_AUTH_FLOW"
           ],
           "name": "auth-flow",
           "type": "string"
         },
         {
+          "desc": "session-token lifetime `duration`, e.g. 90d",
           "name": "ttl",
           "type": "string"
         }
@@ -187,7 +217,7 @@
       "name": "completion",
       "network": false,
       "toolset": "core",
-      "usage": "Print a shell completion script; -o is ignored, output is always the raw script (the kubeconfig precedent)"
+      "usage": "Print a shell completion script (ignores -o; always the raw script)"
     },
     {
       "auth": false,
@@ -297,6 +327,9 @@
       ],
       "auth": false,
       "commandType": "local",
+      "examples": [
+        "rancher config use-server prod"
+      ],
       "name": "config use-server",
       "network": false,
       "toolset": "core",
@@ -312,6 +345,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest.",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",
@@ -320,26 +354,27 @@
       ],
       "flags": [
         {
-          "desc": "imported cluster: spec.rkeConfig omitted entirely",
+          "desc": "imported cluster (no RKE config)",
           "name": "import",
           "type": "bool"
         },
         {
-          "desc": "custom cluster: spec.rkeConfig: {}, nodes register out of band",
+          "desc": "custom cluster; nodes join separately via a registration command",
           "name": "custom",
           "type": "bool"
         },
         {
-          "desc": "node-driver cluster: <kind>/<name>, e.g. amazonec2config/mycfg",
+          "desc": "machine config `kind/name` for a node-driver pool, e.g. amazonec2config/mycfg",
           "name": "machine-config",
           "type": "string"
         },
         {
-          "desc": "node-driver cluster: --cloud-credential <name-or-id>",
+          "desc": "cloud credential `id|name` for a node-driver pool",
           "name": "cloud-credential",
           "type": "string"
         },
         {
+          "desc": "Kubernetes `version`; required for --custom and node-driver, optional for --import",
           "name": "k8s-version",
           "type": "string"
         },
@@ -374,7 +409,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Create a provisioning cluster: --import, --custom, or node-driver (a single machine pool — repeatable flags are not supported yet; a multi-pool cluster must go through `create resource -f` with a full manifest)"
+      "usage": "Create a provisioning cluster (--import, --custom, or node-driver)"
     },
     {
       "auth": true,
@@ -414,7 +449,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Mint a server-side, embedded kubeconfig"
+      "usage": "Create a kubeconfig with an embedded token"
     },
     {
       "args": [
@@ -432,7 +467,7 @@
       ],
       "flags": [
         {
-          "desc": "make the namespace a member of this project from birth (label + annotation set on create)",
+          "desc": "add the namespace to this project when it is created",
           "name": "project",
           "type": "string"
         },
@@ -465,19 +500,23 @@
       ],
       "flags": [
         {
+          "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "short `description` for the project",
           "name": "description",
           "type": "string"
         },
         {
+          "desc": "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi",
           "name": "quota-limit",
           "type": "string"
         },
         {
+          "desc": "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)",
           "name": "namespace-default-quota",
           "type": "string"
         }
@@ -502,15 +541,18 @@
           "aliases": [
             "f"
           ],
+          "desc": "manifest `file`, or - for stdin",
           "name": "filename",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         }
@@ -539,26 +581,32 @@
       ],
       "flags": [
         {
+          "desc": "`namespace` for the secret",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "target cluster `id|name`",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "project `id` to scope the secret to",
           "name": "project",
           "type": "string"
         },
         {
+          "desc": "create a project-scoped secret",
           "name": "project-scoped",
           "type": "bool"
         },
         {
+          "desc": "secret data as `key=value` pairs (comma-separated)",
           "name": "from-literal",
           "type": "string"
         },
         {
+          "desc": "secret `type` (default Opaque)",
           "name": "type",
           "type": "string"
         }
@@ -596,7 +644,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Mint a server-side derived token"
+      "usage": "Create a token on the server"
     },
     {
       "aliases": [
@@ -614,18 +662,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -635,7 +687,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a amazonec2config"
+      "usage": "Delete the amazonec2config"
     },
     {
       "aliases": [
@@ -653,18 +705,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -674,7 +730,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a azureconfig"
+      "usage": "Delete the azureconfig"
     },
     {
       "aliases": [
@@ -693,23 +749,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -720,7 +781,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a configmap"
+      "usage": "Delete the configmap"
     },
     {
       "aliases": [
@@ -738,23 +799,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -765,7 +831,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a cronjob"
+      "usage": "Delete the cronjob"
     },
     {
       "aliases": [
@@ -784,23 +850,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -811,7 +882,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a daemonset"
+      "usage": "Delete the daemonset"
     },
     {
       "aliases": [
@@ -830,23 +901,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -857,7 +933,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a deployment"
+      "usage": "Delete the deployment"
     },
     {
       "aliases": [
@@ -875,18 +951,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -896,7 +976,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a digitaloceanconfig"
+      "usage": "Delete the digitaloceanconfig"
     },
     {
       "aliases": [
@@ -914,18 +994,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -935,7 +1019,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a gitrepo"
+      "usage": "Delete the gitrepo"
     },
     {
       "aliases": [
@@ -953,18 +1037,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -974,7 +1062,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a harvesterconfig"
+      "usage": "Delete the harvesterconfig"
     },
     {
       "aliases": [
@@ -993,23 +1081,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1020,7 +1113,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a ingress"
+      "usage": "Delete the ingress"
     },
     {
       "aliases": [
@@ -1038,23 +1131,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1065,7 +1163,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a job"
+      "usage": "Delete the job"
     },
     {
       "aliases": [
@@ -1083,23 +1181,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1110,7 +1213,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a k3k-cluster"
+      "usage": "Delete the k3k-cluster"
     },
     {
       "aliases": [
@@ -1128,14 +1231,17 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1145,7 +1251,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Delete a kubeconfig"
+      "usage": "Delete the kubeconfig"
     },
     {
       "aliases": [
@@ -1164,18 +1270,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1186,7 +1296,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a namespace"
+      "usage": "Delete the namespace"
     },
     {
       "aliases": [
@@ -1205,23 +1315,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1232,7 +1347,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a persistentvolumeclaim"
+      "usage": "Delete the persistentvolumeclaim"
     },
     {
       "aliases": [
@@ -1251,23 +1366,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1278,7 +1398,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a pod"
+      "usage": "Delete the pod"
     },
     {
       "aliases": [
@@ -1296,19 +1416,23 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1318,7 +1442,7 @@
       "stability": "stable",
       "tier": "public",
       "toolset": "core",
-      "usage": "Delete a project"
+      "usage": "Delete the project"
     },
     {
       "aliases": [
@@ -1336,19 +1460,23 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1358,7 +1486,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a projectroletemplatebinding"
+      "usage": "Delete the projectroletemplatebinding"
     },
     {
       "aliases": [
@@ -1376,18 +1504,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1397,7 +1529,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a provisioning-cluster"
+      "usage": "Delete the provisioning-cluster"
     },
     {
       "aliases": [
@@ -1416,23 +1548,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1443,7 +1580,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a replicaset"
+      "usage": "Delete the replicaset"
     },
     {
       "aliases": [
@@ -1461,23 +1598,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1488,7 +1630,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a secret"
+      "usage": "Delete the secret"
     },
     {
       "aliases": [
@@ -1507,23 +1649,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1534,7 +1681,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a service"
+      "usage": "Delete the service"
     },
     {
       "aliases": [
@@ -1553,23 +1700,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1580,7 +1732,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a serviceaccount"
+      "usage": "Delete the serviceaccount"
     },
     {
       "aliases": [
@@ -1599,23 +1751,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1626,7 +1783,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a statefulset"
+      "usage": "Delete the statefulset"
     },
     {
       "aliases": [
@@ -1644,14 +1801,17 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1661,7 +1821,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Delete a token"
+      "usage": "Delete the token"
     },
     {
       "aliases": [
@@ -1679,18 +1839,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1700,7 +1864,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Delete a vmwarevsphereconfig"
+      "usage": "Delete the vmwarevsphereconfig"
     },
     {
       "aliases": [
@@ -1716,18 +1880,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1753,18 +1921,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1790,18 +1962,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1827,18 +2003,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1864,18 +2044,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1901,7 +2085,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "List cloud credentials or show one (secret material never shown)"
+      "usage": "List cloud credentials or show one (secret values never shown)"
     },
     {
       "aliases": [
@@ -1917,14 +2101,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1950,18 +2137,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -1988,18 +2179,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2025,18 +2220,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2063,22 +2262,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2105,22 +2309,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2148,22 +2357,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2191,22 +2405,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2233,18 +2452,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2271,22 +2494,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2313,14 +2541,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2346,18 +2577,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2383,18 +2618,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2420,14 +2659,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2453,14 +2695,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2486,18 +2731,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2524,22 +2773,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2550,7 +2804,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "List ingresss or show one"
+      "usage": "List ingresses or show one"
     },
     {
       "aliases": [
@@ -2566,22 +2820,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2608,22 +2867,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2650,14 +2914,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2672,12 +2939,13 @@
     {
       "auth": true,
       "commandType": "readOnly",
+      "desc": "Merged with the server's default and supported-range settings.",
       "name": "get kubernetes-versions",
       "network": true,
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "List available Kubernetes versions (rke2/k3s) merged with the server's default and supported-range settings"
+      "usage": "List available Kubernetes versions (rke2/k3s)"
     },
     {
       "aliases": [
@@ -2693,18 +2961,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2730,18 +3002,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2767,18 +3043,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2805,18 +3085,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2843,18 +3127,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2881,18 +3169,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2919,22 +3211,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -2962,22 +3259,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3004,18 +3306,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3041,18 +3347,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3078,18 +3388,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3116,22 +3430,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3158,14 +3477,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3191,22 +3513,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3234,22 +3561,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3277,22 +3609,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3319,14 +3656,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3353,22 +3693,27 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3395,14 +3740,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3428,14 +3776,17 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3461,18 +3812,22 @@
       "commandType": "readOnly",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         }
@@ -3595,6 +3950,7 @@
       ],
       "flags": [
         {
+          "desc": "cluster `id|name`",
           "name": "cluster",
           "type": "string"
         }
@@ -3602,7 +3958,7 @@
       "name": "kubeconfig",
       "network": true,
       "toolset": "core",
-      "usage": "Emit an exec-credential kubeconfig for a cluster"
+      "usage": "Print an exec-credential kubeconfig for a cluster"
     },
     {
       "args": [
@@ -3620,26 +3976,32 @@
       ],
       "flags": [
         {
+          "desc": "target cluster `id|name`",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "max `lines` (default 200)",
           "name": "tail",
           "type": "string"
         },
         {
+          "desc": "logs newer than this `duration`, e.g. 30m, 2h; omit for no limit",
           "name": "since",
           "type": "string"
         },
         {
+          "desc": "logs from the previous container instance",
           "name": "previous",
           "type": "bool"
         },
         {
+          "desc": "`container` name (defaults to the main container)",
           "name": "container",
           "type": "string"
         },
         {
+          "desc": "prefix each line with a timestamp",
           "name": "timestamps",
           "type": "bool"
         }
@@ -3649,7 +4011,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+      "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
     },
     {
       "aliases": [
@@ -3667,22 +4029,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3690,6 +4057,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3699,7 +4067,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a amazonec2config with an RFC 6902 JSON patch"
+      "usage": "Patch the amazonec2config with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3717,22 +4085,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3740,6 +4113,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3749,7 +4123,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a azureconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the azureconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3767,22 +4141,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3790,6 +4169,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3799,7 +4179,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a bundle with an RFC 6902 JSON patch"
+      "usage": "Patch the bundle with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3817,22 +4197,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3840,6 +4225,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3849,7 +4235,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a bundledeployment with an RFC 6902 JSON patch"
+      "usage": "Patch the bundledeployment with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3867,22 +4253,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3890,6 +4281,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3899,7 +4291,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a capi-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the capi-cluster with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3917,18 +4309,22 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3936,6 +4332,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3945,7 +4342,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the cluster with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -3963,22 +4360,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -3986,6 +4388,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -3995,7 +4398,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a clustergroup with an RFC 6902 JSON patch"
+      "usage": "Patch the clustergroup with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4014,23 +4417,28 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4038,6 +4446,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4047,7 +4456,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a clusterregistrationtoken with an RFC 6902 JSON patch"
+      "usage": "Patch the clusterregistrationtoken with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4065,23 +4474,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4089,6 +4503,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4098,7 +4513,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a clusterroletemplatebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the clusterroletemplatebinding with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4117,27 +4532,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4145,6 +4566,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4155,7 +4577,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a configmap with an RFC 6902 JSON patch"
+      "usage": "Patch the configmap with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4173,27 +4595,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4201,6 +4629,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4211,7 +4640,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a cronjob with an RFC 6902 JSON patch"
+      "usage": "Patch the cronjob with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4230,27 +4659,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4258,6 +4693,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4268,7 +4704,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a daemonset with an RFC 6902 JSON patch"
+      "usage": "Patch the daemonset with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4287,27 +4723,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4315,6 +4757,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4325,7 +4768,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a deployment with an RFC 6902 JSON patch"
+      "usage": "Patch the deployment with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4343,22 +4786,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4366,6 +4814,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4375,7 +4824,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a digitaloceanconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the digitaloceanconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4394,27 +4843,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4422,6 +4877,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4432,7 +4888,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a event with an RFC 6902 JSON patch"
+      "usage": "Patch the event with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4450,18 +4906,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4469,6 +4929,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4478,7 +4939,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a feature with an RFC 6902 JSON patch"
+      "usage": "Patch the feature with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4496,22 +4957,27 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4519,6 +4985,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4528,7 +4995,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a fleet-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the fleet-cluster with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4546,22 +5013,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4569,6 +5041,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4578,7 +5051,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a gitrepo with an RFC 6902 JSON patch"
+      "usage": "Patch the gitrepo with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4596,18 +5069,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4615,6 +5092,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4624,7 +5102,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a globalrole with an RFC 6902 JSON patch"
+      "usage": "Patch the globalrole with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4642,18 +5120,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4661,6 +5143,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4670,7 +5153,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a globalrolebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the globalrolebinding with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4688,22 +5171,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4711,6 +5199,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4720,7 +5209,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a harvesterconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the harvesterconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4739,27 +5228,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4767,6 +5262,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4777,7 +5273,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a ingress with an RFC 6902 JSON patch"
+      "usage": "Patch the ingress with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4795,27 +5291,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4823,6 +5325,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4833,7 +5336,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a job with an RFC 6902 JSON patch"
+      "usage": "Patch the job with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4851,27 +5354,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4879,6 +5388,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4889,7 +5399,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a k3k-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the k3k-cluster with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4907,18 +5417,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4926,6 +5440,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4935,7 +5450,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch a kubeconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the kubeconfig with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -4953,22 +5468,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -4976,6 +5496,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -4985,7 +5506,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a machine with an RFC 6902 JSON patch"
+      "usage": "Patch the machine with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5003,22 +5524,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5026,6 +5552,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5035,7 +5562,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a machinedeployment with an RFC 6902 JSON patch"
+      "usage": "Patch the machinedeployment with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5053,22 +5580,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5076,6 +5608,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5085,7 +5618,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a machineset with an RFC 6902 JSON patch"
+      "usage": "Patch the machineset with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5104,22 +5637,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5127,6 +5665,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5137,7 +5676,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a namespace with an RFC 6902 JSON patch"
+      "usage": "Patch the namespace with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5155,22 +5694,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5178,6 +5722,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5187,7 +5732,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a node with an RFC 6902 JSON patch"
+      "usage": "Patch the node with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5206,22 +5751,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5229,6 +5779,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5238,7 +5789,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a persistentvolume with an RFC 6902 JSON patch"
+      "usage": "Patch the persistentvolume with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5257,27 +5808,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5285,6 +5842,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5295,7 +5853,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a persistentvolumeclaim with an RFC 6902 JSON patch"
+      "usage": "Patch the persistentvolumeclaim with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5314,27 +5872,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5342,6 +5906,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5352,7 +5917,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a pod with an RFC 6902 JSON patch"
+      "usage": "Patch the pod with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5370,23 +5935,28 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5394,6 +5964,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5403,7 +5974,7 @@
       "stability": "stable",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch a project with an RFC 6902 JSON patch"
+      "usage": "Patch the project with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5421,23 +5992,28 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5445,6 +6021,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5454,7 +6031,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a projectroletemplatebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the projectroletemplatebinding with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5472,22 +6049,27 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5495,6 +6077,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5504,7 +6087,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a provisioning-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the provisioning-cluster with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5523,27 +6106,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5551,6 +6140,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5561,7 +6151,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a replicaset with an RFC 6902 JSON patch"
+      "usage": "Patch the replicaset with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5579,18 +6169,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5598,6 +6192,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5607,7 +6202,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a roletemplate with an RFC 6902 JSON patch"
+      "usage": "Patch the roletemplate with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5625,27 +6220,33 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5653,6 +6254,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5663,7 +6265,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a secret with an RFC 6902 JSON patch"
+      "usage": "Patch the secret with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5682,27 +6284,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5710,6 +6318,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5720,7 +6329,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a service with an RFC 6902 JSON patch"
+      "usage": "Patch the service with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5739,27 +6348,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5767,6 +6382,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5777,7 +6393,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a serviceaccount with an RFC 6902 JSON patch"
+      "usage": "Patch the serviceaccount with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5795,18 +6411,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5814,6 +6434,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5823,7 +6444,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a setting with an RFC 6902 JSON patch"
+      "usage": "Patch the setting with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5842,27 +6463,33 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5870,6 +6497,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5880,7 +6508,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a statefulset with an RFC 6902 JSON patch"
+      "usage": "Patch the statefulset with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5898,18 +6526,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5917,6 +6549,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5926,7 +6559,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch a token with an RFC 6902 JSON patch"
+      "usage": "Patch the token with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5944,18 +6577,22 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -5963,6 +6600,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -5972,7 +6610,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a user with an RFC 6902 JSON patch"
+      "usage": "Patch the user with an RFC 6902 JSON patch"
     },
     {
       "aliases": [
@@ -5990,22 +6628,27 @@
       "destructive": "false",
       "flags": [
         {
+          "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
         },
         {
+          "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
         },
         {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
           "name": "for",
           "type": "string"
         },
         {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
         },
         {
+          "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
@@ -6013,6 +6656,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "patch `file`, or - for stdin",
           "name": "filename",
           "type": "string"
         }
@@ -6022,7 +6666,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch a vmwarevsphereconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the vmwarevsphereconfig with an RFC 6902 JSON patch"
     },
     {
       "args": [
@@ -6036,24 +6680,28 @@
       "commandType": "mutating",
       "destructive": "true",
       "examples": [
-        "rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply"
+        "rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply --yes"
       ],
       "flags": [
         {
+          "desc": "target project `id`",
           "name": "project",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "project role: project-owner, project-member, read-only, or a roletemplate `id`",
           "name": "role",
           "required": true,
           "type": "string"
         },
         {
+          "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "type": "string"
         },
         {
+          "desc": "treat the subject as a group, not a user",
           "name": "group",
           "type": "bool"
         }
@@ -6181,7 +6829,7 @@
       "name": "schema",
       "network": false,
       "toolset": "core",
-      "usage": "Print the machine-readable capability manifest, optionally filtered to one command"
+      "usage": "Print the capability manifest, optionally filtered to one command"
     },
     {
       "auth": true,
@@ -6192,18 +6840,22 @@
       ],
       "flags": [
         {
+          "desc": "comma-separated log targets, or `all` (the default)",
           "name": "targets",
           "type": "string"
         },
         {
+          "desc": "downstream cluster ids/names to include (comma-separated)",
           "name": "clusters",
           "type": "string"
         },
         {
+          "desc": "collect logs newer than this `duration` (default 24h)",
           "name": "since",
           "type": "string"
         },
         {
+          "desc": "max log `lines` per target (default 10000)",
           "name": "tail",
           "type": "string"
         },
@@ -6211,6 +6863,7 @@
           "aliases": [
             "f"
           ],
+          "desc": "write the tar.gz archive to `file`",
           "name": "filename",
           "type": "string"
         }
@@ -6220,7 +6873,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Pack the API-reachable triage plane into one tar.gz for support"
+      "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
     },
     {
       "args": [
@@ -6319,6 +6972,62 @@
       }
     ]
   },
+  "envVars": [
+    {
+      "desc": "config directory",
+      "flag": "-c/--config",
+      "name": "RANCHER_CLI_CONFIG_DIR"
+    },
+    {
+      "desc": "Rancher server URL, used when --server is omitted",
+      "flag": "--server",
+      "name": "RANCHER_CLI_URL"
+    },
+    {
+      "desc": "API token (id:secret) for non-interactive auth",
+      "name": "RANCHER_CLI_TOKEN"
+    },
+    {
+      "desc": "PEM CA bundle, a path or the literal PEM",
+      "flag": "--cacert",
+      "name": "RANCHER_CLI_CACERT"
+    },
+    {
+      "desc": "default context (cluster[:project])",
+      "flag": "--context",
+      "name": "RANCHER_CLI_CONTEXT"
+    },
+    {
+      "desc": "credential store backend: auto, keychain, or file",
+      "name": "RANCHER_CLI_CREDENTIAL_STORE"
+    },
+    {
+      "desc": "when non-empty, refuse commands that make changes",
+      "flag": "--read-only",
+      "name": "RANCHER_CLI_READONLY"
+    },
+    {
+      "desc": "OAuth flow: devicecode or authcode",
+      "flag": "--auth-flow",
+      "name": "RANCHER_CLI_OAUTH_AUTH_FLOW"
+    },
+    {
+      "desc": "local callback port for the authcode OAuth flow",
+      "name": "RANCHER_CLI_OAUTH_CALLBACK_PORT"
+    },
+    {
+      "desc": "base directory for the default config location",
+      "name": "XDG_CONFIG_HOME"
+    },
+    {
+      "desc": "preferred editor for config edit",
+      "name": "VISUAL"
+    },
+    {
+      "desc": "fallback editor for config edit",
+      "name": "EDITOR"
+    }
+  ],
   "errorCodes": [
     "CONTEXT_NOT_SET",
     "CONFIRMATION_REQUIRED",
@@ -6358,7 +7067,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "never prompt; ambiguity -> error",
+      "desc": "never prompt; ambiguity becomes an error",
       "name": "--no-input",
       "type": "bool"
     },
@@ -6377,30 +7086,40 @@
     },
     {
       "appliesTo": "all",
-      "desc": "config dir override",
+      "desc": "override the config directory",
+      "env": [
+        "RANCHER_CLI_CONFIG_DIR"
+      ],
       "name": "-c/--config",
       "type": "string"
     },
     {
       "appliesTo": "all",
+      "desc": "debug logging",
       "name": "--debug",
       "type": "bool"
     },
     {
       "appliesTo": "all",
-      "desc": "scope: cluster[:project]; flag > RANCHER_CLI_CONTEXT > config; project axis is informational only",
+      "desc": "scope: cluster[:project]; the :project scopes namespaced reads on downstream clusters (--project overrides it); a trailing colon (cluster:) clears it; precedence: flag, then RANCHER_CLI_CONTEXT, then config",
+      "env": [
+        "RANCHER_CLI_CONTEXT"
+      ],
       "name": "--context",
       "type": "string"
     },
     {
       "appliesTo": "all",
-      "desc": "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag > context; VALIDATION where it does not apply",
+      "desc": "scope operations to project namespaces (downstream namespaced resources only); flag overrides context; rejected with an error where it does not apply",
       "name": "--project",
       "type": "string"
     },
     {
       "appliesTo": "mutating",
       "desc": "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)",
+      "env": [
+        "RANCHER_CLI_READONLY"
+      ],
       "name": "--read-only",
       "type": "bool"
     }

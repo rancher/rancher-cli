@@ -30,9 +30,9 @@ func NewKubeconfig(dir string, store config.CredStore, clients engine.ClusterCli
 func (kubeconfigCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "kubeconfig",
-		Usage: "Emit an exec-credential kubeconfig for a cluster",
+		Usage: "Print an exec-credential kubeconfig for a cluster",
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string"},
+			{Name: "cluster", Type: "string", Desc: "cluster `id|name`"},
 		},
 		Examples: []string{
 			"rancher kubeconfig --cluster prod > prod.yaml",

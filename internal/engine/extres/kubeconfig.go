@@ -30,7 +30,7 @@ func NewCreateKubeconfig(clients engine.ClusterClientFactory) runtime.Command {
 func (createKubeconfigCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "create kubeconfig",
-		Usage:       "Mint a server-side, embedded kubeconfig",
+		Usage:       "Create a kubeconfig with an embedded token",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: "clusters", Type: "string"},

@@ -16,6 +16,7 @@ type GlobalFlag struct {
 	Enum      []string `json:"enum,omitempty"`
 	AppliesTo string   `json:"appliesTo"`
 	Desc      string   `json:"desc,omitempty"`
+	Env       []string `json:"env,omitempty"`
 }
 
 // ShellCompletionShells is the single shared list of shells `completion
@@ -34,13 +35,43 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--apply", Type: "bool", AppliesTo: "mutating", Desc: "execute the mutation"},
 		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
 		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-tier write"},
-		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity -> error"},
+		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
 		{Name: "-o/--output", Type: "enum", Enum: []string{"table", "json", "yaml", "name", "template"}, AppliesTo: "all", Desc: "'name' = ids only"},
-		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "config dir override"},
-		{Name: "--debug", Type: "bool", AppliesTo: "all"},
-		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; flag > RANCHER_CLI_CONTEXT > config; project axis is informational only"},
-		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope server operations to a project's namespaces (Downstream namespaced kinds only); flag > context; VALIDATION where it does not apply"},
-		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)"},
+		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
+		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "debug logging"},
+		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; the :project scopes namespaced reads on downstream clusters (--project overrides it); a trailing colon (cluster:) clears it; precedence: flag, then RANCHER_CLI_CONTEXT, then config", Env: []string{"RANCHER_CLI_CONTEXT"}},
+		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); flag overrides context; rejected with an error where it does not apply"},
+		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)", Env: []string{"RANCHER_CLI_READONLY"}},
+	}
+}
+
+// EnvVar documents an environment variable the CLI reads. Flag names the flag
+// it backs, if any; env-only variables leave it empty.
+type EnvVar struct {
+	Name string `json:"name"`
+	Desc string `json:"desc,omitempty"`
+	Flag string `json:"flag,omitempty"`
+}
+
+// EnvVars is the complete list of environment variables the CLI consumes,
+// discoverable via schema. The names are literals here because internal/runtime
+// must not import internal/config, where the consts live (see Schema); keep
+// this in sync with internal/config/env.go and the raw reads in the token and
+// editor code.
+func EnvVars() []EnvVar {
+	return []EnvVar{
+		{Name: "RANCHER_CLI_CONFIG_DIR", Flag: "-c/--config", Desc: "config directory"},
+		{Name: "RANCHER_CLI_URL", Flag: "--server", Desc: "Rancher server URL, used when --server is omitted"},
+		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
+		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
+		{Name: "RANCHER_CLI_CONTEXT", Flag: "--context", Desc: "default context (cluster[:project])"},
+		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Desc: "credential store backend: auto, keychain, or file"},
+		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse commands that make changes"},
+		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
+		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
+		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config location"},
+		{Name: "VISUAL", Desc: "preferred editor for config edit"},
+		{Name: "EDITOR", Desc: "fallback editor for config edit"},
 	}
 }
 
@@ -49,6 +80,7 @@ type SchemaCommand struct {
 	Name         string      `json:"name"`
 	Aliases      []string    `json:"aliases,omitempty"`
 	Usage        string      `json:"usage,omitempty"`
+	Desc         string      `json:"desc,omitempty"`
 	Args         []ArgSpec   `json:"args,omitempty"`
 	Flags        []ArgSpec   `json:"flags,omitempty"`
 	Examples     []string    `json:"examples,omitempty"`
@@ -116,6 +148,7 @@ type Manifest struct {
 	ReadOnlySources []string        `json:"readOnlySources,omitempty"`
 	ErrorCodes      []string        `json:"errorCodes"`
 	GlobalFlags     []GlobalFlag    `json:"globalFlags"`
+	EnvVars         []EnvVar        `json:"envVars"`
 	EffectSchema    EffectSchema    `json:"effectSchema"`
 	Commands        []SchemaCommand `json:"commands"`
 	// ShellCompletion lists the shells `completion <shell>` emits scripts
@@ -192,13 +225,14 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		OutputAPIVersion:  output.APIVersion,
 		ErrorCodes:        clierr.AllCodes(),
 		GlobalFlags:       GlobalFlags(),
+		EnvVars:           EnvVars(),
 		EffectSchema:      effectSchema(),
 		ShellCompletion:   ShellCompletionShells(),
 	}
 	for _, c := range reg.cmds {
 		d := c.Describe()
 		sc := SchemaCommand{
-			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Args: d.Args, Flags: d.Flags,
+			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Desc: d.Desc, Args: d.Args, Flags: d.Flags,
 			Examples: d.Examples, CommandType: d.CommandType,
 			Destructive: d.Destructive, Toolset: d.Toolset, Network: d.Network, Auth: d.Auth,
 			ProjectScope: d.ProjectScope,

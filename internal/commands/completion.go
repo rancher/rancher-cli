@@ -20,7 +20,7 @@ func NewCompletion() runtime.Command { return completionCmd{} }
 func (completionCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "completion",
-		Usage: "Print a shell completion script; -o is ignored, output is always the raw script (the kubeconfig precedent)",
+		Usage: "Print a shell completion script (ignores -o; always the raw script)",
 		Args: []runtime.ArgSpec{
 			{Name: "shell", Type: "string", Required: true, Enum: runtime.ShellCompletionShells()},
 		},

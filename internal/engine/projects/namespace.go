@@ -31,7 +31,7 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Desc: "make the namespace a member of this project from birth (label + annotation set on create)"},
+			{Name: "project", Type: "string", Desc: "add the namespace to this project when it is created"},
 			{Name: "cluster", Type: "string"},
 		},
 		Examples:    []string{"rancher create namespace team-a --project p-x --cluster c-x --apply"},

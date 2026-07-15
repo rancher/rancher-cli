@@ -39,9 +39,9 @@ func (createCmd) Describe() runtime.Descriptor {
 		Usage:       "Create a resource from a manifest file",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
-			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}},
-			{Name: FlagCluster, Type: "string"},
-			{Name: FlagNamespace, Type: "string"},
+			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
+			clusterFlag(),
+			namespaceFlag(),
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)

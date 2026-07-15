@@ -38,15 +38,15 @@ func NewLogs(clients engine.ClusterClientFactory) runtime.Command {
 func (c *logsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "logs",
-		Usage: "Curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)",
+		Usage: "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)",
 		Args:  []runtime.ArgSpec{{Name: "target", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: engine.FlagCluster, Type: "string"},
-			{Name: flagTail, Type: "string"},
-			{Name: flagSince, Type: "string"},
-			{Name: flagPrevious, Type: "bool"},
-			{Name: flagContainer, Type: "string"},
-			{Name: flagTimestamps, Type: "bool"},
+			{Name: engine.FlagCluster, Type: "string", Desc: "target cluster `id|name`"},
+			{Name: flagTail, Type: "string", Desc: "max `lines` (default 200)"},
+			{Name: flagSince, Type: "string", Desc: "logs newer than this `duration`, e.g. 30m, 2h; omit for no limit"},
+			{Name: flagPrevious, Type: "bool", Desc: "logs from the previous container instance"},
+			{Name: flagContainer, Type: "string", Desc: "`container` name (defaults to the main container)"},
+			{Name: flagTimestamps, Type: "bool", Desc: "prefix each line with a timestamp"},
 		},
 		CommandType: runtime.ReadOnly,
 		Examples: []string{

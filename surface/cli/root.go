@@ -213,8 +213,8 @@ var groupUsages = map[string]string{
 	"get":     "Read resources",
 	"patch":   "Patch resources",
 	"delete":  "Delete resources",
-	"inspect": "Inspect composite reads",
-	"top":     "Resource usage composites",
+	"inspect": "Inspect related resources together",
+	"top":     "Combined resource-usage views",
 	"project": "Project membership operations",
 }
 
@@ -396,8 +396,8 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		Usage:   "Rancher CLI",
 		Version: version,
 		Flags: append([]ucli.Flag{
-			&ucli.BoolFlag{Name: "debug", Usage: "Debug logging"},
-			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to rancher config dir",
+			&ucli.BoolFlag{Name: "debug", Usage: "debug logging"},
+			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to rancher config directory",
 				Sources: ucli.EnvVars(config.EnvConfigDir)},
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,

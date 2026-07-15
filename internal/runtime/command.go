@@ -23,6 +23,7 @@ type ArgSpec struct {
 	Required bool     `json:"required,omitempty"`
 	Aliases  []string `json:"aliases,omitempty"` // short flag forms (e.g. "f" for --filename)
 	Desc     string   `json:"desc,omitempty"`    // schema-manifest documentation; optional
+	Env      []string `json:"env,omitempty"`     // env vars that back this flag, if any
 }
 
 // Descriptor is a command's self-description (no tier/stability — those come
@@ -30,9 +31,13 @@ type ArgSpec struct {
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
 // urfave command by the surface adapter.
 type Descriptor struct {
-	Name        string      `json:"name"`
-	Aliases     []string    `json:"aliases,omitempty"` // leaf aliases (plural/short forms)
-	Usage       string      `json:"usage,omitempty"`
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases,omitempty"` // leaf aliases (plural/short forms)
+	Usage   string   `json:"usage,omitempty"`
+	// Desc is optional long-form documentation for the schema manifest only. It
+	// is not shown in TTY help (which uses the terse Usage line), so it can
+	// carry caveats a one-line usage cannot without bloating help.
+	Desc        string      `json:"desc,omitempty"`
 	Args        []ArgSpec   `json:"args,omitempty"`
 	Flags       []ArgSpec   `json:"flags,omitempty"`
 	Examples    []string    `json:"examples,omitempty"`

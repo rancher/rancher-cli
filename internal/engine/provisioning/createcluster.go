@@ -88,18 +88,19 @@ func NewCreateCluster(clients engine.ClusterClientFactory, roots engine.RootClie
 
 func (createClusterCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name: "create cluster",
-		Usage: "Create a provisioning cluster: --import, --custom, or node-driver (a single machine pool — " +
-			"repeatable flags are not supported yet; a multi-pool cluster must go through `create resource -f` " +
-			"with a full manifest)",
+		Name:  "create cluster",
+		Usage: "Create a provisioning cluster (--import, --custom, or node-driver)",
+		Desc: "Creates a single machine pool; repeatable pool flags are not supported " +
+			"yet, so a multi-pool cluster must go through `create resource -f` with a " +
+			"full manifest.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "import", Type: "bool", Desc: "imported cluster: spec.rkeConfig omitted entirely"},
-			{Name: "custom", Type: "bool", Desc: "custom cluster: spec.rkeConfig: {}, nodes register out of band"},
-			{Name: "machine-config", Type: "string", Desc: "node-driver cluster: <kind>/<name>, e.g. amazonec2config/mycfg"},
-			{Name: "cloud-credential", Type: "string", Desc: "node-driver cluster: --cloud-credential <name-or-id>"},
-			{Name: "k8s-version", Type: "string"},
+			{Name: "import", Type: "bool", Desc: "imported cluster (no RKE config)"},
+			{Name: "custom", Type: "bool", Desc: "custom cluster; nodes join separately via a registration command"},
+			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for a node-driver pool, e.g. amazonec2config/mycfg"},
+			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id|name` for a node-driver pool"},
+			{Name: "k8s-version", Type: "string", Desc: "Kubernetes `version`; required for --custom and node-driver, optional for --import"},
 			{Name: "pool-name", Type: "string", Desc: "node-driver pool name (default: pool1)"},
 			{Name: "etcd", Type: "bool", Desc: "node-driver pool: etcd role"},
 			{Name: "controlplane", Type: "bool", Desc: "node-driver pool: control-plane role"},

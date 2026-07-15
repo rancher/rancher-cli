@@ -47,9 +47,11 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		destructive = "true"
 	}
 	return runtime.Descriptor{
-		Name:         "patch " + c.k.Name,
-		Aliases:      c.k.Aliases,
-		Usage:        "Patch a " + c.k.Name + " with an RFC 6902 JSON patch",
+		Name:    "patch " + c.k.Name,
+		Aliases: c.k.Aliases,
+		// "Patch the <kind>" (a single named resource), matching delete's
+		// article choice; see the note in delete.go.
+		Usage:        "Patch the " + c.k.Name + " with an RFC 6902 JSON patch",
 		CommandType:  runtime.Mutating,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:        patchFlags(c.k),
@@ -68,8 +70,8 @@ func (c patchCmd) Describe() runtime.Descriptor {
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := deleteFlags(k)
 	return append(flags,
-		runtime.ArgSpec{Name: flagPatch, Type: "string"},
-		runtime.ArgSpec{Name: flagFilename, Type: "string", Aliases: []string{"f"}},
+		runtime.ArgSpec{Name: flagPatch, Type: "string", Desc: "inline RFC 6902 JSON `patch` ops"},
+		runtime.ArgSpec{Name: flagFilename, Type: "string", Aliases: []string{"f"}, Desc: "patch `file`, or - for stdin"},
 	)
 }
 

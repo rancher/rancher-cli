@@ -18,17 +18,21 @@ import (
 // These are placed on the root command in v3; they are inherited by subcommands
 // via urfave/cli/v3's flag resolution (e.g. `rancher ping -o json`,
 // `rancher clusters scale ... --apply`). (--config and --debug are on root in root.go.)
+//
+// These TTY usage strings are the operator-facing counterpart of the schema
+// descriptions in runtime.GlobalFlags() (registry.go) — two deliberately
+// separate strings (terse here, fuller there), kept in sync by hand.
 func GlobalFlags() []ucli.Flag {
 	return []ucli.Flag{
-		&ucli.BoolFlag{Name: "dry-run", Usage: "preview the Effect without changing anything"},
-		&ucli.BoolFlag{Name: "apply", Usage: "execute the mutation"},
-		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive Effect"},
-		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "permit a deprecated-tier write"},
+		&ucli.BoolFlag{Name: "dry-run", Usage: "preview the changes without applying them"},
+		&ucli.BoolFlag{Name: "apply", Usage: "apply the change"},
+		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive change"},
+		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
-		&ucli.StringFlag{Name: "context", Usage: "scope this invocation to cluster[:project] for server operations (overrides RANCHER_CLI_CONTEXT and the current context); a trailing colon (cluster:) clears the project; the project axis is informational only"},
-		&ucli.StringFlag{Name: "project", Usage: "scope server operations to a project's namespaces (Downstream namespaced kinds only)"},
-		&ucli.BoolFlag{Name: "read-only", Usage: "refuse mutating commands for this session (one-way; also set via config readOnly or a non-empty RANCHER_CLI_READONLY)"},
+		&ucli.StringFlag{Name: "context", Usage: "scope operations to cluster[:project]; :project scopes downstream reads"},
+		&ucli.StringFlag{Name: "project", Usage: "scope operations to project namespaces (downstream namespaced resources only)"},
+		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way)"},
 	}
 }
 
@@ -59,16 +63,19 @@ func groupName(fullName string) string {
 }
 
 // flagsFor converts a Descriptor's named Flags into urfave flags (string/bool).
-// Required-ness and Enum membership are intentionally NOT set on the urfave flag:
-// they are enforced by runtime.validateInput so violations surface as structured
-// clierr envelopes (urfave's own required/validator errors are unstructured).
+// ArgSpec.Desc feeds the flag's TTY usage text; a backtick-quoted word in it
+// sets the value placeholder (urfave's unquoteUsage), e.g. a Desc of
+// "patch `file`" renders "--filename file". Required-ness and Enum membership
+// are intentionally NOT set on the urfave flag: they are enforced by
+// runtime.validateInput so violations surface as structured clierr envelopes
+// (urfave's own required/validator errors are unstructured).
 func flagsFor(d runtime.Descriptor) []ucli.Flag {
 	var out []ucli.Flag
 	for _, f := range d.Flags {
 		if f.Type == "bool" {
-			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases})
+			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
 		} else {
-			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases})
+			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
 		}
 	}
 	return out

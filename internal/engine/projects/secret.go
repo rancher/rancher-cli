@@ -49,12 +49,12 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "namespace", Type: "string"},
-			{Name: "cluster", Type: "string"},
-			{Name: "project", Type: "string"},
-			{Name: "project-scoped", Type: "bool"},
-			{Name: "from-literal", Type: "string"},
-			{Name: "type", Type: "string"},
+			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
+			{Name: "cluster", Type: "string", Desc: "target cluster `id|name`"},
+			{Name: "project", Type: "string", Desc: "project `id` to scope the secret to"},
+			{Name: "project-scoped", Type: "bool", Desc: "create a project-scoped secret"},
+			{Name: "from-literal", Type: "string", Desc: "secret data as `key=value` pairs (comma-separated)"},
+			{Name: "type", Type: "string", Desc: "secret `type` (default Opaque)"},
 		},
 		Examples: []string{
 			"rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",

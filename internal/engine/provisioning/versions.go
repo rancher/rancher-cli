@@ -440,7 +440,8 @@ func NewGetKubernetesVersions(roots engine.RootClientFactory, clients engine.Clu
 func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "get kubernetes-versions",
-		Usage:       "List available Kubernetes versions (rke2/k3s) merged with the server's default and supported-range settings",
+		Usage:       "List available Kubernetes versions (rke2/k3s)",
+		Desc:        "Merged with the server's default and supported-range settings.",
 		CommandType: runtime.ReadOnly,
 		Toolset:     "core",
 		Network:     true,

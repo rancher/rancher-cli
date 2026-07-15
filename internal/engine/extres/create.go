@@ -26,7 +26,7 @@ func NewCreateToken(clients engine.ClusterClientFactory) runtime.Command {
 func (createTokenCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "create token",
-		Usage:       "Mint a server-side derived token",
+		Usage:       "Create a token on the server",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: "ttl", Type: "string"},

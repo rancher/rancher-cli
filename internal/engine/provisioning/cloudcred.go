@@ -235,7 +235,7 @@ func NewGetCloudCredential(clients engine.ClusterClientFactory) runtime.Command 
 func (c *getCloudCredCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "get cloud-credential",
-		Usage:       "List cloud credentials or show one (secret material never shown)",
+		Usage:       "List cloud credentials or show one (secret values never shown)",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Toolset:     "core",

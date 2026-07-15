@@ -31,7 +31,7 @@ func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string, readO
 func (s *schemaCmd) Describe() Descriptor {
 	return Descriptor{
 		Name:        "schema",
-		Usage:       "Print the machine-readable capability manifest, optionally filtered to one command",
+		Usage:       "Print the capability manifest, optionally filtered to one command",
 		Args:        []ArgSpec{{Name: "command", Type: "string"}},
 		CommandType: ReadOnly,
 		Examples:    []string{"rancher schema -o json", "rancher schema get pod -o json"},

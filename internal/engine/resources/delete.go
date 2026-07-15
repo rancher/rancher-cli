@@ -25,9 +25,12 @@ func NewDelete(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Comman
 
 func (c deleteCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:         "delete " + c.k.Name,
-		Aliases:      c.k.Aliases,
-		Usage:        "Delete a " + c.k.Name,
+		Name:    "delete " + c.k.Name,
+		Aliases: c.k.Aliases,
+		// "Delete the <kind>" (a single named resource). "a/an" can't be computed
+		// for kind names (ingress -> "an", user -> "a"), and get pluralizes
+		// instead because it lists (see plural in get.go); patch matches this.
+		Usage:        "Delete the " + c.k.Name,
 		CommandType:  runtime.Mutating,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:        deleteFlags(c.k),

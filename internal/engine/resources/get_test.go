@@ -487,3 +487,48 @@ func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
 		})
 	}
 }
+
+// TestPlural pins the usage-string pluralizer against every ending the kind
+// table can produce, including the sibilant and hyphenated cases the naive
+// name+"s" got wrong ("ingresss").
+func TestPlural(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"pod", "pods"},
+		{"cluster", "clusters"},
+		{"namespace", "namespaces"},
+		{"event", "events"},
+		{"ingress", "ingresses"},   // -s -> -es
+		{"box", "boxes"},           // -x -> -es
+		{"buzz", "buzzes"},         // -z -> -es
+		{"watch", "watches"},       // -ch -> -es
+		{"dish", "dishes"},         // -sh -> -es
+		{"policy", "policies"},     // consonant + y -> -ies
+		{"registry", "registries"}, // consonant + y -> -ies
+		{"gateway", "gateways"},    // vowel + y -> +s, not -ies
+		{"day", "days"},            // vowel + y -> +s
+		{"fleet-cluster", "fleet-clusters"},
+		{"provisioning-cluster", "provisioning-clusters"},
+		{"amazonec2config", "amazonec2configs"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.want, plural(c.name))
+		})
+	}
+}
+
+func TestIsVowel(t *testing.T) {
+	t.Parallel()
+	for _, b := range []byte("aeiou") {
+		assert.True(t, isVowel(b), "want vowel: %c", b)
+	}
+	for _, b := range []byte("bcdfgyz") {
+		assert.False(t, isVowel(b), "want non-vowel: %c", b)
+	}
+}
