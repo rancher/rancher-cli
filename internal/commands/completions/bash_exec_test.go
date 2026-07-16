@@ -1,3 +1,5 @@
+//go:build !windows
+
 package completions
 
 // Deliberately plain-stdlib (no testify): this test executes under a real
