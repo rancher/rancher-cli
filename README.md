@@ -66,7 +66,15 @@ or point any other agent's instructions file at it.
     source <(rancher completion bash)   # ~/.bashrc
     source <(rancher completion zsh)    # ~/.zshrc
     rancher completion fish > ~/.config/fish/completions/rancher.fish
-    rancher completion pwsh > path/to/rancher.ps1   # then run the script
+
+PowerShell (Windows PowerShell 5.1 or PowerShell 7) — pipe into the session so
+no script file is written and PowerShell's ExecutionPolicy does not apply:
+
+    rancher completion pwsh | Out-String | Invoke-Expression
+
+To persist it, add that line to your `$PROFILE`. Loading `$PROFILE` itself needs
+an ExecutionPolicy that allows local scripts (`RemoteSigned` or looser); the
+per-session command above works regardless.
 
 Completion is offline-only in v1: command/group/flag names are free (the
 whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
