@@ -4,6 +4,11 @@ package token
 
 import "golang.org/x/sys/windows"
 
+// shellExecute is windows.ShellExecute, indirected so a test can capture the
+// arguments — proving the URL is passed opaquely with no command line — without
+// actually launching a browser.
+var shellExecute = windows.ShellExecute
+
 // osOpenURL opens openURL through the Windows ShellExecute API. ShellExecute
 // takes the target as a string argument to the shell API: it builds no command
 // line and spawns no cmd.exe, so a server-supplied authorize URL (which
@@ -18,5 +23,5 @@ func osOpenURL(openURL string) error {
 	if err != nil {
 		return err
 	}
-	return windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
+	return shellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
 }

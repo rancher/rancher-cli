@@ -3,26 +3,39 @@
 package token
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
+
+	"golang.org/x/sys/windows"
 )
 
-// TestOSOpenURLDoesNotShellInterpret guards the Windows RCE fix: osOpenURL must
-// hand the URL to the ShellExecute API as an opaque string, never to a shell.
-// The URL below carries a cmd.exe metacharacter (&) and a canary command; under
-// the old `cmd /c start` path a shell would have split on & and run the canary,
-// creating marker. ShellExecute cannot, so marker must never appear.
-//
-// Note: this opens the default browser to a dead 127.0.0.1 URL as a side effect
-// (ShellExecute "open" on an http URL) — expected, harmless. Windows-only.
+// TestOSOpenURLDoesNotShellInterpret guards the Windows RCE fix without opening
+// a browser: it stubs the ShellExecute call and asserts osOpenURL hands the URL
+// to the API opaquely — the full URL, metacharacters and all, as the target,
+// with no command-line arguments — so there is no shell for a server-supplied
+// authorize URL to inject into. The old `cmd /c start` path built a command
+// line; this proves the current path does not.
 func TestOSOpenURLDoesNotShellInterpret(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "pwned.txt")
-	url := `https://127.0.0.1:9/?x=1& echo pwned> ` + marker
-	_ = osOpenURL(url) // may error or open a browser tab; both are fine
-	time.Sleep(750 * time.Millisecond)
-	if _, err := os.Stat(marker); err == nil {
-		t.Fatalf("canary file created — the URL was shell-interpreted (injection): %s", marker)
+	const u = `https://host/authorize?client_id=x&state=y&echo pwned> C:\Temp\pwned.txt`
+
+	var gotVerb, gotFile, gotArgs *uint16
+	orig := shellExecute
+	shellExecute = func(_ windows.Handle, verb, file, args, _ *uint16, _ int32) error {
+		gotVerb, gotFile, gotArgs = verb, file, args
+		return nil
+	}
+	t.Cleanup(func() { shellExecute = orig })
+
+	if err := osOpenURL(u); err != nil {
+		t.Fatalf("osOpenURL: %v", err)
+	}
+	if got := windows.UTF16PtrToString(gotFile); got != u {
+		t.Fatalf("URL not passed opaquely:\n got  %q\n want %q", got, u)
+	}
+	if gotArgs != nil {
+		t.Fatalf("ShellExecute got command arguments %q — must be nil (no command line, no shell)",
+			windows.UTF16PtrToString(gotArgs))
+	}
+	if v := windows.UTF16PtrToString(gotVerb); v != "open" {
+		t.Fatalf("verb = %q, want \"open\"", v)
 	}
 }
