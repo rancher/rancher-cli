@@ -6,6 +6,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
+// The --rancher-completion-* token namespace is reserved for the v2 completion
+// protocol. Both CaptureArgv and SanitizedArgs strip these tokens so they never
+// reach urfave as unknown flags, regardless of where they appear in argv.
 const (
 	protoSentinel = "--rancher-completion-proto=2"
 	curPrefix     = "--rancher-completion-cur="
@@ -57,9 +60,13 @@ func CaptureArgv(args []string) {
 	rawArgv = out
 }
 
-// SanitizedArgs strips ALL v2 protocol fields from os.Args so urfave never
-// sees unknown flags. Strips both --rancher-completion-proto=2 and any
-// --rancher-completion-cur=... token. Call as root.Run(ctx, SanitizedArgs(os.Args)).
+// SanitizedArgs strips ALL --rancher-completion-* tokens from os.Args so
+// urfave never sees unknown flags. It strips both the proto sentinel and any
+// --rancher-completion-cur=... token wherever they appear — not just at
+// position 0 — as a deliberate defense-in-depth measure: if either token
+// appears at an unexpected position (e.g. due to a future shell-script change
+// or caller error), it is still suppressed rather than forwarded to urfave.
+// Call as root.Run(ctx, SanitizedArgs(os.Args)).
 func SanitizedArgs(args []string) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
@@ -105,7 +112,7 @@ type CompletionSite struct {
 //
 // When hasMarker is false (v1 protocol): old last-token-as-partial heuristic runs.
 func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtime.Descriptor, globals []runtime.ArgSpec) CompletionSite {
-	all := append(leaf.Flags, globals...) //nolint:gocritic
+	all := append(append([]runtime.ArgSpec{}, leaf.Flags...), globals...)
 
 	if hasMarker {
 		return classifyCurrentWordV2(args, currentWord, all)

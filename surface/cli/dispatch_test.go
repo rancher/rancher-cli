@@ -144,6 +144,43 @@ func TestNoClusterNoRequests(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "round-2 finding 5: no HTTP requests when cluster unresolved")
 }
 
+// TestNetworkGateZeroHits asserts that a reachable server receives zero requests
+// when Completion.Network is FALSE. The site chosen (--cluster, non-enum) would
+// reach liveCandidates if the gate at dispatch.go were absent — deleting that
+// gate causes this test to fail.
+func TestNetworkGateZeroHits(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: false}, // gate is OFF
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	// Non-enum flag-value site: no enum → layer 1 skipped; no ShellCompleter →
+	// layer 2 skipped; network=false → gate fires and returns nil before any HTTP.
+	d := runtime.Descriptor{
+		Flags: []runtime.ArgSpec{{Name: "cluster", Type: "string"}},
+	}
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster"}
+	tail := []string{"--cluster"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := dispatchSite(ctx, site, d, nil, nil, tail)
+	assert.Nil(t, got, "network=false must yield nil candidates")
+	assert.Equal(t, int32(0), hits.Load(), "network gate must prevent all HTTP requests to reachable server")
+}
+
 // Round-2 finding 1 (AC-28): full-callback dispatch with non-empty partial for
 // --cluster. Returns all cluster candidates (shell does prefix-filtering).
 func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {

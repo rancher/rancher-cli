@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -177,17 +179,39 @@ func TestProjectCandidatesDeduplicates(t *testing.T) {
 }
 
 func TestNoNetworkOnStaticSite(t *testing.T) {
-	// No keyring.MockInit: resolveStaticEnum never touches keyring (round-2 finding 9).
-	t.Parallel()
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	// Tests the static-site path specifically: an enum flag-value site must return
+	// candidates without any HTTP requests even when network is enabled and a
+	// reachable server is configured. Removing the layer-1 enum early return in
+	// dispatchSite would cause liveCandidates to run → server gets hit → test fails.
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	// A static enum site must never reach the network.
-	candidates := resolveStaticEnum([]string{"namespace", "project", "node", "pod"}, CompletionSite{
-		Kind: SiteFlagValue, FlagName: "by", EqualsForm: false,
-	})
-	assert.Equal(t, []string{"namespace", "node", "pod", "project"}, candidates)
-	assert.Equal(t, int32(0), hits.Load())
+
+	// Network ON, valid token, cluster in context: live path would be reached if
+	// the enum early return in dispatchSite were removed.
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	d := runtime.Descriptor{
+		Flags: []runtime.ArgSpec{
+			{Name: "by", Type: "string", Enum: []string{"namespace", "project", "node", "pod"}},
+		},
+	}
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "by", EqualsForm: false}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := dispatchSite(ctx, site, d, nil, nil, []string{})
+	assert.Equal(t, []string{"namespace", "node", "pod", "project"}, got)
+	assert.Equal(t, int32(0), hits.Load(), "enum static site must yield zero HTTP requests")
 }
