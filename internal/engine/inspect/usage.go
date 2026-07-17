@@ -187,12 +187,6 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	}, nil
 }
 
-// collectByPod is a stub that will be filled in Task 4. It must exist here
-// so Execute compiles after this task.
-func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
-	return runtime.Result{Kind: "ResourceUsage", Data: usageEnvelope{By: byPod, Data: usageRows{}}}, nil
-}
-
 // collectByProject aggregates pods into a single bucket keyed by project ID,
 // the --by project form of the old --project-alone behavior. Task 5 will
 // enhance this with display-name substitution and full feature parity.
