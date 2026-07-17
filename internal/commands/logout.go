@@ -85,6 +85,12 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 	}}, nil
 }
 
+// CompleteArgs implements runtime.ShellCompleter: `auth logout <server> <TAB>`
+// completes server names from the already-loaded config snapshot (AC-14).
+func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+	return view.ServerNames()
+}
+
 // logoutTargets resolves which servers a logout request applies to.
 func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) {
 	switch {

@@ -215,13 +215,16 @@ func (t tokenCmd) cachedResult(key string, p runtime.Prompter) (runtime.Result, 
 	return runtime.Result{}, false
 }
 
-type deleteTokenCmd struct{ store config.CredStore }
+type deleteTokenCmd struct {
+	dir   string
+	store config.CredStore
+}
 
 // NewDeleteTokenCommand builds `auth delete-token` (local): clear cached
 // exec-credential token(s). A positional name is the cache entry name; --all
 // clears every cached credential.
-func NewDeleteTokenCommand(_ string, store config.CredStore) runtime.Command {
-	return &deleteTokenCmd{store: store}
+func NewDeleteTokenCommand(dir string, store config.CredStore) runtime.Command {
+	return &deleteTokenCmd{dir: dir, store: store}
 }
 
 func (deleteTokenCmd) Describe() runtime.Descriptor {
@@ -283,6 +286,33 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 		}
 	}
 	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
+}
+
+// CompleteArgs implements runtime.ShellCompleter: `auth delete-token <TAB>`
+// completes cached exec-credential entry display names from a strictly
+// read-only cache scan (AC-12). Composite keys are not offered.
+func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+	dir := view.ConfigDir()
+	if dir == "" {
+		dir = d.dir
+	}
+	if dir == "" {
+		return nil
+	}
+	infos, err := config.ReadOnlyCachedCreds(dir)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, info := range infos {
+		if info.Name != "" && !seen[info.Name] {
+			seen[info.Name] = true
+			out = append(out, info.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // LoginRequest is the constructible counterpart to loginInput: loginInput's
