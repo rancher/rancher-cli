@@ -141,15 +141,15 @@ func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	assert.Empty(t, out.String(), "a flag-prefixed current word must not fall through to alias listing")
 }
 
-// TestInspectGroupCompletionHasNoAliasOverride pins the NOT-inspect/top
-// scope limit: their leaves carry no Aliases today, and urfave only ever
-// dispatches an alias actually listed on the command, so the override must
-// not be installed there.
+// TestInspectGroupCompletionHasAliasOverride pins that inspect/pod,
+// deployment, and project leaves now carry Aliases, so the alias-aware
+// completion override must be installed on the inspect group to properly
+// suggest and dispatch those aliases.
 func TestInspectGroupCompletionHasNoAliasOverride(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	inspectGroup := findCommand(root.Commands, "inspect")
 	require.NotNil(t, inspectGroup)
-	assert.Nil(t, inspectGroup.ShellComplete, "inspect/top carry no leaf aliases; the override must not be installed there")
+	assert.NotNil(t, inspectGroup.ShellComplete, "inspect leaves now carry aliases; the override must be installed for alias dispatch")
 }

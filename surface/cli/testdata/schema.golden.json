@@ -3905,6 +3905,10 @@
       "usage": "List container images in use, deduplicated and counted"
     },
     {
+      "aliases": [
+        "deployments",
+        "deploy"
+      ],
       "args": [
         {
           "name": "name",
@@ -3935,6 +3939,10 @@
       "usage": "Inspect a deployment and the pods it selects"
     },
     {
+      "aliases": [
+        "pods",
+        "po"
+      ],
       "args": [
         {
           "name": "name",
@@ -3970,6 +3978,9 @@
       "usage": "Inspect a pod: owners, metrics, and container logs"
     },
     {
+      "aliases": [
+        "projects"
+      ],
       "args": [
         {
           "name": "name",

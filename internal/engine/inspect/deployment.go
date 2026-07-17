@@ -20,8 +20,10 @@ func NewDeployment(clients engine.ClusterClientFactory) runtime.Command {
 }
 
 func (c *deploymentCmd) Describe() runtime.Descriptor {
+	k, _ := kinds.Lookup("deployment")
 	return runtime.Descriptor{
 		Name:        "inspect deployment",
+		Aliases:     k.Aliases,
 		Usage:       "Inspect a deployment and the pods it selects",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},

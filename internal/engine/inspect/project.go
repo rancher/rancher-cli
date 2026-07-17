@@ -29,8 +29,10 @@ func NewInspectProject(clients engine.ClusterClientFactory) runtime.Command {
 }
 
 func (c *projectCmd) Describe() runtime.Descriptor {
+	k, _ := kinds.Lookup("project")
 	return runtime.Descriptor{
 		Name:        "inspect project",
+		Aliases:     k.Aliases,
 		Usage:       "Inspect a project: namespaces, members, quota, and usage",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},

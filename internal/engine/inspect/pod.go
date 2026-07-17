@@ -30,8 +30,10 @@ func NewPod(clients engine.ClusterClientFactory) runtime.Command {
 }
 
 func (c *podCmd) Describe() runtime.Descriptor {
+	k, _ := kinds.Lookup("pod")
 	return runtime.Descriptor{
 		Name:        "inspect pod",
+		Aliases:     k.Aliases,
 		Usage:       "Inspect a pod: owners, metrics, and container logs",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
