@@ -1,8 +1,10 @@
 package inspect
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -159,6 +161,10 @@ func TestUsageByProjectNamespaceMustBeMember(t *testing.T) {
 		"cluster": "c-abc", "by": "project", "project": "p-x", "namespace": "ns-other",
 	}})
 	require.Error(t, err, "--namespace outside --project must be NotMemberError under --by project too")
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "is not in project")
 }
 
 // --node under --by project narrows request/limit sums to that node's pods.

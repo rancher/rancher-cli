@@ -58,16 +58,15 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// When --project X is given, resolve to a single id against the project
 	// list already fetched above — calling projects.ResolveProject here would
 	// repeat the identical management-plane List (and open a TOCTOU window
-	// between the two fetches). Same match rule as ResolveProject: exact id,
-	// else display name; ambiguous display names are an error.
+	// between the two fetches). Uses the canonical MatchByIDOrDisplay algorithm
+	// (union with ambiguity, same as ResolveProject and ResolveCluster).
 	var filterID string
 	if projectFlag != "" {
-		var matches []string
-		for id, display := range displayByID {
-			if id == projectFlag || display == projectFlag {
-				matches = append(matches, id)
-			}
+		ids := make([]string, 0, len(displayByID))
+		for id := range displayByID {
+			ids = append(ids, id)
 		}
+		matches, _, _ := projects.MatchByIDOrDisplay(projectFlag, ids, func(id string) string { return displayByID[id] })
 		switch len(matches) {
 		case 1:
 			filterID = matches[0]
