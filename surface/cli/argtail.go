@@ -284,7 +284,7 @@ var globalArgSpecs = []runtime.ArgSpec{
 	{Name: "yes", Type: "bool"},
 	{Name: "allow-deprecated", Type: "bool"},
 	{Name: "no-input", Type: "bool"},
-	{Name: "output", Type: "string", Aliases: []string{"o"}},
+	{Name: "output", Type: "enum", Enum: runtime.OutputFormats, Aliases: []string{"o"}},
 	{Name: "context", Type: "string"},
 	{Name: "project", Type: "string"},
 	{Name: "read-only", Type: "bool"},

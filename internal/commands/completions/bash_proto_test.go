@@ -39,10 +39,44 @@ func bashProtoArgv(t *testing.T, compWords []string, compCword int) []string {
 	}
 	wordsLiteral := "(" + strings.Join(quoted, " ") + ")"
 
+	// Stub faithfully models the -n "=:" reconstruction: single word-break chars
+	// (= or :) that appear as standalone tokens are merged with their neighbours
+	// so cur/words/cword reflect the collapsed form (e.g. --by=n, not n).
 	driver := fmt.Sprintf(`
 set +e
 export PATH=%q:"$PATH"
-_get_comp_words_by_ref() { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"; words=("${COMP_WORDS[@]}"); cword="${COMP_CWORD}"; }
+_get_comp_words_by_ref() {
+  local _nb=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in -n) _nb="$2"; shift 2 ;; *) shift ;; esac
+  done
+  words=("${COMP_WORDS[@]}")
+  cword="${COMP_CWORD}"
+  if [[ -n "$_nb" ]]; then
+    local -a _w=()
+    local _i _tok _lc _nc=-1
+    for (( _i=0; _i<${#COMP_WORDS[@]}; _i++ )); do
+      _tok="${COMP_WORDS[$_i]}"
+      if [[ ${#_tok} -eq 1 && "$_nb" == *"$_tok"* && ${#_w[@]} -gt 0 ]]; then
+        _w[-1]+="$_tok"
+      elif [[ ${#_w[@]} -gt 0 ]]; then
+        _lc="${_w[-1]: -1}"
+        if [[ -n "$_lc" && "$_nb" == *"$_lc"* ]]; then
+          _w[-1]+="$_tok"
+        else
+          _w+=("$_tok")
+        fi
+      else
+        _w+=("$_tok")
+      fi
+      if [[ $_i -eq $COMP_CWORD ]]; then _nc=$(( ${#_w[@]} - 1 )); fi
+    done
+    words=("${_w[@]}")
+    cword="$_nc"
+  fi
+  cur="${words[$cword]}"
+  prev="${words[$((cword-1))]}"
+}
 source %q
 COMP_WORDS=%s
 COMP_CWORD=%d
@@ -132,6 +166,21 @@ func TestBashProtoV2RequestShape(t *testing.T) {
 				"--rancher-completion-proto=2",
 				"get", "pod", "--cluster", "c-test",
 				"--rancher-completion-cur=",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			// equals-form regression (AC-21a): bash's default word breaks split
+			// --by=n into three tokens (--by, =, n) with COMP_CWORD pointing at n.
+			// _get_comp_words_by_ref -n "=:" rejoins them; the request must carry
+			// --rancher-completion-cur=--by=n, not --rancher-completion-cur=n.
+			name:  "equals-form: --by=n reconstructed from bash word-splits",
+			words: []string{"rancher", "get", "--by", "=", "n"},
+			cword: 4,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get",
+				"--rancher-completion-cur=--by=n",
 				"--generate-shell-completion",
 			},
 		},

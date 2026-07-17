@@ -143,3 +143,84 @@ func TestFishProtoV2RequestShape(t *testing.T) {
 		})
 	}
 }
+
+// fishScriptOutput runs __rancher_perform_completion and returns the lines it
+// prints to stdout. The fake rancher binary emits candidateLines verbatim.
+// Skips if fish is not on PATH.
+func fishScriptOutput(t *testing.T, opcWords []string, ctWord string, candidateLines []string) []string {
+	t.Helper()
+	fish, err := exec.LookPath("fish")
+	if err != nil {
+		t.Skip("fish not found on PATH; skipping fish candidate-output test")
+	}
+
+	scriptPath := filepath.Join(t.TempDir(), "fish.sh")
+	if err := os.WriteFile(scriptPath, fishScript, 0o644); err != nil {
+		t.Fatalf("writing fish.sh: %v", err)
+	}
+	binDir := t.TempDir()
+
+	// Build fake rancher that prints the candidate lines.
+	var fakeBody strings.Builder
+	fakeBody.WriteString("#!/bin/sh\n")
+	for _, line := range candidateLines {
+		fmt.Fprintf(&fakeBody, "printf '%%s\\n' %s\n", "'"+strings.ReplaceAll(line, "'", "'\\''"+"'")+"'")
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fakeBody.String()), 0o755); err != nil {
+		t.Fatalf("writing fake rancher: %v", err)
+	}
+
+	var opcLines strings.Builder
+	for _, w := range opcWords {
+		q := "'" + strings.ReplaceAll(w, "'", "\\'") + "'"
+		fmt.Fprintf(&opcLines, "            printf '%%s\\n' %s\n", q)
+	}
+	ctQ := "'" + strings.ReplaceAll(ctWord, "'", "\\'") + "'"
+
+	driver := fmt.Sprintf(`
+set -x PATH %q $PATH
+function commandline
+    switch $argv[1]
+        case -opc
+%s        case -ct
+            echo %s
+    end
+end
+source %q
+__rancher_perform_completion
+`, binDir, opcLines.String(), ctQ, scriptPath)
+
+	out, err := exec.Command(fish, "-c", driver).CombinedOutput()
+	if err != nil {
+		t.Fatalf("fish driver: %v\n%s", err, out)
+	}
+	return splitLines(strings.TrimRight(string(out), "\n"))
+}
+
+// TestFishCandidatesRancherPrefixSurvive verifies that candidates whose names
+// start with "rancher" (e.g. rancher-prod, rancher-operator-system) are not
+// filtered out by the completion script. The prior broad "rancher*" guard
+// dropped all such candidates.
+func TestFishCandidatesRancherPrefixSurvive(t *testing.T) {
+	t.Parallel()
+
+	candidates := []string{
+		"rancher-prod:production cluster",
+		"rancher-operator:operator namespace",
+		"other-cluster:another cluster",
+	}
+	got := fishScriptOutput(t, []string{"rancher", "get"}, "", candidates)
+
+	for _, want := range []string{"rancher-prod", "rancher-operator", "other-cluster"} {
+		found := false
+		for _, line := range got {
+			if strings.HasPrefix(line, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("candidate %q was not in output; got=%q", want, got)
+		}
+	}
+}

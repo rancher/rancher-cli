@@ -38,6 +38,40 @@ func TestEnumCandidatesEqualsForm(t *testing.T) {
 	assert.Equal(t, []string{"--by=namespace", "--by=node", "--by=pod", "--by=project"}, got)
 }
 
+func TestEnumCandidatesGlobalOutputSpaceForm(t *testing.T) {
+	t.Parallel()
+	want := []string{"json", "name", "table", "template", "yaml"}
+	d := runtime.Descriptor{}
+
+	for _, spelling := range []string{"--output", "-o"} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			site := CompletionSite{Kind: SiteFlagValue, FlagName: "output", FlagSpelling: spelling, EqualsForm: false}
+			got := enumCandidates(site, d)
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestEnumCandidatesGlobalOutputEqualsForm(t *testing.T) {
+	t.Parallel()
+	d := runtime.Descriptor{}
+
+	t.Run("--output=", func(t *testing.T) {
+		t.Parallel()
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "output", FlagSpelling: "--output", EqualsForm: true}
+		got := enumCandidates(site, d)
+		assert.Equal(t, []string{"--output=json", "--output=name", "--output=table", "--output=template", "--output=yaml"}, got)
+	})
+
+	t.Run("-o=", func(t *testing.T) {
+		t.Parallel()
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "output", FlagSpelling: "-o", EqualsForm: true}
+		got := enumCandidates(site, d)
+		assert.Equal(t, []string{"-o=json", "-o=name", "-o=table", "-o=template", "-o=yaml"}, got)
+	})
+}
+
 func TestStripRoutingPrefix(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

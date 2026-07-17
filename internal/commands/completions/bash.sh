@@ -19,14 +19,17 @@ __rancher_init_completion() {
 }
 
 __rancher_build_completion_request() {
-  local current_word="${COMP_WORDS[COMP_CWORD]}"
-  # Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
-  # --rancher-completion-cur=${current_word} is one token even when current_word is "".
+  # Build the request from the reconstructed completion variables produced by
+  # __rancher_init_completion -n "=:" (words/cword/cur) so that equals-form
+  # flags like --by=n are not split: bash's default word breaks turn --by=n
+  # into three tokens (--by, =, n), but _get_comp_words_by_ref -n "=:" rejoins
+  # them so cur="--by=n" and words/cword reflect the collapsed form.
+  # --rancher-completion-cur=${cur} is one token even when cur is "".
   __rancher_completion_request=(
-    "${COMP_WORDS[0]}"
+    "${words[0]}"
     "--rancher-completion-proto=2"
-    "${COMP_WORDS[@]:1:$((COMP_CWORD - 1))}"
-    "--rancher-completion-cur=${current_word}"
+    "${words[@]:1:$((cword - 1))}"
+    "--rancher-completion-cur=${cur}"
     "--generate-shell-completion"
   )
 }

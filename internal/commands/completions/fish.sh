@@ -27,13 +27,11 @@ function __rancher_perform_completion
     end
 
     for line in $results
-        if not string match -q -- "rancher*" $line
-            set -l parts (string split -m 1 ":" -- "$line")
-            if test (count $parts) -eq 2
-                printf "%s\t%s\n" "$parts[1]" "$parts[2]"
-            else
-                printf "%s\n" "$line"
-            end
+        set -l parts (string split -m 1 ":" -- "$line")
+        if test (count $parts) -eq 2
+            printf "%s\t%s\n" "$parts[1]" "$parts[2]"
+        else
+            printf "%s\n" "$line"
         end
     end
 end
