@@ -6900,6 +6900,7 @@
     {
       "auth": true,
       "commandType": "readOnly",
+      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns member-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket.",
       "flags": [
         {
           "name": "cluster",
@@ -6908,6 +6909,22 @@
         {
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "desc": "Group results by namespace, project, node, or pod (default: namespace)",
+          "enum": [
+            "namespace",
+            "project",
+            "node",
+            "pod"
+          ],
+          "name": "by",
+          "type": "string"
+        },
+        {
+          "desc": "Limit results to one node",
+          "name": "node",
+          "type": "string"
         }
       ],
       "name": "usage",
@@ -6915,7 +6932,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Show CPU/memory requests, limits, and usage per namespace or project (scopable by the global --project/--context flags)"
+      "usage": "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods"
     }
   ],
   "effectSchema": {

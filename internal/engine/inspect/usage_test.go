@@ -65,8 +65,9 @@ func TestUsageAggregatesPerNamespace(t *testing.T) {
 
 	assert.Equal(t, "ResourceUsage", res.Kind)
 	assert.Empty(t, res.Warnings)
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	rows := env.Data
 	require.Contains(t, rows, "ns1")
 	require.Contains(t, rows, "ns2")
 	assert.Equal(t, "100m", rows["ns1"].CPURequest)
@@ -92,8 +93,9 @@ func TestUsageDegradesWithoutMetrics(t *testing.T) {
 
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, "metrics.k8s.io unavailable on cluster c-abc", res.Warnings[0])
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	rows := env.Data
 	assert.Empty(t, rows["ns1"].CPUUsage)
 }
 
@@ -124,10 +126,11 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 
 	require.NotEmpty(t, client.listSelectors)
 	assert.Contains(t, client.listSelectors, "field.cattle.io/projectId=p-x", "the namespace List call must carry the rendered project selector")
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
-	require.Contains(t, rows, "p-x")
-	assert.NotContains(t, rows, "ns1")
+	rows := env.Data
+	require.Contains(t, rows, "ns1")
+	assert.NotContains(t, rows, "p-x")
 }
 
 // TestUsageContextProjectScopesWithoutFlag proves usage reads --project via
@@ -151,9 +154,10 @@ func TestUsageContextProjectScopesWithoutFlag(t *testing.T) {
 	cmd := NewUsage(&fakeFactory{client: client, ctxProject: "p-x"})
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
 	require.NoError(t, err)
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
-	assert.Contains(t, rows, "p-x", "the context project must scope usage exactly as the flag does")
+	rows := env.Data
+	assert.Contains(t, rows, "ns1", "the context project must scope usage to member namespaces")
 }
 
 func TestUsageProjectResolvesDisplayName(t *testing.T) {
@@ -172,9 +176,10 @@ func TestUsageProjectResolvesDisplayName(t *testing.T) {
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "web"}})
 	require.NoError(t, err)
 
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
-	assert.Contains(t, rows, "p-x", "a display name must resolve to the project id before grouping")
+	rows := env.Data
+	assert.NotContains(t, rows, "p-x", "a display name must resolve to the project id and scope to member namespaces, not create a project bucket")
 }
 
 func TestUsageNamespaceScopesMetricsFetch(t *testing.T) {
@@ -194,8 +199,9 @@ func TestUsageNamespaceScopesMetricsFetch(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, res.Warnings)
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	rows := env.Data
 	assert.Equal(t, "80m", rows["ns1"].CPUUsage, "metrics List must be scoped to ns1, not cluster-wide")
 
 	for _, ns := range client.listNamespaces {
@@ -235,10 +241,10 @@ func TestUsageProjectEmptyMembersReturnsEmptyAggregate(t *testing.T) {
 	cmd := NewUsage(&fakeFactory{client: client})
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
 	require.NoError(t, err)
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
-	require.Contains(t, rows, "p-x")
-	assert.Equal(t, "0", rows["p-x"].CPURequest)
+	rows := env.Data
+	assert.Empty(t, rows, "an empty-member project must return an empty aggregate, not a project-keyed row")
 }
 
 func TestUsageProjectRejectsInvalidLabelValue(t *testing.T) {
@@ -292,10 +298,144 @@ func TestUsageNamespaceAndProjectMemberScopesAsNamespace(t *testing.T) {
 	cmd := NewUsage(&fakeFactory{client: client})
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns1", "project": "p-x"}})
 	require.NoError(t, err)
-	rows, ok := res.Data.(usageRows)
+	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	rows := env.Data
 	assert.Contains(t, rows, "ns1", "a member namespace scopes the result by namespace, not by project bucket")
 	assert.NotContains(t, rows, "p-x")
+}
+
+func TestUsageEnvelopeHasByDiscriminator(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	client := newFakeClient().
+		withList(podKind.GVR, &unstructured.UnstructuredList{}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok, "Result.Data must be usageEnvelope")
+	assert.Equal(t, "namespace", env.By)
+}
+
+func TestUsageByNodeRejectsNamespaceFlag(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{
+		"cluster": "c-abc", "by": "node", "namespace": "ns1",
+	}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestUsageByNodeRejectsProjectFlag(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{
+		"cluster": "c-abc", "by": "node", "project": "p-x",
+	}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// UU-41: --project alone (no --by) → member-namespace rows, not a single
+// project bucket.
+func TestUsageProjectAloneGivesMemberNamespaceRows(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-x"}),
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
+			*podWithResources("ns2", "p1", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	assert.Equal(t, "namespace", env.By)
+	assert.Contains(t, env.Data, "ns1", "--project without --by must return member-namespace rows")
+	assert.Contains(t, env.Data, "ns2")
+	assert.NotContains(t, env.Data, "p-x")
+}
+
+// UU-41: --by project --project X → single project bucket.
+func TestUsageByProjectWithProjectFlagGivesSingleBucket(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	assert.Equal(t, "project", env.By)
+	assert.Contains(t, env.Data, "p-x", "--by project --project X must return a single project bucket")
+	assert.NotContains(t, env.Data, "ns1")
+}
+
+// podOnNode lives here (usage_test.go) so Task 2's node-filter test compiles
+// before Task 3 exists; Task 3's usage_node_test.go reuses it.
+func podOnNode(ns, name, nodeName, cpuReq, memReq, cpuLim, memLim string) *unstructured.Unstructured {
+	p := podWithResources(ns, name, cpuReq, memReq, cpuLim, memLim)
+	_ = unstructured.SetNestedField(p.Object, nodeName, "spec", "nodeName")
+	return p
+}
+
+// --node must narrow the default (namespace) grouping — never a silent no-op.
+func TestUsageNodeFilterDefaultGrouping(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+
+	client := newFakeClient().
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podOnNode("ns1", "p1", "n1", "100m", "128Mi", "200m", "256Mi"),
+			*podOnNode("ns2", "p2", "n2", "50m", "64Mi", "100m", "128Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "node": "n1"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	require.Contains(t, env.Data, "ns1")
+	assert.NotContains(t, env.Data, "ns2", "--node must exclude namespaces whose pods are on other nodes")
+	assert.Equal(t, "100m", env.Data["ns1"].CPURequest)
 }
 
 func TestSumPodResourcesSinglePod(t *testing.T) {

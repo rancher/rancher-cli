@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -17,24 +18,39 @@ type usageCmd struct {
 	clients engine.ClusterClientFactory
 }
 
-// NewUsage builds `usage --cluster [--namespace] [--project]`: CPU/memory
-// requests and limits from pod specs, plus usage from pod metrics, summed per
-// namespace — or, under --project, summed across every namespace in that
-// project into one bucket. --project has no local flag: the global
-// --project flag reaches it via urfave lineage. A missing metrics server
-// degrades every usage field to empty plus one warning.
+const (
+	byNamespace = "namespace"
+	byProject   = "project"
+	byNode      = "node"
+	byPod       = "pod"
+)
+
+// NewUsage builds `usage --cluster [--namespace] [--project] [--by] [--node]`:
+// CPU/memory requests and limits from pod specs, plus usage from pod metrics,
+// grouped by the --by discriminator. A missing metrics server degrades every
+// usage field to empty plus one warning.
 func NewUsage(clients engine.ClusterClientFactory) runtime.Command {
 	return &usageCmd{clients: clients}
 }
 
 func (c *usageCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "usage",
-		Usage:       "Show CPU/memory requests, limits, and usage per namespace or project (scopable by the global --project/--context flags)",
+		Name:  "usage",
+		Usage: "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods",
+		Desc: "Groups results by --by (namespace|project|node|pod). " +
+			"--namespace, --project, and --node are filters that narrow every grouping: " +
+			"--node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. " +
+			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
+			"--project without --by returns member-namespace rows (namespace grouping filtered to the project). " +
+			"--by project --project X returns a single project bucket.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string"},
 			{Name: resources.FlagNamespace, Type: "string"},
+			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
+				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},
+			{Name: "node", Type: "string",
+				Desc: "Limit results to one node"},
 		},
 		Toolset: "core",
 		Network: true,
@@ -42,17 +58,55 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	namespace := in.String(resources.FlagNamespace)
-	projectFlag, err := resources.EffectiveProject(c.clients, in)
-	if err != nil {
-		return runtime.Result{}, err
+func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
+	by := in.String("by")
+	if by == "" {
+		by = byNamespace
 	}
+
+	// UU-6: --by node rejects --namespace and --project.
+	if by == byNode {
+		if in.String(resources.FlagNamespace) != "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"--namespace does not apply to --by node").
+				WithHint("use --by pod --node N to see per-pod usage on a specific node")
+		}
+		projectFlag, err := resources.EffectiveProject(c.clients, in)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		if projectFlag != "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"--project does not apply to --by node").
+				WithHint("use --by pod --project P to see where a project's pods are scheduled")
+		}
+	}
+
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	client, err := c.clients.Cluster(ctx, clusterID)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
+	switch by {
+	case byNode:
+		return c.collectByNode(ctx, client, clusterID, in)
+	case byPod:
+		return c.collectByPod(ctx, client, clusterID, in)
+	case byProject:
+		return c.collectByProject(ctx, client, clusterID, in)
+	default:
+		return c.collectByNamespace(ctx, client, clusterID, in)
+	}
+}
+
+func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+	namespace := in.String(resources.FlagNamespace)
+	nodeName := in.String("node")
+	projectFlag, err := resources.EffectiveProject(c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -72,11 +126,9 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 	}
 
 	grouped := map[string][]unstructured.Unstructured{}
-	var namespaces []string // nil = cluster-wide; scopes the metrics fetch below
+	var namespaces []string
 	switch {
 	case namespace != "" && projectID != "":
-		// PC-3's universal rule: --namespace + --project is allowed, provided
-		// the namespace is a member, then behaves as plain namespace scope.
 		if !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
 				"pass a member namespace, or omit --namespace to scope the whole project")
@@ -86,13 +138,86 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 		if lerr != nil {
 			return runtime.Result{}, lerr
 		}
-		grouped[namespace] = l.Items
+		grouped[namespace] = filterPodsByNode(l.Items, nodeName)
 
 	case projectID != "":
-		// An empty member set is a valid empty result (a typo'd project name
-		// already fails loudly in ResolveProject above with NOT_FOUND) — one
-		// cluster-wide pod List, filtered client-side by membership, same as
-		// the generic get<kind> --project list path (PC-3).
+		// UU-5 BREAKING: --project without --by now returns member-namespace
+		// rows, not a single project bucket. The single-bucket form is
+		// --by project --project X (collectByProject).
+		for ns := range members {
+			namespaces = append(namespaces, ns)
+		}
+		l, lerr := client.List(ctx, podKind.GVR, "", "")
+		if lerr != nil {
+			return runtime.Result{}, lerr
+		}
+		for _, pod := range filterPodsByNode(l.Items, nodeName) {
+			if members[pod.GetNamespace()] {
+				grouped[pod.GetNamespace()] = append(grouped[pod.GetNamespace()], pod)
+			}
+		}
+
+	case namespace != "":
+		namespaces = []string{namespace}
+		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
+		if lerr != nil {
+			return runtime.Result{}, lerr
+		}
+		grouped[namespace] = filterPodsByNode(l.Items, nodeName)
+
+	default:
+		l, lerr := client.List(ctx, podKind.GVR, "", "")
+		if lerr != nil {
+			return runtime.Result{}, lerr
+		}
+		for _, pod := range filterPodsByNode(l.Items, nodeName) {
+			grouped[pod.GetNamespace()] = append(grouped[pod.GetNamespace()], pod)
+		}
+	}
+
+	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	rows, _ := inner.Data.(usageRows)
+	return runtime.Result{
+		Kind:     "ResourceUsage",
+		Data:     usageEnvelope{By: byNamespace, Data: rows},
+		Warnings: inner.Warnings,
+	}, nil
+}
+
+// collectByNode and collectByPod are stubs that will be filled in Tasks 3 and
+// 4 respectively. They must exist here so Execute compiles after this task.
+func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+	return runtime.Result{Kind: "ResourceUsage", Data: usageEnvelope{By: byNode, Data: usageRows{}}}, nil
+}
+
+func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+	return runtime.Result{Kind: "ResourceUsage", Data: usageEnvelope{By: byPod, Data: usageRows{}}}, nil
+}
+
+// collectByProject aggregates pods into a single bucket keyed by project ID,
+// the --by project form of the old --project-alone behavior. Task 5 will
+// enhance this with display-name substitution and full feature parity.
+func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+	projectFlag, err := resources.EffectiveProject(c.clients, in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	podKind, _ := kinds.Lookup("pod")
+
+	grouped := map[string][]unstructured.Unstructured{}
+	var namespaces []string
+	if projectFlag != "" {
+		projectID, perr := projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
+		if perr != nil {
+			return runtime.Result{}, perr
+		}
+		members, merr := projects.ProjectNamespaces(ctx, client, projectID)
+		if merr != nil {
+			return runtime.Result{}, merr
+		}
 		for ns := range members {
 			namespaces = append(namespaces, ns)
 		}
@@ -107,26 +232,18 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prom
 			}
 		}
 		grouped[projectID] = pods
-
-	case namespace != "":
-		namespaces = []string{namespace}
-		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
-		if lerr != nil {
-			return runtime.Result{}, lerr
-		}
-		grouped[namespace] = l.Items
-
-	default:
-		l, lerr := client.List(ctx, podKind.GVR, "", "")
-		if lerr != nil {
-			return runtime.Result{}, lerr
-		}
-		for _, pod := range l.Items {
-			grouped[pod.GetNamespace()] = append(grouped[pod.GetNamespace()], pod)
-		}
 	}
 
-	return aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	rows, _ := inner.Data.(usageRows)
+	return runtime.Result{
+		Kind:     "ResourceUsage",
+		Data:     usageEnvelope{By: byProject, Data: rows},
+		Warnings: inner.Warnings,
+	}, nil
 }
 
 // fetchPodMetrics lists pod metrics with ONE List call: scoped to the single
@@ -246,7 +363,7 @@ type resourceTotals struct {
 }
 
 // usageRows is `usage`'s payload, keyed by namespace (or by project id under
-// --project). It implements output.Tabular for `-o table`.
+// --by project). It implements output.Tabular for `-o table`.
 type usageRows map[string]resourceTotals
 
 func (u usageRows) Columns() []string {
@@ -263,6 +380,49 @@ func (u usageRows) Rows() [][]string {
 	for _, k := range keys {
 		t := u[k]
 		out = append(out, []string{k, t.CPURequest, t.CPULimit, t.CPUUsage, t.MemoryRequest, t.MemoryLimit, t.MemoryUsage})
+	}
+	return out
+}
+
+// usageEnvelope is the top-level Result.Data for the `usage` command. It
+// wraps the bare usageRows with a "by" discriminator so agents know the
+// grouping without re-deriving it from flags. aggregateUsage still returns
+// bare usageRows so project.go's type-assert is untouched (UU-23). names,
+// when non-nil, maps a row key to the label the table SCOPE column shows
+// (the project grouping keys rows by project id but displays the project
+// name, UU-18/UU-25); it is unexported so the JSON shape stays {"by","rows"}.
+type usageEnvelope struct {
+	By    string    `json:"by"`
+	Data  usageRows `json:"rows"`
+	names map[string]string
+}
+
+func (e usageEnvelope) Columns() []string { return e.Data.Columns() }
+
+func (e usageEnvelope) Rows() [][]string {
+	rows := e.Data.Rows()
+	for _, row := range rows {
+		if display, ok := e.names[row[0]]; ok {
+			row[0] = display
+		}
+	}
+	return rows
+}
+
+// filterPodsByNode returns the pods scheduled on nodeName; an empty nodeName
+// is a no-op. Every grouping except --by node uses it to honor --node —
+// an accepted flag must never be a silent no-op. Filtering is client-side:
+// ClusterClient.List takes a label selector only (no field selectors).
+func filterPodsByNode(pods []unstructured.Unstructured, nodeName string) []unstructured.Unstructured {
+	if nodeName == "" {
+		return pods
+	}
+	out := make([]unstructured.Unstructured, 0, len(pods))
+	for _, pod := range pods {
+		nn, _, _ := unstructured.NestedString(pod.Object, "spec", "nodeName")
+		if nn == nodeName {
+			out = append(out, pod)
+		}
 	}
 	return out
 }
