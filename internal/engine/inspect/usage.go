@@ -45,8 +45,8 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--by project --project X returns a single project bucket.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string"},
-			{Name: resources.FlagNamespace, Type: "string"},
+			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
 				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},
 			{Name: "node", Type: "string",

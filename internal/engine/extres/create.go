@@ -29,9 +29,9 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 		Usage:       "Create a token on the server",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
-			{Name: "ttl", Type: "string"},
-			{Name: "description", Type: "string"},
-			{Name: "cluster", Type: "string"},
+			{Name: "ttl", Type: "string", Desc: "token lifetime, e.g. 30d, 12h (omit for server default)"},
+			{Name: "description", Type: "string", Desc: "note attached to the token for identification"},
+			{Name: "cluster", Type: "string", Desc: "scope the token to this cluster `id|name`"},
 		},
 		Examples: []string{
 			"rancher create token --ttl 90d --description ci --apply --yes",

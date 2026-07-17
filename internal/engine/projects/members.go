@@ -219,9 +219,9 @@ func (removeMemberCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "principal", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true},
-			{Name: "cluster", Type: "string"},
-			{Name: "group", Type: "bool"},
+			{Name: "project", Type: "string", Required: true, Desc: "target project `id`"},
+			{Name: "cluster", Type: "string", Desc: "cluster `id|name` of the project"},
+			{Name: "group", Type: "bool", Desc: "treat the subject as a group, not a user"},
 		},
 		Examples:    []string{"rancher project remove-member u-abc123 --project p-x --cluster c-x --apply --yes"},
 		Destructive: "true",

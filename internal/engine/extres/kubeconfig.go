@@ -33,10 +33,10 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		Usage:       "Create a kubeconfig with an embedded token",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
-			{Name: "clusters", Type: "string"},
-			{Name: "current-context", Type: "string"},
-			{Name: "ttl", Type: "string"},
-			{Name: "description", Type: "string"},
+			{Name: "clusters", Type: "string", Desc: "comma-separated cluster `id|name` list, or `*` for all accessible"},
+			{Name: "current-context", Type: "string", Desc: "cluster to use as the kubeconfig's current context"},
+			{Name: "ttl", Type: "string", Desc: "credential lifetime, e.g. 30d, 12h (omit for server default)"},
+			{Name: "description", Type: "string", Desc: "note attached to the kubeconfig for identification"},
 			// A bool flag cannot distinguish omitted from false; the server
 			// field is a *bool defaulting true, so tri-state is a string enum.
 			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}},

@@ -230,7 +230,7 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 		Usage:       "Delete cached exec-credential token(s)",
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool"}},
+		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "delete all cached credentials"}},
 		Examples: []string{
 			"rancher auth delete-token --all",
 			"rancher auth delete-token prod",

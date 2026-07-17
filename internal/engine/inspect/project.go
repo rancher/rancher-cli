@@ -34,7 +34,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		Usage:       "Inspect a project: namespaces, members, quota, and usage",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string"}},
+		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"}},
 		Toolset:     "core",
 		Network:     true,
 		Auth:        true,

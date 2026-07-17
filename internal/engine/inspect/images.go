@@ -42,8 +42,8 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 		Usage:       "List container images in use, deduplicated and counted",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string"},
-			{Name: flagAllClusters, Type: "bool"},
+			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: flagAllClusters, Type: "bool", Desc: "scan all downstream clusters"},
 		},
 		Toolset: "core",
 		Network: true,

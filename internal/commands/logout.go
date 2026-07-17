@@ -29,7 +29,7 @@ func (logoutCmd) Describe() runtime.Descriptor {
 		Usage:       "Clear stored login credentials for a server",
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool"}},
+		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "log out of all configured servers"}},
 		Examples: []string{
 			"rancher auth logout",
 			"rancher auth logout prod",
