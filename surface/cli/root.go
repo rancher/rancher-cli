@@ -68,7 +68,6 @@ func buildEntries() []entry {
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients) }},
-		{group: "top", make: func(d runDeps) runtime.Command { return inspect.NewTopNode(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetCloudCredential(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
@@ -214,7 +213,6 @@ var groupUsages = map[string]string{
 	"patch":   "Patch resources",
 	"delete":  "Delete resources",
 	"inspect": "Inspect related resources together",
-	"top":     "Combined resource-usage views",
 	"project": "Project membership operations",
 }
 

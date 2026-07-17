@@ -30,7 +30,6 @@ func NewResolver() *Resolver {
 		"inspect pod":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment":      {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect project":         {Tier: safety.TierPublic, Stability: safety.Beta},
-		"top node":                {Tier: safety.TierCRD, Stability: safety.Beta},
 		"get cloud-credential":    {Tier: safety.TierCRD, Stability: safety.Beta},
 		"get kubernetes-versions": {Tier: safety.TierCRD, Stability: safety.Beta},
 		"images":                  {Tier: safety.TierCRD, Stability: safety.Beta},

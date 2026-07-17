@@ -187,12 +187,8 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	}, nil
 }
 
-// collectByNode and collectByPod are stubs that will be filled in Tasks 3 and
-// 4 respectively. They must exist here so Execute compiles after this task.
-func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
-	return runtime.Result{Kind: "ResourceUsage", Data: usageEnvelope{By: byNode, Data: usageRows{}}}, nil
-}
-
+// collectByPod is a stub that will be filled in Task 4. It must exist here
+// so Execute compiles after this task.
 func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
 	return runtime.Result{Kind: "ResourceUsage", Data: usageEnvelope{By: byPod, Data: usageRows{}}}, nil
 }

@@ -39,9 +39,12 @@ func rejectProject(clients engine.ClusterClientFactory, in runtime.Input, cmd st
 
 // podMetricsGVR is a metrics GVR constant — deliberately not a kind-table
 // row: the metrics pseudo-kinds are not user-addressable nouns, only fetched
-// internally here. nodeMetricsGVR (its sibling) lives in topnode.go, the sole
-// consumer.
+// internally here.
 var podMetricsGVR = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}
+
+// nodeMetricsGVR is the metrics.k8s.io sibling of podMetricsGVR. Consumed by
+// the node grouping collector in usage_node.go.
+var nodeMetricsGVR = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}
 
 // ownerChainMaxDepth caps the owner walk (pod -> ReplicaSet -> Deployment is
 // depth 2; the extra headroom covers StatefulSet/DaemonSet/Job shapes without

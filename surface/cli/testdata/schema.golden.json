@@ -6876,28 +6876,6 @@
       "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
     },
     {
-      "args": [
-        {
-          "name": "name",
-          "type": "string"
-        }
-      ],
-      "auth": true,
-      "commandType": "readOnly",
-      "flags": [
-        {
-          "name": "cluster",
-          "type": "string"
-        }
-      ],
-      "name": "top node",
-      "network": true,
-      "stability": "beta",
-      "tier": "crd",
-      "toolset": "core",
-      "usage": "Show node resource usage from metrics.k8s.io"
-    },
-    {
       "auth": true,
       "commandType": "readOnly",
       "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns member-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket.",

@@ -23,8 +23,6 @@ func TestCompositesRejectProjectScope(t *testing.T) {
 			input{args: []string{"web"}, s: map[string]string{"cluster": "c-abc", "namespace": "default", "project": "p-x"}}},
 		{"inspect deployment", NewDeployment(&fakeFactory{}),
 			input{args: []string{"web"}, s: map[string]string{"cluster": "c-abc", "namespace": "default", "project": "p-x"}}},
-		{"top node", NewTopNode(&fakeFactory{}),
-			input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}}},
 		{"images", NewImages(&fakeFactory{}),
 			input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}}},
 	}
