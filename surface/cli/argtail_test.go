@@ -43,7 +43,7 @@ func TestParseArgTail(t *testing.T) {
 			want:        CompletionSite{Kind: SitePositional, Index: 1},
 		},
 		{
-			name:        "v2: string flag value consumed (non-final) → positional 0",
+			name:        "v2: string flag value consumed (non-final) → positional 1",
 			args:        []string{"--cluster", "prod", "foo"},
 			currentWord: "",
 			hasMarker:   true,
@@ -200,8 +200,8 @@ func TestParseArgTailFlagValueCases(t *testing.T) {
 func TestCaptureArgvV2ProtoMarkerExtractsCurField(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord/rawProtoV2 package globals.
 	orig := rawArgv
-	origW := rawCurrentWord
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = false })
+	origW, origP := rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP })
 	// --rancher-completion-cur=c- carries the partial; all other tokens go to rawArgv.
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--cluster", "--rancher-completion-cur=c-", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster"}, rawArgv)
@@ -212,8 +212,8 @@ func TestCaptureArgvV2ProtoMarkerExtractsCurField(t *testing.T) {
 func TestCaptureArgvV2EmptyCurrentWord(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	orig := rawArgv
-	origW := rawCurrentWord
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = false })
+	origW, origP := rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP })
 	// --rancher-completion-cur= (empty value) → cursor after space, no partial typed.
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--cluster", "c-test", "--rancher-completion-cur=", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster", "c-test"}, rawArgv)
@@ -225,8 +225,8 @@ func TestCaptureArgvV2EqualsFormCurrentWord(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	// --rancher-completion-cur=--by=n carries an equals-form current word.
 	orig := rawArgv
-	origW := rawCurrentWord
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = false })
+	origW, origP := rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP })
 	CaptureArgv([]string{"--rancher-completion-proto=2", "usage", "--rancher-completion-cur=--by=n", "--generate-shell-completion"})
 	assert.Equal(t, []string{"usage"}, rawArgv)
 	assert.Equal(t, "--by=n", rawCurrentWord)
@@ -236,8 +236,8 @@ func TestCaptureArgvV2EqualsFormCurrentWord(t *testing.T) {
 func TestCaptureArgvV1NoSentinelNoCurrentWord(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	orig := rawArgv
-	origW := rawCurrentWord
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = false })
+	origW, origP := rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP })
 	CaptureArgv([]string{"get", "pod", "--cluster", "prod", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster", "prod"}, rawArgv)
 	assert.Equal(t, "", rawCurrentWord)

@@ -29,8 +29,9 @@ func GetCurrentWord() string { return rawCurrentWord }
 // CaptureArgv processes os.Args[1:] before urfave parses (round-5 encoding):
 //  1. Detects the v2 proto sentinel and strips it.
 //  2. Scans remaining tokens: strips --generate-shell-completion; extracts
-//     rawCurrentWord from --rancher-completion-cur=<word> and strips that token
-//     from urfave argv; all other tokens go into rawArgv.
+//     rawCurrentWord from --rancher-completion-cur=<word> and drops that token;
+//     all other tokens go into rawArgv. (The argv urfave actually receives is
+//     produced separately by SanitizedArgs.)
 //  3. When v1 (sentinel absent): rawCurrentWord = ""; rawArgv = remaining tokens.
 func CaptureArgv(args []string) {
 	proto2 := len(args) > 0 && args[0] == protoSentinel
