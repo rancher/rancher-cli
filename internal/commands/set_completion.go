@@ -12,11 +12,8 @@ import (
 )
 
 // The timeout bounds live in the config package (shared with the TAB-time
-// dispatch); these aliases keep this file's validation messages in one place.
-const (
-	completionTimeoutMax     = config.CompletionTimeoutMax
-	completionTimeoutDefault = config.CompletionTimeoutDefault
-)
+// dispatch); the alias keeps this file's validation messages in one place.
+const completionTimeoutMax = config.CompletionTimeoutMax
 
 type setCompletionCmd struct{ dir string }
 
@@ -95,19 +92,18 @@ func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime
 		return runtime.Result{}, err
 	}
 
-	note := completionCapabilityNote(c.dir, cfg)
-	// cfg.Completion.Timeout is a string (plain-text duration, e.g. "500ms").
-	// Use it directly — .String() does not exist on string (round-2 finding 2).
 	result := map[string]any{
 		"network": cfg.Completion.Network,
 		"timeout": cfg.Completion.Timeout,
 	}
-	if note != "" && cfg.Completion.Network {
-		result["note"] = note
-	}
+	// The capability note accompanies ENABLING network completion in this
+	// invocation, not every later timeout tweak while it happens to be on.
 	text := ""
-	if note != "" && cfg.Completion.Network {
-		text = "# " + note + "\n"
+	if networkStr == "true" {
+		if note := completionCapabilityNote(c.dir, cfg); note != "" {
+			result["note"] = note
+			text = "# " + note + "\n"
+		}
 	}
 	return runtime.Result{Kind: "CompletionConfig", Data: result, Text: text}, nil
 }
