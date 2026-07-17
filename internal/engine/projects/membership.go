@@ -30,7 +30,7 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id`"},
+			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` of the project"},
 		},
 		Examples:    []string{"rancher project add-namespace team-a --project p-x --cluster c-x --apply"},
@@ -82,7 +82,7 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id`"},
+			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` of the project"},
 		},
 		Examples:    []string{"rancher project remove-namespace team-a --project p-x --cluster c-x --apply"},

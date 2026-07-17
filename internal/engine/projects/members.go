@@ -128,7 +128,7 @@ func (addMemberCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "principal", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id`"},
+			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
 			{Name: "role", Type: "string", Required: true, Desc: "project role: project-owner, project-member, read-only, or a roletemplate `id`"},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` of the project"},
 			{Name: "group", Type: "bool", Desc: "treat the subject as a group, not a user"},
@@ -219,7 +219,7 @@ func (removeMemberCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "principal", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id`"},
+			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` of the project"},
 			{Name: "group", Type: "bool", Desc: "treat the subject as a group, not a user"},
 		},

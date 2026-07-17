@@ -285,7 +285,7 @@
       ],
       "flags": [
         {
-          "desc": "target the current context (kubectl parity)",
+          "desc": "apply changes to the current context",
           "name": "current",
           "type": "bool"
         },
@@ -597,7 +597,7 @@
           "type": "string"
         },
         {
-          "desc": "target cluster `id|name`",
+          "desc": "target cluster `id|name` (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
@@ -6706,7 +6706,7 @@
       ],
       "flags": [
         {
-          "desc": "target project `id`",
+          "desc": "target project `id|name`",
           "name": "project",
           "required": true,
           "type": "string"
@@ -6751,7 +6751,7 @@
       ],
       "flags": [
         {
-          "desc": "target project `id`",
+          "desc": "target project `id|name`",
           "name": "project",
           "required": true,
           "type": "string"
@@ -6785,7 +6785,7 @@
       ],
       "flags": [
         {
-          "desc": "target project `id`",
+          "desc": "target project `id|name`",
           "name": "project",
           "required": true,
           "type": "string"
@@ -6824,7 +6824,7 @@
       ],
       "flags": [
         {
-          "desc": "target project `id`",
+          "desc": "target project `id|name`",
           "name": "project",
           "required": true,
           "type": "string"

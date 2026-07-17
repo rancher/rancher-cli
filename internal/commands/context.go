@@ -51,7 +51,7 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 		Usage:       "Set the current context's cluster/project scope",
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
-			{Name: "current", Type: "bool", Desc: "target the current context (kubectl parity)"},
+			{Name: "current", Type: "bool", Desc: "apply changes to the current context"},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to set in the current context"},
 			{Name: "project", Type: "string", Desc: "project `id|name` to set in the current context"},
 		},
