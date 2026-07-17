@@ -373,6 +373,9 @@ func (k *keyringStore) SetToken(server, token string) error {
 }
 
 func (k *keyringStore) DeleteToken(server string) error {
+	if keyringObserverFn != nil {
+		keyringObserverFn("delete")
+	}
 	err := keyring.Delete(keyringService, server)
 	if keyringUnreachable(err) {
 		// XP-6: treat unreachable like a miss — drain the file store below

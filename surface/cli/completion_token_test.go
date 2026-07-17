@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -31,7 +30,8 @@ func TestResolveCompletionTokenEnvWins(t *testing.T) {
 }
 
 func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
-	// NOT parallel: mutates storedConfig package global (finding 14).
+	// NOT parallel: mutates storedConfig package global and env.
+	t.Setenv(config.EnvToken, "")
 	keyring.MockInit()
 	dir := t.TempDir()
 	// No env token, no file store token (CredentialStore not set to "file").
@@ -55,7 +55,8 @@ func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
 }
 
 func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
-	// NOT parallel: mutates storedConfig package global (finding 14).
+	// NOT parallel: mutates storedConfig package global and env.
+	t.Setenv(config.EnvToken, "")
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
@@ -85,7 +86,8 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 // TestFileStoreTokenCrossServerURLOverride proves round-2 finding 3:
 // RANCHER_CLI_URL pointing at server B must not send server A's token to B.
 func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
-	// NOT parallel: mutates storedConfig and RANCHER_CLI_URL env globals.
+	// NOT parallel: mutates storedConfig and env globals.
+	t.Setenv(config.EnvToken, "")
 	keyring.MockInit()
 	dir := t.TempDir()
 	// Config current server is server A (rancher-a.example.com).
@@ -109,9 +111,4 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	// Must return empty: server A's token must not be sent to server B.
 	cap := resolveCompletionToken(nil, "")
 	assert.Empty(t, cap.Token, "round-2 finding 3: cross-server URL override must not send server A token to server B")
-}
-
-// Ensure RANCHER_CLI_TOKEN env is cleared between tests that don't set it.
-func init() {
-	os.Unsetenv(config.EnvToken) //nolint:errcheck
 }

@@ -151,13 +151,6 @@ func (c *Config) Path() string { return c.path }
 // SetPath overrides the write target.
 func (c *Config) SetPath(p string) { c.path = p }
 
-// CurrentServerLookup returns the current context's server name, Server
-// value, and any error. Unlike CurrentServer which returns (name, Server,
-// error), this is a direct alias kept for call sites that need the name.
-func (c *Config) CurrentServerLookup() (name string, srv Server, err error) {
-	return c.CurrentServer()
-}
-
 // CurrentServer resolves the server referenced by the current context.
 func (c *Config) CurrentServer() (string, Server, error) {
 	if c.CurrentContext == "" {
