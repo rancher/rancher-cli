@@ -379,6 +379,34 @@ func TestUsageProjectAloneGivesMemberNamespaceRows(t *testing.T) {
 	assert.NotContains(t, env.Data, "p-x")
 }
 
+func TestUsageProjectAloneIncludesZeroPodMembers(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			namespaceObj("ns-empty", map[string]any{"field.cattle.io/projectId": "p-x"}),
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	assert.Contains(t, env.Data, "ns1")
+	assert.Contains(t, env.Data, "ns-empty", "zero-pod member namespace must still appear")
+	assert.Equal(t, "0", env.Data["ns-empty"].CPURequest)
+}
+
 // UU-41: --by project --project X → single project bucket.
 func TestUsageByProjectWithProjectFlagGivesSingleBucket(t *testing.T) {
 	t.Parallel()

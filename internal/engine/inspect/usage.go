@@ -143,9 +143,11 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	case projectID != "":
 		// UU-5 BREAKING: --project without --by now returns member-namespace
 		// rows, not a single project bucket. The single-bucket form is
-		// --by project --project X (collectByProject).
+		// --by project --project X (collectByProject). Every member namespace
+		// gets a row, zero-pod members included.
 		for ns := range members {
 			namespaces = append(namespaces, ns)
+			grouped[ns] = nil
 		}
 		l, lerr := client.List(ctx, podKind.GVR, "", "")
 		if lerr != nil {

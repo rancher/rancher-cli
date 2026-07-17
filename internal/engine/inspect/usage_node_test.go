@@ -116,6 +116,32 @@ func TestUsageByNodeSingleNode(t *testing.T) {
 	assert.Equal(t, "40m", env.Data["n1"].CPUUsage)
 }
 
+func TestUsageByNodeSingleNodeDegradesWithoutMetricsServer(t *testing.T) {
+	t.Parallel()
+	nodeKind := mustKind(t, "node")
+	podKind := mustKind(t, "pod")
+
+	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*podOnNode("ns1", "p1", "n1", "50m", "64Mi", "100m", "128Mi"),
+	}}
+	// No nodeMetricsGVR object registered — fake.Get returns error for missing object.
+	client := newFakeClient().
+		withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
+		withList(podKind.GVR, pods)
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
+	require.NoError(t, err)
+
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, "metrics.k8s.io unavailable on cluster c-abc", res.Warnings[0])
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	require.Contains(t, env.Data, "n1")
+	assert.Empty(t, env.Data["n1"].CPUUsage)
+	assert.Equal(t, "50m", env.Data["n1"].CPURequest)
+}
+
 func TestUsageByNodePendingPodsExcluded(t *testing.T) {
 	t.Parallel()
 	nodeKind := mustKind(t, "node")
