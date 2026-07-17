@@ -32,15 +32,14 @@ func sanitizeCandidates(candidates []string) []string {
 }
 
 // equalsFormCandidates reassembles value candidates as "--flag=<value>" full
-// tokens (AC-21a). sanitizeCandidates is applied to values first; the
-// assembled tokens are then sorted.
+// tokens (AC-21a). sanitizeCandidates is applied to values first; it returns
+// the values sorted, and the constant prefix preserves that order.
 func equalsFormCandidates(spelling string, values []string) []string {
 	safe := sanitizeCandidates(values)
 	out := make([]string, 0, len(safe))
 	for _, v := range safe {
 		out = append(out, spelling+"="+v)
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -318,7 +317,9 @@ func dedupe(s []string) []string { //nolint:unused
 	if len(s) == 0 {
 		return s
 	}
-	out := s[:1]
+	// A fresh slice: appending into a shared backing array would silently
+	// mutate the caller's input.
+	out := []string{s[0]}
 	for _, v := range s[1:] {
 		if v != out[len(out)-1] {
 			out = append(out, v)
