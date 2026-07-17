@@ -54,6 +54,7 @@ func buildEntries() []entry {
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigDeleteServer(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigPath(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigEdit(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetCompletion(d.dir) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"sigs.k8s.io/yaml"
@@ -25,6 +26,50 @@ const LoginOrEnvHint = "run: rancher auth login --server <url>, or set " + EnvUR
 // change lands once. Returns a fresh *clierr.Error each call.
 func ErrContextNotSet() *clierr.Error {
 	return clierr.New(clierr.CodeContextNotSet, "no current context and no "+EnvURL+" set").WithHint(LoginOrEnvHint)
+}
+
+// CompletionConfig holds the shell-completion preferences written by
+// `config set-completion` (AC-1, AC-2).
+type CompletionConfig struct {
+	// Network enables live resource-name completion over the Rancher API.
+	// Default false; set via `config set-completion --network true`.
+	Network bool `json:"network,omitempty"`
+	// Timeout is the whole-request budget per TAB invocation stored as a
+	// plain-text duration string (e.g. "500ms", "1s"). Using string avoids
+	// time.Duration's YAML marshal as integer nanoseconds.
+	// Parsed and clamped by EffectiveCompletionTimeout; hand-edited values
+	// outside [1ms, 2s] are clamped at use, not at write.
+	Timeout string `json:"timeout,omitempty"`
+}
+
+const (
+	// CompletionTimeoutDefault is the effective timeout when Timeout is empty
+	// or unparseable (AC-2).
+	CompletionTimeoutDefault = 500 * time.Millisecond
+	// CompletionTimeoutMax is the hard cap for per-TAB HTTP budgets (AC-2).
+	CompletionTimeoutMax = 2 * time.Second
+)
+
+// EffectiveCompletionTimeout returns the per-TAB HTTP budget from cfg,
+// applying default/floor/cap semantics (AC-2):
+//   - empty or unparseable → CompletionTimeoutDefault (500ms)
+//   - ≤ 0 → CompletionTimeoutDefault (floor non-positive)
+//   - > CompletionTimeoutMax → CompletionTimeoutMax (2s cap)
+//
+// Called by both the set-completion command and TAB dispatch so hand-edited
+// values in config.yaml are always clamped at use.
+func EffectiveCompletionTimeout(cfg *Config) time.Duration {
+	if cfg == nil || cfg.Completion.Timeout == "" {
+		return CompletionTimeoutDefault
+	}
+	d, err := time.ParseDuration(cfg.Completion.Timeout)
+	if err != nil || d <= 0 {
+		return CompletionTimeoutDefault
+	}
+	if d > CompletionTimeoutMax {
+		return CompletionTimeoutMax
+	}
+	return d
 }
 
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
@@ -50,6 +95,10 @@ type Config struct {
 	// session into read-only mode — see runtime.IO.ReadOnly. One-way: there
 	// is no per-invocation override to turn this back off from here.
 	ReadOnly bool `json:"readOnly,omitempty"`
+	// Completion holds per-machine completion preferences (not user config —
+	// live completion is inherently machine-dependent). Stored inline in
+	// config.yaml for discoverability; see `config set-completion`.
+	Completion CompletionConfig `json:"completion,omitempty"`
 
 	path string
 }

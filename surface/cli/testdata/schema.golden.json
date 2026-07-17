@@ -280,6 +280,35 @@
     {
       "auth": false,
       "commandType": "local",
+      "desc": "Stores completion preferences in config.yaml. --network true enables live resource-name completion via the Rancher API. --timeout sets the per-TAB budget for all HTTP requests (max 2s; values above clamp silently). Prints a credential-store capability note when enabling --network.",
+      "examples": [
+        "rancher config set-completion --network=true",
+        "rancher config set-completion --network=true --timeout=1s"
+      ],
+      "flags": [
+        {
+          "desc": "enable live resource-name completion (true|false)",
+          "enum": [
+            "true",
+            "false"
+          ],
+          "name": "network",
+          "type": "string"
+        },
+        {
+          "desc": "per-TAB HTTP `budget` (e.g. 500ms, 1s; max 2s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "config set-completion",
+      "network": false,
+      "toolset": "core",
+      "usage": "Configure live shell completion (network on/off, timeout)"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
       "examples": [
         "rancher config set-context --current --cluster c-1 --project p-1"
       ],
