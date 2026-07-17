@@ -173,10 +173,8 @@ func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 // behavior are serverNames-level facts, pinned once in names_test.go
 // (external review findings 8+9).
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
-	dir := t.TempDir()
-	cfg := &config.Config{Servers: map[string]config.Server{"acme": {}}}
-	cfg.SetPath(config.FilePath(dir))
-	require.NoError(t, cfg.Write())
-
-	assert.Equal(t, serverNames(dir), configDeleteServerCmd{}.CompleteArgs(context.Background(), dir))
+	t.Parallel()
+	view := testView{srvNames: []string{"acme"}}
+	got := configDeleteServerCmd{}.CompleteArgs(context.Background(), view)
+	assert.Equal(t, []string{"acme"}, got)
 }

@@ -44,8 +44,7 @@ func (completionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prom
 }
 
 // CompleteArgs implements runtime.ShellCompleter: the completion command
-// completes its own shell argument. dir is unused — the shell list is fixed,
-// not config-local.
-func (completionCmd) CompleteArgs(context.Context, string) []string {
+// completes its own shell argument. view is unused — the shell list is fixed.
+func (completionCmd) CompleteArgs(_ context.Context, _ runtime.ConfigView) []string {
 	return runtime.ShellCompletionShells()
 }

@@ -112,16 +112,23 @@ type MutatingCommand interface {
 	Plan(ctx context.Context, in Input) (safety.Effect, ExecuteFunc, error)
 }
 
-// ShellCompleter is an optional interface a Command implements to supply its
-// own shell completion candidates (e.g. `config use-context`'s context
-// names, or `completion`'s own fixed shell list). It is type-asserted at
-// adapter-wiring time and installed as the urfave leaf's ShellComplete
-// callback, which runs synchronously inside a shell TAB keystroke: dir is
-// the already-resolved config directory (config.ResolveDir's result, the
-// same resolution resolveDeps uses), and CompleteArgs must never prompt,
-// write, or touch the network — any error resolving dir degrades to no
-// candidates, never error text (an error line would be offered as a
-// candidate).
+// ConfigView is a minimal read-only snapshot of the loaded config, passed
+// into CompleteArgs so completers never re-read the config file (AC-19).
+// surface/cli implements this over the single Before-loaded *config.Config.
+type ConfigView interface {
+	ContextNames() []string
+	ServerNames() []string
+	CurrentContext() string
+	CurrentServerURL() string
+	ConfigDir() string
+}
+
+// ShellCompleter is an optional interface a Command implements to supply
+// config-local shell completion candidates (e.g. context names, server names,
+// fixed shell lists). Installed at adapter-wiring time; runs synchronously
+// inside a shell TAB keystroke. view is an immutable snapshot of the config
+// loaded by the root Before hook (one load total per TAB invocation, AC-19).
+// CompleteArgs must never prompt, write, or touch the network.
 type ShellCompleter interface {
-	CompleteArgs(ctx context.Context, dir string) []string
+	CompleteArgs(ctx context.Context, view ConfigView) []string
 }

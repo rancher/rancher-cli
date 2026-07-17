@@ -177,14 +177,10 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 // TestContextUseCompleteArgsDelegatesToContextNames proves only the wiring:
 // sort order and the missing/corrupt-config degrade-to-empty behavior are
 // contextNames-level facts, pinned once in names_test.go (external review
-// findings 8+9). The zero-value receiver mirrors the zero-deps probe
-// instance adaptEntry type-asserts at wiring time — CompleteArgs must use
-// only the dir parameter, never its own (empty) dir field.
+// findings 8+9).
 func TestContextUseCompleteArgsDelegatesToContextNames(t *testing.T) {
-	dir := t.TempDir()
-	cfg := &config.Config{Contexts: map[string]config.Context{"acme": {}}}
-	cfg.SetPath(config.FilePath(dir))
-	require.NoError(t, cfg.Write())
-
-	assert.Equal(t, contextNames(dir), contextUseCmd{}.CompleteArgs(context.Background(), dir))
+	t.Parallel()
+	view := testView{ctxNames: []string{"acme", "prod"}}
+	got := contextUseCmd{}.CompleteArgs(context.Background(), view)
+	assert.Equal(t, []string{"acme", "prod"}, got)
 }

@@ -131,19 +131,21 @@ func buildIO(c *ucli.Command) runtime.IO {
 	}
 }
 
-// resolveReadOnly OR's the three read-only sources — config, env, flag —
-// into one bool plus the active source name(s), for the read-only-mode
-// refusal hint. It re-loads the config file directly (config.ResolveDir + a
-// plain config.Load, no credential store side effects) so it
-// can run standalone from root's Before hook, ahead of any command's own
-// resolveDeps. A config load failure here degrades to "config source
-// inactive" rather than failing the whole invocation — resolveDeps already
-// enforces the config file for every command that actually needs it.
+// resolveReadOnly OR's the three read-only sources into one bool plus active
+// source names. It resets then conditionally re-sets the stored config so
+// completion always reflects this invocation's config state (AC-19: one load
+// per TAB). Config load failure degrades gracefully: read-only state still
+// derives from env/flag sources; stored config is cleared rather than left
+// stale.
 func resolveReadOnly(c *ucli.Command) (bool, []string) {
+	setStoredConfig(nil, "") // clear any prior stored config for this invocation
 	var sources []string
 	if dir, err := config.ResolveDir(c.String("config")); err == nil {
-		if cfg, err := config.Load(config.FilePath(dir)); err == nil && cfg.ReadOnly {
-			sources = append(sources, "config readOnly")
+		if cfg, err := config.Load(config.FilePath(dir)); err == nil {
+			setStoredConfig(cfg, dir) // single load shared with completion (AC-19)
+			if cfg.ReadOnly {
+				sources = append(sources, "config readOnly")
+			}
 		}
 	}
 	if os.Getenv(config.EnvReadOnly) != "" {
@@ -189,19 +191,13 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 	}
 }
 
-// shellCompleteFunc installs a runtime.ShellCompleter as a urfave
-// ShellComplete callback: it resolves the config dir the same way
-// resolveDeps does, but via a pure config.Load — no store, no pin, no
-// prompt — and degrades to empty output on any resolution error
-// (missing/corrupt config included), per the completion contract (never
-// print error text, which a shell would offer as a candidate).
+// shellCompleteFunc wraps a runtime.ShellCompleter as a urfave ShellComplete
+// callback. It uses the config loaded by the root Before hook (AC-19: one
+// load per TAB invocation); degrades to empty output on any config error.
 func shellCompleteFunc(sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
 	return func(ctx context.Context, c *ucli.Command) {
-		dir, err := config.ResolveDir(c.String("config"))
-		if err != nil {
-			return
-		}
-		for _, cand := range sc.CompleteArgs(ctx, dir) {
+		view := loadedConfigView()
+		for _, cand := range sc.CompleteArgs(ctx, view) {
 			_, _ = fmt.Fprintln(c.Root().Writer, cand)
 		}
 	}

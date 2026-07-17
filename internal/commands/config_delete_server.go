@@ -107,10 +107,8 @@ func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ ru
 	}}, nil
 }
 
-// CompleteArgs implements runtime.ShellCompleter: `config delete-server
-// <TAB>` completes server names. dir is the resolved config dir the
-// TAB-time callback passes in — never d.dir, which is empty on the
-// zero-deps probe instance adaptEntry type-asserts at wiring time.
-func (configDeleteServerCmd) CompleteArgs(_ context.Context, dir string) []string {
-	return serverNames(dir)
+// CompleteArgs implements runtime.ShellCompleter: `config delete-server <TAB>`
+// completes server names from the already-loaded config snapshot (AC-19).
+func (configDeleteServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+	return view.ServerNames()
 }

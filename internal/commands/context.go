@@ -144,13 +144,9 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config use-context <TAB>`
-// completes context names. dir is the resolved config dir the TAB-time
-// callback passes in — never c.dir, which is empty on the zero-deps probe
-// instance adaptEntry type-asserts at wiring time, so reading it here would
-// pass unit tests built with a real dir and return empty forever at real
-// TAB time.
-func (contextUseCmd) CompleteArgs(_ context.Context, dir string) []string {
-	return contextNames(dir)
+// completes context names from the already-loaded config snapshot (AC-19).
+func (contextUseCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+	return view.ContextNames()
 }
 
 // rejectShadowedGlobalOverride guards against the CW-3 footgun: the global
