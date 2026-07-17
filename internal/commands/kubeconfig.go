@@ -32,7 +32,7 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 		Name:  "kubeconfig",
 		Usage: "Print an exec-credential kubeconfig for a cluster",
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name`"},
+			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to generate the kubeconfig for (defaults to the current context)"},
 		},
 		Examples: []string{
 			"rancher kubeconfig --cluster prod > prod.yaml",

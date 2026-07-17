@@ -94,7 +94,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name`"},
+			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to mint the exec-credential token for (defaults to the current context)"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{"RANCHER_CLI_OAUTH_AUTH_FLOW"}},
