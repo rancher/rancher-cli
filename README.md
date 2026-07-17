@@ -205,7 +205,8 @@ and the composites `inspect pod`/`inspect deployment`/`images`) rejects
 a non-empty `--project` with `VALIDATION` rather than silently ignoring
 it. `usage` rejects `--project` only in combination with `--by node`
 (a node row mixing project-scoped requests with whole-node metrics would
-be misleading); all other `usage` groupings accept `--project`. Precedence: `--project` flag > the current context's project
+be misleading); all other `usage` groupings accept `--project`.
+Precedence: `--project` flag > the current context's project
 (`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
 set-context --project`) > unscoped.
 
