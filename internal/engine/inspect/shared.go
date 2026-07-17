@@ -1,5 +1,5 @@
 // Package inspect holds the read composites (`inspect pod`, `inspect
-// deployment`, `top node`, `images`, `usage`) — bespoke ReadCommands that join
+// deployment`, `images`, `usage`) — bespoke ReadCommands that join
 // several cluster reads into one document. Metrics and log fetch failures
 // degrade to Result.Warnings; only core object fetch failures are command
 // errors.
@@ -19,12 +19,12 @@ import (
 )
 
 // rejectProject enforces PC-3 for the composites that bypass Route
-// (inspect pod/deployment, top node, images): the global --project flag
-// would otherwise reach them and be silently ignored, exactly the class of
+// (inspect pod/deployment, images): the global --project flag would
+// otherwise reach them and be silently ignored, exactly the class of
 // no-op DR-004 removed --project for. Uses EffectiveProject (flag > context)
 // so a context-set project rejects too — a flag-only check would let that
 // same no-op back in through the context fallback. cmd is the command name
-// for the message ("inspect pod", "top node", ...).
+// for the message ("inspect pod", "images", ...).
 func rejectProject(clients engine.ClusterClientFactory, in runtime.Input, cmd string) error {
 	project, err := resources.EffectiveProject(clients, in)
 	if err != nil {

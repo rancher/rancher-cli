@@ -144,7 +144,7 @@ One call each, with graceful degradation (missing metrics/logs become
 - `rancher inspect pod <name>` — status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
 - `rancher inspect project <name-or-id>` — member namespaces, workload counts, members, quota, usage
-- `rancher top node` / `rancher usage` — capacity and consumption
+- `rancher usage` — capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`
 - `rancher images` — running images inventory
 
 ### 8. kubectl interop
