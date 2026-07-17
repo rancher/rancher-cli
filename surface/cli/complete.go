@@ -23,6 +23,14 @@ func setStoredConfig(cfg *config.Config, dir string) {
 	storedConfigDir = dir
 }
 
+// storedConfigSnapshot returns the stored config pointer under the read lock,
+// or nil if not yet loaded.
+func storedConfigSnapshot() *config.Config {
+	storedConfigMu.RLock()
+	defer storedConfigMu.RUnlock()
+	return storedConfig
+}
+
 // loadedConfigView returns the stored ConfigView, or a zero view on any error.
 func loadedConfigView() runtime.ConfigView {
 	storedConfigMu.RLock()

@@ -20,6 +20,18 @@ var ErrNoToken = errors.New("no stored token")
 
 const keyringService = "rancher-cli"
 
+// keyringObserverFn is an optional test hook called on every keyring operation
+// performed through keyringStore (Get, Set, Delete). Nil by default — no-op in
+// production. Set via SetKeyringObserverForTest to count keyring calls from any
+// test, including tests in other packages (e.g. surface/cli_test).
+var keyringObserverFn func(op string)
+
+// SetKeyringObserverForTest sets the keyring-operation observer for the current
+// test run. Call with nil to disable. op values: "get", "set", "delete".
+// This function is in non-test code so it is reachable from other packages'
+// tests; it is a no-op in production (keyringObserverFn is nil by default).
+func SetKeyringObserverForTest(fn func(op string)) { keyringObserverFn = fn }
+
 // CredStore persists per-server Rancher tokens and cached exec credentials.
 type CredStore interface {
 	GetToken(server string) (string, error)
@@ -306,6 +318,9 @@ func keyringUnreachable(err error) bool {
 }
 
 func (k *keyringStore) GetToken(server string) (string, error) {
+	if keyringObserverFn != nil {
+		keyringObserverFn("get")
+	}
 	tok, err := keyring.Get(keyringService, server)
 	if err == nil {
 		return tok, nil
@@ -338,6 +353,9 @@ func (k *keyringStore) GetToken(server string) (string, error) {
 }
 
 func (k *keyringStore) SetToken(server, token string) error {
+	if keyringObserverFn != nil {
+		keyringObserverFn("set")
+	}
 	err := keyring.Set(keyringService, server, token)
 	if err == nil {
 		return nil
