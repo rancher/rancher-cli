@@ -445,6 +445,7 @@
           "type": "string"
         },
         {
+          "desc": "include the Rancher server's own entry (server default true; pass false, with --clusters, to mint a cluster-only kubeconfig)",
           "enum": [
             "true",
             "false"
