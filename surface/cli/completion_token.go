@@ -194,6 +194,19 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	return config.ReadFileTokenSilent(dir, matchName)
 }
 
+// flagPresent reports whether --flagName or --flagName=... appears in argTail,
+// regardless of whether a value follows.
+func flagPresent(argTail []string, flagName string) bool {
+	long := "--" + flagName
+	prefix := long + "="
+	for _, a := range argTail {
+		if a == long || strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // extractFlagValue scans argTail for --flagName value or --flagName=value and
 // returns the value, or "" when not found. Used for --context extraction.
 func extractFlagValue(argTail []string, flagName string) string {

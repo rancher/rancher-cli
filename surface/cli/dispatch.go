@@ -3,9 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -77,7 +75,7 @@ func dispatchSite(
 
 // enumCandidates returns static enum candidates for a flag-value site.
 func enumCandidates(site CompletionSite, d runtime.Descriptor) []string {
-	all := append(d.Flags, globalArgSpecs...)
+	all := append(append([]runtime.ArgSpec{}, d.Flags...), globalArgSpecs...)
 	for _, f := range all {
 		if f.Name == site.FlagName && len(f.Enum) > 0 {
 			return resolveStaticEnum(f.Enum, site)
@@ -368,8 +366,9 @@ func extractClusterID(tail []string) string {
 //
 // Returns "" when no project scope is active (suppression does not apply).
 func extractEffectiveProject(tail []string) string {
-	if v := extractFlagValue(tail, "project"); v != "" {
-		return v
+	if flagPresent(tail, "project") {
+		// Explicit --project in tail: return its value (may be "" to clear inherited scope).
+		return extractFlagValue(tail, "project")
 	}
 	if v := extractFlagValue(tail, "context"); v != "" {
 		_, pr, hasProject := config.SplitContext(v)
@@ -454,14 +453,4 @@ func stripRoutingPrefix(argv []string, descriptorName string) []string {
 		}
 	}
 	return argv[len(parts):]
-}
-
-// emitSorted writes candidates to w, one per line, sorted (AC-26).
-func emitSorted(w io.Writer, candidates []string) { //nolint:unused
-	sorted := make([]string, len(candidates))
-	copy(sorted, candidates)
-	sort.Strings(sorted)
-	for _, c := range sorted {
-		_, _ = fmt.Fprintln(w, c)
-	}
 }

@@ -272,7 +272,7 @@ func projectCandidates(items []map[string]any) []string {
 			out = append(out, e.display)
 		}
 	}
-	return sanitizeCandidates(out)
+	return dedupe(sanitizeCandidates(out))
 }
 
 // fetchK8sResources lists a Kubernetes resource in a cluster via the
@@ -313,7 +313,7 @@ func fetchK8sResources(ctx context.Context, cap TokenCapability, clusterID, apiP
 }
 
 // dedupe removes duplicates from a sorted slice (input must be sorted).
-func dedupe(s []string) []string { //nolint:unused
+func dedupe(s []string) []string {
 	if len(s) == 0 {
 		return s
 	}

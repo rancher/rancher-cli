@@ -155,6 +155,27 @@ func TestEqualsFormEmit(t *testing.T) {
 	}, got)
 }
 
+// AC-8: projectCandidates must deduplicate its final output.
+// Two items with the same display name each appear once after sanitize+dedupe.
+func TestProjectCandidatesDeduplicates(t *testing.T) {
+	t.Parallel()
+	items := []map[string]any{
+		{"metadata": map[string]any{"name": "p-aaa"}, "spec": map[string]any{"displayName": "staging"}},
+		// Second item with the same display name: displayFreq["staging"]==2 → display dropped,
+		// but the two distinct IDs must each appear exactly once (IDs are unique here).
+		{"metadata": map[string]any{"name": "p-bbb"}, "spec": map[string]any{"displayName": "staging"}},
+		// Third item: unique display name — should appear once alongside its ID.
+		{"metadata": map[string]any{"name": "p-ccc"}, "spec": map[string]any{"displayName": "prod"}},
+	}
+	got := projectCandidates(items)
+	// IDs p-aaa, p-bbb, p-ccc + unique display "prod"; "staging" is dropped (not unique).
+	assert.Equal(t, []string{"p-aaa", "p-bbb", "p-ccc", "prod"}, got)
+	// Verify no duplicates even when raw output would contain them.
+	for i := 1; i < len(got); i++ {
+		assert.NotEqual(t, got[i-1], got[i], "dedupe: consecutive equal elements at index %d", i)
+	}
+}
+
 func TestNoNetworkOnStaticSite(t *testing.T) {
 	// No keyring.MockInit: resolveStaticEnum never touches keyring (round-2 finding 9).
 	t.Parallel()
