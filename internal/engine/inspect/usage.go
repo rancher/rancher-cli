@@ -187,55 +187,6 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	}, nil
 }
 
-// collectByProject aggregates pods into a single bucket keyed by project ID,
-// the --by project form of the old --project-alone behavior. Task 5 will
-// enhance this with display-name substitution and full feature parity.
-func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
-	projectFlag, err := resources.EffectiveProject(c.clients, in)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	podKind, _ := kinds.Lookup("pod")
-
-	grouped := map[string][]unstructured.Unstructured{}
-	var namespaces []string
-	if projectFlag != "" {
-		projectID, perr := projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
-		if perr != nil {
-			return runtime.Result{}, perr
-		}
-		members, merr := projects.ProjectNamespaces(ctx, client, projectID)
-		if merr != nil {
-			return runtime.Result{}, merr
-		}
-		for ns := range members {
-			namespaces = append(namespaces, ns)
-		}
-		l, lerr := client.List(ctx, podKind.GVR, "", "")
-		if lerr != nil {
-			return runtime.Result{}, lerr
-		}
-		var pods []unstructured.Unstructured
-		for _, pod := range l.Items {
-			if members[pod.GetNamespace()] {
-				pods = append(pods, pod)
-			}
-		}
-		grouped[projectID] = pods
-	}
-
-	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	rows, _ := inner.Data.(usageRows)
-	return runtime.Result{
-		Kind:     "ResourceUsage",
-		Data:     usageEnvelope{By: byProject, Data: rows},
-		Warnings: inner.Warnings,
-	}, nil
-}
-
 // fetchPodMetrics lists pod metrics with ONE List call: scoped to the single
 // namespace when exactly one is given (--namespace mode never pulls
 // cluster-wide metrics to summarize a handful of pods), cluster-wide
