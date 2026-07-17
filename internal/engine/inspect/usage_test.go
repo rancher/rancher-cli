@@ -297,3 +297,45 @@ func TestUsageNamespaceAndProjectMemberScopesAsNamespace(t *testing.T) {
 	assert.Contains(t, rows, "ns1", "a member namespace scopes the result by namespace, not by project bucket")
 	assert.NotContains(t, rows, "p-x")
 }
+
+func TestSumPodResourcesSinglePod(t *testing.T) {
+	t.Parallel()
+	pods := []unstructured.Unstructured{
+		*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
+	}
+	cpuReq, cpuLim, memReq, memLim := sumPodResources(pods)
+	assert.Equal(t, "100m", cpuReq.String())
+	assert.Equal(t, "200m", cpuLim.String())
+	assert.Equal(t, "128Mi", memReq.String())
+	assert.Equal(t, "256Mi", memLim.String())
+}
+
+func TestSumPodResourcesMultiContainer(t *testing.T) {
+	t.Parallel()
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "p1", "namespace": "ns1"},
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{
+					"name": "app",
+					"resources": map[string]any{
+						"requests": map[string]any{"cpu": "100m", "memory": "64Mi"},
+						"limits":   map[string]any{"cpu": "200m", "memory": "128Mi"},
+					},
+				},
+				map[string]any{
+					"name": "sidecar",
+					"resources": map[string]any{
+						"requests": map[string]any{"cpu": "50m", "memory": "32Mi"},
+						"limits":   map[string]any{"cpu": "100m", "memory": "64Mi"},
+					},
+				},
+			},
+		},
+	}}
+	cpuReq, cpuLim, memReq, memLim := sumPodResources([]unstructured.Unstructured{*pod})
+	assert.Equal(t, "150m", cpuReq.String())
+	assert.Equal(t, "300m", cpuLim.String())
+	assert.Equal(t, "96Mi", memReq.String())
+	assert.Equal(t, "192Mi", memLim.String())
+}

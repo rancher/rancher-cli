@@ -167,34 +167,23 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID 
 
 	result := usageRows{}
 	for scope, pods := range grouped {
-		var cpuReq, cpuLim, cpuUse, memReq, memLim, memUse resource.Quantity
-		for _, pod := range pods {
-			containers, _, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
-			for _, item := range containers {
-				cm, ok := item.(map[string]any)
+		cpuReq, cpuLim, memReq, memLim := sumPodResources(pods)
+		var cpuUse, memUse resource.Quantity
+		if metricsOK {
+			for _, pod := range pods {
+				m, ok := metricsByKey[pod.GetNamespace()+"/"+pod.GetName()]
 				if !ok {
 					continue
 				}
-				addQuantity(&cpuReq, cm, "resources", "requests", "cpu")
-				addQuantity(&cpuLim, cm, "resources", "limits", "cpu")
-				addQuantity(&memReq, cm, "resources", "requests", "memory")
-				addQuantity(&memLim, cm, "resources", "limits", "memory")
-			}
-			if !metricsOK {
-				continue
-			}
-			m, ok := metricsByKey[pod.GetNamespace()+"/"+pod.GetName()]
-			if !ok {
-				continue
-			}
-			mcontainers, _, _ := unstructured.NestedSlice(m.Object, "containers")
-			for _, item := range mcontainers {
-				cm, ok := item.(map[string]any)
-				if !ok {
-					continue
+				mcontainers, _, _ := unstructured.NestedSlice(m.Object, "containers")
+				for _, item := range mcontainers {
+					cm, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					addQuantity(&cpuUse, cm, "usage", "cpu")
+					addQuantity(&memUse, cm, "usage", "memory")
 				}
-				addQuantity(&cpuUse, cm, "usage", "cpu")
-				addQuantity(&memUse, cm, "usage", "memory")
 			}
 		}
 		totals := resourceTotals{
@@ -224,6 +213,27 @@ func addQuantity(q *resource.Quantity, container map[string]any, path ...string)
 		return
 	}
 	q.Add(parsed)
+}
+
+// sumPodResources walks pods' spec.containers and sums CPU/memory requests
+// and limits. It is intentionally request/limit-only: usage (metrics.k8s.io)
+// is a per-pod lookup that aggregateUsage handles after this call, and the
+// node collector fetches node-level usage via nodeMetricsGVR instead.
+func sumPodResources(pods []unstructured.Unstructured) (cpuReq, cpuLim, memReq, memLim resource.Quantity) {
+	for _, pod := range pods {
+		containers, _, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
+		for _, item := range containers {
+			cm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			addQuantity(&cpuReq, cm, "resources", "requests", "cpu")
+			addQuantity(&cpuLim, cm, "resources", "limits", "cpu")
+			addQuantity(&memReq, cm, "resources", "requests", "memory")
+			addQuantity(&memLim, cm, "resources", "limits", "memory")
+		}
+	}
+	return
 }
 
 type resourceTotals struct {
