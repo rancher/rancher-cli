@@ -17,7 +17,10 @@ import (
 // including system overhead (parity with old `top node`). A missing metrics
 // server degrades the USAGE columns to empty plus one warning. Pods with no
 // spec.nodeName (pending/unscheduled) are excluded. Nodes with zero pods still
-// get rows (from the node List) with zero request/limit.
+// get rows (from the node List) with zero request/limit. A node present in the
+// cluster but absent from the metrics response reports empty usage (no
+// measurement), unlike the pod/namespace groupings where an absent pod-metrics
+// entry contributes zero to a sum.
 func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
 	nodeKind, _ := kinds.Lookup("node")
 	podKind, _ := kinds.Lookup("pod")
@@ -84,6 +87,14 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 			continue // pending/unscheduled — excluded per spec UU-19
 		}
 		grouped[nn] = append(grouped[nn], pod)
+	}
+
+	// Pods on nodes absent from the List (deleted mid-run, partial RBAC) keep
+	// their row — USAGE stays empty, REQUEST/LIMIT reflect the pod's spec.
+	for nn := range grouped {
+		if _, ok := rows[nn]; !ok {
+			rows[nn] = resourceTotals{}
+		}
 	}
 
 	nodeNames := make([]string, 0, len(rows))

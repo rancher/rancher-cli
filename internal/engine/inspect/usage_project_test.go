@@ -56,6 +56,21 @@ func TestUsageByProjectGroupsByProject(t *testing.T) {
 	assert.Contains(t, scopes, "web", "table SCOPE shows the project display name, not the id")
 	assert.Contains(t, scopes, "api")
 	assert.NotContains(t, scopes, "p-x")
+
+	// p-x→"web", p-y→"api": ids sort p-x < p-y but display names sort api < web.
+	// Rows must be ordered by the displayed scope (display name), not by project id.
+	apiIdx, webIdx := -1, -1
+	for i, s := range scopes {
+		switch s {
+		case "api":
+			apiIdx = i
+		case "web":
+			webIdx = i
+		}
+	}
+	require.NotEqual(t, -1, apiIdx, "api must appear in scopes")
+	require.NotEqual(t, -1, webIdx, "web must appear in scopes")
+	assert.Less(t, apiIdx, webIdx, "rows sorted by display name (api < web), not by project id (p-x < p-y)")
 }
 
 func TestUsageByProjectWithProjectFlagSingleBucket(t *testing.T) {

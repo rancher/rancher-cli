@@ -67,6 +67,7 @@ func TestUsageByNodeJoinsNodeMetrics(t *testing.T) {
 	assert.Equal(t, "80m", env.Data["n1"].CPUUsage, "USAGE must come from node metrics, not pod metrics")
 	assert.Equal(t, "100Mi", env.Data["n1"].MemoryUsage)
 	assert.Equal(t, "0", env.Data["n2"].CPURequest, "zero-pod node has zero requests")
+	assert.Equal(t, "", env.Data["n2"].CPUUsage, "a node absent from metrics reports empty usage, not zero")
 }
 
 func TestUsageByNodeDegradesWithoutMetricsServer(t *testing.T) {
@@ -162,4 +163,38 @@ func TestUsageByNodePendingPodsExcluded(t *testing.T) {
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
 	assert.Equal(t, "0", env.Data["n1"].CPURequest, "pending pods (no nodeName) must not appear in node rows")
+}
+
+// A pod whose spec.nodeName names a node absent from the List (deleted mid-run
+// or partial RBAC) must still produce a row — USAGE empty, REQUEST/LIMIT from
+// the pod spec.
+func TestUsageByNodeGhostNodeKeepsRow(t *testing.T) {
+	t.Parallel()
+	nodeKind := mustKind(t, "node")
+	podKind := mustKind(t, "pod")
+
+	nodes := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*nodeObj("n1")}}
+	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*podOnNode("ns1", "p1", "n1", "100m", "128Mi", "200m", "256Mi"),
+		*podOnNode("ns1", "p2", "ghost-node", "50m", "64Mi", "100m", "128Mi"),
+	}}
+	metrics := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		nodeMetricsObj("n1", "80m", "100Mi"),
+	}}
+
+	client := newFakeClient().
+		withList(nodeKind.GVR, nodes).
+		withList(podKind.GVR, pods).
+		withList(nodeMetricsGVR, metrics)
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	require.Contains(t, env.Data, "n1")
+	require.Contains(t, env.Data, "ghost-node", "pod on a node absent from the List must still produce a row")
+	assert.Equal(t, "50m", env.Data["ghost-node"].CPURequest, "ghost-node row carries the pod's CPU request")
+	assert.Equal(t, "", env.Data["ghost-node"].CPUUsage, "ghost-node row has no metrics entry, so CPUUsage is empty")
 }

@@ -344,11 +344,19 @@ func (e usageEnvelope) Columns() []string { return e.Data.Columns() }
 
 func (e usageEnvelope) Rows() [][]string {
 	rows := e.Data.Rows()
+	if len(e.names) == 0 {
+		return rows
+	}
+	// Substitute display names before sorting so rows sort by the label shown
+	// in the table, not by the internal id (UU-18/UU-25).
 	for _, row := range rows {
 		if display, ok := e.names[row[0]]; ok {
 			row[0] = display
 		}
 	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i][0] < rows[j][0]
+	})
 	return rows
 }
 

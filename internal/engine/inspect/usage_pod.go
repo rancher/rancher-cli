@@ -43,8 +43,7 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 		}
 	}
 
-	listNS := namespace
-	l, err := client.List(ctx, podKind.GVR, listNS, "")
+	l, err := client.List(ctx, podKind.GVR, namespace, "")
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -57,13 +56,7 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 	// Build per-pod grouped map: each pod is its own "scope" keyed by ns/name.
 	// aggregateUsage sums per scope; a single-pod scope degenerates correctly.
 	grouped := map[string][]unstructured.Unstructured{}
-	for _, pod := range l.Items {
-		if nodeName != "" {
-			nn, _, _ := unstructured.NestedString(pod.Object, "spec", "nodeName")
-			if nn != nodeName {
-				continue
-			}
-		}
+	for _, pod := range filterPodsByNode(l.Items, nodeName) {
 		if members != nil && !members[pod.GetNamespace()] {
 			continue
 		}
