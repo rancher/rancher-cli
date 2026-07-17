@@ -28,6 +28,72 @@ cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config use-context --generate-shell-completion
 stdout '(?m)^acme$'
 
+# AC-29/AC-31: config set-completion appears in completion output.
+exec rancher config --generate-shell-completion
+stdout '(?m)^set-completion:'
+
+# AC-28: equals-form site — --by=n emits ALL four --by=<candidate> full tokens.
+# The binary emits all enum candidates; the shell prefix-filters them (AC-21a).
+# Assert all four values appear (round-2 finding 15: the enum emits all four, not
+# just those matching the typed prefix).
+# v2 protocol: equals-form current word in --rancher-completion-cur= field; argv
+# does NOT include the partial token (the field IS the current word, not an argv token).
+exec rancher --rancher-completion-proto=2 usage --rancher-completion-cur=--by=n --generate-shell-completion
+stdout '(?m)^--by=namespace$'
+stdout '(?m)^--by=node$'
+stdout '(?m)^--by=project$'
+stdout '(?m)^--by=pod$'
+
+# AC-15a: inspect alias suggestion — po and deploy appear in inspect group.
+exec rancher inspect --generate-shell-completion
+stdout '(?m)^po:'
+stdout '(?m)^deploy:'
+
+# AC-15a: inspect alias invocation — binary dispatches via alias, not "unknown command".
+# Restore seed config (directory already exists from line 25; no mkdir needed).
+cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
+! exec rancher inspect po --namespace default missing-pod
+! stderr 'unknown command'
+
+# AC-30: opt-in off → leaf completion returns nothing.
+# get pod is already at the leaf; positional completion without live network
+# yields no candidates. pod: is a subcommand suggestion from the group level,
+# not what a leaf callback emits (round-2 finding 10 fix).
+exec rancher get pod --generate-shell-completion
+! stdout '(?m)^mypod$'
+! stdout '(?m)^pod:'
+
+# Enable live completion and point at the per-script facade for remaining AC-30 tests.
+exec rancher config set-completion --network=true
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_CACERT=$TEST_RANCHER_CACERT
+
+# AC-30: exec-cred-only + display-name cluster → cluster flag-value site returns empty.
+# seedexeccache provides exec-cred capability only (no management token in store).
+# v2 protocol: proto sentinel + words (--cluster flag last, no value in argv) +
+# --rancher-completion-cur=testcluster → ParseArgTail sees --cluster as last flag
+# → SiteFlagValue(cluster). fetchClusters returns nil (IDOnly=true).
+seedexeccache default-ctx c-test
+exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-completion-cur=testcluster --generate-shell-completion
+! stdout .
+
+# AC-30: exec-cred-only + completed cluster ID + empty currentWord → namespace positional site.
+# v2 protocol: proto sentinel + words (--cluster c-test consumed in argv) +
+# --rancher-completion-cur=def → ParseArgTail consumes --cluster+c-test → SitePositional(0).
+# Single exec-cred entry for c-test authorises /k8s/clusters/c-test/api/v1/namespaces;
+# facade proxies to envtest which has "default". Use realistic prefix "def" so the
+# assertion survives shell-side prefix filtering if ever applied.
+exec rancher --rancher-completion-proto=2 get namespace --cluster c-test --rancher-completion-cur=def --generate-shell-completion
+stdout '(?m)^default$'
+
+# AC-30 both-sides confirmation: completing the cluster value vs next positional.
+# (a) cluster partial "c-" with exec-cred only → empty (IDOnly, fetchClusters nil).
+exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-completion-cur=c- --generate-shell-completion
+! stdout .
+# (b) same cluster c-test already complete, empty currentWord → namespace list appears.
+exec rancher --rancher-completion-proto=2 get namespace --cluster c-test --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^default$'
+
 # Corrupt config: the SC-1 hard requirement extends to the TAB-time
 # callback, not just the Before-path — a missing/corrupt config must
 # degrade to empty output, exit 0, never error text (an error line would be

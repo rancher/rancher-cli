@@ -76,12 +76,26 @@ To persist it, add that line to your `$PROFILE`. Loading `$PROFILE` itself needs
 an ExecutionPolicy that allows local scripts (`RemoteSigned` or looser); the
 per-session command above works regardless.
 
-Completion is offline-only in v1: command/group/flag names are free (the
+Completion is offline-only by default: command/group/flag names are free (the
 whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
 and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-context`,
 `config use-server`, and `config delete-server` complete from the local
 config file. It never touches the network, prompts, or writes anything —
 a missing or unreadable config degrades to no candidates, never an error.
+
+### Live completion (opt-in)
+
+After installing the script, enable live resource-name completion:
+
+    rancher config set-completion --network=true
+
+This completes cluster names, project names, namespaces, pods, deployments,
+and nodes from the Rancher API. A credential-store capability note is printed
+to indicate which completions are available given your current auth setup.
+
+The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
+
+    rancher config set-completion --timeout=1s
 
 ## Quickstart
 
