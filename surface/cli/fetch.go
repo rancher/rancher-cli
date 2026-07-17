@@ -56,13 +56,13 @@ func resolveStaticEnum(enum []string, site CompletionSite) []string {
 // config, delegating to config.EffectiveCompletionTimeout for default/floor/cap
 // semantics (AC-2, finding 6). Hand-edited values outside [1ms, 2s] are clamped
 // here at use rather than at write time.
-func completionTimeout() time.Duration { //nolint:unused
+func completionTimeout() time.Duration {
 	return config.EffectiveCompletionTimeout(storedConfigSnapshot())
 }
 
 // completionNetworkEnabled reports whether live completion is configured
 // (AC-1).
-func completionNetworkEnabled() bool { //nolint:unused
+func completionNetworkEnabled() bool {
 	cfg := storedConfigSnapshot()
 	return cfg != nil && cfg.Completion.Network
 }
@@ -213,7 +213,7 @@ func resolveClusterDisplayName(ctx context.Context, cap TokenCapability, cluster
 // API and returns name/id candidates (AC-8, finding 10). Projects are listed in
 // the cluster's namespace, exactly as internal/engine/projects/resolve.go does.
 // Returns nil on any fetch error.
-func fetchProjects(ctx context.Context, cap TokenCapability, clusterID string) []string { //nolint:unused
+func fetchProjects(ctx context.Context, cap TokenCapability, clusterID string) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
 	}
@@ -236,7 +236,7 @@ func fetchProjects(ctx context.Context, cap TokenCapability, clusterID string) [
 }
 
 // projectCandidates extracts project ids and uniquely-resolving display names.
-func projectCandidates(items []map[string]any) []string { //nolint:unused
+func projectCandidates(items []map[string]any) []string {
 	seen := map[string]bool{}
 	displayFreq := map[string]int{}
 	type pEntry struct{ id, display string }

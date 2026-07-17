@@ -101,5 +101,5 @@ func TestCompletionSelfCompletesShellArgument(t *testing.T) {
 	root.Writer = &out
 
 	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "completion", "--generate-shell-completion"}))
-	assert.Equal(t, "bash\nzsh\nfish\npwsh\n", out.String())
+	assert.Equal(t, "bash\nfish\npwsh\nzsh\n", out.String())
 }

@@ -181,26 +181,16 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	return cmd
 }
 
-// installShellComplete type-asserts rc for runtime.ShellCompleter and, if it
-// implements it, installs the callback on cmd. Shared by Adapt here and
-// adaptEntry (engine.go) — the two sites that build a urfave leaf from a
-// runtime.Command — so the two paths cannot drift out of sync.
+// installShellComplete installs the universal completion callback on cmd for
+// every adapted leaf (AC-17a). When the command also implements
+// runtime.ShellCompleter, the config-local delegation layer is wired in.
 func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
-	if sc, ok := rc.(runtime.ShellCompleter); ok {
-		cmd.ShellComplete = shellCompleteFunc(sc)
+	d := rc.Describe()
+	var sc runtime.ShellCompleter
+	if s, ok := rc.(runtime.ShellCompleter); ok {
+		sc = s
 	}
-}
-
-// shellCompleteFunc wraps a runtime.ShellCompleter as a urfave ShellComplete
-// callback. It uses the config loaded by the root Before hook (AC-19: one
-// load per TAB invocation); degrades to empty output on any config error.
-func shellCompleteFunc(sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
-	return func(ctx context.Context, c *ucli.Command) {
-		view := loadedConfigView()
-		for _, cand := range sc.CompleteArgs(ctx, view) {
-			_, _ = fmt.Fprintln(c.Root().Writer, cand)
-		}
-	}
+	cmd.ShellComplete = universalShellCompleteFunc(d, sc)
 }
 
 // resolveDeps resolves the config dir from --config (flag > env > XDG) and

@@ -62,6 +62,10 @@ type Kind struct {
 	// for kinds where the expression is grounded in a real, well-known
 	// status.state/status.conditions shape; when in doubt, leave empty.
 	WaitDefault string
+	// Completable marks this kind as eligible for live name completion (AC-15).
+	// Deny-by-default: a new row gets no completion until this is explicitly set.
+	// Secrets and cloud-credentials are never set (AC-25).
+	Completable bool
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
 }
@@ -77,40 +81,46 @@ var table = []Kind{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
 		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:     []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
-		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable},
-		Columns: []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierPublic, Stability: safety.Stable},
+		Columns:     []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
 	{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
 		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},
 		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
 		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns: []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:     []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
 	},
 	{
 		Key: "deployment", Name: "deployment", Aliases: []string{"deployments", "deploy"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true, WaitDefault: "condition=Available",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "service", Name: "service", Aliases: []string{"services", "svc"},
