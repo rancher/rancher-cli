@@ -38,10 +38,17 @@ jsonquery stdout data.0.metadata.name proj-ns-member
 
 # root-position --project reaches usage via urfave lineage (usage's own
 # local --project flag is gone; PC-6's inversion of DR-004's failure mode).
-# --project without --by returns member-namespace rows under the new semantics
-# (UU-5); the member namespace is proj-ns-member, which has no pods, so cpuRequest is 0.
+# --project without --by returns member-namespace rows; rows derive from pods,
+# so a pod-less project yields an empty map — the by discriminator still
+# proves the project resolved and the namespace grouping ran.
 exec rancher --project web usage --cluster testcluster -o json
-jsonquery stdout data.rows.proj-ns-member.cpuRequest '0'
+jsonquery stdout data.by namespace
+
+# the single-bucket form: --by project always seeds the named project's row,
+# so a pod-less project reports zero requests.
+exec rancher --project web usage --by project --cluster testcluster -o json
+jsonquery stdout data.by project
+jsonquery stdout data.rows.web.cpuRequest '0'
 
 # inspect project: identity, member namespaces, quota, usage. envtest has no
 # metrics-server, so the usage summary degrades to a warning (as every other
