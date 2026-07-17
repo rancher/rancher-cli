@@ -137,9 +137,8 @@ a missing or unreadable config degrades to no candidates, never an error.
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
-| `top node [name] [--cluster]` | Node resource usage |
 | `images [--cluster --all-clusters]` | Running container images, fleet-wide |
-| `usage [--cluster --namespace] [--project]` | Resource usage composite (`--project` is the global flag) |
+| `usage [--cluster] [--by namespace\|project\|node\|pod] [--namespace NS] [--project P] [--node N]` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
@@ -202,9 +201,11 @@ validates the target namespace's membership before touching the server.
 `get namespaces --project <p>` is the one special case — it lists namespaces
 by the membership label server-side rather than filtering client-side.
 Every other command family (cluster-scoped kinds, management-plane kinds,
-and the composites `inspect pod`/`inspect deployment`/`top node`/`images`)
-rejects a non-empty `--project` with `VALIDATION` rather than silently
-ignoring it. Precedence: `--project` flag > the current context's project
+and the composites `inspect pod`/`inspect deployment`/`images`) rejects
+a non-empty `--project` with `VALIDATION` rather than silently ignoring
+it. `usage` rejects `--project` only in combination with `--by node`
+(a node row mixing project-scoped requests with whole-node metrics would
+be misleading); all other `usage` groupings accept `--project`. Precedence: `--project` flag > the current context's project
 (`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
 set-context --project`) > unscoped.
 
