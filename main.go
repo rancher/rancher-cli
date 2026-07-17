@@ -16,14 +16,14 @@ import (
 var VERSION = "dev"
 
 func main() {
+	surfacecli.CaptureArgv(os.Args[1:])
 	root, err := surfacecli.BuildRoot(VERSION)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := root.Run(ctx, os.Args); err != nil {
-		// The adapter returns cli.Exit("", code); honor that exact exit code.
+	if err := root.Run(ctx, surfacecli.SanitizedArgs(os.Args)); err != nil {
 		var ec ucli.ExitCoder
 		if errors.As(err, &ec) {
 			os.Exit(ec.ExitCode())

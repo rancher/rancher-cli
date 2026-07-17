@@ -119,6 +119,109 @@ Write-Output ('MARKER:' + (Test-Path %s))
 	}
 }
 
+// TestPwshProtoV2RequestShape verifies that the v2 pwsh script constructs the
+// correct argv vector: proto sentinel, words before cursor,
+// --rancher-completion-cur=<word>, --generate-shell-completion.
+func TestPwshProtoV2RequestShape(t *testing.T) {
+	shell, ok := findPowerShell(t)
+	if !ok {
+		t.Skip("neither pwsh nor powershell found on PATH; skipping pwsh request-shape test")
+	}
+	binDir := buildRancherRecorder(t)
+	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
+	if err := os.WriteFile(scriptPath, pwshScript, 0o644); err != nil {
+		t.Fatalf("writing pwsh.ps1: %v", err)
+	}
+
+	cases := []struct {
+		name     string
+		line     string   // input line for TabExpansion2
+		cursor   int      // cursor column (-1 = end)
+		wantArgs []string // expected argv after binary name
+	}{
+		{
+			name:   "cursor-after-space empty cur",
+			line:   "rancher get pod ",
+			cursor: -1,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "pod",
+				"--rancher-completion-cur=",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			name:   "hostile cur with spaces (single-quoted)",
+			line:   "rancher get 'a b c'",
+			cursor: -1,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get",
+				"--rancher-completion-cur=a b c",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			name:   "ambiguity side A: flag-last partial cur",
+			line:   "rancher get --cluster c-",
+			cursor: -1,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "--cluster",
+				"--rancher-completion-cur=c-",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			name:   "ambiguity side B: flag+value consumed empty cur",
+			line:   "rancher get --cluster c-test ",
+			cursor: -1,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "--cluster", "c-test",
+				"--rancher-completion-cur=",
+				"--generate-shell-completion",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			argvFile := filepath.Join(t.TempDir(), "argv")
+			cursorCol := tc.cursor
+			if cursorCol < 0 {
+				cursorCol = len(tc.line)
+			}
+			driver := fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH
+$env:RANCHER_ARGV_FILE = %s
+. %s
+$line = %s
+$null = TabExpansion2 -inputScript $line -cursorColumn %d
+`, psSingleQuote(binDir), psSingleQuote(argvFile), psSingleQuote(scriptPath), psSingleQuote(tc.line), cursorCol)
+
+			driverPath := filepath.Join(t.TempDir(), "driver.ps1")
+			if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
+				t.Fatalf("writing driver.ps1: %v", err)
+			}
+			out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("pwsh driver: %v\n%s", err, out)
+			}
+
+			data, err := os.ReadFile(argvFile)
+			if err != nil {
+				t.Fatalf("argv file not written (recorder never invoked?): %v\nfull output:\n%s", err, out)
+			}
+			got := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+			if !slices.Equal(got, tc.wantArgs) {
+				t.Errorf("argv mismatch\n got:  %q\n want: %q\nfull output:\n%s", got, tc.wantArgs, out)
+			}
+		})
+	}
+}
+
 func splitNonEmpty(s string) []string {
 	var out []string
 	for _, part := range strings.Split(s, ",") {

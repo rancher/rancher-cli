@@ -11,16 +11,12 @@ compdef _rancher rancher
 #   source <(rancher completion zsh)
 
 _rancher() {
-	local -a opts # Declare a local array
+	local -a opts
 	local current
-	current=${words[-1]} # -1 means "the last element"
-	if [[ "$current" == "-"* ]]; then
-		# Current word starts with a hyphen, so complete flags/options
-		opts=("${(@f)$(${words[@]:0:#words[@]-1} ${current} --generate-shell-completion)}")
-	else
-		# Current word does not start with a hyphen, so complete subcommands
-		opts=("${(@f)$(${words[@]:0:#words[@]-1} --generate-shell-completion)}")
-	fi
+	current=${words[-1]}
+	# Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
+	# "--rancher-completion-cur=${current}" is quoted so it is one token even when current is "".
+	opts=("${(@f)$(${words[1]} --rancher-completion-proto=2 ${words[2,-2]} "--rancher-completion-cur=${current}" --generate-shell-completion)}")
 
 	if [[ "${opts[1]}" != "" ]]; then
 		_describe 'values' opts

@@ -18,19 +18,17 @@ __rancher_init_completion() {
   fi
 }
 
-# Builds the completion request as an argv ARRAY in the global
-# __rancher_completion_request, never a string: COMP_WORDS[0] is the real
-# rancher binary, so the array is invoked directly and a pasted $(...) in
-# any word is passed as an inert argument rather than evaluated.
 __rancher_build_completion_request() {
-  __rancher_completion_request=("${COMP_WORDS[@]:0:${COMP_CWORD}}")
   local current_word="${COMP_WORDS[COMP_CWORD]}"
-
-  if [[ "${current_word}" == "-"* ]]; then
-    __rancher_completion_request+=("${current_word}")
-  fi
-
-  __rancher_completion_request+=(--generate-shell-completion)
+  # Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
+  # --rancher-completion-cur=${current_word} is one token even when current_word is "".
+  __rancher_completion_request=(
+    "${COMP_WORDS[0]}"
+    "--rancher-completion-proto=2"
+    "${COMP_WORDS[@]:1:$((COMP_CWORD - 1))}"
+    "--rancher-completion-cur=${current_word}"
+    "--generate-shell-completion"
+  )
 }
 
 # Keep Bash 3 compatibility: associative arrays require Bash 4+, so

@@ -1,0 +1,161 @@
+//go:build !windows
+
+package completions
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// bashProtoArgv runs the v2 bash script with the given COMP_WORDS and COMP_CWORD
+// and returns the argv vector the recorder binary received (excluding the binary
+// name itself). Skips if bash is not on PATH.
+func bashProtoArgv(t *testing.T, compWords []string, compCword int) []string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found on PATH; skipping bash request-shape test")
+	}
+
+	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
+	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {
+		t.Fatalf("writing bash.sh: %v", err)
+	}
+	binDir := t.TempDir()
+	argvFile := filepath.Join(binDir, "argv")
+	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\necho pod\n", argvFile)
+	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
+		t.Fatalf("writing fake rancher: %v", err)
+	}
+
+	// Build COMP_WORDS array literal for bash.
+	quoted := make([]string, len(compWords))
+	for i, w := range compWords {
+		quoted[i] = "'" + strings.ReplaceAll(w, "'", "'\\''") + "'"
+	}
+	wordsLiteral := "(" + strings.Join(quoted, " ") + ")"
+
+	driver := fmt.Sprintf(`
+set +e
+export PATH=%q:"$PATH"
+_get_comp_words_by_ref() { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"; words=("${COMP_WORDS[@]}"); cword="${COMP_CWORD}"; }
+source %q
+COMP_WORDS=%s
+COMP_CWORD=%d
+COMP_TYPE=""
+__rancher_bash_autocomplete
+`, binDir, scriptPath, wordsLiteral, compCword)
+
+	if out, err := exec.Command(bash, "-c", driver).CombinedOutput(); err != nil {
+		t.Fatalf("bash driver: %v\n%s", err, out)
+	}
+
+	data, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("argv file not written (fake rancher never invoked?): %v", err)
+	}
+	return splitLines(strings.TrimRight(string(data), "\n"))
+}
+
+// TestBashProtoV2RequestShape verifies that the v2 bash script constructs the
+// correct argv for the binary: proto sentinel, words before cursor, then the
+// --rancher-completion-cur= field, then --generate-shell-completion.
+func TestBashProtoV2RequestShape(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		words    []string // COMP_WORDS
+		cword    int      // COMP_CWORD
+		wantArgs []string // argv after binary name
+	}{
+		{
+			// cursor-after-space: empty current word → --rancher-completion-cur= (empty value).
+			name:  "cursor-after-space empty cur",
+			words: []string{"rancher", "get", "pod", ""},
+			cword: 3,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "pod",
+				"--rancher-completion-cur=",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			// hostile: current word contains spaces → encoded as one self-prefixed field.
+			name:  "hostile cur with spaces",
+			words: []string{"rancher", "get", "a b c", ""},
+			cword: 2,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get",
+				"--rancher-completion-cur=a b c",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			// hostile: current word is a glob → encoded literally.
+			name:  "hostile cur glob",
+			words: []string{"rancher", "get", "p*"},
+			cword: 2,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get",
+				"--rancher-completion-cur=p*",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			// both-sides A: flag last in argv (no value yet), partial current word
+			// → argv=[get, --cluster], cur=c- → SiteFlagValue(cluster, partial=c-).
+			name:  "ambiguity side A: flag-last, partial cur → flag-value site",
+			words: []string{"rancher", "get", "pod", "--cluster", "c-"},
+			cword: 4,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "pod", "--cluster",
+				"--rancher-completion-cur=c-",
+				"--generate-shell-completion",
+			},
+		},
+		{
+			// both-sides B: flag+value consumed in argv, empty current word
+			// → argv=[get, pod, --cluster, c-test], cur="" → SitePositional.
+			name:  "ambiguity side B: flag+value consumed, empty cur → positional site",
+			words: []string{"rancher", "get", "pod", "--cluster", "c-test", ""},
+			cword: 5,
+			wantArgs: []string{
+				"--rancher-completion-proto=2",
+				"get", "pod", "--cluster", "c-test",
+				"--rancher-completion-cur=",
+				"--generate-shell-completion",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := bashProtoArgv(t, tc.words, tc.cword)
+			if !sliceEqual(got, tc.wantArgs) {
+				t.Errorf("argv mismatch\n got:  %q\n want: %q", got, tc.wantArgs)
+			}
+		})
+	}
+}
+
+func sliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

@@ -10,14 +10,12 @@
 function __rancher_perform_completion
     # Extract all args except the last one
     set -l args (commandline -opc)
-    # Extract the last arg (partial input)
+    # Extract the last arg (partial input / current word)
     set -l lastArg (commandline -ct)
 
-    if string match -q -- "-*" $lastArg
-        set results ($args[1] $args[2..-1] $lastArg --generate-shell-completion 2> /dev/null)
-    else
-        set results ($args[1] $args[2..-1] --generate-shell-completion 2> /dev/null)
-    end
+    # Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
+    # "--rancher-completion-cur=$lastArg" is one token even when lastArg is "".
+    set results ($args[1] --rancher-completion-proto=2 $args[2..-1] "--rancher-completion-cur=$lastArg" --generate-shell-completion 2> /dev/null)
 
     # Remove trailing empty lines
     for line in $results[-1..1]

@@ -34,29 +34,26 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
         $tokens = @('rancher', $wordToComplete)
     }
 
-    # Mirror bash.sh/zsh.sh/fish.sh: the in-progress word is dropped from the
-    # request (so `rancher get po` asks for the "get" kind list, not "po"
-    # itself) unless it looks like a flag, where it's kept so flag names
-    # complete. The command name itself (index 0) is never dropped this way,
-    # so $exe below always resolves to a real command. Results are then
-    # filtered by prefix, since (unlike cmdlet parameter completion) native
-    # completers get no automatic prefix filtering from PowerShell.
-    $base = $tokens
-    if ($tokens.Count -gt 1 -and $wordToComplete -ne '' -and $tokens[$tokens.Count - 1] -eq $wordToComplete) {
-        $base = @($tokens | Select-Object -First ($tokens.Count - 1))
+    # Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
+    # $tokens[0] = binary; $tokens[1..Count-2] = words before cursor (middle);
+    # $wordToComplete = current word (may be empty string).
+    $exe = $tokens[0]
+    # PowerShell's CommandAst.CommandElements does NOT append an empty element for
+    # trailing whitespace, so $wordToComplete is '' when cursor is after a space.
+    # When empty, every AST token after the binary is a completed word; when non-empty,
+    # the final AST token is the current (partial) word and must be excluded.
+    $middle = if ([string]::IsNullOrEmpty($wordToComplete)) {
+        if ($tokens.Count -gt 1) { @($tokens[1..($tokens.Count - 1)]) } else { @() }
+    } else {
+        if ($tokens.Count -gt 2) { @($tokens[1..($tokens.Count - 2)]) } else { @() }
     }
-    $requestTokens = @(if ($wordToComplete -like '-*') { @($base) + @($wordToComplete) } else { $base })
+    $cur = if ($null -ne $wordToComplete) { $wordToComplete } else { '' }
+    # "--rancher-completion-cur=$cur" is one token even when $cur is "".
+    $currentWordToken = "--rancher-completion-cur=$cur"
 
-    $exe = $requestTokens[0]
-    $rest = @($requestTokens | Select-Object -Skip 1)
-
-    # The prefix filter below is a literal match, not a glob: escape any
-    # wildcard metacharacters (*, ?, [, ]) the user actually typed so e.g.
-    # completing "p*" filters on the two literal characters "p*", not "any
-    # number of any characters starting with p".
     $escapedWord = [System.Management.Automation.WildcardPattern]::Escape($wordToComplete)
 
-    & $exe @rest --generate-shell-completion 2>$null | ForEach-Object {
+    & $exe '--rancher-completion-proto=2' @middle $currentWordToken '--generate-shell-completion' 2>$null | ForEach-Object {
         $parts = $_.Split(':', 2)
         if ($parts.Count -eq 2) {
             $completion = $parts[0].Trim()
