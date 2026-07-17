@@ -76,6 +76,18 @@ func TestCompletionEmissionHasNoSideEffects(t *testing.T) {
 	assert.True(t, os.IsNotExist(pinErr), "credstore-pin must not be created by completion emission (would indicate a resolveDeps/OpenStore path)")
 }
 
+// TestCompletionArgsUsageRendersEnumValues pins that the completion command's
+// positional arg, which carries an Enum, renders as "<bash|zsh|fish|pwsh>"
+// rather than the bare "<shell>" name in the urfave ArgsUsage field.
+func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	cmd := root.Command("completion")
+	require.NotNil(t, cmd, "completion command must be registered")
+	assert.Equal(t, "<bash|zsh|fish|pwsh>", cmd.ArgsUsage)
+}
+
 // TestCompletionSelfCompletesShellArgument pins spec SC-2's self-completion
 // requirement: `completion`'s own --generate-shell-completion lists the same
 // shells the command accepts, via the same Adapt-level ShellCompleter wiring

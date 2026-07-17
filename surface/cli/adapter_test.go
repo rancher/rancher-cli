@@ -44,7 +44,8 @@ func TestAdaptRunsAndRendersJSON(t *testing.T) {
 // TestArgsUsageRendersRequiredAndOptionalArgs pins PS-9's helper: required
 // Args render "<name>", optional Args render "[name]", space-joined in
 // declared order — the SAME Descriptor.Args the manifest publishes, so help
-// text cannot drift from schema.
+// text cannot drift from schema. Args with a non-empty Enum render the
+// pipe-joined values instead of the bare name.
 func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "", argsUsage(nil))
@@ -53,6 +54,14 @@ func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
 	assert.Equal(t, "<name> [extra]", argsUsage([]runtime.ArgSpec{
 		{Name: "name", Type: "string", Required: true},
 		{Name: "extra", Type: "string"},
+	}))
+	// Enum: required arg renders "<v1|v2|...>" instead of "<name>".
+	assert.Equal(t, "<bash|zsh|fish|pwsh>", argsUsage([]runtime.ArgSpec{
+		{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh", "fish", "pwsh"}},
+	}))
+	// Enum: optional arg renders "[v1|v2|...]" instead of "[name]".
+	assert.Equal(t, "[bash|zsh|fish|pwsh]", argsUsage([]runtime.ArgSpec{
+		{Name: "shell", Type: "string", Enum: []string{"bash", "zsh", "fish", "pwsh"}},
 	}))
 }
 

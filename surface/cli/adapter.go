@@ -83,15 +83,21 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 
 // argsUsage renders a Descriptor's positional Args as urfave's ArgsUsage
 // help string: "<name>" for a Required arg, "[name]" otherwise, space-joined
-// in declared order. This is the SAME Args (incl. Required) the schema
-// manifest publishes, so help text cannot drift from the manifest.
+// in declared order. When an arg carries a non-empty Enum the name is replaced
+// by the pipe-joined allowed values (e.g. "<bash|zsh|fish|pwsh>"). This is the
+// SAME Args (incl. Required and Enum) the schema manifest publishes, so help
+// text cannot drift from the manifest.
 func argsUsage(args []runtime.ArgSpec) string {
 	parts := make([]string, len(args))
 	for i, a := range args {
+		label := a.Name
+		if len(a.Enum) > 0 {
+			label = strings.Join(a.Enum, "|")
+		}
 		if a.Required {
-			parts[i] = "<" + a.Name + ">"
+			parts[i] = "<" + label + ">"
 		} else {
-			parts[i] = "[" + a.Name + "]"
+			parts[i] = "[" + label + "]"
 		}
 	}
 	return strings.Join(parts, " ")
