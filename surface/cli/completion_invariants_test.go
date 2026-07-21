@@ -487,3 +487,108 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 	assert.Equal(t, schemaNames, rootFlagNames,
 		"root.Flags (adapter.go + root.go) and runtime.GlobalFlags() (registry.go) must enumerate the same canonical flag names")
 }
+
+// TestGroupLiveFlagValueCandidates verifies that value-taking global flags
+// without a static enum (--context, --project) at the group level route through
+// the full dispatch pipeline and return live candidates when network is enabled —
+// matching the leaf path's behavior (get pod --context <TAB> already works via
+// the leaf's descriptor; this test pins the same for the group level). Also
+// verifies --config yields no candidates gracefully (no enum, no live site, shell
+// falls back to file completion) and the network-off path returns nothing with
+// zero HTTP requests.
+//
+// Note: --cluster is a per-leaf flag, not in globalArgSpecs. ParseArgTail cannot
+// classify get --cluster <TAB> as SiteFlagValue at the group level; it falls
+// through to the kind-list branch. Closing that gap would require adding --cluster
+// to globalArgSpecs (and GlobalFlags), which is an architectural change beyond
+// this fix.
+//
+// NOT parallel: mutates rawArgv/rawCurrentWord globals, storedConfig, and env.
+func TestGroupLiveFlagValueCandidates(t *testing.T) {
+	keyring.MockInit()
+
+	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
+	projectItems := `{"items":[{"metadata":{"name":"p-xyz"}}]}`
+
+	newCountingSrv := func(t *testing.T, hits *atomic.Int32) *httptest.Server {
+		t.Helper()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(r.URL.Path, "/projects") {
+				_, _ = w.Write([]byte(projectItems))
+			} else {
+				_, _ = w.Write([]byte(clusterItems))
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+
+	// setupDir configures a hermetic config dir with the given server URL and network
+	// setting. A cluster is set in the context so --project live fetch has a cluster ID.
+	setupDir := func(t *testing.T, srvURL string, networkOn bool) string {
+		t.Helper()
+		dir := t.TempDir()
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+			Servers:        map[string]config.Server{"srv": {URL: srvURL}},
+			Completion:     config.CompletionConfig{Network: networkOn},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		t.Setenv(config.EnvConfigDir, dir)
+		t.Setenv(config.EnvToken, "tok")
+		surfacecli.SetStoredConfigForTest(cfg, dir)
+		return dir
+	}
+
+	t.Run("get --context space-form network-on", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get", "--context"}, "")
+		assert.Contains(t, got, "c-abc", "get --context <TAB> network-on: cluster candidate must appear")
+		assert.Greater(t, hits.Load(), int32(0), "get --context <TAB> network-on: must issue at least one HTTP request")
+	})
+
+	t.Run("get --context space-form network-off", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, false)
+		got := runNameLikeCompletion(t, []string{"get", "--context"}, "")
+		assert.Empty(t, strings.TrimSpace(got), "get --context <TAB> network-off: output must be empty")
+		assert.Equal(t, int32(0), hits.Load(), "get --context <TAB> network-off: zero HTTP requests")
+	})
+
+	t.Run("get --project space-form network-on", func(t *testing.T) {
+		// --project is a global flag in globalArgSpecs; cluster is provided via
+		// config context (c-abc) so the live project fetch can resolve.
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get", "--project"}, "")
+		assert.Contains(t, got, "p-xyz", "get --project <TAB> network-on: project candidate must appear")
+		assert.Greater(t, hits.Load(), int32(0), "get --project <TAB> network-on: must issue at least one HTTP request")
+	})
+
+	t.Run("get --config space-form no-candidates", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get", "--config"}, "")
+		assert.Empty(t, strings.TrimSpace(got), "get --config <TAB>: must produce no candidates (shell falls back to file completion)")
+		assert.Equal(t, int32(0), hits.Load(), "get --config <TAB>: no live site, zero HTTP requests")
+	})
+
+	t.Run("get --context equals-form network-on", func(t *testing.T) {
+		// Equals-form: current word is "--context=", args do not contain --context.
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get"}, "--context=")
+		assert.Contains(t, got, "--context=c-abc", "get --context=<TAB> network-on: equals-form candidate must appear")
+		assert.Greater(t, hits.Load(), int32(0), "get --context=<TAB> network-on: must issue at least one HTTP request")
+	})
+}

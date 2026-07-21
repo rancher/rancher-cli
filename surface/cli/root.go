@@ -236,10 +236,12 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 		// or bare word (including empty — "list all" for `get <TAB>`).
 		if strings.HasPrefix(rawCurrentWord, "-") {
 			if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
-				// Equals-form flag value (e.g. --output=json<TAB>): emit enum
-				// candidates. An empty Descriptor is sufficient — enumCandidates
-				// appends globalArgSpecs internally, so global enums like
-				// --output are found without any leaf flags.
+				// Equals-form flag value (e.g. --output=json<TAB>, --context=prod<TAB>):
+				// route through the full dispatch pipeline (enum → live), the same as
+				// the leaf path does. An empty Descriptor is passed — enumCandidates and
+				// liveCandidates both fall back to globalArgSpecs for global flags, so
+				// --output enum and --context/--cluster live candidates are found without
+				// any leaf flags.
 				spelling := rawCurrentWord[:eq]
 				canonical := resolveFlagCanonical(spelling, globalArgSpecs)
 				site := CompletionSite{
@@ -249,7 +251,8 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 					EqualsForm:   true,
 					Partial:      rawCurrentWord[eq+1:],
 				}
-				for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
+				tail := stripRoutingPrefixByCmd(rawArgv, cmd)
+				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
 					_, _ = fmt.Fprintln(w, cand)
 				}
 			} else {
@@ -259,13 +262,15 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 				}
 			}
 		} else {
-			// Space-form flag value (e.g. `get --output <TAB>`): if the last
-			// token in the arg tail is a value-taking flag, the current word is
-			// its partial value — emit enum candidates the same way the leaf path
-			// does, and skip the kind-list branch.
+			// Space-form flag value (e.g. `get --output <TAB>`, `get --context <TAB>`):
+			// if the last token in the arg tail is a value-taking flag, the current
+			// word is its partial value — route through the full dispatch pipeline
+			// (enum → live), the same as the leaf path does, and skip the kind-list
+			// branch. An empty Descriptor is sufficient; enum and live both fall back
+			// to globalArgSpecs for global flags.
 			tail := stripRoutingPrefixByCmd(rawArgv, cmd)
 			if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
-				for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
+				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
 					_, _ = fmt.Fprintln(w, cand)
 				}
 				return
