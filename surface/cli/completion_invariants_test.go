@@ -604,8 +604,7 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		setupDir(t, srv.URL, true)
 		got := runNameLikeCompletion(t, []string{"get"}, "--cluster=")
 		assert.Equal(t, int32(0), hits.Load(), "get --cluster=<TAB>: per-leaf flag must fire ZERO live requests at group level")
-		assert.NotContains(t, got, "c-abc", "get --cluster=<TAB>: must not return cluster candidates at group level")
-		assert.NotContains(t, got, "prod", "get --cluster=<TAB>: must not return cluster display names at group level")
+		assert.Empty(t, strings.TrimSpace(got), "get --cluster=<TAB>: must produce no candidates at group level")
 	})
 
 	t.Run("get --namespace= equals-form zero-requests", func(t *testing.T) {
