@@ -26,8 +26,9 @@ var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
 //
 // Round-4 finding 1: bare-dot segments ("..", "...") satisfy the charset but
 // path-normalize at any proxy layer (HTTP stacks strip dot segments), silently
-// dropping the intended scope. Require at least one alphanumeric character so
-// a purely dot segment is rejected here before it enters any URL.
+// dropping the intended scope. Reject a segment composed entirely of dots so
+// no ".", "..", "..." reaches a URL; the charset already blocks "/", so a
+// single such segment is the only dot-normalization risk left.
 func isValidSegment(s string) bool {
 	if !completionCharset.MatchString(s) {
 		return false
