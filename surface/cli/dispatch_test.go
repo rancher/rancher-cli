@@ -388,3 +388,103 @@ func TestClusterValueSiteIssuesOneClusterListRequest(t *testing.T) {
 	liveCandidates(ctx, site, d, nil, tail)
 	assert.Equal(t, int32(1), hits.Load(), "finding 6: cluster VALUE site must issue exactly ONE cluster-list request")
 }
+
+// Round-4 finding 1: bare-dot namespace segments ("..", "...") must be rejected
+// by isValidSegment — they path-normalize on proxies, silently dropping scope.
+func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	for _, ns := range []string{"..", "..."} {
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(srv.Close)
+
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:     config.CompletionConfig{Network: true},
+		}
+		setStoredConfig(cfg, t.TempDir())
+		t.Setenv(config.EnvToken, "mgmt-token")
+
+		tail := []string{"--cluster", "c-abc", "--namespace", ns}
+		site := CompletionSite{Kind: SitePositional, Index: 0}
+		d := runtime.Descriptor{Name: "get pod"}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveCandidates(ctx, site, d, nil, tail)
+		assert.Nil(t, got, "round-4 finding 1: bare-dot namespace %q must yield nil", ns)
+		assert.Equal(t, int32(0), hits.Load(), "round-4 finding 1: zero HTTP requests for bare-dot namespace %q", ns)
+	}
+}
+
+// Round-4 finding 1 (belt-and-suspenders): a bare-dot cluster value ".." must
+// also be rejected by isValidSegment even though display-name resolution would
+// ordinarily nil it; the charset guard fires first.
+func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	tail := []string{"--cluster", ".."}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "get pod"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := liveCandidates(ctx, site, d, nil, tail)
+	assert.Nil(t, got, "round-4 finding 1: bare-dot cluster segment must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "round-4 finding 1: zero HTTP requests for bare-dot cluster segment")
+}
+
+// Round-4 finding 3: a non-completable downstream kind (e.g. "get service")
+// must not trigger a cluster-list resolution request — siteNeedsCluster must
+// return false for non-completable kinds.
+func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	// "service" is Downstream but Completable:false — siteNeedsCluster must
+	// return false, so no cluster-resolution request fires and liveCandidates
+	// short-circuits to nil before any HTTP call.
+	tail := []string{"--context", "somedisplay"}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "get service"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := liveCandidates(ctx, site, d, nil, tail)
+	assert.Nil(t, got, "round-4 finding 3: non-completable downstream kind must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "round-4 finding 3: non-completable downstream kind must issue zero requests")
+}

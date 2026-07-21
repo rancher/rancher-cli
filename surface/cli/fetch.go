@@ -23,8 +23,21 @@ var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
 // names are DNS-safe; a slash, dot-dot, or shell metacharacter fails here.
 // A value failing this check must cause the whole live dispatch to return nil
 // (fail closed, zero requests).
+//
+// Round-4 finding 1: bare-dot segments ("..", "...") satisfy the charset but
+// path-normalize at any proxy layer (HTTP stacks strip dot segments), silently
+// dropping the intended scope. Require at least one alphanumeric character so
+// a purely dot segment is rejected here before it enters any URL.
 func isValidSegment(s string) bool {
-	return completionCharset.MatchString(s)
+	if !completionCharset.MatchString(s) {
+		return false
+	}
+	for _, c := range s {
+		if c != '.' {
+			return true
+		}
+	}
+	return false // all-dots segment: ".", "..", "...", etc.
 }
 
 // sanitizeCandidates drops values that do not conform to the shell-safe

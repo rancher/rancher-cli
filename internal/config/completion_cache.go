@@ -16,23 +16,6 @@ func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
 	return readCacheROFromFile(filepath.Join(dir, "token-cache.yaml"))
 }
 
-// ReadOnlyCachedCredsForCluster returns unexpired entries matching serverHost
-// and cluster, without writing. When multiple entries match, the caller must
-// treat the result as ambiguous (AC-6a: exactly-one rule).
-func ReadOnlyCachedCredsForCluster(dir, serverHost, cluster string) ([]CachedCredInfo, error) {
-	all, err := ReadOnlyCachedCreds(dir)
-	if err != nil {
-		return nil, err
-	}
-	var out []CachedCredInfo
-	for _, info := range all {
-		if info.Server == serverHost && info.Cluster == cluster {
-			out = append(out, info)
-		}
-	}
-	return out, nil
-}
-
 // readCacheROFromFile reads token-cache.yaml at path and returns unexpired
 // entries. It never writes to disk regardless of expired entries found.
 func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
@@ -81,27 +64,6 @@ func ReadFileTokenSilent(dir, serverName string) string {
 		return ""
 	}
 	return m[serverName]
-}
-
-// ReadOnlyTokenForKey returns the token stored under key in token-cache.yaml,
-// or "" when absent, expired, or unreadable. Never writes (AC-27).
-func ReadOnlyTokenForKey(dir, key string) string {
-	b, err := os.ReadFile(filepath.Join(dir, "token-cache.yaml"))
-	if err != nil {
-		return ""
-	}
-	var m map[string]cachedCred
-	if err := yaml.Unmarshal(b, &m); err != nil {
-		return ""
-	}
-	cred, ok := m[key]
-	if !ok {
-		return ""
-	}
-	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-		return ""
-	}
-	return cred.Token
 }
 
 // CachedCredEntry is CachedCredInfo with the bearer token included.

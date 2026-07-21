@@ -171,10 +171,12 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 	if !ok {
 		return false
 	}
-	// Downstream kinds are always served by a downstream K8s proxy — need cluster.
+	// Downstream kinds served by a downstream K8s proxy need a cluster ID, but
+	// only when the kind is Completable — resolution is pointless for a kind
+	// livePositionalCandidates will reject (round-4 finding 3).
 	// Management NSCluster (project) lists resources in the cluster's namespace
 	// via the management API — also needs a cluster ID (explicit carve-out).
-	return k.Scope == kinds.Downstream || (k.Scope == kinds.Management && k.Policy == kinds.NSCluster)
+	return (k.Scope == kinds.Downstream && k.Completable) || (k.Scope == kinds.Management && k.Policy == kinds.NSCluster)
 }
 
 // resolveDisplayNameToClusterID issues one management cluster list request to
