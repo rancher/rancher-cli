@@ -238,23 +238,31 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 			if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
 				// Equals-form flag value (e.g. --output=json<TAB>, --context=prod<TAB>):
 				// route through the full dispatch pipeline (enum → live), the same as
-				// the leaf path does. An empty Descriptor is passed — enumCandidates and
-				// liveCandidates both fall back to globalArgSpecs for global flags, so
-				// --output enum and --context/--cluster live candidates are found without
-				// any leaf flags.
+				// the leaf path does — BUT only when the flag is a recognized global
+				// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
+				// name for any unknown flag, so without this guard a per-leaf flag like
+				// --cluster= would resolve to FlagName:"cluster", get dispatched, and
+				// fire a live cluster-list HTTP request before any kind is chosen.
+				// An empty Descriptor is passed — enumCandidates and liveCandidates
+				// both fall back to globalArgSpecs for global flags, so --output enum
+				// and --context live candidates are found without any leaf flags.
 				spelling := rawCurrentWord[:eq]
 				canonical := resolveFlagCanonical(spelling, globalArgSpecs)
-				site := CompletionSite{
-					Kind:         SiteFlagValue,
-					FlagName:     canonical,
-					FlagSpelling: spelling,
-					EqualsForm:   true,
-					Partial:      rawCurrentWord[eq+1:],
+				if flagTakesValue(canonical, globalArgSpecs) {
+					site := CompletionSite{
+						Kind:         SiteFlagValue,
+						FlagName:     canonical,
+						FlagSpelling: spelling,
+						EqualsForm:   true,
+						Partial:      rawCurrentWord[eq+1:],
+					}
+					tail := stripRoutingPrefixByCmd(rawArgv, cmd)
+					for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
+						_, _ = fmt.Fprintln(w, cand)
+					}
 				}
-				tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
-					_, _ = fmt.Fprintln(w, cand)
-				}
+				// Per-leaf or bool flag in equals-form at group level: no candidates.
+				// The shell falls back to file completion for the value.
 			} else {
 				// Partial flag name (e.g. "--cl"): emit flag-name candidates.
 				for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {

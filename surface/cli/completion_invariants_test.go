@@ -497,11 +497,12 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 // falls back to file completion) and the network-off path returns nothing with
 // zero HTTP requests.
 //
-// Note: --cluster is a per-leaf flag, not in globalArgSpecs. ParseArgTail cannot
-// classify get --cluster <TAB> as SiteFlagValue at the group level; it falls
-// through to the kind-list branch. Closing that gap would require adding --cluster
-// to globalArgSpecs (and GlobalFlags), which is an architectural change beyond
-// this fix.
+// Per-leaf flags (--cluster, --namespace, --node) are NOT in globalArgSpecs. The
+// space-form branch (ParseArgTail) correctly skips them because flagTakesValue
+// returns false for unrecognized flags. The equals-form branch must apply the same
+// guard: get --cluster=<TAB>, get --namespace=<TAB>, get --node=<TAB> must all
+// produce ZERO HTTP requests at the group level (no kind is chosen yet, so firing
+// a live fetch is a premature network request — the security assertion for this fix).
 //
 // NOT parallel: mutates rawArgv/rawCurrentWord globals, storedConfig, and env.
 func TestGroupLiveFlagValueCandidates(t *testing.T) {
@@ -590,5 +591,38 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		got := runNameLikeCompletion(t, []string{"get"}, "--context=")
 		assert.Contains(t, got, "--context=c-abc", "get --context=<TAB> network-on: equals-form candidate must appear")
 		assert.Greater(t, hits.Load(), int32(0), "get --context=<TAB> network-on: must issue at least one HTTP request")
+	})
+
+	// Round-4 finding 1 (HIGH/SECURITY): per-leaf flags in equals-form must not fire
+	// live HTTP requests at the group level. The equals-form branch previously built a
+	// SiteFlagValue unconditionally — resolveFlagCanonical fell back to the bare name
+	// for any --foo= token, so --cluster= resolved to FlagName:"cluster" and triggered
+	// the liveFlagValueCandidates cluster-list fetch before any kind was chosen.
+	t.Run("get --cluster= equals-form zero-requests", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get"}, "--cluster=")
+		assert.Equal(t, int32(0), hits.Load(), "get --cluster=<TAB>: per-leaf flag must fire ZERO live requests at group level")
+		assert.NotContains(t, got, "c-abc", "get --cluster=<TAB>: must not return cluster candidates at group level")
+		assert.NotContains(t, got, "prod", "get --cluster=<TAB>: must not return cluster display names at group level")
+	})
+
+	t.Run("get --namespace= equals-form zero-requests", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get"}, "--namespace=")
+		assert.Equal(t, int32(0), hits.Load(), "get --namespace=<TAB>: per-leaf flag must fire ZERO live requests at group level")
+		assert.Empty(t, strings.TrimSpace(got), "get --namespace=<TAB>: must produce no candidates at group level")
+	})
+
+	t.Run("get --node= equals-form zero-requests", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get"}, "--node=")
+		assert.Equal(t, int32(0), hits.Load(), "get --node=<TAB>: per-leaf flag must fire ZERO live requests at group level")
+		assert.Empty(t, strings.TrimSpace(got), "get --node=<TAB>: must produce no candidates at group level")
 	})
 }
