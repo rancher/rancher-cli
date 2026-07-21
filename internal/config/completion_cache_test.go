@@ -64,3 +64,39 @@ func TestReadOnlyCachedCredsForCluster(t *testing.T) {
 	assert.Len(t, matches, 1)
 	assert.Equal(t, "entry-a", matches[0].Name)
 }
+
+// TestReadOnlyCachedCredsForClusterWithTokens verifies that the token is
+// propagated in a single file read (finding 8: no second parse needed).
+func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("ctx", "rancher.example.com", "c-abc"),
+		"my-token", time.Now().Add(time.Hour),
+		"ctx", "rancher.example.com", "c-abc",
+	))
+
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "rancher.example.com", "c-abc")
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "ctx", entries[0].Name)
+	assert.Equal(t, "my-token", entries[0].Token, "finding 8: token must be present without a second file read")
+}
+
+func TestReadOnlyCachedCredsForClusterWithTokensExpiredExcluded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("ctx", "rancher.example.com", "c-abc"),
+		"expired-tok", time.Now().Add(-time.Hour),
+		"ctx", "rancher.example.com", "c-abc",
+	))
+
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "rancher.example.com", "c-abc")
+	require.NoError(t, err)
+	assert.Empty(t, entries, "expired entries must be excluded")
+}

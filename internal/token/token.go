@@ -294,9 +294,6 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	dir := view.ConfigDir()
 	if dir == "" {
-		dir = d.dir
-	}
-	if dir == "" {
 		return nil
 	}
 	infos, err := config.ReadOnlyCachedCreds(dir)

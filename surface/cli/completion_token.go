@@ -114,7 +114,7 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 		return TokenCapability{}
 	}
 	dir := ""
-	if v := loadedConfigView(); v != nil {
+	if v, ok := loadedConfigView(); ok {
 		dir = v.ConfigDir()
 	}
 
@@ -138,12 +138,14 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 		return TokenCapability{}
 	}
 	serverHost := config.ServerHost(conn.ServerURL)
-	entries, err := config.ReadOnlyCachedCredsForCluster(dir, serverHost, clusterID)
+	// Finding 8: use WithTokens variant to propagate the token through the
+	// first file read; avoids a second parse of token-cache.yaml.
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, clusterID)
 	if err != nil || len(entries) != 1 {
 		// Missing, error, or ambiguous (AC-6a: multiple principals → skip).
 		return TokenCapability{}
 	}
-	tok := config.ReadOnlyTokenForKey(dir, config.CacheKey(entries[0].Name, serverHost, clusterID))
+	tok := entries[0].Token
 	if tok == "" {
 		return TokenCapability{}
 	}

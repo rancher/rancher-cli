@@ -243,7 +243,8 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	got := liveFlagValueCandidates(ctx, site, cap, "", "")
+	hc := &http.Client{}
+	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "")
 	// All candidates returned — shell does the "c-" prefix filter.
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 }
@@ -267,7 +268,8 @@ func TestExtractEffectiveProjectExplicitEmptyClearsInherited(t *testing.T) {
 	// liveFlagValueCandidates: effectiveProject="" → namespace NOT suppressed.
 	// Use an invalid server so the HTTP call fails fast (nil → degraded, not panics).
 	cap := TokenCapability{Token: "tok", ServerURL: "http://127.0.0.1:1"}
-	result := liveFlagValueCandidates(ctx, site, cap, "c-abc", got)
+	hc := &http.Client{}
+	result := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", got)
 	// nil is acceptable (server unreachable); what matters is it was attempted, not short-circuited.
 	// The absence of panic and the empty-project value reaching here is the assertion.
 	_ = result
@@ -280,6 +282,109 @@ func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	cap := TokenCapability{Token: "tok", ServerURL: "https://example.invalid"}
-	got := liveFlagValueCandidates(ctx, site, cap, "c-abc", "my-project")
+	hc := &http.Client{}
+	got := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", "my-project")
 	assert.Nil(t, got, "round-2 finding 4: --namespace must be nil when effectiveProject is set")
+}
+
+// Finding 1 (SECURITY): path injection via --cluster must yield zero HTTP requests.
+// A cluster segment containing "/" fails isValidSegment and the whole dispatch
+// returns nil (fail closed) before any HTTP call is issued.
+func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	tail := []string{"--cluster", "c-abc/../../v1/secrets"}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "get pod"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := liveCandidates(ctx, site, d, nil, tail)
+	assert.Nil(t, got, "finding 1: path injection via cluster segment must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid cluster segment")
+}
+
+// Finding 1 (SECURITY): path injection via --namespace must yield zero HTTP requests.
+func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	// --namespace with a slash (path traversal attempt).
+	tail := []string{"--cluster", "c-abc", "--namespace", "default/../../secret"}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "get pod"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := liveCandidates(ctx, site, d, nil, tail)
+	assert.Nil(t, got, "finding 1: path injection via namespace segment must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid namespace segment")
+}
+
+// Finding 6: --context <displayname> --cluster <TAB> must issue exactly ONE
+// cluster-list request. Without the siteNeedsCluster gate, resolveDisplayNameToClusterID
+// would fire first (one request) and then fetchClusters would fire again (second request).
+func TestClusterValueSiteIssuesOneClusterListRequest(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	var hits atomic.Int32
+	items := []map[string]any{
+		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "somedisplay"}},
+	}
+	listResp := struct {
+		Items []map[string]any `json:"items"`
+	}{Items: items}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(listResp)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	// --context carries a display-name cluster value; completing --cluster <TAB>.
+	tail := []string{"--context", "somedisplay"}
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster"}
+	d := runtime.Descriptor{Name: "get pod"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	liveCandidates(ctx, site, d, nil, tail)
+	assert.Equal(t, int32(1), hits.Load(), "finding 6: cluster VALUE site must issue exactly ONE cluster-list request")
 }

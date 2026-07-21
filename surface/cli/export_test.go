@@ -13,7 +13,10 @@ import (
 // actually implemented in earlier tasks; fix the alias, not the test, on any mismatch.
 
 func SetStoredConfigForTest(cfg *config.Config, dir string) { setStoredConfig(cfg, dir) }
-func LoadedConfigViewForTest() runtime.ConfigView           { return loadedConfigView() }
+func LoadedConfigViewForTest() runtime.ConfigView {
+	v, _ := loadedConfigView()
+	return v
+}
 
 func ResolveCompletionTokenForTest(argTail []string, clusterID string) TokenCapability {
 	return resolveCompletionToken(argTail, clusterID)
@@ -22,7 +25,11 @@ func TokenCapabilityForTest(url, token string, idOnly bool) TokenCapability {
 	return TokenCapability{ServerURL: url, Token: token, IDOnly: idOnly}
 }
 func FetchClustersForTest(ctx context.Context, cap TokenCapability, partial string) []string {
-	return fetchClusters(ctx, cap, partial)
+	hc, err := newCompletionClient(cap.CACert)
+	if err != nil {
+		return nil
+	}
+	return fetchClusters(ctx, hc, cap, partial)
 }
 func SanitizeCandidatesForTest(s []string) []string { return sanitizeCandidates(s) }
 func KindForDescriptorForTest(name string) (kinds.Kind, bool) {

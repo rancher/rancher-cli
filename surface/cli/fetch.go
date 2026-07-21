@@ -18,6 +18,15 @@ import (
 // First character must not be a hyphen (would parse as a flag).
 var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
 
+// isValidSegment reports whether s is safe to interpolate into a REST path
+// segment (finding 1). Reuses completionCharset: cluster IDs and namespace
+// names are DNS-safe; a slash, dot-dot, or shell metacharacter fails here.
+// A value failing this check must cause the whole live dispatch to return nil
+// (fail closed, zero requests).
+func isValidSegment(s string) bool {
+	return completionCharset.MatchString(s)
+}
+
 // sanitizeCandidates drops values that do not conform to the shell-safe
 // charset and returns the survivors lexicographically sorted (AC-21, AC-26).
 func sanitizeCandidates(candidates []string) []string {
@@ -69,6 +78,7 @@ func completionNetworkEnabled() bool {
 
 // newCompletionClient builds an http.Client for completion requests. It
 // is constructed directly from httpx, never through resolveDeps (AC-20/AC-22).
+// Called exactly once per live dispatch (finding 9).
 func newCompletionClient(caPEM string) (*http.Client, error) {
 	return httpx.New(httpx.Options{CACert: caPEM})
 }
@@ -107,13 +117,10 @@ func getJSON(ctx context.Context, hc *http.Client, token, url string, dst any) e
 // returns id+display-name candidates (AC-7, finding 10). Uses the standard
 // Rancher management API path; decodes the k8s items envelope.
 // Returns nil on any fetch error (AC-18).
-func fetchClusters(ctx context.Context, cap TokenCapability, _ string) []string {
+// hc must be the single per-dispatch client (finding 9).
+func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability, _ string) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil // exec-cred-only: cluster list requires management token
-	}
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
-		return nil
 	}
 	// Management K8s API: same convention as surface/cli/engine.go clusters().
 	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
@@ -171,57 +178,16 @@ func clusterCandidates(items []map[string]any) []string {
 	return sanitizeCandidates(out)
 }
 
-// resolveClusterDisplayName resolves a display name to a cluster ID by
-// fetching the cluster list and matching. Returns "" when not found or on
-// any error. When clusterRef is already an ID (no match by display name),
-// returns clusterRef unchanged.
-func resolveClusterDisplayName(ctx context.Context, cap TokenCapability, clusterRef string) string {
-	if clusterRef == "" {
-		return ""
-	}
-	if cap.Token == "" || cap.IDOnly {
-		return clusterRef
-	}
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
-		return clusterRef
-	}
-	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
-	var col k8sItemsList
-	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-		return clusterRef
-	}
-	for _, item := range col.Items {
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		id, _ := meta["name"].(string)
-		spec, _ := item["spec"].(map[string]any)
-		if spec == nil {
-			continue
-		}
-		display, _ := spec["displayName"].(string)
-		if display == clusterRef {
-			return id
-		}
-	}
-	return clusterRef
-}
-
 // fetchProjects lists projects for the resolved cluster via the management K8s
 // API and returns name/id candidates (AC-8, finding 10). Projects are listed in
 // the cluster's namespace, exactly as internal/engine/projects/resolve.go does.
 // Returns nil on any fetch error.
-func fetchProjects(ctx context.Context, cap TokenCapability, clusterID string) []string {
+// hc must be the single per-dispatch client (finding 9).
+func fetchProjects(ctx context.Context, hc *http.Client, cap TokenCapability, clusterID string) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
 	}
 	if clusterID == "" {
-		return nil
-	}
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
 		return nil
 	}
 	// Management K8s API: project GVR in the cluster's namespace
@@ -279,12 +245,9 @@ func projectCandidates(items []map[string]any) []string {
 // management proxy (/k8s/clusters/<id>/...) and returns object names (AC-9,
 // AC-10, AC-11). ns may be "" for cluster-scoped resources. Returns nil on
 // any error.
-func fetchK8sResources(ctx context.Context, cap TokenCapability, clusterID, apiPath, ns string) []string {
+// hc must be the single per-dispatch client (finding 9).
+func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability, clusterID, apiPath, ns string) []string {
 	if cap.Token == "" {
-		return nil
-	}
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
 		return nil
 	}
 	url := cap.ServerURL + "/k8s/clusters/" + clusterID + apiPath

@@ -31,14 +31,16 @@ func storedConfigSnapshot() *config.Config {
 	return storedConfig
 }
 
-// loadedConfigView returns the stored ConfigView, or a zero view on any error.
-func loadedConfigView() runtime.ConfigView {
+// loadedConfigView returns the stored ConfigView and true when the config has
+// been loaded, or a zero view and false when no config is loaded yet.
+// Callers that only need a ConfigView regardless of loaded state can ignore the bool.
+func loadedConfigView() (runtime.ConfigView, bool) {
 	storedConfigMu.RLock()
 	defer storedConfigMu.RUnlock()
 	if storedConfig == nil {
-		return zeroConfigView{}
+		return zeroConfigView{}, false
 	}
-	return newConfigView(storedConfig, storedConfigDir)
+	return newConfigView(storedConfig, storedConfigDir), true
 }
 
 // configView wraps a loaded *config.Config as a runtime.ConfigView.

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -59,7 +60,7 @@ func dispatchSite(
 
 	// Layer 2: config-local (ShellCompleter delegation) for positionals.
 	if site.Kind == SitePositional && sc != nil {
-		view := loadedConfigView()
+		view, _ := loadedConfigView()
 		cands := sc.CompleteArgs(ctx, view)
 		if len(cands) > 0 {
 			return sanitizeCandidates(cands)
@@ -91,6 +92,13 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	clusterValue := extractClusterID(tail)
 	effectiveProject := extractEffectiveProject(tail)
 
+	// Finding 1 (SECURITY): validate the cluster segment before it enters any
+	// REST path. A value containing "/" or other non-DNS characters fails here;
+	// the whole dispatch returns nil (fail closed, zero requests).
+	if clusterValue != "" && !isValidSegment(clusterValue) {
+		return nil
+	}
+
 	// Round-2 finding 5: before any HTTP dispatch, if the site requires a cluster
 	// and none resolves, return nil with ZERO requests. This prevents
 	// /k8s/clusters//... calls (an empty cluster ID in the URL).
@@ -107,19 +115,26 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 		return nil
 	}
 
+	// Finding 9: build ONE HTTP client per dispatch (not per fetch call).
+	hc, err := newCompletionClient(cap.CACert)
+	if err != nil {
+		return nil
+	}
+
 	// AC-17 step 5 (finding 11): if cluster value is not ID-shaped and management
 	// token is available, issue the optional cluster-resolution request to map
 	// display name → ID. Exec-cred-only (IDOnly) skips this (can't authorize
 	// the management cluster list).
+	// Finding 6: gate resolution on siteNeedsCluster — cluster/context VALUE
+	// sites don't need a resolved ID (they fetch the list anyway) and must not
+	// issue two cluster-list requests.
 	resolvedClusterID := clusterValue
-	if clusterValue != "" && !isClusterIDShaped(clusterValue) && !cap.IDOnly {
-		if id := resolveDisplayNameToClusterID(ctx, cap, clusterValue); id != "" {
+	if clusterValue != "" && !isClusterIDShaped(clusterValue) && !cap.IDOnly && siteNeedsCluster(site, d) {
+		if id := resolveDisplayNameToClusterID(ctx, hc, cap, clusterValue); id != "" {
 			resolvedClusterID = id
 		} else {
-			// Display name unresolvable: can't continue for cluster-dependent sites.
-			if siteNeedsCluster(site, d) {
-				return nil
-			}
+			// Display name unresolvable: can't continue for cluster-dependent site.
+			return nil
 		}
 	}
 
@@ -127,9 +142,9 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	case SiteFlagValue:
 		// Round-2 finding 4: pass effectiveProject so --namespace is suppressed
 		// when a project scope is active (AC-9/AC-15).
-		return liveFlagValueCandidates(ctx, site, cap, resolvedClusterID, effectiveProject)
+		return liveFlagValueCandidates(ctx, hc, site, cap, resolvedClusterID, effectiveProject)
 	case SitePositional:
-		return livePositionalCandidates(ctx, site, d, cap, resolvedClusterID, effectiveProject, tail)
+		return livePositionalCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
 	}
 	return nil
 }
@@ -141,7 +156,9 @@ func isClusterIDShaped(s string) bool {
 }
 
 // siteNeedsCluster reports whether a site requires a resolved cluster ID to
-// produce meaningful candidates.
+// produce meaningful candidates. Derived from the kind row's Scope field
+// (finding 5), with an explicit carve-out for project: it is Management scope
+// but lists projects in a cluster's namespace, so it also needs a cluster ID.
 func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 	if site.Kind == SiteFlagValue {
 		switch site.FlagName {
@@ -154,21 +171,17 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 	if !ok {
 		return false
 	}
-	switch k.Name {
-	case "project", "node", "namespace", "pod", "deployment":
-		return true
-	}
-	return false
+	// Downstream kinds are always served by a downstream K8s proxy — need cluster.
+	// Management NSCluster (project) lists resources in the cluster's namespace
+	// via the management API — also needs a cluster ID (explicit carve-out).
+	return k.Scope == kinds.Downstream || (k.Scope == kinds.Management && k.Policy == kinds.NSCluster)
 }
 
 // resolveDisplayNameToClusterID issues one management cluster list request to
 // map a display name to a cluster ID (AC-17 step 5 optional request, finding 11).
 // Returns "" when not found, ambiguous, or the request fails.
-func resolveDisplayNameToClusterID(ctx context.Context, cap TokenCapability, displayName string) string {
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
-		return ""
-	}
+// hc is the single per-dispatch client (finding 9).
+func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap TokenCapability, displayName string) string {
 	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 	var col struct {
 		Items []map[string]any `json:"items"`
@@ -202,22 +215,23 @@ func resolveDisplayNameToClusterID(ctx context.Context, cap TokenCapability, dis
 // --namespace, --node, --context AC-7/AC-8/AC-9/AC-11/AC-14).
 // effectiveProject is passed to suppress --namespace when a project scope is
 // active (AC-9/AC-15; round-2 finding 4).
-func liveFlagValueCandidates(ctx context.Context, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string) []string {
+// hc is the single per-dispatch client (finding 9).
+func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string) []string {
 	var raw []string
 	switch site.FlagName {
 	case "cluster", "context":
-		raw = fetchClusters(ctx, cap, "")
+		raw = fetchClusters(ctx, hc, cap, "")
 	case "project":
-		raw = fetchProjects(ctx, cap, clusterID)
+		raw = fetchProjects(ctx, hc, cap, clusterID)
 	case "namespace":
 		// AC-9/AC-15: suppress namespace completion when a project scope is active
-		// (round-2 finding 4). The effective project was NOT empty from any source.
-		if effectiveProject != "" {
+		// (finding 5: routed through kinds.ProjectScopable for the namespace kind).
+		if nsKind, ok := kinds.Lookup("namespace"); ok && kinds.ProjectScopable(nsKind) && effectiveProject != "" {
 			return nil
 		}
-		raw = fetchK8sResources(ctx, cap, clusterID, "/api/v1/namespaces", "")
+		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/namespaces", "")
 	case "node":
-		raw = fetchK8sResources(ctx, cap, clusterID, "/api/v1/nodes", "")
+		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/nodes", "")
 	default:
 		return nil
 	}
@@ -228,15 +242,18 @@ func liveFlagValueCandidates(ctx context.Context, site CompletionSite, cap Token
 }
 
 // livePositionalCandidates handles live positional sites (resource names,
-// AC-10). Effective-project suppression: AC-9 and AC-10 sites are suppressed
-// when effective project is non-empty (AC-15 routing rules).
+// AC-10). Effective-project suppression uses kinds.ProjectScopable (finding 5).
+// Paths are derived generically from k.GVR (finding 4): flipping Completable:true
+// on a new downstream kind row needs NO dispatch edit.
 // tail is the already-computed leaf arg tail from the callback (round-2
 // finding 6: do not re-derive from rawArgv using the old canonical-prefix
 // helper — that breaks alias invocations and leading global flags).
 // Round-2 finding 7: only get/patch/delete leaves get live positional completion
 // (AC-10); inspect leaves do NOT (AC-15a is aliases only, not live completion).
+// hc is the single per-dispatch client (finding 9).
 func livePositionalCandidates(
 	ctx context.Context,
+	hc *http.Client,
 	site CompletionSite,
 	d runtime.Descriptor,
 	cap TokenCapability,
@@ -255,42 +272,62 @@ func livePositionalCandidates(
 	if !ok || !k.Completable {
 		return nil
 	}
-	switch k.Name {
-	case "cluster":
-		return fetchClusters(ctx, cap, "")
-	case "project":
-		return fetchProjects(ctx, cap, clusterID)
-	case "namespace":
-		if effectiveProject != "" {
-			return nil // suppressed (AC-15)
-		}
-		return fetchK8sResources(ctx, cap, clusterID, "/api/v1/namespaces", "")
-	case "node":
-		return fetchK8sResources(ctx, cap, clusterID, "/api/v1/nodes", "")
-	case "pod":
-		if effectiveProject != "" {
-			return nil // suppressed (AC-15)
-		}
-		// Round-2 finding 6: use the caller-supplied tail, not a re-derived one.
-		ns := extractFlagValue(tail, "namespace")
-		if ns == "" {
+
+	// Management-plane kinds (cluster, project) use the Rancher management API
+	// paths, which differ from the downstream K8s proxy pattern. Keep an
+	// explicit management branch; new management Completable kinds need a case.
+	if k.Scope == kinds.Management {
+		switch k.Name {
+		case "cluster":
+			return fetchClusters(ctx, hc, cap, "")
+		case "project":
+			return fetchProjects(ctx, hc, cap, clusterID)
+		default:
+			// Other management kinds: no generic downstream path applies.
 			return nil
 		}
-		return fetchK8sResources(ctx, cap, clusterID,
-			"/api/v1/namespaces/{namespace}/pods", ns)
-	case "deployment":
-		if effectiveProject != "" {
-			return nil // suppressed (AC-15)
-		}
-		// Round-2 finding 6: use the caller-supplied tail.
-		ns := extractFlagValue(tail, "namespace")
-		if ns == "" {
-			return nil
-		}
-		return fetchK8sResources(ctx, cap, clusterID,
-			"/apis/apps/v1/namespaces/{namespace}/deployments", ns)
 	}
-	return nil
+
+	// Downstream kinds: derive path generically from k.GVR (finding 4).
+	// kinds.ProjectScopable covers namespace (NSNone carve-out), pod, deployment,
+	// and any future NSPlain Downstream kind (finding 5).
+	if kinds.ProjectScopable(k) && effectiveProject != "" {
+		return nil // AC-15: suppress when project scope is active
+	}
+
+	if k.Policy == kinds.NSNone {
+		// Cluster-scoped resource.
+		return fetchK8sResources(ctx, hc, cap, clusterID, gvrPath(k), "")
+	}
+
+	// Namespace-scoped resource: requires --namespace flag.
+	// Finding 1: validate the namespace segment before it enters the REST path.
+	ns := extractFlagValue(tail, "namespace")
+	if ns == "" || !isValidSegment(ns) {
+		return nil
+	}
+	return fetchK8sResources(ctx, hc, cap, clusterID, gvrNamespacedPath(k), ns)
+}
+
+// gvrPath returns the cluster-scoped K8s API path for a kind's GVR.
+// Core group (Group==""): /api/<version>/<resource>
+// Named group: /apis/<group>/<version>/<resource>
+func gvrPath(k kinds.Kind) string {
+	if k.GVR.Group == "" {
+		return fmt.Sprintf("/api/%s/%s", k.GVR.Version, k.GVR.Resource)
+	}
+	return fmt.Sprintf("/apis/%s/%s/%s", k.GVR.Group, k.GVR.Version, k.GVR.Resource)
+}
+
+// gvrNamespacedPath returns the namespace-scoped K8s API path for a kind's GVR.
+// The literal "{namespace}" is replaced by fetchK8sResources with the real value.
+// Core group: /api/<version>/namespaces/{namespace}/<resource>
+// Named group: /apis/<group>/<version>/namespaces/{namespace}/<resource>
+func gvrNamespacedPath(k kinds.Kind) string {
+	if k.GVR.Group == "" {
+		return fmt.Sprintf("/api/%s/namespaces/{namespace}/%s", k.GVR.Version, k.GVR.Resource)
+	}
+	return fmt.Sprintf("/apis/%s/%s/namespaces/{namespace}/%s", k.GVR.Group, k.GVR.Version, k.GVR.Resource)
 }
 
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
