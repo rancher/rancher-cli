@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
+	ucli "github.com/urfave/cli/v3"
 )
 
 func TestEnumCandidatesSpaceForm(t *testing.T) {
@@ -487,4 +488,27 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "round-4 finding 3: non-completable downstream kind must yield nil")
 	assert.Equal(t, int32(0), hits.Load(), "round-4 finding 3: non-completable downstream kind must issue zero requests")
+}
+
+// TestFlagNameCandidatesDedupeSharedAlias: two flags with different primary
+// names but the same short alias must not double-emit the shared alias token.
+// allFlagsDeduped dedupes by primary name, so both flags survive it; the
+// emitted-token dedup in flagNameCandidates is what prevents double-emission.
+func TestFlagNameCandidatesDedupeSharedAlias(t *testing.T) {
+	t.Parallel()
+	// Two flags with different primaries but sharing short alias "x".
+	cmd := &ucli.Command{
+		Flags: []ucli.Flag{
+			&ucli.StringFlag{Name: "extra", Aliases: []string{"x"}},
+			&ucli.StringFlag{Name: "extend", Aliases: []string{"x"}},
+		},
+	}
+	got := flagNameCandidates(cmd, "-")
+	count := 0
+	for _, c := range got {
+		if c == "-x" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "shared short alias -x must be emitted exactly once, got %v", got)
 }

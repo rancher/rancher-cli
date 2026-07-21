@@ -39,3 +39,4 @@ func SetRawArgvForTest(argv []string)             { SetRawArgv(argv) }
 func SanitizedArgsForTest(args []string) []string { return SanitizedArgs(args) }
 func CaptureArgvForTest(args []string)            { CaptureArgv(args) }
 func GetRawProtoV2ForTest() bool                  { return rawProtoV2 }
+func GlobalArgSpecsForTest() []runtime.ArgSpec    { return globalArgSpecs }

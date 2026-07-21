@@ -18,6 +18,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	surfacecli "github.com/rancher/rancher-cli/surface/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -438,4 +439,51 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	}))
 	assert.NoError(t, runErr, "AC-27: completion must not exit nonzero")
 	assert.Equal(t, before, hashDir(t, dir), "AC-27: completion must write nothing (no prune-on-read or other writes)")
+}
+
+// TestGlobalFlagSetsAgree pins the 4-way lockstep agreement between the
+// three sources that must enumerate the same global flags:
+//   - registry.go GlobalFlags (schema metadata, canonical source)
+//   - surface/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
+//   - argtail.go globalArgSpecs (value-classification)
+//
+// If any source drifts — a flag added to adapter.go but not to globalArgSpecs,
+// or vice versa — this test fails immediately rather than silently misclassifying
+// completions.
+func TestGlobalFlagSetsAgree(t *testing.T) {
+	t.Parallel()
+
+	// Extract canonical names from runtime.GlobalFlags() schema entries.
+	// Entries use formats like "--dry-run", "-o/--output", "-c/--config".
+	// The canonical name is the portion after the last "--".
+	schemaNames := make([]string, 0)
+	for _, gf := range runtime.GlobalFlags() {
+		name := gf.Name
+		if idx := strings.LastIndex(name, "--"); idx >= 0 {
+			schemaNames = append(schemaNames, name[idx+2:])
+		}
+	}
+	sort.Strings(schemaNames)
+
+	// Extract canonical names from globalArgSpecs (argtail.go).
+	specNames := make([]string, 0)
+	for _, s := range surfacecli.GlobalArgSpecsForTest() {
+		specNames = append(specNames, s.Name)
+	}
+	sort.Strings(specNames)
+
+	// Extract canonical names from root.Flags (live ucli flags built by BuildRoot).
+	// root.Flags = [debug, config] ++ GlobalFlags() — 11 total.
+	root, err := surfacecli.BuildRoot("test")
+	require.NoError(t, err)
+	rootFlagNames := make([]string, 0)
+	for _, f := range root.Flags {
+		rootFlagNames = append(rootFlagNames, f.Names()[0])
+	}
+	sort.Strings(rootFlagNames)
+
+	assert.Equal(t, schemaNames, specNames,
+		"globalArgSpecs (argtail.go) and runtime.GlobalFlags() (registry.go) must enumerate the same canonical flag names")
+	assert.Equal(t, schemaNames, rootFlagNames,
+		"root.Flags (adapter.go + root.go) and runtime.GlobalFlags() (registry.go) must enumerate the same canonical flag names")
 }

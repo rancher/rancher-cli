@@ -283,3 +283,60 @@ func TestGroupSubcommandCompletionGetKindNamesRegression(t *testing.T) {
 	assert.Contains(t, got, "pod:", "get <TAB> must still list kind names (regression guard)")
 	assert.Contains(t, got, "po:", "get <TAB> must still list kind aliases (regression guard)")
 }
+
+// TestGroupSubcommandCompletionGetPrefixFiltered: `get po<TAB>` under v2
+// must return only the kind name "pod" and its alias "po", NOT the full 60+
+// unfiltered kind list. This is the High finding: aliasAwareGroupComplete
+// fell through to the unfiltered v1 branch for non-flag currentWords.
+func TestGroupSubcommandCompletionGetPrefixFiltered(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "po")
+	tokens := extractTokens(got)
+
+	// Must include pod and its alias po (both start with "po").
+	assert.Contains(t, tokens, "pod", "get po<TAB> must include pod")
+	assert.Contains(t, tokens, "po", "get po<TAB> must include alias po")
+	// Must NOT include kinds that don't start with "po".
+	assert.NotContains(t, tokens, "gitrepos", "get po<TAB> must not include gitrepos")
+	assert.NotContains(t, tokens, "bundle", "get po<TAB> must not include bundle")
+	assert.NotContains(t, tokens, "settings", "get po<TAB> must not include settings")
+	// Must not include the help subcommand.
+	assert.NotContains(t, tokens, "help", "get po<TAB> must not include help")
+}
+
+// TestGroupEqualsFormFlagValueCompletion: `get --output=<TAB>` under v2
+// must return the --output= enum candidates, NOT empty output. Before the fix,
+// aliasAwareGroupComplete routed --output= into flagNameCandidates, which
+// trimmed to "output=" and never matched any flag name.
+func TestGroupEqualsFormFlagValueCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "--output=")
+	// Must include equals-form output candidates.
+	assert.Contains(t, got, "--output=json", "get --output=<TAB> must include --output=json")
+	assert.Contains(t, got, "--output=yaml", "get --output=<TAB> must include --output=yaml")
+	assert.Contains(t, got, "--output=table", "get --output=<TAB> must include --output=table")
+	// Must not be empty.
+	assert.NotEmpty(t, strings.TrimSpace(got), "get --output=<TAB> must produce output")
+}
+
+// TestLeafEqualsFormFlagValueCompletion: `usage --output=<TAB>` under v2
+// already worked before this fix; guard it as a regression test alongside
+// the group path.
+func TestLeafEqualsFormFlagValueCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"usage"}, "--output=")
+	assert.Contains(t, got, "--output=json", "usage --output=<TAB> must include --output=json")
+	assert.Contains(t, got, "--output=yaml", "usage --output=<TAB> must include --output=yaml")
+}

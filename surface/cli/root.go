@@ -225,16 +225,58 @@ var groupUsages = map[string]string{
 // `get` would complete only toward the canonical "pod" form otherwise. The
 // lastArg computation mirrors DefaultCompleteWithFlags' own (unexported)
 // logic exactly, for the non-root case (cmd.parent != nil, cmd.Args().Slice()).
+//
+// Under v2, rawCurrentWord is classified the same way the leaf path does it
+// (ParseArgTail/classifyCurrentWordV2): equals-form flag values, partial flag
+// names, and bare words are each routed to the appropriate candidate generator.
 func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
-	// v2 protocol: rawCurrentWord holds the real current word (stripped from
-	// argv by CaptureArgv). When it starts with "-" the user is completing a
-	// flag name; urfave's DefaultCompleteWithFlags would read the wrong last
-	// arg from cmd.Args().Slice() (the stripped word is absent), falling into
-	// the subcommand branch and listing kind names instead of flags.
-	if rawProtoV2 && strings.HasPrefix(rawCurrentWord, "-") {
+	if rawProtoV2 {
 		w := cmd.Root().Writer
-		for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {
-			_, _ = fmt.Fprintln(w, cand)
+		// Classify the current word: equals-form flag value, partial flag name,
+		// or bare word (including empty — "list all" for `get <TAB>`).
+		if strings.HasPrefix(rawCurrentWord, "-") {
+			if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
+				// Equals-form flag value (e.g. --output=json<TAB>): emit enum
+				// candidates. An empty Descriptor is sufficient — enumCandidates
+				// appends globalArgSpecs internally, so global enums like
+				// --output are found without any leaf flags.
+				spelling := rawCurrentWord[:eq]
+				canonical := resolveFlagCanonical(spelling, globalArgSpecs)
+				site := CompletionSite{
+					Kind:         SiteFlagValue,
+					FlagName:     canonical,
+					FlagSpelling: spelling,
+					EqualsForm:   true,
+					Partial:      rawCurrentWord[eq+1:],
+				}
+				for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+			} else {
+				// Partial flag name (e.g. "--cl"): emit flag-name candidates.
+				for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+			}
+		} else {
+			// Bare word (or empty): prefix-filter subcommand names and aliases
+			// by rawCurrentWord. An empty rawCurrentWord matches everything
+			// (strings.HasPrefix(s, "") is always true), preserving the existing
+			// "list all kinds + aliases" behavior for `get <TAB>`.
+			for _, leaf := range cmd.Commands {
+				if leaf.Hidden {
+					continue
+				}
+				if !strings.HasPrefix(leaf.Name, rawCurrentWord) {
+					continue
+				}
+				printCompletionCandidate(w, leaf.Name, leaf.Usage)
+				for _, alias := range leaf.Aliases {
+					if strings.HasPrefix(alias, rawCurrentWord) {
+						printCompletionCandidate(w, alias, leaf.Usage)
+					}
+				}
+			}
 		}
 		return
 	}
@@ -268,16 +310,13 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 	}
 }
 
-// printCompletionCandidate mirrors urfave's own printCommandSuggestions line
-// format ("name:usage", or a bare name when usage is empty) — unexported in
-// urfave, so reproduced here rather than golden-tested against its exact
-// output (which upstream ordering/format could shift on a version bump).
+// printCompletionCandidate writes one completion candidate line using
+// formatCandidate (the single format source), followed by a newline.
+// Mirrors urfave's own printCommandSuggestions format ("name:usage", or a
+// bare name when usage is empty) — unexported in urfave, so reproduced here
+// rather than golden-tested against its exact output.
 func printCompletionCandidate(w io.Writer, name, usage string) {
-	if usage != "" {
-		_, _ = fmt.Fprintf(w, "%s:%s\n", name, usage)
-	} else {
-		_, _ = fmt.Fprintln(w, name)
-	}
+	_, _ = fmt.Fprintln(w, formatCandidate(name, usage))
 }
 
 // assembleCommands builds the root command list: the top-level commands

@@ -70,16 +70,35 @@ func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
 	return subcommandCandidates(c, currentWord)
 }
 
+// formatCandidate returns the "name:usage" or bare "name" completion line,
+// matching urfave's own printCommandSuggestions format (unexported upstream).
+// All three emission paths — printCompletionCandidate, flagNameCandidates,
+// and subcommandCandidates — call this so the format lives in one place.
+func formatCandidate(name, usage string) string {
+	if usage != "" {
+		return name + ":" + usage
+	}
+	return name
+}
+
 // flagNameCandidates returns flag-name candidates for a "-" or "--" prefixed
 // currentWord, covering ALL names (primary + aliases) of every de-duplicated
 // flag on the command and the root's persistent globals.
+//
+// Hidden-flag exclusion: only *ucli.BoolFlag.Hidden is checked because urfave's
+// Flag interface has no generic hidden-check method — urfave's own
+// printFlagSuggestions has the identical gap. No hidden non-bool global flag
+// exists today, but one added in the future would appear in suggestions.
+// This is a latent limitation inherited from urfave, not a local oversight.
 func flagNameCandidates(c *ucli.Command, currentWord string) []string {
 	cur := strings.TrimLeft(currentWord, "-")
 	longOnly := strings.HasPrefix(currentWord, "--")
 
+	seen := make(map[string]bool)
 	var out []string
 	for _, f := range allFlagsDeduped(c) {
-		// Skip hidden bool flags (matches urfave's printFlagSuggestions behavior).
+		// Skip hidden bool flags (matches urfave's printFlagSuggestions behavior;
+		// see doc comment above for the inherited limitation on other flag types).
 		if bf, ok := f.(*ucli.BoolFlag); ok && bf.Hidden {
 			continue
 		}
@@ -100,11 +119,14 @@ func flagNameCandidates(c *ucli.Command, currentWord string) []string {
 				continue
 			}
 			token := prefix + name
-			if usage != "" {
-				out = append(out, token+":"+usage)
-			} else {
-				out = append(out, token)
+			// Defensively dedupe emitted tokens: allFlagsDeduped dedupes by
+			// primary name, so two flags with different primaries but the same
+			// short alias both survive it and would double-emit that alias here.
+			if seen[token] {
+				continue
 			}
+			seen[token] = true
+			out = append(out, formatCandidate(token, usage))
 		}
 	}
 	return out
@@ -122,11 +144,7 @@ func subcommandCandidates(c *ucli.Command, currentWord string) []string {
 		if !strings.HasPrefix(sub.Name, currentWord) {
 			continue
 		}
-		if sub.Usage != "" {
-			out = append(out, sub.Name+":"+sub.Usage)
-		} else {
-			out = append(out, sub.Name)
-		}
+		out = append(out, formatCandidate(sub.Name, sub.Usage))
 	}
 	return out
 }
@@ -134,6 +152,12 @@ func subcommandCandidates(c *ucli.Command, currentWord string) []string {
 // allFlagsDeduped returns the merged flags from c and c.Root(), de-duplicating
 // by primary name (Names()[0]). Flags from c take precedence over root flags
 // with the same primary name. When c is the root itself, only c.Flags is used.
+//
+// Latent gap: only c and c.Root() are merged — intermediate ancestor commands
+// in the lineage are skipped. urfave's own flag resolution walks the full
+// Lineage(), so a flag defined on an intermediate group node (not a leaf, not
+// root) resolves at runtime but never appears in completion suggestions. No
+// group node in the current tree sets its own Flags, so this is latent.
 func allFlagsDeduped(c *ucli.Command) []ucli.Flag {
 	seen := make(map[string]bool)
 	var out []ucli.Flag
