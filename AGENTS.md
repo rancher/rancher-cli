@@ -30,18 +30,6 @@ Two gotchas:
   `RANCHER_CLI_CONFIG_DIR=$(mktemp -d) RANCHER_CLI_CREDENTIAL_STORE=file`. A bare
   run writes to the real OS keychain and config directory.
 
-## Layout
-
-- `surface/cli/` — the urfave/cli/v3 adapter; wires commands to the CLI.
-- `internal/runtime/` — the pipeline, command registry, and the `schema` manifest.
-- `internal/engine/` — the `kinds` table, generic verbs (`resources`), and
-  per-domain commands (`projects`, `provisioning`, `observe`, `inspect`, …).
-- `internal/client/` — HTTP/kube/provider clients (dynamic client; no typed
-  Rancher structs).
-- `internal/{config,token,output,clierr}` — config/credentials, auth, rendering,
-  structured errors.
-- `docs/` is gitignored — never stage anything under it.
-
 ## Invariants — do not break these
 
 - **The surface describes itself.** `rancher schema` emits a versioned manifest of
@@ -60,6 +48,7 @@ Two gotchas:
 
 ## Conventions
 
+- `docs/` is gitignored — never stage anything under it.
 - **Commits:** sentence-style subject, no Conventional-Commits prefix; a body that
   states the prior behavior, then the change. No Co-Authored-By attribution.
   History is linear — no merge commits.
