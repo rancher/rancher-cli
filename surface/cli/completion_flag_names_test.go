@@ -340,3 +340,60 @@ func TestLeafEqualsFormFlagValueCompletion(t *testing.T) {
 	assert.Contains(t, got, "--output=json", "usage --output=<TAB> must include --output=json")
 	assert.Contains(t, got, "--output=yaml", "usage --output=<TAB> must include --output=yaml")
 }
+
+// TestGroupAliasOnlyPrefixCompletion: `get ns<TAB>` must return the alias "ns"
+// (and NOT "namespace", which doesn't start with "ns"). Before the fix, the alias
+// loop was gated on the canonical name prefix-matching first — since "namespace"
+// does not start with "ns", the alias loop never ran and zero candidates were
+// returned.
+func TestGroupAliasOnlyPrefixCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "ns")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "ns", "get ns<TAB> must include alias ns")
+	assert.NotContains(t, tokens, "namespace", "get ns<TAB> must not include namespace (doesn't share prefix)")
+}
+
+// TestGroupAliasOnlyPrefixSvc: `get svc<TAB>` must return "svc" (alias for
+// service). "service" does not start with "svc", so this only passes after the
+// independent alias-filter fix.
+func TestGroupAliasOnlyPrefixSvc(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "svc")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "svc", "get svc<TAB> must include alias svc")
+	assert.NotContains(t, tokens, "service", "get svc<TAB> must not include service (doesn't share prefix)")
+}
+
+// TestGroupSpaceFormFlagValueCompletion: `get --output <TAB>` (space form,
+// current word empty after the value-taking flag) must return bare enum values
+// (json/yaml/table/name/template), not the kind list. Before the fix, the empty
+// rawCurrentWord fell through to the bare-word/kind-list branch.
+func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	// Simulate: argv has "get --output" already; current word is "".
+	got := runNameLikeCompletion(t, []string{"get", "--output"}, "")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "json", "get --output <TAB> must include json")
+	assert.Contains(t, tokens, "yaml", "get --output <TAB> must include yaml")
+	assert.Contains(t, tokens, "table", "get --output <TAB> must include table")
+	assert.Contains(t, tokens, "name", "get --output <TAB> must include name")
+	assert.Contains(t, tokens, "template", "get --output <TAB> must include template")
+	// Must not spill into kind names.
+	assert.NotContains(t, tokens, "pod", "get --output <TAB> must not include kind names")
+}

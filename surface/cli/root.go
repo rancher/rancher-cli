@@ -259,18 +259,30 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 				}
 			}
 		} else {
+			// Space-form flag value (e.g. `get --output <TAB>`): if the last
+			// token in the arg tail is a value-taking flag, the current word is
+			// its partial value — emit enum candidates the same way the leaf path
+			// does, and skip the kind-list branch.
+			tail := stripRoutingPrefixByCmd(rawArgv, cmd)
+			if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
+				for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+				return
+			}
 			// Bare word (or empty): prefix-filter subcommand names and aliases
-			// by rawCurrentWord. An empty rawCurrentWord matches everything
-			// (strings.HasPrefix(s, "") is always true), preserving the existing
-			// "list all kinds + aliases" behavior for `get <TAB>`.
+			// by rawCurrentWord independently. An empty rawCurrentWord matches
+			// everything (strings.HasPrefix(s, "") is always true), preserving the
+			// "list all kinds + aliases" behavior for `get <TAB>`. Name and each
+			// alias are tested independently so an alias-only prefix (e.g. "ns" for
+			// namespace) is not gated on the canonical name matching first.
 			for _, leaf := range cmd.Commands {
 				if leaf.Hidden {
 					continue
 				}
-				if !strings.HasPrefix(leaf.Name, rawCurrentWord) {
-					continue
+				if strings.HasPrefix(leaf.Name, rawCurrentWord) {
+					printCompletionCandidate(w, leaf.Name, leaf.Usage)
 				}
-				printCompletionCandidate(w, leaf.Name, leaf.Usage)
 				for _, alias := range leaf.Aliases {
 					if strings.HasPrefix(alias, rawCurrentWord) {
 						printCompletionCandidate(w, alias, leaf.Usage)
