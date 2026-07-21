@@ -1,0 +1,285 @@
+package cli_test
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/config"
+	surfacecli "github.com/rancher/rancher-cli/surface/cli"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// runNameLikeCompletion drives a v2-protocol completion request through
+// BuildRoot + root.Run. The caller must have configured env vars
+// (RANCHER_CLI_CREDENTIAL_STORE, RANCHER_CLI_CONFIG_DIR) before calling.
+// NOT parallel: mutates package-level rawArgv / rawCurrentWord globals.
+func runNameLikeCompletion(t *testing.T, words []string, currentWord string) string {
+	t.Helper()
+	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
+	scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
+	surfacecli.CaptureArgvForTest(scriptArgs)
+	root, err := surfacecli.BuildRoot("test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = io.Discard
+	runArgv := surfacecli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
+	_ = root.Run(context.Background(), runArgv)
+	return out.String()
+}
+
+// extractTokens splits completion output into the token portion of each
+// candidate line (the part before the first ":", stripping trailing newlines).
+func extractTokens(output string) []string {
+	var tokens []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		tokens = append(tokens, strings.SplitN(line, ":", 2)[0])
+	}
+	return tokens
+}
+
+// TestFlagNameCompletionDoubleDash is the primary regression test for the
+// SiteNameLike v2 bug: `usage --<TAB>` must emit long-form flag candidates
+// for both the leaf's own flags (--cluster, --by, --namespace, --node) AND
+// the global flags inherited from root (--output, --help). Before the fix,
+// delegation to urfave's DefaultCompleteWithFlags produced no output because
+// the "--" current word was stripped from argv (v2 protocol) and urfave
+// always took the subcommand branch.
+func TestFlagNameCompletionDoubleDash(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"usage"}, "--")
+	tokens := extractTokens(got)
+
+	// Leaf flags.
+	assert.Contains(t, tokens, "--cluster")
+	assert.Contains(t, tokens, "--by")
+	assert.Contains(t, tokens, "--namespace")
+	assert.Contains(t, tokens, "--node")
+	// Global flags inherited from root.
+	assert.Contains(t, tokens, "--output")
+	assert.Contains(t, tokens, "--help")
+	// longOnly=true: every emitted token must be a long-form flag (starts with "--").
+	for _, tok := range tokens {
+		assert.Truef(t, strings.HasPrefix(tok, "--"),
+			"longOnly mode: expected long-form token, got %q", tok)
+	}
+}
+
+// TestFlagNameCompletionSingleDash: `usage -<TAB>` must emit both short aliases
+// (-o, -h) and long forms (--output, --help) — the "-" prefix enables all
+// forms, not long-only.
+func TestFlagNameCompletionSingleDash(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"usage"}, "-")
+	tokens := extractTokens(got)
+
+	// Short aliases must be present.
+	assert.Contains(t, tokens, "-o", "-<TAB> must include short alias -o for --output")
+	assert.Contains(t, tokens, "-h", "-<TAB> must include short alias -h for --help")
+	// Corresponding long forms must also be present.
+	assert.Contains(t, tokens, "--output")
+	assert.Contains(t, tokens, "--help")
+}
+
+// TestFlagNameCompletionAliasPairing pins that -h and --help are correctly
+// paired: -h present under `-<TAB>`, --help present under `--<TAB>`.
+func TestFlagNameCompletionAliasPairing(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	longTokens := extractTokens(runNameLikeCompletion(t, []string{"usage"}, "--"))
+	shortTokens := extractTokens(runNameLikeCompletion(t, []string{"usage"}, "-"))
+
+	assert.Contains(t, longTokens, "--help", "--<TAB> must include --help")
+	assert.NotContains(t, shortTokens, "-help", "-<TAB> must not include -help (wrong prefix)")
+	assert.Contains(t, shortTokens, "-h", "-<TAB> must include -h short alias")
+	assert.NotContains(t, longTokens, "-h", "--<TAB> must not include short -h (longOnly)")
+}
+
+// TestFlagNameCompletionPartialFilter: `usage --clu<TAB>` must include
+// --cluster (prefix matches) and exclude --by (prefix does not match).
+func TestFlagNameCompletionPartialFilter(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"usage"}, "--clu")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "--cluster", "--clu<TAB> must match --cluster")
+	assert.NotContains(t, tokens, "--by", "--clu<TAB> must not include --by")
+	assert.NotContains(t, tokens, "--namespace", "--clu<TAB> must not include --namespace")
+}
+
+// TestFlagNameCompletionConfigSetCompletion is the user-reported reproduction:
+// `config set-completion --<TAB>` must return the set-completion leaf's flags
+// (--network, --timeout) plus --help. Before the fix, output was empty.
+func TestFlagNameCompletionConfigSetCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"config", "set-completion"}, "--")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "--network")
+	assert.Contains(t, tokens, "--timeout")
+	assert.Contains(t, tokens, "--help")
+}
+
+// TestSubcommandCompletionTopLevel: `rancher <TAB>` (cur "") must list
+// top-level subcommands including get, usage, config, inspect, auth.
+// This goes through urfave's default completion for the root command (not
+// universalShellCompleteFunc) and should pass before and after the fix.
+func TestSubcommandCompletionTopLevel(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{}, "")
+	assert.Contains(t, got, "get")
+	assert.Contains(t, got, "usage")
+	assert.Contains(t, got, "config")
+	assert.Contains(t, got, "inspect")
+	assert.Contains(t, got, "auth")
+}
+
+// TestSubcommandCompletionConfigGroup: `config <TAB>` (cur "") must list
+// config subcommands including set-completion.
+// Goes through urfave's default completion for the config group command.
+func TestSubcommandCompletionConfigGroup(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"config"}, "")
+	assert.Contains(t, got, "set-completion")
+}
+
+// TestFlagNameCompletionFormatColonSeparated pins the "name:usage" line format:
+// a flag with non-empty usage must be emitted as "token:usage" (colon-separated),
+// and a subcommand with non-empty usage must be emitted as "name:usage".
+// This guards against format drift that would silently break shell-script parsing.
+func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	// Flag colon format: --output has usage "table|json|yaml|name|template".
+	flagOut := runNameLikeCompletion(t, []string{"usage"}, "--")
+	foundFlagColon := false
+	for _, line := range strings.Split(strings.TrimSpace(flagOut), "\n") {
+		if strings.HasPrefix(line, "--output:") {
+			foundFlagColon = true
+			break
+		}
+	}
+	assert.True(t, foundFlagColon, "flag output must contain a 'name:usage' colon-form line for --output")
+
+	// Subcommand colon format: top-level subcommands like "get" have a usage string.
+	subOut := runNameLikeCompletion(t, []string{}, "")
+	foundSubColon := false
+	for _, line := range strings.Split(strings.TrimSpace(subOut), "\n") {
+		if strings.HasPrefix(line, "get:") || strings.HasPrefix(line, "config:") || strings.HasPrefix(line, "auth:") {
+			foundSubColon = true
+			break
+		}
+	}
+	assert.True(t, foundSubColon, "subcommand output must contain a 'name:usage' colon-form line")
+}
+
+// TestFlagNameCompletionV1ProtocolLeaf verifies that the v1 protocol path is
+// preserved: when no proto sentinel is present (rawProtoV2=false), the
+// SiteNameLike branch delegates to urfave's DefaultCompleteWithFlags, which
+// reads the partial word ("--") from cmd.Args().Slice() — urfave preserves
+// "--" in parsedArgs in shellCompletion mode (command_parse.go) — and emits
+// leaf flag names via printFlagSuggestions.
+func TestFlagNameCompletionV1ProtocolLeaf(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	// v1 shape: no proto sentinel; "--" is a trailing argv token urfave sees.
+	// CaptureArgvForTest without proto sentinel → rawProtoV2=false, rawCurrentWord="".
+	surfacecli.CaptureArgvForTest([]string{"usage", "--", "--generate-shell-completion"})
+	root, err := surfacecli.BuildRoot("test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = io.Discard
+	_ = root.Run(context.Background(), []string{"rancher", "usage", "--", "--generate-shell-completion"})
+	got := out.String()
+
+	// urfave's DefaultCompleteWithFlags (v1 path) reads "--" from parsedArgs and
+	// calls printFlagSuggestions, which emits the leaf's own primary flag names.
+	assert.Contains(t, got, "--cluster", "v1 leaf: --cluster must appear via urfave flag path")
+}
+
+// TestGroupFlagNameCompletionConfigDoubleDash: `config --<TAB>` under v2
+// protocol must emit flag candidates. Before the fix, aliasAwareGroupComplete
+// read an empty lastArg from cmd.Args() (current word stripped), fell into
+// the subcommand branch, and listed config subcommands instead of flags.
+func TestGroupFlagNameCompletionConfigDoubleDash(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"config"}, "--")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "--help", "config --<TAB> must include --help")
+}
+
+// TestGroupFlagNameCompletionGetDoubleDash: `get --<TAB>` under v2 protocol
+// must emit flag candidates (global flags visible at the get group level).
+func TestGroupFlagNameCompletionGetDoubleDash(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "--")
+	tokens := extractTokens(got)
+
+	assert.Contains(t, tokens, "--help", "get --<TAB> must include --help")
+	assert.Contains(t, tokens, "--output", "get --<TAB> must include global --output")
+}
+
+// TestGroupSubcommandCompletionGetKindNamesRegression guards that `get <TAB>`
+// still lists kind names (and aliases) after the group-completion twin fix.
+// This confirms the v2-gated flag branch does NOT overwrite the existing
+// alias-aware subcommand listing for non-flag currentWords.
+func TestGroupSubcommandCompletionGetKindNamesRegression(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get"}, "")
+	assert.Contains(t, got, "pod:", "get <TAB> must still list kind names (regression guard)")
+	assert.Contains(t, got, "po:", "get <TAB> must still list kind aliases (regression guard)")
+}

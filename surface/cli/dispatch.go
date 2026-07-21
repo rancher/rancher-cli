@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -27,9 +28,23 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter)
 		site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
 
 		if site.Kind == SiteNameLike {
-			// v1 path: urfave's DefaultCompleteWithFlags handles flag names
-			// and subcommand names; no change needed.
-			ucli.DefaultCompleteWithFlags(ctx, c)
+			// v2 protocol: rawCurrentWord holds the real current word (stripped
+			// from argv by CaptureArgv). urfave's DefaultCompleteWithFlags reads
+			// from cmd.Args().Slice(), which never sees the stripped word, so it
+			// always falls into the subcommand branch and emits nothing for leaves.
+			// Handle it ourselves when rawProtoV2 is set.
+			//
+			// v1 protocol (rawProtoV2=false): urfave preserves the partial word in
+			// parsedArgs (shellCompletion mode in command_parse.go), so
+			// DefaultCompleteWithFlags reads it correctly from cmd.Args().Slice().
+			if rawProtoV2 {
+				w := c.Root().Writer
+				for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+			} else {
+				ucli.DefaultCompleteWithFlags(ctx, c)
+			}
 			return
 		}
 
@@ -39,6 +54,110 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter)
 			_, _ = fmt.Fprintln(w, cand)
 		}
 	}
+}
+
+// nameLikeCandidates returns completion candidates for SiteNameLike sites,
+// using rawCurrentWord and the invoked command's own flags plus the root's
+// persistent globals. When currentWord starts with "-", flag-name candidates
+// are returned (long-only when currentWord starts with "--"). Otherwise,
+// subcommand-name candidates are returned (a leaf with no subcommands emits
+// nothing). Format matches urfave's own output: "token:usage" when usage is
+// non-empty, bare "token" otherwise.
+func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
+	if strings.HasPrefix(currentWord, "-") {
+		return flagNameCandidates(c, currentWord)
+	}
+	return subcommandCandidates(c, currentWord)
+}
+
+// flagNameCandidates returns flag-name candidates for a "-" or "--" prefixed
+// currentWord, covering ALL names (primary + aliases) of every de-duplicated
+// flag on the command and the root's persistent globals.
+func flagNameCandidates(c *ucli.Command, currentWord string) []string {
+	cur := strings.TrimLeft(currentWord, "-")
+	longOnly := strings.HasPrefix(currentWord, "--")
+
+	var out []string
+	for _, f := range allFlagsDeduped(c) {
+		// Skip hidden bool flags (matches urfave's printFlagSuggestions behavior).
+		if bf, ok := f.(*ucli.BoolFlag); ok && bf.Hidden {
+			continue
+		}
+		usage := ""
+		if dg, ok := f.(ucli.DocGenerationFlag); ok {
+			usage = dg.GetUsage()
+		}
+		for _, name := range f.Names() {
+			count := utf8.RuneCountInString(name)
+			if longOnly && count == 1 {
+				continue // "--" context: omit single-char aliases
+			}
+			prefix := "--"
+			if count == 1 {
+				prefix = "-"
+			}
+			if !strings.HasPrefix(name, cur) || name == cur {
+				continue
+			}
+			token := prefix + name
+			if usage != "" {
+				out = append(out, token+":"+usage)
+			} else {
+				out = append(out, token)
+			}
+		}
+	}
+	return out
+}
+
+// subcommandCandidates returns subcommand-name candidates for a non-flag
+// currentWord, prefix-filtered by currentWord. Hidden subcommands are skipped.
+// A leaf with no subcommands returns nil.
+func subcommandCandidates(c *ucli.Command, currentWord string) []string {
+	var out []string
+	for _, sub := range c.Commands {
+		if sub.Hidden {
+			continue
+		}
+		if !strings.HasPrefix(sub.Name, currentWord) {
+			continue
+		}
+		if sub.Usage != "" {
+			out = append(out, sub.Name+":"+sub.Usage)
+		} else {
+			out = append(out, sub.Name)
+		}
+	}
+	return out
+}
+
+// allFlagsDeduped returns the merged flags from c and c.Root(), de-duplicating
+// by primary name (Names()[0]). Flags from c take precedence over root flags
+// with the same primary name. When c is the root itself, only c.Flags is used.
+func allFlagsDeduped(c *ucli.Command) []ucli.Flag {
+	seen := make(map[string]bool)
+	var out []ucli.Flag
+	addFlag := func(f ucli.Flag) {
+		names := f.Names()
+		if len(names) == 0 {
+			return
+		}
+		primary := names[0]
+		if seen[primary] {
+			return
+		}
+		seen[primary] = true
+		out = append(out, f)
+	}
+	for _, f := range c.Flags {
+		addFlag(f)
+	}
+	if root := c.Root(); root != c {
+		for _, f := range root.Flags {
+			addFlag(f)
+		}
+	}
+	return out
 }
 
 // dispatchSite resolves candidates for the given site through all layers.

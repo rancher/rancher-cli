@@ -226,6 +226,22 @@ var groupUsages = map[string]string{
 // lastArg computation mirrors DefaultCompleteWithFlags' own (unexported)
 // logic exactly, for the non-root case (cmd.parent != nil, cmd.Args().Slice()).
 func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
+	// v2 protocol: rawCurrentWord holds the real current word (stripped from
+	// argv by CaptureArgv). When it starts with "-" the user is completing a
+	// flag name; urfave's DefaultCompleteWithFlags would read the wrong last
+	// arg from cmd.Args().Slice() (the stripped word is absent), falling into
+	// the subcommand branch and listing kind names instead of flags.
+	if rawProtoV2 && strings.HasPrefix(rawCurrentWord, "-") {
+		w := cmd.Root().Writer
+		for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {
+			_, _ = fmt.Fprintln(w, cand)
+		}
+		return
+	}
+	// v1 / subcommand path: derive lastArg from cmd.Args(), which in v1
+	// shellCompletion mode still holds the partial word (preserved by urfave's
+	// parseFlags when it sees "--" and shellCompletion is true). The subcommand
+	// alias listing is also handled here for any non-flag currentWord.
 	args := cmd.Args().Slice()
 	lastArg := ""
 	if n := len(args); n > 1 {
@@ -370,30 +386,37 @@ func BuildRoot(version string) (*ucli.Command, error) {
 
 	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, order, groups)
 
-	// Alias-aware completion override: any verb group whose leaves carry
-	// Aliases (today get/patch/delete, resources/get.go) gets it — `po<TAB>`
-	// should complete toward "pod" AND list "po"/"pods" themselves, where
-	// urfave's own default command-suggestion listing prints only each
-	// leaf's canonical Name. A structural check rather than a name allowlist
-	// so a future aliased verb group is covered by construction, not by
-	// remembering to add a case here. inspect/top fall through untouched:
-	// their leaves carry no Aliases today, and urfave only ever dispatches
-	// an alias actually listed on the command — suggesting one for a group
-	// whose leaves don't have it would offer an invocation that does not
-	// exist.
+	// Install aliasAwareGroupComplete on every verb group (any command that
+	// has subcommands). For groups whose leaves carry Aliases this lists
+	// canonical name + aliases; for others (config, auth, etc.) it lists
+	// canonical names only — same as urfave's default, but with the
+	// v2-protocol flag-name branch that DefaultCompleteWithFlags lacks (so
+	// `config --<TAB>` and `get --<TAB>` both yield flag candidates under v2).
 	for _, cmd := range commandsList {
-		for _, leaf := range cmd.Commands {
-			if len(leaf.Aliases) > 0 {
-				cmd.ShellComplete = aliasAwareGroupComplete
-				break
-			}
+		if len(cmd.Commands) > 0 {
+			cmd.ShellComplete = aliasAwareGroupComplete
 		}
 	}
 
+	rootShellComplete := func(ctx context.Context, c *ucli.Command) {
+		// v2 protocol: use rawCurrentWord (stripped from argv). For v1, fall
+		// back to DefaultCompleteWithFlags which reads os.Args directly for
+		// the root command (cmd.parent == nil path in DefaultCompleteWithFlags).
+		if rawProtoV2 {
+			w := c.Root().Writer
+			for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+				_, _ = fmt.Fprintln(w, cand)
+			}
+			return
+		}
+		ucli.DefaultCompleteWithFlags(ctx, c)
+	}
+
 	root := &ucli.Command{
-		Name:    "rancher",
-		Usage:   "Rancher CLI",
-		Version: version,
+		Name:          "rancher",
+		ShellComplete: rootShellComplete,
+		Usage:         "Rancher CLI",
+		Version:       version,
 		Flags: append([]ucli.Flag{
 			&ucli.BoolFlag{Name: "debug", Usage: "debug logging"},
 			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to rancher config directory",
