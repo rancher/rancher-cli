@@ -14,10 +14,12 @@ import (
 )
 
 // fakeClient fakes the user reads ResolveSubject performs, and the
-// bindings list + create recording grant/revoke use. Get errors can be
+// bindings list + create/delete recording grant/revoke use. Get errors can be
 // forced per name via getErrs; List error via listErr (global) or
 // listErrByGVR (per GVR resource). gets answers Get by "ns/name". When
 // allowCreate is true, Create records the object instead of failing.
+// When allowDelete is true, Delete records the call; deleteErrs forces
+// an error on a real delete (dryRun == false) keyed by object name.
 type fakeClient struct {
 	users   []map[string]any // raw user objects, keyed into List and Get by metadata.name
 	getErrs map[string]error
@@ -32,6 +34,13 @@ type fakeClient struct {
 	createdNS     string
 	createDryRuns []bool
 	allowCreate   bool
+
+	allowDelete   bool
+	deletedNames  []string
+	deletedNS     []string
+	deletedRVs    []string
+	deleteDryRuns []bool
+	deleteErrs    map[string]error // keyed by name; consulted only when dryRun == false
 }
 
 func userObj(id, display, username string, principals ...string) map[string]any {
@@ -105,8 +114,20 @@ func (f *fakeClient) Create(_ context.Context, _ schema.GroupVersionResource, ns
 func (f *fakeClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, fmt.Errorf("unexpected Update")
 }
-func (f *fakeClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
-	return fmt.Errorf("unexpected Delete")
+func (f *fakeClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
+	if !f.allowDelete {
+		return fmt.Errorf("unexpected Delete")
+	}
+	f.deletedNames = append(f.deletedNames, name)
+	f.deletedNS = append(f.deletedNS, ns)
+	f.deletedRVs = append(f.deletedRVs, rv)
+	f.deleteDryRuns = append(f.deleteDryRuns, dryRun)
+	if !dryRun {
+		if err, ok := f.deleteErrs[name]; ok {
+			return err
+		}
+	}
+	return nil
 }
 func (f *fakeClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", fmt.Errorf("unexpected Logs")
