@@ -1,0 +1,33 @@
+# Login through an exec credential helper, prove the STORED credential
+# drives auth (never RANCHER_CLI_TOKEN), log out, verify the helper-held
+# credential is erased. RANCHER_CLI_CREDENTIAL_STORE overrides the
+# harness-wide "file" setting.
+env RANCHER_CLI_CREDENTIAL_STORE=exec:fake
+env FAKEHELPER_MODE=ok
+env FAKEHELPER_STATE=$WORK/helper-state.json
+
+stdin token.txt
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+exists $RANCHER_CLI_CONFIG_DIR/config.yaml
+
+# authenticated call round-trips through the helper
+exec rancher auth check -o json
+jsonquery stdout data.ok true
+jsonquery stdout data.server e2e
+
+# logout erases through the helper and reports it
+exec rancher auth logout e2e -o json
+jsonquery stdout 'data.deletedFrom.e2e.#' 1
+
+# the helper's own state proves the credential is GONE — a helper that
+# reported success without deleting would still fail here. jsonquery decodes
+# the file (never string-match rendered JSON): zero keys in the creds map.
+jsonquery $WORK/helper-state.json 'creds.@keys.#' 0
+
+# post-logout: current context cleared and no credential held anywhere —
+# the same check now fails (nonzero) with the typed context error.
+! exec rancher auth check -o json
+stderr 'context'
+
+-- token.txt --
+e2e:secret

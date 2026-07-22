@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,15 @@ func TestMain(m *testing.M) {
 		// root with the main package is one level up.
 		if out, err := exec.Command("go", "build", "-o", binPath, "..").CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
+		}
+		ext := ""
+		if runtime.GOOS == "windows" {
+			ext = ".exe"
+		}
+		fakeBin := filepath.Join(tmp, "rancher-credential-fake"+ext)
+		if out, err := exec.Command("go", "build", "-o", fakeBin,
+			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput(); err != nil {
+			return fmt.Errorf("building fake credential helper: %v\n%s", err, out)
 		}
 		return nil
 	}
