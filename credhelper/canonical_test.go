@@ -37,6 +37,14 @@ func TestCanonicalServerURLErrors(t *testing.T) {
 	}
 }
 
+func TestCanonicalServerURLEmptyHostname(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"https://:443", "https://:8443", "http://:80", "http://:8080"} {
+		_, err := CanonicalServerURL(in)
+		assert.Error(t, err, "input %q must be rejected: hostname is empty", in)
+	}
+}
+
 func TestValidHelperName(t *testing.T) {
 	t.Parallel()
 	assert.True(t, ValidHelperName("vault"))

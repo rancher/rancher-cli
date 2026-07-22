@@ -28,6 +28,9 @@ func CanonicalServerURL(raw string) (string, error) {
 	if u.Scheme == "" || u.Host == "" {
 		return "", fmt.Errorf("server URL %q must be absolute (scheme://host)", raw)
 	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("server URL %q has no hostname", raw)
+	}
 	scheme := strings.ToLower(u.Scheme)
 	return scheme + "://" + canonicalHostPort(scheme, u.Host), nil
 }

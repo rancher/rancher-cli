@@ -148,7 +148,17 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	serverID := config.CanonicalServerIdentity(server)
+	// Validate and canonicalize the resolved server once: both the definitive
+	// cache key and the subsequent cache write use this single validated identity.
+	serverID, cerr := credhelper.CanonicalServerURL(server)
+	if cerr != nil {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("resolved server %q is not a valid URL: %v", server, cerr))
+	}
+	if scheme, _, ok := strings.Cut(serverID, "://"); !ok || (scheme != "https" && scheme != "http") {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("resolved server %q: unsupported scheme (only http and https are supported)", server))
+	}
 	cacheKey := config.CacheKey(name, serverID, clusterID)
 
 	switch {

@@ -1661,3 +1661,71 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	assert.Greater(t, atomic.LoadInt32(&hits), int32(0),
 		"normalised https://[::1]:port must reach the connection path, not error on a schemeless IPv6 URL")
 }
+
+// TestGetTokenFTPServerReadableConfigRejectsResolvedProbe is the fifth-re-review
+// repro for the post-resolution probe: a --server ftp://host flag bypasses the
+// fast-path validation (which already rejects unsupported schemes), so with a
+// readable config the resolved probe must catch it. The test uses a readable
+// (empty) config so resolveConn succeeds and the second validation point is
+// exercised, proving the seeded cache record is never served.
+func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	ftpID := config.CanonicalServerIdentity("ftp://host")
+	key := config.CacheKey("prod", ftpID, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
+	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "ftp:// server must be rejected at the resolved-probe validation, not served from cache")
+	assert.Contains(t, err.Error(), "ftp://host", "error must name the invalid resolved server")
+}
+
+// TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe is the fifth-re-review
+// repro for the post-resolution probe: a malformed --server https://[::1 (unclosed
+// bracket) bypasses the fast-path (CanonicalServerURL errors → fast path skipped),
+// and with a readable config the resolved probe must catch it. The seeded cache
+// record under the lowercased-fallback identity must not be served.
+func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	malformed := "https://[::1"
+	fallbackID := config.CanonicalServerIdentity(malformed)
+	key := config.CacheKey("prod", fallbackID, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
+	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "malformed --server must be rejected at the resolved-probe validation, not served from cache")
+	assert.Contains(t, err.Error(), malformed, "error must name the invalid resolved server")
+}
+
+// TestGetTokenEmptyHostnameServerIsRejected verifies that a --server value with
+// an empty hostname (https://:443) cannot address a cache entry: the canonicalizer
+// rejects it at the resolved-probe validation and get-token returns an error
+// rather than serving the seeded record.
+func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	emptyHost := "https://:443"
+	id := config.CanonicalServerIdentity(emptyHost)
+	key := config.CacheKey("prod", id, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", id, "c-1"))
+	// Readable (empty) config.
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": emptyHost, "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "https://:443 must not address a cache entry")
+	assert.Contains(t, err.Error(), emptyHost, "error must name the invalid resolved server")
+}
