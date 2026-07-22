@@ -49,6 +49,11 @@ or the config `credentialStore` field says otherwise; headless machines
 file-stored token, while new logins there ask for an explicit
 `RANCHER_CLI_CREDENTIAL_STORE=file` opt-in.
 
+Custom backends plug in as credential helpers: `credentialStore: exec:<name>`
+runs the `rancher-credential-<name>` binary from `PATH` (the shipped
+`rancher-credential-vault` covers HashiCorp Vault and OpenBao). Protocol and
+examples: [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md).
+
 Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
 `rancher/rancher`.
 
@@ -358,7 +363,7 @@ never depends on them.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
 - **Credential store:** OS keychain or a `0600` file. Precedence:
-  `RANCHER_CLI_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto` in config >
+  `RANCHER_CLI_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto|exec:<name>` in config >
   a machine-local `credstore-pin` file > one-time probe. Under `auto` the backend
   is probed once and pinned; the pin is re-probed only at `auth login` and only to
   upgrade file→keychain, and a pinned-but-unusable backend is a hard error (never
@@ -371,7 +376,7 @@ never depends on them.
   | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
   | `RANCHER_CLI_CONTEXT` | `cluster:project` scope (colon-less = cluster only) |
   | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
-  | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` |
+  | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>` |
   | `RANCHER_CLI_CONFIG_DIR` | config directory |
   | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
   | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
