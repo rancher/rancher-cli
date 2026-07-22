@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
@@ -564,19 +566,31 @@ func OpenStore(policy, dir string) (CredStore, error) {
 	return openStoreResolved(EffectivePolicy(policy), dir)
 }
 
+// execHelperName extracts the helper name from an "exec:<name>" policy value.
+func execHelperName(policy string) (string, bool) {
+	name, ok := strings.CutPrefix(policy, "exec:")
+	if !ok {
+		return "", false
+	}
+	return name, true
+}
+
 // checkPolicy returns CS-6's error for an unknown effective policy value p.
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
 // allowlist is defined exactly once — adding a new backend means updating
 // this one allowlist — both paths share it, so they cannot silently diverge.
 func checkPolicy(p string) error {
+	if name, ok := execHelperName(p); ok {
+		if !credhelper.ValidHelperName(name) {
+			return fmt.Errorf("invalid credential helper name %q in %q (must match ^[a-z0-9][a-z0-9-]*$)", name, p)
+		}
+		return nil
+	}
 	switch p {
 	case "file", "keychain", "auto":
 		return nil
 	default:
-		// Format the EFFECTIVE value p, not the cfg argument — when an invalid
-		// RANCHER_CLI_CREDENTIAL_STORE overrides an empty/valid config value, the
-		// error must name what was actually rejected.
-		return fmt.Errorf("unknown credential store %q (valid: keychain, file, auto)", p)
+		return fmt.Errorf("unknown credential store %q (valid: keychain, file, auto, exec:<name>)", p)
 	}
 }
 
@@ -588,6 +602,9 @@ func checkPolicy(p string) error {
 func openStoreResolved(p, dir string) (CredStore, error) {
 	if err := checkPolicy(p); err != nil {
 		return nil, err
+	}
+	if name, ok := execHelperName(p); ok {
+		return newExecStore(name, dir), nil
 	}
 	switch p {
 	case "file":

@@ -551,3 +551,15 @@ func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "plaintext credentials.yaml must not be created")
 }
+
+func TestCheckPolicyExec(t *testing.T) {
+	t.Parallel()
+	// valid
+	_, err := OpenStore("exec:vault", t.TempDir())
+	require.NoError(t, err)
+	// invalid names are hard config errors
+	for _, p := range []string{"exec:", "exec:Va ult", "exec:va/ult", `exec:va\ult`, "exec:-x"} {
+		_, err := OpenStore(p, t.TempDir())
+		assert.Error(t, err, "policy %q", p)
+	}
+}
