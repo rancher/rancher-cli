@@ -9,6 +9,24 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// TestDrainExecCacheForServerHTTPLegacyHostDrains verifies that a legacy cache
+// record stored with an HTTP host:port spelling (HOST:80) is drained when the
+// logout target is http://host. The drain must interpret the stored host using
+// the TARGET's scheme to strip its default port, not always https.
+func TestDrainExecCacheForServerHTTPLegacyHostDrains(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFileStore(dir)
+	legacyKey := CacheKey("kubeuser", "HOST:80", "c-1")
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:80", "c-1"))
+
+	deleted, err := DrainExecCacheForServer(fs, "http://host")
+	require.NoError(t, err)
+	assert.Equal(t, []string{legacyKey}, deleted, "HOST:80 record must drain for http://host target")
+
+	_, _, gerr := fs.GetCachedCred(legacyKey)
+	assert.ErrorIs(t, gerr, ErrNoToken, "the HOST:80 cache entry must be gone")
+}
+
 // TestDrainExecCacheForServerNormalizesLegacyHostSpelling is the impl-review
 // finding-4 repro: a cache record whose Server host was stored with a
 // different-but-equivalent spelling (uppercase, explicit default port) must

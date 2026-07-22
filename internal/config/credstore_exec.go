@@ -178,11 +178,16 @@ func (s *execStore) GetToken(ref ServerRef) (string, error) {
 	if resp.Token == "" {
 		return "", ErrNoToken
 	}
+	s.mu.Lock()
 	if !exp.IsZero() {
-		s.mu.Lock()
 		s.shortLived[key] = cachedShortLived{token: resp.Token, expires: exp}
-		s.mu.Unlock()
+	} else {
+		// Long-lived token (no expiresAt): clear any stale short-lived entry
+		// for this identity so ShortLivedTokenExpiry no longer reports the
+		// previous expiry for the new token.
+		delete(s.shortLived, key)
 	}
+	s.mu.Unlock()
 	return resp.Token, nil
 }
 

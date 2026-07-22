@@ -123,7 +123,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	flagServer := in.String("server")
 	flagKey := ""
 	if name != "" && flagServer != "" {
-		flagKey = config.CacheKey(name, config.ServerHost(flagServer), in.String("cluster"))
+		flagKey = config.CacheKey(name, config.CanonicalServerHost(flagServer), in.String("cluster"))
 		if r, hit := t.cachedResult(flagKey, p); hit {
 			return r, nil
 		}
@@ -135,7 +135,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	serverHost := config.ServerHost(server)
+	serverHost := config.CanonicalServerHost(server)
 	cacheKey := config.CacheKey(name, serverHost, clusterID)
 
 	switch {

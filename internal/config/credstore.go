@@ -556,10 +556,24 @@ func DrainAllExecCache(dir string) ([]string, error) {
 // Server matches serverURL's host — the same host CacheKey embeds when the
 // entry was cached — and returns the deleted entries' keys. Entries cached
 // against a different server are left alone.
+//
+// The target host is canonicalized via CanonicalServerHost. Legacy stored
+// records (entries where Server carries a non-canonical spelling such as
+// HOST:443 or HOST:80) are normalized using the TARGET's scheme, so that a
+// default-port suffix is stripped correctly for each scheme: HOST:80 drains
+// for http://host and HOST:443 drains for https://host, but HOST:80 does NOT
+// drain for https://host (different server).
 func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
-	host := canonicalCacheHost(ServerHost(serverURL))
+	host := CanonicalServerHost(serverURL)
 	if host == "" {
 		return nil, nil
+	}
+	// Derive the target scheme for normalizing legacy stored records whose
+	// Server field carries no scheme. Default to https to preserve
+	// previous behavior for malformed target URLs.
+	scheme := "https"
+	if u, err := url.Parse(serverURL); err == nil && u.Scheme != "" {
+		scheme = strings.ToLower(u.Scheme)
 	}
 	creds, err := store.ListCachedCreds()
 	if err != nil {
@@ -567,7 +581,7 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 	}
 	var deleted []string
 	for _, c := range creds {
-		if canonicalCacheHost(c.Server) != host {
+		if c.Server == "" || CanonicalServerHost(scheme+"://"+c.Server) != host {
 			continue
 		}
 		if err := store.DeleteCachedCred(c.Key); err != nil {
@@ -578,28 +592,26 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 	return deleted, nil
 }
 
-// canonicalCacheHost normalizes a cache-record host (or a drain target's host)
-// for comparison only: lowercased and default-port-stripped, via the shared
-// canonical-URL algorithm. A byte-wise Server comparison would otherwise leave
-// a legacy record spelled HOST:443 undrained against a https://host logout,
-// stranding a live cache entry. ServerHost still GENERATES the stored key; this
-// is applied only when matching, so existing records keep their spelling.
-func canonicalCacheHost(host string) string {
-	if host == "" {
-		return ""
+// CanonicalServerHost derives the canonical cache-identity host from a full
+// server URL: the host lowercased and stripped of its scheme's default port
+// (443 for https, 80 for http). Falls back to a lowercased ServerHost when
+// the URL cannot be canonicalized, so callers always get a non-empty string
+// for a non-empty URL. Use this wherever an exec-credential cache key is
+// generated or compared; use ServerHost for non-cache identity (e.g.
+// kubeconfig entry names).
+func CanonicalServerHost(rawURL string) string {
+	if cu, err := credhelper.CanonicalServerURL(rawURL); err == nil {
+		if u, err := url.Parse(cu); err == nil && u.Host != "" {
+			return u.Host
+		}
 	}
-	if cu, err := credhelper.CanonicalServerURL("https://" + host); err == nil {
-		return strings.TrimPrefix(cu, "https://")
-	}
-	return strings.ToLower(host)
+	return strings.ToLower(ServerHost(rawURL))
 }
 
-// ServerHost reduces a server URL to its host, matching CacheKey's
-// composition; it falls back to the raw string when it does not parse to a
-// host. Shared by every "extract host from a server URL" need (the
-// exec-credential cache key, get-token's cache key, kubeconfig's
-// env-only entry name) so a future host-extraction rule change (e.g. IPv6
-// handling) lands in one place.
+// ServerHost reduces a server URL to its host; falls back to the raw string
+// when it does not parse to a host. Use for non-cache-identity needs (e.g.
+// kubeconfig env-entry naming). For exec-credential cache key generation, use
+// CanonicalServerHost so that equivalent URL spellings produce the same key.
 func ServerHost(raw string) string {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
 		return u.Host

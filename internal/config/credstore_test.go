@@ -563,3 +563,35 @@ func TestCheckPolicyExec(t *testing.T) {
 		assert.Error(t, err, "policy %q", p)
 	}
 }
+
+func TestCanonicalServerHostEquivalentHTTPSSpellingsShareOneKey(t *testing.T) {
+	t.Parallel()
+	// Equivalent HTTPS spellings must produce identical cache-key components so
+	// a credential cached via one spelling is retrievable via the other.
+	spellings := []string{
+		"https://host",
+		"https://host:443",
+		"HTTPS://HOST:443",
+		"HTTPS://host",
+	}
+	want := CanonicalServerHost("https://host")
+	require.NotEmpty(t, want)
+	for _, s := range spellings {
+		assert.Equal(t, want, CanonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
+	}
+}
+
+func TestCanonicalServerHostHTTPEquivalentSpellings(t *testing.T) {
+	t.Parallel()
+	spellings := []string{
+		"http://host",
+		"http://host:80",
+		"HTTP://HOST:80",
+		"HTTP://host",
+	}
+	want := CanonicalServerHost("http://host")
+	require.NotEmpty(t, want)
+	for _, s := range spellings {
+		assert.Equal(t, want, CanonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
+	}
+}

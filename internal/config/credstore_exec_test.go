@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -147,4 +149,41 @@ func TestExecStoreRepeatedlyExpired(t *testing.T) {
 	_, err := st.GetToken(execRef())
 	require.Error(t, err, "one retry then hard error, no loop")
 	assert.Contains(t, err.Error(), "expired")
+}
+
+func TestExecStoreShortLivedToLongLivedTransitionClearsExpiry(t *testing.T) {
+	base := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	exp := base.Add(10 * time.Minute)
+	statePath := useFakeHelper(t, "expiresat")
+	t.Setenv("FAKEHELPER_EXPIRESAT", exp.Format(time.RFC3339))
+	clock := base
+	st := newExecStore("fake", t.TempDir())
+	st.now = func() time.Time { return clock }
+
+	// First get: short-lived token, in-memory expiry recorded.
+	tok, err := st.GetToken(execRef())
+	require.NoError(t, err)
+	assert.Equal(t, "short-lived", tok)
+	_, isShort := st.ShortLivedTokenExpiry(execRef())
+	assert.True(t, isShort, "first get must record short-lived expiry")
+
+	// Advance clock past expiry; seed state file with a long-lived credential;
+	// switch helper mode to "ok" (state-backed, no expiresAt).
+	clock = exp.Add(time.Minute)
+	sf := struct {
+		Creds map[string]string `json:"creds"`
+		Log   []string          `json:"log"`
+	}{Creds: map[string]string{"https://rancher.example.com\nprod": "long-lived"}}
+	sfBytes, jerr := json.Marshal(sf)
+	require.NoError(t, jerr)
+	require.NoError(t, os.WriteFile(statePath, sfBytes, 0o600))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+
+	// Second get: in-memory cache expired; helper returns a long-lived token
+	// (no expiresAt). The stale short-lived entry must be cleared.
+	tok, err = st.GetToken(execRef())
+	require.NoError(t, err)
+	assert.Equal(t, "long-lived", tok)
+	_, isShort = st.ShortLivedTokenExpiry(execRef())
+	assert.False(t, isShort, "after a long-lived refresh, ShortLivedTokenExpiry must return false")
 }
