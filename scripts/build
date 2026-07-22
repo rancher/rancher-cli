@@ -2,4 +2,7 @@
 set -e
 cd "$(dirname "$0")/.."
 VERSION=$(./scripts/version)
-CGO_ENABLED=0 go build -ldflags="-w -s -X main.VERSION=${VERSION}" -o bin/rancher .
+EXT=""
+if [ "$(go env GOOS)" = "windows" ]; then EXT=".exe"; fi
+CGO_ENABLED=0 go build -ldflags="-w -s -X main.VERSION=${VERSION}" -o "bin/rancher${EXT}" .
+CGO_ENABLED=0 go build -ldflags="-w -s" -o "bin/rancher-credential-vault${EXT}" ./cmd/rancher-credential-vault

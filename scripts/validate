@@ -20,3 +20,15 @@ else
 fi
 
 go test -race ./...
+
+# Build contract: both executables, built from current source — never
+# trusting leftovers in bin/.
+./scripts/build
+EXT=""
+if [ "$(go env GOOS)" = "windows" ]; then EXT=".exe"; fi
+for bin in "bin/rancher${EXT}" "bin/rancher-credential-vault${EXT}"; do
+  if [ ! -x "$bin" ]; then
+    echo "build contract violated: $bin missing" >&2
+    exit 1
+  fi
+done
