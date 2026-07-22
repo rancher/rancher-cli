@@ -89,6 +89,7 @@ func TestGrantProjectUserByID(t *testing.T) {
 	require.NotNil(t, exec)
 
 	assert.Equal(t, "projectroletemplatebindings/project-member-*", eff.Target)
+	assert.True(t, eff.Destructive, "grant must be Destructive (requires --yes gate)")
 	assert.Empty(t, eff.Warnings)
 
 	require.NotNil(t, client.created)

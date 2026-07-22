@@ -187,28 +187,76 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 
 func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 	t.Parallel()
-	// No bindings exist at all for the subject. The hint must use
-	// bindKind.Name ("clusterroletemplatebinding"), NOT bindKind.GVR.Resource
-	// ("clusterroletemplatebindings"), because only the singular is a valid
-	// rancher get argument.
-	client := &fakeClient{
-		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
-		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"clusterroletemplatebindings": {},
+	// No bindings exist at all. The hint must use the scoped form so the
+	// operator inspects the same binding set revoke searched, and must use
+	// bindKind.Name (singular), not bindKind.GVR.Resource (plural), because
+	// only the singular is a valid rancher get argument.
+	tests := []struct {
+		name       string
+		input      stubInput
+		listsByGVR map[string]*unstructured.UnstructuredList
+		gets       map[string]*unstructured.Unstructured
+		wantHint   string
+		wantNoPlur string
+	}{
+		{
+			name: "cluster scope scoped hint",
+			input: stubInput{
+				strings: map[string]string{"cluster": "c-x"},
+				args:    []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"clusterroletemplatebindings": {},
+			},
+			wantHint:   "run: rancher get clusterroletemplatebinding --cluster c-x -o json",
+			wantNoPlur: "clusterroletemplatebindings",
+		},
+		{
+			name: "project scope scoped hint",
+			input: stubInput{
+				strings: map[string]string{"project": "p-x", "cluster": "c-x"},
+				args:    []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"projects":                    projectList("p-x"),
+				"projectroletemplatebindings": {},
+			},
+			gets:       map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+			wantHint:   "run: rancher get projectroletemplatebinding --namespace p-x -o json",
+			wantNoPlur: "projectroletemplatebindings",
+		},
+		{
+			name: "global scope unqualified hint",
+			input: stubInput{
+				bools: map[string]bool{"global": true},
+				args:  []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"globalrolebindings": {},
+			},
+			wantHint:   "run: rancher get globalrolebinding -o json",
+			wantNoPlur: "globalrolebindings",
 		},
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &fakeClient{
+				users:      []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+				listsByGVR: tt.listsByGVR,
+				gets:       tt.gets,
+			}
+			cmd := NewRevoke(fakeFactory{c})
 
-	_, _, err := planRevoke(t, cmd, stubInput{
-		strings: map[string]string{"cluster": "c-x"},
-		args:    []string{"u-abc"},
-	})
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Hint, "rancher get clusterroletemplatebinding")
-	assert.NotContains(t, ce.Hint, "rancher get clusterroletemplatebindings")
+			_, _, err := planRevoke(t, cmd, tt.input)
+			require.Error(t, err)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeNotFound, ce.Code)
+			assert.Equal(t, tt.wantHint, ce.Hint)
+			assert.NotContains(t, ce.Hint, tt.wantNoPlur)
+		})
+	}
 }
 
 func TestRevokePartialFailure(t *testing.T) {

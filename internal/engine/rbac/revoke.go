@@ -137,7 +137,17 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			// matches Name/Key/Aliases only, and the plural GVR
 			// resource string is not among them for prtb/crtb — a
 			// GVR-based hint would name a command that doesn't exist.
-			e = e.WithHint("run: rancher get " + bindKind.Name + " -o json")
+			// Scope the hint so it returns the same binding set revoke
+			// was searching; without a scope the get falls back to an
+			// all-namespaces/all-clusters list.
+			switch scope.Kind {
+			case ScopeProject:
+				e = e.WithHint("run: rancher get " + bindKind.Name + " --namespace " + scope.NS + " -o json")
+			case ScopeCluster:
+				e = e.WithHint("run: rancher get " + bindKind.Name + " --cluster " + scope.Cluster + " -o json")
+			default: // ScopeGlobal — no namespace qualifier needed
+				e = e.WithHint("run: rancher get " + bindKind.Name + " -o json")
+			}
 		}
 		return safety.Effect{}, nil, e
 	}
