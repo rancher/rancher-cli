@@ -199,17 +199,42 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 	if err != nil {
 		return err
 	}
-	req.Token = token
-	resp, err := s.invoke(credhelper.VerbStore, req)
-	if err != nil {
-		return err
-	}
-	if resp.Unsupported {
-		return fmt.Errorf("credential helper %s: %w", s.binary(), ErrTokenStoreUnsupported)
-	}
-	return nil
+	entry := ProvenanceEntry{Helper: s.helper, Name: ref.Name, CanonicalURL: req.ServerURL}
+	return withProvenanceLock(s.dir, func(st *provenanceState) error {
+		// Write-ahead: persist the intent before the helper can create a
+		// remote credential. persist-now, then invoke.
+		st.add(entry)
+		if perr := persistProvenance(s.dir, st); perr != nil {
+			return fmt.Errorf("recording credential-helper provenance (token NOT stored): %w", perr)
+		}
+		if execStoreLockedHook != nil {
+			execStoreLockedHook("store")
+		}
+		req.Token = token
+		resp, ierr := s.invoke(credhelper.VerbStore, req)
+		if ierr != nil {
+			return ierr // intent stays: idempotent erase cleans up later
+		}
+		if resp.Unsupported {
+			// Nothing stored — drop the intent, and persist that removal
+			// BEFORE returning the sentinel: were the removal to fail, the
+			// joined result must read as a hard error, never as clean
+			// read-only success (login would warn-and-succeed while a stale
+			// intent re-runs this helper on every future drain).
+			st.remove(entry)
+			if perr := persistProvenance(s.dir, st); perr != nil {
+				return fmt.Errorf("credential helper %s reported unsupported store, but recording that failed: %v", s.binary(), perr)
+			}
+			return fmt.Errorf("credential helper %s: %w", s.binary(), ErrTokenStoreUnsupported)
+		}
+		return nil
+	})
 }
 
+// DeleteToken erases through the helper and clears the matching provenance
+// entry under the same operation-level lock; a helper or persistence failure
+// retains the entry (retry keeps its target). Direct DeleteToken callers get
+// the same guarantee the drain path has.
 func (s *execStore) DeleteToken(ref ServerRef) error {
 	req, err := wireRequest(ref)
 	if err != nil {
@@ -218,9 +243,24 @@ func (s *execStore) DeleteToken(ref ServerRef) error {
 	s.mu.Lock()
 	delete(s.shortLived, req.ServerURL+"\n"+req.Name)
 	s.mu.Unlock()
-	_, err = s.invoke(credhelper.VerbErase, req)
-	return err
+	return withProvenanceLock(s.dir, func(st *provenanceState) error {
+		if execStoreLockedHook != nil {
+			execStoreLockedHook("erase")
+		}
+		if _, ierr := s.invoke(credhelper.VerbErase, req); ierr != nil {
+			return ierr // entry (if any) stays for retry
+		}
+		st.remove(ProvenanceEntry{Helper: s.helper, Name: ref.Name, CanonicalURL: req.ServerURL})
+		return nil
+	})
 }
+
+// execStoreLockedHook is a test-only synchronization point, invoked (when
+// non-nil) while the provenance lock is HELD: "store" fires after the
+// write-ahead intent is persisted and before the helper runs; "erase" fires
+// before the helper erase. It lets tests pin an exact interleaving of
+// concurrent operations. Nil in production.
+var execStoreLockedHook func(op string)
 
 func (s *execStore) GetCachedCred(key string) (string, time.Time, error) {
 	return s.cache.GetCachedCred(key)

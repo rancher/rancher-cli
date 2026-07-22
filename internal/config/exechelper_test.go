@@ -65,8 +65,6 @@ type buildError struct {
 func (b *buildError) Error() string { return "building fake helper: " + b.err.Error() + "\n" + b.out }
 
 // fakeHelperBin returns the compiled fake helper's full path.
-//
-//nolint:unused
 func fakeHelperBin(t *testing.T) string {
 	t.Helper()
 	ext := ""
@@ -125,8 +123,6 @@ func fakeHelperState(t *testing.T, statePath string) (map[string]string, []strin
 // raced against a 5s timer: a blocking pipe read cannot observe a deadline
 // by itself, and a child that never writes would otherwise hang the test.
 // The Cleanup kill unblocks the reader goroutine on every exit path.
-//
-//nolint:unused
 func waitForLocked(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
 	out, err := cmd.StdoutPipe()
