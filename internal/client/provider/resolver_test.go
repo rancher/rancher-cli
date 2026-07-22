@@ -15,6 +15,26 @@ func TestResolveKnownOps(t *testing.T) {
 		assert.Equal(t, safety.TierPublic, b.Tier)
 		assert.Equal(t, safety.Stable, b.Stability)
 	})
+	t.Run("grant is public/beta", func(t *testing.T) {
+		b, ok := r.Resolve("grant")
+		assert.True(t, ok)
+		assert.Equal(t, safety.TierPublic, b.Tier)
+		assert.Equal(t, safety.Beta, b.Stability)
+	})
+	t.Run("revoke is public/beta", func(t *testing.T) {
+		b, ok := r.Resolve("revoke")
+		assert.True(t, ok)
+		assert.Equal(t, safety.TierPublic, b.Tier)
+		assert.Equal(t, safety.Beta, b.Stability)
+	})
+	t.Run("project add-member is not owned by the bespoke resolver", func(t *testing.T) {
+		_, ok := r.Resolve("project add-member")
+		assert.False(t, ok, "project add-member was replaced by 'grant'; no binding must survive here")
+	})
+	t.Run("project remove-member is not owned by the bespoke resolver", func(t *testing.T) {
+		_, ok := r.Resolve("project remove-member")
+		assert.False(t, ok, "project remove-member was replaced by 'revoke'; no binding must survive here")
+	})
 	t.Run("generated ops are not owned by the bespoke resolver", func(t *testing.T) {
 		_, ok := r.Resolve("get cluster")
 		assert.False(t, ok, "get cluster's binding is owned by the kind table now")

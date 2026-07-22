@@ -180,16 +180,17 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   gated like any sensitive-kind patch (`--yes` required, since flipping a
   flag is destructive by policy).
 
-### 10. Project membership and secrets
+### 10. Role grants and secrets
 
-- `rancher project add-member <principal> --project <p> --role <r>` — add a
-  user or (with `--group`) group principal to a project. A user principal is
-  resolved by id or display name; the binding carries both `userName` and
-  `userPrincipalName` from that one resolved user, never a bare principal
-  string (that path lets Rancher mint an orphan user instead).
-- `rancher project remove-member <principal> --project <p>` — deletes every
-  role template binding for that principal in the project (destructive,
-  needs `--yes`).
+- `rancher grant <subject> --role <r> (--project <p> | --cluster <c> | --global)` —
+  grant a role at project, cluster, or global scope. Subject is a user/group
+  name, id, or fully qualified principal. Use `--type group` to force group
+  resolution. Principals with no matching user trigger a provisioning warning;
+  Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
+- `rancher revoke <subject> (--project <p> | --cluster <c> | --global) [--role <r>]` —
+  revoke role binding(s). Omitting --role revokes every role at the scope
+  (destructive, needs `--yes`). Partial failures leave already-removed
+  bindings gone.
 - `rancher get roletemplates -o json` — filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column.

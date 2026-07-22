@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
+	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -64,13 +65,13 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateCluster(d.clients, d.roots) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
-		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddMember(d.clients) }},
-		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveMember(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetCloudCredential(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewRevoke(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return commands.NewKubeconfig(d.dir, d.store, d.clients) }},
@@ -214,7 +215,7 @@ var groupUsages = map[string]string{
 	"patch":   "Patch resources",
 	"delete":  "Delete resources",
 	"inspect": "Inspect related resources together",
-	"project": "Project membership operations",
+	"project": "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a

@@ -3883,6 +3883,62 @@
       "usage": "List vmwarevsphereconfigs or show one"
     },
     {
+      "args": [
+        {
+          "desc": "user/group name, id, or fully qualified principal",
+          "name": "subject",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "examples": [
+        "rancher grant u-abc123 --role project-member --project p-x --cluster c-x --apply --yes",
+        "rancher grant jane --role cluster-owner --cluster c-x --apply --yes",
+        "rancher grant okta_group://gid --role admin --global --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global)",
+          "name": "role",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "project scope: project `id|name`",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "cluster scope, or the cluster qualifying --project",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "desc": "global scope",
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "desc": "subject type; inferred from a fully qualified principal",
+          "enum": [
+            "user",
+            "group"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "name": "grant",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Grant a role to a user or group at project, cluster, or global scope"
+    },
+    {
       "auth": true,
       "commandType": "readOnly",
       "flags": [
@@ -6733,51 +6789,6 @@
     {
       "args": [
         {
-          "name": "principal",
-          "required": true,
-          "type": "string"
-        }
-      ],
-      "auth": true,
-      "commandType": "mutating",
-      "destructive": "true",
-      "examples": [
-        "rancher project add-member u-abc123 --project p-x --role project-member --cluster c-x --apply --yes"
-      ],
-      "flags": [
-        {
-          "desc": "target project `id|name`",
-          "name": "project",
-          "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "project role: project-owner, project-member, read-only, or a roletemplate `id`",
-          "name": "role",
-          "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "cluster `id|name` of the project",
-          "name": "cluster",
-          "type": "string"
-        },
-        {
-          "desc": "treat the subject as a group, not a user",
-          "name": "group",
-          "type": "bool"
-        }
-      ],
-      "name": "project add-member",
-      "network": true,
-      "stability": "beta",
-      "tier": "public",
-      "toolset": "core",
-      "usage": "Add a member to a project via a role template binding"
-    },
-    {
-      "args": [
-        {
           "name": "namespace",
           "required": true,
           "type": "string"
@@ -6812,45 +6823,6 @@
     {
       "args": [
         {
-          "name": "principal",
-          "required": true,
-          "type": "string"
-        }
-      ],
-      "auth": true,
-      "commandType": "mutating",
-      "destructive": "true",
-      "examples": [
-        "rancher project remove-member u-abc123 --project p-x --cluster c-x --apply --yes"
-      ],
-      "flags": [
-        {
-          "desc": "target project `id|name`",
-          "name": "project",
-          "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "cluster `id|name` of the project",
-          "name": "cluster",
-          "type": "string"
-        },
-        {
-          "desc": "treat the subject as a group, not a user",
-          "name": "group",
-          "type": "bool"
-        }
-      ],
-      "name": "project remove-member",
-      "network": true,
-      "stability": "beta",
-      "tier": "public",
-      "toolset": "core",
-      "usage": "Remove a member from a project by deleting their role template binding(s)"
-    },
-    {
-      "args": [
-        {
           "name": "namespace",
           "required": true,
           "type": "string"
@@ -6881,6 +6853,60 @@
       "tier": "public",
       "toolset": "core",
       "usage": "Remove a namespace from a project"
+    },
+    {
+      "args": [
+        {
+          "desc": "user/group name, id, or fully qualified principal",
+          "name": "subject",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "examples": [
+        "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
+        "rancher revoke jane --role cluster-owner --cluster c-x --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "revoke only this role; absent revokes every role at the scope",
+          "name": "role",
+          "type": "string"
+        },
+        {
+          "desc": "project scope: project `id|name`",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "cluster scope, or the cluster qualifying --project",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "desc": "global scope",
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "desc": "subject type; inferred from a fully qualified principal",
+          "enum": [
+            "user",
+            "group"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "name": "revoke",
+      "network": true,
+      "stability": "beta",
+      "tier": "public",
+      "toolset": "core",
+      "usage": "Revoke a user's or group's role binding(s) at project, cluster, or global scope"
     },
     {
       "args": [

@@ -246,3 +246,89 @@ func TestCreateProjectQuotaMalformedPairIsValidation(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	}
 }
+
+// memberClient fakes the pieces create-secret exercises: List (projects,
+// keyed by GVR resource), Get (the project object, for BackingNamespace),
+// Create (recorded), and Delete (recorded per call).
+type memberClient struct {
+	projects *unstructured.UnstructuredList
+	users    *unstructured.UnstructuredList
+	prtbs    *unstructured.UnstructuredList
+	// gets answers Get by "namespace/name" key.
+	gets map[string]*unstructured.Unstructured
+
+	created       *unstructured.Unstructured
+	createdNS     string
+	createDryRuns []bool
+
+	deletedNames  []string
+	deletedNS     []string
+	deletedRVs    []string
+	deleteDryRuns []bool
+}
+
+func (m *memberClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if obj, ok := m.gets[ns+"/"+name]; ok {
+		return obj, nil
+	}
+	return nil, clierr.New(clierr.CodeNotFound, "not found: "+name)
+}
+
+func (m *memberClient) List(_ context.Context, gvr schema.GroupVersionResource, _, _ string) (*unstructured.UnstructuredList, error) {
+	switch gvr.Resource {
+	case "projects":
+		if m.projects != nil {
+			return m.projects, nil
+		}
+	case "users":
+		if m.users != nil {
+			return m.users, nil
+		}
+	case "projectroletemplatebindings":
+		if m.prtbs != nil {
+			return m.prtbs, nil
+		}
+	}
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (m *memberClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	m.created, m.createdNS = obj, ns
+	m.createDryRuns = append(m.createDryRuns, dryRun)
+	return obj, nil
+}
+
+func (m *memberClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+
+func (m *memberClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
+	m.deletedNames = append(m.deletedNames, name)
+	m.deletedNS = append(m.deletedNS, ns)
+	m.deletedRVs = append(m.deletedRVs, rv)
+	m.deleteDryRuns = append(m.deleteDryRuns, dryRun)
+	return nil
+}
+
+func (m *memberClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
+	return "", nil
+}
+
+// memberIn is a runtime.Input fake supporting bool flags. The shared in type
+// hardcodes Bool to false; secret_test.go needs a working --project-scoped flag.
+type memberIn struct {
+	s map[string]string
+	b map[string]bool
+	a []string
+}
+
+func (i memberIn) String(k string) string { return i.s[k] }
+func (i memberIn) Bool(k string) bool     { return i.b[k] }
+func (i memberIn) Args() []string         { return i.a }
+
+func planMember(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	t.Helper()
+	mc, ok := cmd.(runtime.MutatingCommand)
+	require.True(t, ok, "member commands must be MutatingCommand")
+	return mc.Plan(context.Background(), input)
+}

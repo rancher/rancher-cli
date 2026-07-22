@@ -112,6 +112,7 @@ graph TD
     cli --> observe
     cli --> resources
     cli --> inspect
+    cli --> rbac
     cli --> provider
     cli --> kube
     cli --> config
