@@ -123,7 +123,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	flagServer := in.String("server")
 	flagKey := ""
 	if name != "" && flagServer != "" {
-		flagKey = config.CacheKey(name, config.CanonicalServerHost(flagServer), in.String("cluster"))
+		flagKey = config.CacheKey(name, config.CanonicalServerIdentity(flagServer), in.String("cluster"))
 		if r, hit := t.cachedResult(flagKey, p); hit {
 			return r, nil
 		}
@@ -135,8 +135,8 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	serverHost := config.CanonicalServerHost(server)
-	cacheKey := config.CacheKey(name, serverHost, clusterID)
+	serverID := config.CanonicalServerIdentity(server)
+	cacheKey := config.CacheKey(name, serverID, clusterID)
 
 	switch {
 	case name == "":
@@ -197,7 +197,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 			// fallback is memory-only by contract — never write it to disk.
 			p.Notice("not caching: the credential helper serves this token from memory only")
 		default:
-			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, name, serverHost, clusterID); cacheErr != nil {
+			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, name, serverID, clusterID); cacheErr != nil {
 				p.Notice("cache write failed: " + cacheErr.Error())
 			}
 		}

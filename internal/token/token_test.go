@@ -144,7 +144,7 @@ func TestGetTokenServerRequired(t *testing.T) {
 func TestGetTokenCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "r.ex", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", ""))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(context.Background(),
@@ -159,8 +159,8 @@ func TestGetTokenCacheHit(t *testing.T) {
 func TestGetTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	key := config.CacheKey("prod", "r.ex", "c-1")
-	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
+	key := config.CacheKey("prod", "https://r.ex", "c-1")
+	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
 	// A broken config.yaml must not block a warm cache hit when the connection
 	// is fully specified by flags (finding 3).
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
@@ -178,8 +178,8 @@ func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	// Same --name cached against two servers must not collide.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r1.example.com", ""), "tok-r1", time.Now().Add(time.Hour), "prod", "r1.example.com", ""))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r2.example.com", ""), "tok-r2", time.Now().Add(time.Hour), "prod", "r2.example.com", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r1.example.com", ""), "tok-r1", time.Now().Add(time.Hour), "prod", "https://r1.example.com", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r2.example.com", ""), "tok-r2", time.Now().Add(time.Hour), "prod", "https://r2.example.com", ""))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(context.Background(),
@@ -266,7 +266,7 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "stored-login-token", cred.Status.Token)
 
-	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
 	require.NoError(t, cerr, "the legacy fallback must be cached, not treated as zero-expiry")
 	assert.WithinDuration(t, time.Now().Add(legacyMintTTL), expiry, time.Minute)
 }
@@ -363,7 +363,7 @@ func TestGetTokenCachesMintedExpiry(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 
-	_, gotExpiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	_, gotExpiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
 	require.NoError(t, cerr, "a token with a real expiry must be cached")
 	assert.WithinDuration(t, time.Now().Add(time.Hour), gotExpiry, time.Minute)
 }
@@ -399,7 +399,7 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/minted:secret", cred.Status.Token, "the token is still usable for this call")
 
-	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
 	assert.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
 	assert.Contains(t, notices.String(), "not caching")
 }
@@ -989,7 +989,7 @@ func TestGetTokenCacheHitExtToken(t *testing.T) {
 	// cache byte-for-byte — the ext/ prefix is opaque data (EXT-3).
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r.ex", ""), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "r.ex", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", ""), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", ""))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(context.Background(),

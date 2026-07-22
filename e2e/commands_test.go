@@ -87,13 +87,14 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	name, cluster := args[0], args[1]
 
-	u, err := url.Parse(ts.Getenv("TEST_RANCHER_URL"))
-	if err != nil {
+	rawURL := ts.Getenv("TEST_RANCHER_URL")
+	if _, err := url.Parse(rawURL); err != nil {
 		ts.Fatalf("seedexeccache: parsing TEST_RANCHER_URL: %v", err)
 	}
+	srvID := config.CanonicalServerIdentity(rawURL)
 	store := config.NewFileStore(ts.Getenv("RANCHER_CLI_CONFIG_DIR"))
-	key := config.CacheKey(name, u.Host, cluster)
-	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, u.Host, cluster); err != nil {
+	key := config.CacheKey(name, srvID, cluster)
+	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, srvID, cluster); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)
 	}
 }

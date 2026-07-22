@@ -564,6 +564,46 @@ func TestCheckPolicyExec(t *testing.T) {
 	}
 }
 
+func TestCanonicalServerIdentityHTTPSEquivalentSpellingsShareOneIdentity(t *testing.T) {
+	t.Parallel()
+	// Equivalent HTTPS spellings must produce the same full canonical identity.
+	spellings := []string{
+		"https://host",
+		"https://host:443",
+		"HTTPS://HOST:443",
+		"HTTPS://host",
+	}
+	want := CanonicalServerIdentity("https://host")
+	require.NotEmpty(t, want)
+	for _, s := range spellings {
+		assert.Equal(t, want, CanonicalServerIdentity(s), "spelling %q must canonicalize to %q", s, want)
+	}
+}
+
+func TestCanonicalServerIdentityHTTPEquivalentSpellingsShareOneIdentity(t *testing.T) {
+	t.Parallel()
+	spellings := []string{
+		"http://host",
+		"http://host:80",
+		"HTTP://HOST:80",
+		"HTTP://host",
+	}
+	want := CanonicalServerIdentity("http://host")
+	require.NotEmpty(t, want)
+	for _, s := range spellings {
+		assert.Equal(t, want, CanonicalServerIdentity(s), "spelling %q must canonicalize to %q", s, want)
+	}
+}
+
+func TestCanonicalServerIdentityHTTPAndHTTPSAreDistinct(t *testing.T) {
+	t.Parallel()
+	// The P1 finding: same host, different scheme — must produce DIFFERENT identities.
+	assert.NotEqual(t, CanonicalServerIdentity("http://host"), CanonicalServerIdentity("https://host"),
+		"http and https identities must be distinct")
+	assert.NotEqual(t, CanonicalServerIdentity("http://host:80"), CanonicalServerIdentity("https://host:443"),
+		"equivalent http and https spellings must still differ in identity")
+}
+
 func TestCanonicalServerHostEquivalentHTTPSSpellingsShareOneKey(t *testing.T) {
 	t.Parallel()
 	// Equivalent HTTPS spellings must produce identical cache-key components so

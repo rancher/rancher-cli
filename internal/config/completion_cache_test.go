@@ -20,14 +20,14 @@ func TestReadOnlyCachedCredsNeverWrites(t *testing.T) {
 
 	// Write one live and one expired entry.
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("live", "rancher.example.com", "c-abc"),
+		config.CacheKey("live", "https://rancher.example.com", "c-abc"),
 		"token-live", time.Now().Add(time.Hour),
-		"live", "rancher.example.com", "c-abc",
+		"live", "https://rancher.example.com", "c-abc",
 	))
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("expired", "rancher.example.com", "c-abc"),
+		config.CacheKey("expired", "https://rancher.example.com", "c-abc"),
 		"token-expired", time.Now().Add(-time.Hour),
-		"expired", "rancher.example.com", "c-abc",
+		"expired", "https://rancher.example.com", "c-abc",
 	))
 
 	infos, err := config.ReadOnlyCachedCreds(dir)
@@ -51,12 +51,12 @@ func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
 	store := config.NewFileStore(dir)
 
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("ctx", "rancher.example.com", "c-abc"),
+		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"my-token", time.Now().Add(time.Hour),
-		"ctx", "rancher.example.com", "c-abc",
+		"ctx", "https://rancher.example.com", "c-abc",
 	))
 
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "rancher.example.com", "c-abc")
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc")
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "ctx", entries[0].Name)
@@ -69,12 +69,12 @@ func TestReadOnlyCachedCredsForClusterWithTokensExpiredExcluded(t *testing.T) {
 	store := config.NewFileStore(dir)
 
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("ctx", "rancher.example.com", "c-abc"),
+		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"expired-tok", time.Now().Add(-time.Hour),
-		"ctx", "rancher.example.com", "c-abc",
+		"ctx", "https://rancher.example.com", "c-abc",
 	))
 
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "rancher.example.com", "c-abc")
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc")
 	require.NoError(t, err)
 	assert.Empty(t, entries, "expired entries must be excluded")
 }

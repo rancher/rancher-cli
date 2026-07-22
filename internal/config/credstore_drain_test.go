@@ -13,6 +13,70 @@ import (
 // record stored with an HTTP host:port spelling (HOST:80) is drained when the
 // logout target is http://host. The drain must interpret the stored host using
 // the TARGET's scheme to strip its default port, not always https.
+// TestHTTPAndHTTPSServersHaveDistinctCacheIdentity is the P1 regression test
+// for the scheme-collapse finding: credentials cached for http://host and
+// https://host on the same --name/--cluster must remain fully isolated.
+//
+// (a) CanonicalServerIdentity produces two distinct values.
+// (b) The two entries are stored under different keys.
+// (c) Draining http://host removes only its entry; draining https://host
+//
+//	removes only its entry.
+//
+// (d) A legacy host-only record (no scheme) still drains when either scheme
+//
+//	is targeted.
+func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fs := NewFileStore(dir)
+
+	httpID := CanonicalServerIdentity("http://samehost")
+	httpsID := CanonicalServerIdentity("https://samehost")
+
+	// (a) Distinct identities.
+	if httpID == httpsID {
+		t.Fatalf("http and https identity must differ: both returned %q", httpID)
+	}
+
+	httpKey := CacheKey("prod", httpID, "c-1")
+	httpsKey := CacheKey("prod", httpsID, "c-1")
+
+	// (b) Distinct cache keys.
+	if httpKey == httpsKey {
+		t.Fatalf("http and https cache keys must differ: both are %q", httpKey)
+	}
+
+	require.NoError(t, fs.SetCachedCred(httpKey, "tok-http", time.Now().Add(time.Hour), "prod", httpID, "c-1"))
+	require.NoError(t, fs.SetCachedCred(httpsKey, "tok-https", time.Now().Add(time.Hour), "prod", httpsID, "c-1"))
+
+	// (d) Pre-seed a legacy host-only record (no scheme) to verify it drains.
+	legacyKey := CacheKey("prod", "SAMEHOST:80", "c-1")
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok-legacy", time.Now().Add(time.Hour), "prod", "SAMEHOST:80", "c-1"))
+
+	// (c) Draining http://samehost removes only the HTTP entry (and the legacy).
+	deleted, err := DrainExecCacheForServer(fs, "http://samehost")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{httpKey, legacyKey}, deleted,
+		"http drain must remove the http entry and the legacy record")
+
+	_, _, err = fs.GetCachedCred(httpKey)
+	assert.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http drain")
+
+	tok, _, err := fs.GetCachedCred(httpsKey)
+	require.NoError(t, err)
+	assert.Equal(t, "tok-https", tok, "https entry must survive the http drain")
+
+	// (c) Draining https://samehost now removes only the HTTPS entry.
+	deleted, err = DrainExecCacheForServer(fs, "https://samehost")
+	require.NoError(t, err)
+	assert.Equal(t, []string{httpsKey}, deleted,
+		"https drain must remove only the https entry")
+
+	_, _, err = fs.GetCachedCred(httpsKey)
+	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https drain")
+}
+
 func TestDrainExecCacheForServerHTTPLegacyHostDrains(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)

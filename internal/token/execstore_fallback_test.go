@@ -83,7 +83,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	assert.False(t, cred.Status.ExpirationTimestamp.After(time.Now().Add(legacyMintTTL)),
 		"a short-lived helper token must never be extended to the legacy TTL")
 
-	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.ServerHost(srv.URL), ""))
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
 	assert.ErrorIs(t, cerr, config.ErrNoToken, "a memory-only short-lived helper token must not reach the disk cache")
 }
 

@@ -37,9 +37,9 @@ func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
 	// No env token, no file store token (CredentialStore not set to "file").
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("k8s-ctx", "rancher.example.com", "c-abc"),
+		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 		"exec-token", time.Now().Add(time.Hour),
-		"k8s-ctx", "rancher.example.com", "c-abc",
+		"k8s-ctx", "https://rancher.example.com", "c-abc",
 	))
 	cfg := &config.Config{
 		CurrentContext: "ctx",
@@ -62,14 +62,14 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 	store := config.NewFileStore(dir)
 	// Two entries for the same server+cluster → ambiguous.
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("ctx-a", "rancher.example.com", "c-abc"),
+		config.CacheKey("ctx-a", "https://rancher.example.com", "c-abc"),
 		"tok-a", time.Now().Add(time.Hour),
-		"ctx-a", "rancher.example.com", "c-abc",
+		"ctx-a", "https://rancher.example.com", "c-abc",
 	))
 	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("ctx-b", "rancher.example.com", "c-abc"),
+		config.CacheKey("ctx-b", "https://rancher.example.com", "c-abc"),
 		"tok-b", time.Now().Add(time.Hour),
-		"ctx-b", "rancher.example.com", "c-abc",
+		"ctx-b", "https://rancher.example.com", "c-abc",
 	))
 	cfg := &config.Config{
 		CurrentContext: "ctx",

@@ -137,10 +137,10 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 	if clusterID == "" {
 		return TokenCapability{}
 	}
-	serverHost := config.CanonicalServerHost(conn.ServerURL)
+	serverID := config.CanonicalServerIdentity(conn.ServerURL)
 	// Finding 8: use WithTokens variant to propagate the token through the
 	// first file read; avoids a second parse of token-cache.yaml.
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, clusterID)
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID)
 	if err != nil || len(entries) != 1 {
 		// Missing, error, or ambiguous (AC-6a: multiple principals → skip).
 		return TokenCapability{}
