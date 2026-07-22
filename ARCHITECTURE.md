@@ -195,6 +195,7 @@ graph TD
     rbac --> kinds
     rbac --> projects
     rbac --> runtime
+    rbac --> safety
     rbac --> clierr
 
     provider --> engine

@@ -13,13 +13,25 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// fakeClient fakes the user reads ResolveSubject performs. Get errors can
-// be forced per name via getErrs; List error via listErr.
+// fakeClient fakes the user reads ResolveSubject performs, and the
+// bindings list + create recording grant/revoke use. Get errors can be
+// forced per name via getErrs; List error via listErr (global) or
+// listErrByGVR (per GVR resource). gets answers Get by "ns/name". When
+// allowCreate is true, Create records the object instead of failing.
 type fakeClient struct {
 	users   []map[string]any // raw user objects, keyed into List and Get by metadata.name
 	getErrs map[string]error
 	listErr error
 	lists   int
+
+	listsByGVR   map[string]*unstructured.UnstructuredList // keyed by gvr.Resource
+	listErrByGVR map[string]error                          // keyed by gvr.Resource; overrides listErr for that GVR
+	gets         map[string]*unstructured.Unstructured     // keyed by "ns/name"
+
+	created       *unstructured.Unstructured
+	createdNS     string
+	createDryRuns []bool
+	allowCreate   bool
 }
 
 func userObj(id, display, username string, principals ...string) map[string]any {
@@ -40,9 +52,14 @@ func userObj(id, display, username string, principals ...string) map[string]any 
 	return obj
 }
 
-func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _, name string) (*unstructured.Unstructured, error) {
+func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	if err, ok := f.getErrs[name]; ok {
 		return nil, err
+	}
+	if f.gets != nil {
+		if obj, ok := f.gets[ns+"/"+name]; ok {
+			return obj, nil
+		}
 	}
 	for _, u := range f.users {
 		if u["metadata"].(map[string]any)["name"] == name {
@@ -52,11 +69,24 @@ func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _, na
 	return nil, clierr.New(clierr.CodeNotFound, "not found: "+name)
 }
 
-func (f *fakeClient) List(_ context.Context, _ schema.GroupVersionResource, _, _ string) (*unstructured.UnstructuredList, error) {
+func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, _, _ string) (*unstructured.UnstructuredList, error) {
 	f.lists++
+	// Per-GVR error takes precedence over global listErr.
+	if f.listErrByGVR != nil {
+		if err, ok := f.listErrByGVR[gvr.Resource]; ok {
+			return nil, err
+		}
+	}
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
+	// Per-GVR data (bindings, projects, …).
+	if f.listsByGVR != nil {
+		if list, ok := f.listsByGVR[gvr.Resource]; ok {
+			return list, nil
+		}
+	}
+	// Default: return users (backwards compatibility for resolve tests).
 	out := &unstructured.UnstructuredList{}
 	for _, u := range f.users {
 		out.Items = append(out.Items, unstructured.Unstructured{Object: u})
@@ -64,8 +94,13 @@ func (f *fakeClient) List(_ context.Context, _ schema.GroupVersionResource, _, _
 	return out, nil
 }
 
-func (f *fakeClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, fmt.Errorf("unexpected Create")
+func (f *fakeClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if !f.allowCreate {
+		return nil, fmt.Errorf("unexpected Create")
+	}
+	f.created, f.createdNS = obj, ns
+	f.createDryRuns = append(f.createDryRuns, dryRun)
+	return obj, nil
 }
 func (f *fakeClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, fmt.Errorf("unexpected Update")

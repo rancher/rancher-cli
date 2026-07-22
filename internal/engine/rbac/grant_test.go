@@ -1,0 +1,410 @@
+package rbac
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+func prtbObj(name, userName, userPrincipal, groupPrincipal, role string) map[string]any {
+	obj := map[string]any{
+		"apiVersion":       "management.cattle.io/v3",
+		"kind":             "ProjectRoleTemplateBinding",
+		"metadata":         map[string]any{"name": name, "namespace": "p-ns"},
+		"roleTemplateName": role,
+	}
+	if userName != "" {
+		obj["userName"] = userName
+	}
+	if userPrincipal != "" {
+		obj["userPrincipalName"] = userPrincipal
+	}
+	if groupPrincipal != "" {
+		obj["groupPrincipalName"] = groupPrincipal
+	}
+	return obj
+}
+
+func diffPaths(entries []safety.DiffEntry) []string {
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// projectList builds a one-item projects list for the given project id so
+// ResolveProject can find it by id.
+func projectList(id string) *unstructured.UnstructuredList {
+	return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		{Object: map[string]any{
+			"metadata": map[string]any{"name": id},
+			"spec":     map[string]any{"displayName": id},
+		}},
+	}}
+}
+
+// projectGetObj is the project object returned by BackingNamespace (no
+// backingNamespace field → falls back to the project id as the namespace).
+func projectGetObj(id string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": id},
+	}}
+}
+
+func planGrant(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	t.Helper()
+	mc, ok := cmd.(runtime.MutatingCommand)
+	require.True(t, ok, "grant must be MutatingCommand")
+	return mc.Plan(context.Background(), in)
+}
+
+func TestGrantProjectUserByID(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets:  map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects":                    projectList("p-x"),
+			"projectroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	assert.Equal(t, "projectroletemplatebindings/project-member-*", eff.Target)
+	assert.Empty(t, eff.Warnings)
+
+	require.NotNil(t, client.created)
+	un, _, _ := unstructured.NestedString(client.created.Object, "userName")
+	assert.Equal(t, "u-abc", un)
+	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.Equal(t, "local://u-abc", upn)
+	rtn, _, _ := unstructured.NestedString(client.created.Object, "roleTemplateName")
+	assert.Equal(t, "project-member", rtn)
+	pn, _, _ := unstructured.NestedString(client.created.Object, "projectName")
+	assert.Equal(t, "c-x:p-x", pn)
+	gn, _, _ := unstructured.NestedString(client.created.Object, "metadata", "generateName")
+	assert.Equal(t, "project-member-", gn)
+
+	assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	for _, e := range eff.Diff {
+		assert.Nil(t, e.From)
+	}
+	diffByPath := map[string]any{}
+	for _, e := range eff.Diff {
+		diffByPath[e.Path] = e.To
+	}
+	assert.Equal(t, "u-abc", diffByPath["/userName"])
+	assert.Equal(t, "local://u-abc", diffByPath["/userPrincipalName"])
+	assert.Equal(t, "project-member", diffByPath["/roleTemplateName"])
+	assert.Equal(t, "c-x:p-x", diffByPath["/projectName"])
+}
+
+func TestGrantClusterScope(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"clusterroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	assert.Equal(t, "clusterroletemplatebindings/cluster-owner-*", eff.Target)
+	assert.Empty(t, eff.Warnings)
+
+	require.NotNil(t, client.created)
+	k, _, _ := unstructured.NestedString(client.created.Object, "kind")
+	assert.Equal(t, "ClusterRoleTemplateBinding", k)
+	cn, _, _ := unstructured.NestedString(client.created.Object, "clusterName")
+	assert.Equal(t, "c-x", cn)
+	ns, _, _ := unstructured.NestedString(client.created.Object, "metadata", "namespace")
+	assert.Equal(t, "c-x", ns)
+
+	assert.Equal(t, []string{"/clusterName", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	for _, e := range eff.Diff {
+		assert.Nil(t, e.From)
+	}
+}
+
+func TestGrantGlobalScope(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"globalrolebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		bools:   map[string]bool{"global": true},
+		strings: map[string]string{"role": "admin"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	assert.Equal(t, "globalrolebindings/grb-*", eff.Target)
+	assert.Empty(t, eff.Warnings)
+
+	require.NotNil(t, client.created)
+	k, _, _ := unstructured.NestedString(client.created.Object, "kind")
+	assert.Equal(t, "GlobalRoleBinding", k)
+	grn, _, _ := unstructured.NestedString(client.created.Object, "globalRoleName")
+	assert.Equal(t, "admin", grn)
+	gn, _, _ := unstructured.NestedString(client.created.Object, "metadata", "generateName")
+	assert.Equal(t, "grb-", gn)
+	_, nsFound, _ := unstructured.NestedString(client.created.Object, "metadata", "namespace")
+	assert.False(t, nsFound, "global scope: namespace must be absent from the binding object")
+
+	assert.Equal(t, []string{"/globalRoleName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	for _, e := range eff.Diff {
+		assert.Nil(t, e.From)
+	}
+}
+
+func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		// No users: the principal will not resolve to an existing user
+		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects":                    projectList("p-x"),
+			"projectroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"okta_user://ghost"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	require.NotNil(t, client.created)
+	_, unFound, _ := unstructured.NestedString(client.created.Object, "userName")
+	assert.False(t, unFound, "provisioning path: userName must be absent from the created object")
+	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.Equal(t, "okta_user://ghost", upn)
+
+	assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	for _, e := range eff.Diff {
+		assert.Nil(t, e.From)
+	}
+
+	require.Len(t, eff.Warnings, 1)
+	assert.Contains(t, eff.Warnings[0], ProvisionedUserID("okta_user://ghost"))
+}
+
+func TestGrantGroupPassthrough(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects":                    projectList("p-x"),
+			"projectroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"okta_group://y"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	require.NotNil(t, client.created)
+	gp, _, _ := unstructured.NestedString(client.created.Object, "groupPrincipalName")
+	assert.Equal(t, "okta_group://y", gp)
+	_, unFound, _ := unstructured.NestedString(client.created.Object, "userName")
+	assert.False(t, unFound, "group path: userName must be absent")
+	_, upnFound, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.False(t, upnFound, "group path: userPrincipalName must be absent")
+
+	assert.Equal(t, []string{"/groupPrincipalName", "/projectName", "/roleTemplateName"}, diffPaths(eff.Diff))
+	for _, e := range eff.Diff {
+		assert.Nil(t, e.From)
+	}
+}
+
+func TestGrantDuplicateConflict(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		input        stubInput
+		listsByGVR   map[string]*unstructured.UnstructuredList
+		gets         map[string]*unstructured.Unstructured
+		conflictName string
+	}{
+		{
+			name: "project scope",
+			input: stubInput{
+				strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+				args:    []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"projects": projectList("p-x"),
+				"projectroletemplatebindings": {Items: []unstructured.Unstructured{
+					{Object: prtbObj("pm-1", "u-abc", "", "", "project-member")},
+				}},
+			},
+			gets:         map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+			conflictName: "pm-1",
+		},
+		{
+			name: "cluster scope",
+			input: stubInput{
+				strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},
+				args:    []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"clusterroletemplatebindings": {Items: []unstructured.Unstructured{
+					{Object: map[string]any{
+						"metadata":         map[string]any{"name": "co-1", "namespace": "c-x"},
+						"userName":         "u-abc",
+						"roleTemplateName": "cluster-owner",
+					}},
+				}},
+			},
+			conflictName: "co-1",
+		},
+		{
+			name: "global scope",
+			input: stubInput{
+				bools:   map[string]bool{"global": true},
+				strings: map[string]string{"role": "admin"},
+				args:    []string{"u-abc"},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"globalrolebindings": {Items: []unstructured.Unstructured{
+					{Object: map[string]any{
+						"metadata":       map[string]any{"name": "grb-1"},
+						"userName":       "u-abc",
+						"globalRoleName": "admin",
+					}},
+				}},
+			},
+			conflictName: "grb-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client := &fakeClient{
+				users:      []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+				listsByGVR: tt.listsByGVR,
+				gets:       tt.gets,
+			}
+			cmd := NewGrant(fakeFactory{client})
+
+			_, _, err := planGrant(t, cmd, tt.input)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeConflict, ce.Code)
+			assert.Contains(t, ce.Message, tt.conflictName)
+		})
+	}
+}
+
+func TestGrantDuplicateAliasConflict(t *testing.T) {
+	t.Parallel()
+	// User has BOTH principals. Bare-id resolution picks local://u-abc as
+	// rs.Principal; the existing binding is principal-only under the OTHER
+	// alias (okta_user://alice, userName absent). Grant by bare id u-abc must
+	// still conflict because bindingMatchesSubject consults rs.PrincipalIDs.
+	client := &fakeClient{
+		users: []map[string]any{
+			userObj("u-abc", "Alice", "alice", "local://u-abc", "okta_user://alice"),
+		},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects": projectList("p-x"),
+			"projectroletemplatebindings": {Items: []unstructured.Unstructured{
+				{Object: prtbObj("pm-1", "", "okta_user://alice", "", "project-member")},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Contains(t, ce.Message, "pm-1")
+}
+
+func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
+	t.Parallel()
+	forbidden := clierr.New(clierr.CodeRBAC, "projectroletemplatebindings is forbidden")
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets:  map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects": projectList("p-x"),
+		},
+		listErrByGVR: map[string]error{
+			"projectroletemplatebindings": forbidden,
+		},
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Nil(t, client.created, "forbidden list must not proceed to create")
+}
+
+func TestGrantMissingRole(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{}
+	cmd := NewGrant(fakeFactory{client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "--role")
+}
