@@ -441,26 +441,29 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // way to reach a cache entry cached against a server no longer configured —
 // still misses orphaned/bare entries that match no configured server. See
 // DrainAllExecCache, which `--all` calls once instead.
-func DrainToken(dir, server, serverURL string) (fromBackends, drainedCache []string, err error) {
-	fromBackends, err = DrainLoginToken(dir, server)
-	drainedCache, cerr := DrainExecCacheForServer(NewFileStore(dir), serverURL)
+func DrainToken(dir string, ref ServerRef, policy string) (fromBackends, drainedCache []string, err error) {
+	fromBackends, err = DrainLoginToken(dir, ref, policy)
+	drainedCache, cerr := DrainExecCacheForServer(NewFileStore(dir), ref.URL)
 	if cerr != nil {
 		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
 	}
 	return fromBackends, drainedCache, err
 }
 
-// DrainLoginToken deletes a server's login token from both backends,
-// unconditionally and independently of policy (see DrainToken). Used
-// directly by DrainToken (single-server logout) and by `logout --all`
-// (which drains every configured server's token this way, then wipes the
-// exec-credential cache once via DrainAllExecCache instead of per server).
-func DrainLoginToken(dir, server string) ([]string, error) {
+// DrainLoginToken deletes a server's login token from the keychain, file
+// store, and every recorded exec-helper provenance entry for the server.
+// The exec union covers: the current policy's helper (with the current
+// identity) and every older provenance entry — so a policy change between
+// login and logout never strands a helper credential. Used directly by
+// DrainToken (single-server logout) and by `logout --all` (which drains
+// every configured server's token this way, then wipes the exec-credential
+// cache once via DrainAllExecCache instead of per server).
+func DrainLoginToken(dir string, ref ServerRef, policy string) ([]string, error) {
 	var (
 		from []string
 		errs []error
 	)
-	if kerr := keyring.Delete(keyringService, server); kerr == nil {
+	if kerr := keyring.Delete(keyringService, ref.Name); kerr == nil {
 		from = append(from, "keychain")
 	} else if errors.Is(kerr, keyring.ErrNotFound) {
 		// nothing stored in the keychain backend — fine
@@ -468,14 +471,14 @@ func DrainLoginToken(dir, server string) ([]string, error) {
 		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
 		// keychain must not turn `auth logout` into a hard failure when
 		// the file store still drains cleanly.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only", server, kerr)
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only", ref.Name, kerr)
 	} else {
-		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, kerr))
+		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}
 	fs := NewFileStore(dir)
-	switch _, terr := fs.GetToken(ServerRef{Name: server}); {
+	switch _, terr := fs.GetToken(ref); {
 	case terr == nil:
-		if derr := fs.DeleteToken(ServerRef{Name: server}); derr != nil {
+		if derr := fs.DeleteToken(ref); derr != nil {
 			errs = append(errs, fmt.Errorf("file credential store: %w", derr))
 		} else {
 			from = append(from, "file")
@@ -486,6 +489,38 @@ func DrainLoginToken(dir, server string) ([]string, error) {
 		// NEVER report a successful drain when the file store is
 		// unreadable/corrupt: a live plaintext token may remain.
 		errs = append(errs, fmt.Errorf("file credential store: %w", terr))
+	}
+
+	// Exec helpers: erase through the union of the current policy's helper
+	// (with the current identity) and every recorded provenance entry for
+	// this server — a policy change between login and logout must not strand
+	// a helper credential. The provenance lock spans erase + unrecord.
+	targets := map[ProvenanceEntry]struct{}{}
+	if name, ok := execHelperName(policy); ok {
+		if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
+			targets[ProvenanceEntry{Helper: name, Name: ref.Name, CanonicalURL: cu}] = struct{}{}
+		} else if ref.URL != "" {
+			errs = append(errs, fmt.Errorf("credential helper drain: %w", cerr))
+		}
+	}
+	lerr := withProvenanceLock(dir, func(st *provenanceState) error {
+		for _, e := range st.forServer(ref.Name) {
+			targets[e] = struct{}{}
+		}
+		var eerrs []error
+		for e := range targets {
+			es := newExecStore(e.Helper, dir)
+			if _, ierr := es.invoke(credhelper.VerbErase, credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name}); ierr != nil {
+				eerrs = append(eerrs, fmt.Errorf("credential helper %q erase: %w", e.Helper, ierr))
+				continue // entry stays for retry
+			}
+			st.remove(ProvenanceEntry{Helper: e.Helper, Name: e.Name, CanonicalURL: e.CanonicalURL})
+			from = append(from, "helper:"+e.Helper)
+		}
+		return errors.Join(eerrs...)
+	})
+	if lerr != nil {
+		errs = append(errs, lerr)
 	}
 	return from, errors.Join(errs...)
 }

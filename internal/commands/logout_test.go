@@ -214,6 +214,26 @@ func TestLogoutCurrentContextServerAbsent(t *testing.T) {
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
 }
 
+func TestLogoutExecPolicyReportsHelper(t *testing.T) {
+	dir, statePath := seedExecLogout(t, "acme", "acme")
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
+	assert.Contains(t, df["acme"], "helper:fake")
+	assert.Empty(t, helperCreds(t, statePath), "helper-held credential erased")
+}
+
+func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
+	dir, statePath := seedExecLogout(t, "acme", "acme", "other")
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
+	assert.Contains(t, df["acme"], "helper:fake")
+	assert.Contains(t, df["other"], "helper:fake")
+	assert.Empty(t, helperCreds(t, statePath), "--all erases every helper-held credential")
+}
+
 func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	keyring.MockInit()
 	// CurrentContext points at a context key that doesn't exist.

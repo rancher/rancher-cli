@@ -61,14 +61,16 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 		return runtime.Result{}, err
 	}
 
+	policy := config.EffectivePolicy(cfg.CredentialStore)
+
 	var (
 		deletedFrom  map[string][]string
 		deletedCache []string
 	)
 	if all {
-		deletedFrom, deletedCache, err = l.drainAll(targets)
+		deletedFrom, deletedCache, err = l.drainAll(cfg, targets, policy)
 	} else {
-		deletedFrom, deletedCache, err = l.drainTargets(cfg, targets)
+		deletedFrom, deletedCache, err = l.drainTargets(cfg, targets, policy)
 	}
 	if err != nil {
 		return runtime.Result{}, err
@@ -123,12 +125,12 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 // point), reporting the token backends touched per server so a partial
 // failure names what was already drained, plus every cache key removed
 // across all targets.
-func (l logoutCmd) drainTargets(cfg *config.Config, targets []string) (map[string][]string, []string, error) {
+func (l logoutCmd) drainTargets(cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	var deletedCache []string
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, cache, derr := config.DrainToken(l.dir, s, cfg.Servers[s].URL)
+		from, cache, derr := config.DrainToken(l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
 			return nil, nil, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("failed to log out %q: %v", s, derr)).
@@ -148,11 +150,11 @@ func (l logoutCmd) drainTargets(cfg *config.Config, targets []string) (map[strin
 // orphaned/bare cache entries that match no configured server (which no
 // per-server drain, keyed to a currently-configured server's host, could
 // ever reach). See DrainAllExecCache's doc for why.
-func (l logoutCmd) drainAll(targets []string) (map[string][]string, []string, error) {
+func (l logoutCmd) drainAll(cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, derr := config.DrainLoginToken(l.dir, s)
+		from, derr := config.DrainLoginToken(l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
 			return nil, nil, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("failed to log out %q: %v", s, derr)).

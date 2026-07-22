@@ -50,7 +50,7 @@ func TestConfigDeleteServerDrainFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	drainErr := errors.New("keychain locked")
-	cmd.drain = func(dir, server, url string) ([]string, []string, error) {
+	cmd.drain = func(dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
 		return nil, nil, drainErr
 	}
 
@@ -166,6 +166,31 @@ func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "drain must not write a credstore pin")
+}
+
+func TestConfigDeleteServerErasesThroughHelper(t *testing.T) {
+	dir, statePath := seedExecLogout(t, "acme", "acme")
+	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{a: []string{"acme"}}, ui.Discard())
+	require.NoError(t, err)
+	assert.Empty(t, helperCreds(t, statePath), "helper-held credential erased before config removal")
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers["acme"]
+	assert.False(t, ok, "server entry removed after a successful drain")
+}
+
+func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
+	dir, statePath := seedExecLogout(t, "acme", "acme")
+	t.Setenv("FAKEHELPER_MODE", "fail") // helper now refuses to erase
+	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{a: []string{"acme"}}, ui.Discard())
+	require.Error(t, err)
+	assert.NotEmpty(t, helperCreds(t, statePath), "credential still held by the helper")
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers["acme"]
+	assert.True(t, ok, "failed drain leaves the server config untouched")
 }
 
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the

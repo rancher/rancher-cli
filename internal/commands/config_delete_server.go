@@ -16,7 +16,7 @@ type configDeleteServerCmd struct {
 	// (the authcheck preflight-seam pattern, authcheck.go); defaults to
 	// config.DrainToken — the single drain point (ARCHITECTURE.md), whose
 	// only other caller is auth logout.
-	drain func(dir, server, url string) (fromBackends, drainedCache []string, err error)
+	drain func(dir string, ref config.ServerRef, policy string) (fromBackends, drainedCache []string, err error)
 }
 
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
@@ -61,7 +61,8 @@ func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ ru
 		return runtime.Result{}, serverNotFoundWithCandidates(cfg, name)
 	}
 
-	deletedFrom, deletedCache, err := d.drain(d.dir, name, srv.URL)
+	policy := config.EffectivePolicy(cfg.CredentialStore)
+	deletedFrom, deletedCache, err := d.drain(d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 	if err != nil {
 		return runtime.Result{}, clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("failed to drain credentials for %q; server config left untouched: %v", name, err))
