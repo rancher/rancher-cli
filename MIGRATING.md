@@ -31,8 +31,8 @@ conformance test (`internal/commands/migrating_test.go` +
 | `clusters delete` (alias `rm`) | DROPPED — the `cluster` kind is `Deletable: false`; no fixed delete-cluster command |
 | `clusters export` | DROPPED — no export/backup command surfaced |
 | `clusters kubeconfig` (alias `kf`) | → `rancher kubeconfig --cluster <id>` |
-| `clusters add-member-role` | DROPPED (pending) — a `clusterroletemplatebinding` can be created via `rancher create resource -f`, but no fixed convenience command ships yet; `rancher project add-member` (this branch) is the project-level analog |
-| `clusters delete-member-role` | DROPPED (pending) — `clusterroletemplatebinding` is `Deletable: false`; no generic delete path yet |
+| `clusters add-member-role` | → `rancher grant <subject> --role <r> --cluster <c> --apply --yes` |
+| `clusters delete-member-role` | → `rancher revoke <subject> [--role <r>] --cluster <c> --apply --yes` |
 | `clusters list-roles` | → `rancher get roletemplates` — filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
 | `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id> -o json` |
 | `machines ls` | → `rancher get machines` |
@@ -45,8 +45,8 @@ conformance test (`internal/commands/migrating_test.go` +
 | `projects ls` | → `rancher get projects` |
 | `projects create` | → `rancher create project <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...]` |
 | `projects delete` (alias `rm`) | → `rancher delete project <id>` |
-| `projects add-member-role` | → `rancher project add-member <principal> --role <r> --project <p>` (this branch) |
-| `projects delete-member-role` | → `rancher project remove-member <principal> --project <p>` (this branch) |
+| `projects add-member-role` | → `rancher grant <subject> --role <r> --project <p> --cluster <c> --apply --yes` |
+| `projects delete-member-role` | → `rancher revoke <subject> [--role <r>] --project <p> --cluster <c> --apply --yes` |
 | `projects list-roles` | → `rancher get roletemplates` — filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
 | `projects list-members` | → `rancher inspect project <name-or-id>` (members section), or `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
 | `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |

@@ -57,7 +57,7 @@ func (revokeCmd) Describe() runtime.Descriptor {
 			{Name: "project", Type: "string", Desc: "project scope: project `id|name`"},
 			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster qualifying --project"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
-			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type; inferred from a fully qualified principal"},
+			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type; recognized principal forms are inferred, other fully qualified forms require this flag"},
 		},
 		Examples: []string{
 			"rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",

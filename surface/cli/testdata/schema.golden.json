@@ -3922,7 +3922,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type; inferred from a fully qualified principal",
+          "desc": "subject type; recognized principal forms are inferred, other fully qualified forms require this flag",
           "enum": [
             "user",
             "group"
@@ -6893,7 +6893,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type; inferred from a fully qualified principal",
+          "desc": "subject type; recognized principal forms are inferred, other fully qualified forms require this flag",
           "enum": [
             "user",
             "group"
