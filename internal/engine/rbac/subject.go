@@ -67,6 +67,12 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 		return Subject{Kind: SubjectUser, Bare: arg}, nil
 	}
 
+	if arg[strings.Index(arg, "://")+3:] == "" {
+		return Subject{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("principal %q has empty remainder after ://", arg)).
+			WithHint("provide the full principal id, e.g. local://<user-id>")
+	}
+
 	// Closed inference rule: only recognized principal forms infer a kind.
 	// "_user" → user, "_group" → group, plus Rancher's documented group
 	// aliases (github_org, github_team) and "local" (users only). Unknown

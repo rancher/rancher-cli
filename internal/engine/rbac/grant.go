@@ -90,11 +90,22 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	for i := range list.Items {
 		b := &list.Items[i]
 		r, _, _ := unstructured.NestedString(b.Object, scope.RoleField)
-		if r == role && bindingMatchesSubject(b, rs, sub, true) {
-			return safety.Effect{}, nil, clierr.New(clierr.CodeConflict,
-				fmt.Sprintf("subject already holds role %q at this scope (binding %s)", role, b.GetName())).
-				WithHint("nothing to grant; use revoke to remove it first if re-granting")
+		if r != role || !bindingMatchesSubject(b, rs, sub, true) {
+			continue
 		}
+		hint := "nothing to grant; use revoke to remove it first if re-granting"
+		// Alias-only match: the binding carries a different principal alias
+		// than the caller supplied. Revoke matches with aliasPrincipals=false
+		// and won't find it by the same spelling — surface the exact
+		// principal stored in the binding so the caller can revoke precisely.
+		if !bindingMatchesSubject(b, rs, sub, false) {
+			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
+				hint = fmt.Sprintf("alias-matched binding uses principal %q; revoke %s --role %s ... removes it", upn, upn, role)
+			}
+		}
+		return safety.Effect{}, nil, clierr.New(clierr.CodeConflict,
+			fmt.Sprintf("subject already holds role %q at this scope (binding %s)", role, b.GetName())).
+			WithHint(hint)
 	}
 
 	prefix := role + "-"

@@ -367,6 +367,9 @@ func TestGrantDuplicateAliasConflict(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Message, "pm-1")
+	// Alias-only match: hint must name the exact principal stored in the
+	// binding so the caller knows the correct string to pass to revoke.
+	assert.Contains(t, ce.Hint, "okta_user://alice")
 }
 
 func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {

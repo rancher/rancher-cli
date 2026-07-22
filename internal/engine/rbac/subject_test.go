@@ -31,6 +31,7 @@ func TestParseSubject(t *testing.T) {
 		{name: "system principal rejected", arg: "system://c-abc", wantErrCode: clierr.CodeValidation},
 		{name: "invalid type flag", arg: "jane", typeFlag: "robot", wantErrCode: clierr.CodeValidation},
 		{name: "empty arg rejected", arg: "", wantErrCode: clierr.CodeValidation},
+		{name: "empty remainder rejected", arg: "local://", wantErrCode: clierr.CodeValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

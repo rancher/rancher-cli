@@ -184,8 +184,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 
 - `rancher grant <subject> --role <r> (--project <p> | --cluster <c> | --global)` —
   grant a role at project, cluster, or global scope. Subject is a user/group
-  name, id, or fully qualified principal. Use `--type group` to force group
-  resolution. Principals with no matching user trigger a provisioning warning;
+  name, id, or fully qualified principal. Groups must be passed as a fully
+  qualified group principal id (e.g. `okta_group://<id>`); `--type` only
+  disambiguates principals whose provider prefix cannot be inferred.
+  Principals with no matching user trigger a provisioning warning;
   Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
 - `rancher revoke <subject> (--project <p> | --cluster <c> | --global) [--role <r>]` —
   revoke role binding(s). Omitting --role revokes every role at the scope

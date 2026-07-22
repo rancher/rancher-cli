@@ -6868,7 +6868,8 @@
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
-        "rancher revoke jane --role cluster-owner --cluster c-x --apply --yes"
+        "rancher revoke jane --role cluster-owner --cluster c-x --apply --yes",
+        "rancher revoke okta_group://gid --role admin --global --apply --yes"
       ],
       "flags": [
         {
