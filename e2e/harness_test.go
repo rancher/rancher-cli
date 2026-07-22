@@ -173,6 +173,7 @@ func TestMain(m *testing.M) {
 	seedManagementCluster()
 	seedNamespaces()
 	seedCloudCredential()
+	seedRoleObjects()
 
 	code := m.Run()
 	srv.Close()
@@ -458,6 +459,42 @@ func seedCloudCredential() {
 	}}
 	if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
 		panic("seeding cloud credential secret cc-e2etest: " + err.Error())
+	}
+}
+
+// seedRoleObjects creates deterministic RoleTemplate and GlobalRole fixtures
+// for role completion e2e rows. RoleTemplates carry a top-level "context"
+// field (cluster-scoped CRD with x-kubernetes-preserve-unknown-fields: true
+// at root, so the field is retained). GlobalRole is cluster-scoped with no
+// context field — fetchGlobalRoles lists by name only.
+func seedRoleObjects() {
+	rtGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"}
+	for _, rt := range []struct {
+		name    string
+		context string
+	}{
+		{"e2e-project-role", "project"},
+		{"e2e-cluster-role", "cluster"},
+	} {
+		obj := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "RoleTemplate",
+			"metadata":   map[string]any{"name": rt.name},
+			"context":    rt.context,
+		}}
+		if _, err := dynCli.Resource(rtGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+			panic("seeding roletemplate " + rt.name + ": " + err.Error())
+		}
+	}
+
+	grGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalroles"}
+	grObj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "GlobalRole",
+		"metadata":   map[string]any{"name": "e2e-global-role"},
+	}}
+	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil {
+		panic("seeding globalrole e2e-global-role: " + err.Error())
 	}
 }
 

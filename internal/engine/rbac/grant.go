@@ -41,9 +41,9 @@ func (grantCmd) Describe() runtime.Descriptor {
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type; recognized principal forms are inferred, other fully qualified forms require this flag"},
 		},
 		Examples: []string{
-			"rancher grant u-abc123 --role project-member --project p-x --cluster c-x --apply --yes",
-			"rancher grant jane --role cluster-owner --cluster c-x --apply --yes",
-			"rancher grant okta_group://gid --role admin --global --apply --yes",
+			"rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
+			"rancher grant jane --cluster c-x --role cluster-owner --apply --yes",
+			"rancher grant okta_group://gid --global --role admin --apply --yes",
 		},
 		Destructive: "true",
 		Toolset:     "core",

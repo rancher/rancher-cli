@@ -3895,9 +3895,9 @@
       "commandType": "mutating",
       "destructive": "true",
       "examples": [
-        "rancher grant u-abc123 --role project-member --project p-x --cluster c-x --apply --yes",
-        "rancher grant jane --role cluster-owner --cluster c-x --apply --yes",
-        "rancher grant okta_group://gid --role admin --global --apply --yes"
+        "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
+        "rancher grant jane --cluster c-x --role cluster-owner --apply --yes",
+        "rancher grant okta_group://gid --global --role admin --apply --yes"
       ],
       "flags": [
         {
@@ -6868,8 +6868,8 @@
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
-        "rancher revoke jane --role cluster-owner --cluster c-x --apply --yes",
-        "rancher revoke okta_group://gid --role admin --global --apply --yes"
+        "rancher revoke jane --cluster c-x --role cluster-owner --apply --yes",
+        "rancher revoke okta_group://gid --global --role admin --apply --yes"
       ],
       "flags": [
         {

@@ -94,6 +94,26 @@ exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-comp
 exec rancher --rancher-completion-proto=2 get namespace --cluster c-test --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^default$'
 
+# AC-role: role completion with full management token (TEST_RANCHER_TOKEN = testToken,
+# IDOnly=false). RANCHER_CLI_URL + RANCHER_CLI_CACERT already set above.
+# Seed: e2e-global-role (GlobalRole), e2e-project-role (RoleTemplate context=project),
+# e2e-cluster-role (RoleTemplate context=cluster) are seeded once in TestMain.
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Global scope: --global --role <TAB> → fetchGlobalRoles → contains e2e-global-role.
+exec rancher --rancher-completion-proto=2 grant x --global --role --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^e2e-global-role$'
+
+# Project scope: --project --cluster --role <TAB> → fetchRoleTemplates(project) → contains e2e-project-role.
+exec rancher --rancher-completion-proto=2 grant x --project p-x --cluster c-x --role --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^e2e-project-role$'
+
+# No scope: --role <TAB> with no scope flag → roleVocabNone → empty.
+exec rancher --rancher-completion-proto=2 grant x --role --rancher-completion-cur= --generate-shell-completion
+! stdout .
+
+env RANCHER_CLI_TOKEN=
+
 # Corrupt config: the SC-1 hard requirement extends to the TAB-time
 # callback, not just the Before-path — a missing/corrupt config must
 # degrade to empty output, exit 0, never error text (an error line would be

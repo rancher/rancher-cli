@@ -61,8 +61,8 @@ func (revokeCmd) Describe() runtime.Descriptor {
 		},
 		Examples: []string{
 			"rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
-			"rancher revoke jane --role cluster-owner --cluster c-x --apply --yes",
-			"rancher revoke okta_group://gid --role admin --global --apply --yes",
+			"rancher revoke jane --cluster c-x --role cluster-owner --apply --yes",
+			"rancher revoke okta_group://gid --global --role admin --apply --yes",
 		},
 		Destructive: "true",
 		Toolset:     "core",
