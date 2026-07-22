@@ -156,6 +156,19 @@ func grDiffPaths(diff []struct {
 	return paths
 }
 
+// grDiffToMap returns a path→To map for asserting Diff values.
+func grDiffToMap(diff []struct {
+	Path string `json:"path"`
+	From any    `json:"from"`
+	To   any    `json:"to"`
+}) map[string]any {
+	out := make(map[string]any, len(diff))
+	for _, e := range diff {
+		out[e.Path] = e.To
+	}
+	return out
+}
+
 // serverOpts configures the per-test fake management API.
 type serverOpts struct {
 	// pre-populated binding lists per resource kind (nil → empty list)
@@ -401,8 +414,17 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		assert.Equal(t, "beta", env.Stability)
 		assert.Empty(t, env.Warnings)
 		assert.Equal(t, "create", env.Data.Action)
+		assert.True(t, env.Data.Destructive, "grant must be Destructive")
 		assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
+		diffVals := grDiffToMap(env.Data.Diff)
+		assert.Equal(t, "c-x:p-x", diffVals["/projectName"])
+		assert.Equal(t, "project-member", diffVals["/roleTemplateName"])
+		assert.Equal(t, "u-abc", diffVals["/userName"])
+		assert.Equal(t, "local://u-abc", diffVals["/userPrincipalName"])
+		for _, e := range env.Data.Diff {
+			assert.Nil(t, e.From, "Diff.From must be nil for a create")
+		}
 	})
 
 	t.Run("grant cluster preview", func(t *testing.T) {
@@ -464,11 +486,13 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		var env effectEnvelope
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
-		paths := grDiffPaths(env.Data.Diff)
-		assert.Contains(t, paths, "/userPrincipalName", "provisioning must set /userPrincipalName")
-		for _, p := range paths {
-			assert.NotEqual(t, "/userName", p, "provisioning must NOT set /userName")
-		}
+		// Exact complete Diff: scope, role, and subject entries; no /userName.
+		assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userPrincipalName"},
+			grDiffPaths(env.Data.Diff))
+		diffVals := grDiffToMap(env.Data.Diff)
+		assert.Equal(t, "c-x:p-x", diffVals["/projectName"])
+		assert.Equal(t, "project-member", diffVals["/roleTemplateName"])
+		assert.Equal(t, "okta_user://ghost", diffVals["/userPrincipalName"])
 		require.Len(t, env.Warnings, 1)
 		assert.Equal(t, provWarn, env.Warnings[0])
 	})
@@ -584,6 +608,29 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		assert.False(t, hasNS, "GRB POST body must not have metadata.namespace")
 	})
 
+	t.Run("grant group preview project", func(t *testing.T) {
+		opts := &serverOpts{}
+		srv := httptest.NewTLSServer(grHandler(opts))
+		defer srv.Close()
+		dir := grConfigDir(t, srv)
+
+		stdout, _, runErr := grRun(t, root, dir,
+			"grant", "okta_group://gid", "--role", "project-member",
+			"--project", "p-x", "--cluster", "c-x", "--dry-run", "-o", "json")
+
+		require.NoError(t, runErr)
+		var env effectEnvelope
+		require.NoError(t, json.Unmarshal(stdout, &env))
+		assert.Equal(t, "Effect", env.Kind)
+		assert.Empty(t, env.Warnings, "group subject: no provisioning warning")
+		assert.Equal(t, []string{"/groupPrincipalName", "/projectName", "/roleTemplateName"},
+			grDiffPaths(env.Data.Diff))
+		diffVals := grDiffToMap(env.Data.Diff)
+		assert.Equal(t, "okta_group://gid", diffVals["/groupPrincipalName"])
+		assert.Equal(t, "c-x:p-x", diffVals["/projectName"])
+		assert.Equal(t, "project-member", diffVals["/roleTemplateName"])
+	})
+
 	t.Run("revoke multi preview", func(t *testing.T) {
 		opts := &serverOpts{
 			prtbItems: []map[string]any{
@@ -634,10 +681,14 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 	})
 
 	t.Run("revoke partial failure", func(t *testing.T) {
+		// Three bindings; the second real delete (sorted: prtb-1 < prtb-2 <
+		// prtb-3) is forced to 409. This ensures details.unattempted is
+		// non-empty, pinning the full deleted/failed/unattempted split.
 		opts := &serverOpts{
 			prtbItems: []map[string]any{
 				grBindingItem("p-x", "prtb-1", "rv1", "roleTemplateName", "project-member", "userName", "u-abc"),
 				grBindingItem("p-x", "prtb-2", "rv2", "roleTemplateName", "project-viewer", "userName", "u-abc"),
+				grBindingItem("p-x", "prtb-3", "rv3", "roleTemplateName", "project-owner", "userName", "u-abc"),
 			},
 			failSecondRealDelete: true,
 		}
@@ -662,7 +713,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 			"details must decode as RevokePartialFailure")
 		assert.Equal(t, []string{"prtb-1"}, details.Deleted)
 		assert.Equal(t, "prtb-2", details.Failed.Name)
-		assert.Empty(t, details.Unattempted)
+		assert.Equal(t, []string{"prtb-3"}, details.Unattempted, "third binding must be unattempted")
 	})
 
 	t.Run("revoke global apply", func(t *testing.T) {
