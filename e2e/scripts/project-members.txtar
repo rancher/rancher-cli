@@ -17,12 +17,12 @@ exec rancher get user u-alice -o json
 jsonquery stdout data.displayName alice
 jsonquery stdout 'data.principalIds.0' local://u-alice
 
-# add-member dry-run preview: a create Effect is Target-only.
-exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --dry-run -o json
+# grant dry-run preview: effect carries action + target prefix.
+exec rancher grant alice --role project-member --project members-proj --cluster testcluster --dry-run -o json
 jsonquery stdout data.action create
 stdout projectroletemplatebindings/project-member-
 
-exec rancher project add-member alice --project members-proj --role project-member --cluster testcluster --apply --yes
+exec rancher grant alice --role project-member --project members-proj --cluster testcluster --apply --yes
 
 # the binding carries BOTH userName and userPrincipalName from the one
 # resolved user (PC-7: forecloses Rancher's EnsureUser orphan-mint trap).
@@ -33,12 +33,32 @@ jsonquery stdout data.0.userPrincipalName local://u-alice
 jsonquery stdout data.0.roleTemplateName project-member
 jsonquery stdout data.0.projectName c-test:members-proj
 
-# remove-member is destructive: --apply alone is refused.
-! exec rancher project remove-member alice --project members-proj --cluster testcluster --apply
+# revoke is destructive: --apply alone is refused.
+! exec rancher revoke alice --project members-proj --cluster testcluster --apply
 jsonquery stderr data.error.code CONFIRMATION_REQUIRED
 jsonquery stderr data.error.hint 're-run with: --yes'
 
-exec rancher project remove-member alice --project members-proj --cluster testcluster --apply --yes
+exec rancher revoke alice --project members-proj --cluster testcluster --apply --yes
+
+exec rancher get prtb --namespace members-proj -o json
+jsonquery stdout 'data.#' 0
+
+# grant with an unknown FQ principal: provisioning path preview + create.
+# A subject with no matching user record forces a userPrincipalName-only
+# binding; the dry-run preview warns about the predicted EnsureUser id
+# (u-pu7rxaxkea for okta_user://unknown-user-xyz).
+exec rancher grant okta_user://unknown-user-xyz --role project-member --project members-proj --cluster testcluster --dry-run -o json
+jsonquery stdout data.action create
+stdout 'will provision user.*u-pu7rxaxkea'
+
+exec rancher grant okta_user://unknown-user-xyz --role project-member --project members-proj --cluster testcluster --apply --yes
+
+exec rancher get prtb --namespace members-proj -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.userPrincipalName okta_user://unknown-user-xyz
+jsonquery stdout data.0.userName ''
+
+exec rancher revoke okta_user://unknown-user-xyz --project members-proj --cluster testcluster --apply --yes
 
 exec rancher get prtb --namespace members-proj -o json
 jsonquery stdout 'data.#' 0
