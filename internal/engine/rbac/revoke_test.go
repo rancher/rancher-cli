@@ -317,11 +317,13 @@ func TestRevokePartialFailure(t *testing.T) {
 	assert.Contains(t, raw, "unattempted")
 }
 
-func TestRevokeStaleHashIDNoMatch(t *testing.T) {
+func TestRevokeStaleHashIDOccupiedConflict(t *testing.T) {
 	t.Parallel()
 	// A user was provisioned as ProvisionedUserID("okta_user://alice").
-	// Its principal has since been replaced. Revoking okta_user://alice must
-	// NOT match the renamed user's bindings; it must return NOT_FOUND.
+	// Its principal has since been replaced with okta_user://renamed and no
+	// other user owns okta_user://alice. Revoking okta_user://alice must
+	// return CodeConflict (occupied-id, cannot provision) — not NOT_FOUND or
+	// a silent match of the renamed user's bindings.
 	requestedPrincipal := "okta_user://alice"
 	id := ProvisionedUserID(requestedPrincipal)
 	client := &fakeClient{
@@ -342,7 +344,8 @@ func TestRevokeStaleHashIDNoMatch(t *testing.T) {
 	})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code, "stale hash-id must not match renamed user's bindings")
+	assert.Equal(t, clierr.CodeConflict, ce.Code, "stale hash-id must return conflict, not match renamed user")
+	assert.Contains(t, ce.Message, id, "conflict message must name the occupied user id")
 }
 
 func TestRevokeGlobalScope(t *testing.T) {

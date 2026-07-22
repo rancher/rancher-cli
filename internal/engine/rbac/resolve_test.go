@@ -261,6 +261,9 @@ func TestResolveSubjectLocalPrincipalStrips(t *testing.T) {
 }
 
 func TestResolveSubjectExternalPrincipalHashHit(t *testing.T) {
+	// Happy path: hash-named user still owns the principal.
+	// Resolution must succeed. The ownership scan is always run for external
+	// principals, so c.lists is 1.
 	principal := "okta_user://alice"
 	id := ProvisionedUserID(principal)
 	c := &fakeClient{users: []map[string]any{userObj(id, "Alice", "alice", principal)}}
@@ -268,31 +271,63 @@ func TestResolveSubjectExternalPrincipalHashHit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, id, got.UserID)
 	assert.Equal(t, principal, got.Principal)
-	assert.Zero(t, c.lists, "hash-id hit must not list")
+	assert.Equal(t, 1, c.lists, "ownership scan always runs for external principals")
 }
 
-func TestResolveSubjectExternalPrincipalHashHitWrongOwner(t *testing.T) {
-	// A user provisioned as hash(okta_user://alice) has since had its
-	// principal replaced with okta_user://renamed. Resolving the OLD
-	// principal must NOT return that user; it must fall through to the
-	// list scan, find no match, and provision.
+func TestResolveSubjectExternalPrincipalHashHitOccupiedConflict(t *testing.T) {
+	// A user was provisioned as hash(okta_user://alice). Its principal has
+	// since been replaced with okta_user://renamed and no other user owns
+	// okta_user://alice. EnsureUser would derive the same id and get
+	// AlreadyExists — provisioning must be blocked with CodeConflict, not
+	// silently entered.
 	requestedPrincipal := "okta_user://alice"
 	id := ProvisionedUserID(requestedPrincipal)
 	c := &fakeClient{users: []map[string]any{
 		userObj(id, "Alice", "alice", "okta_user://renamed"),
 	}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: requestedPrincipal})
-	require.NoError(t, err)
-	assert.True(t, got.Provision, "stale hash-id hit must fall through to provisioning")
-	assert.Equal(t, requestedPrincipal, got.Principal)
-	assert.Equal(t, 1, c.lists, "must do one list scan after hash-id ownership mismatch")
+	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: requestedPrincipal})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Contains(t, ce.Message, id, "conflict message must name the occupied user id")
+	assert.Contains(t, ce.Message, requestedPrincipal)
+}
+
+func TestResolveSubjectExternalPrincipalHashHitAmbiguousOwners(t *testing.T) {
+	// Hash-named owner carries the principal AND a second user also carries it.
+	// Even though the hash-id Get succeeds and ownership is verified,
+	// the ownership scan must find both and return AMBIGUOUS_SELECTION.
+	// Tested in both list orders (hash user first, other user first).
+	principal := "okta_user://shared"
+	hashID := ProvisionedUserID(principal)
+	hashUser := userObj(hashID, "Hash", "hash", principal)
+	otherUser := userObj("u-other", "Other", "other", principal)
+	tests := []struct {
+		name  string
+		users []map[string]any
+	}{
+		{name: "hash first", users: []map[string]any{hashUser, otherUser}},
+		{name: "other first", users: []map[string]any{otherUser, hashUser}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &fakeClient{users: tt.users}
+			_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: principal})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+			assert.Len(t, ce.Candidates, 2)
+			assert.Equal(t, "pass the user id", ce.Hint)
+		})
+	}
 }
 
 func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
-	// Two non-system users share the same principal (malformed cluster).
+	// Two non-system users share the same principal (malformed cluster);
+	// neither has the hash id — forces the fallback-scan-only path.
 	// Resolution must return AMBIGUOUS_SELECTION regardless of list order.
 	principal := "okta_user://shared"
-	// Neither user has the hash id — forces the list scan path.
 	user1 := userObj("u-aaa", "Alice", "alice", principal)
 	user2 := userObj("u-bbb", "Bob", "bob", principal)
 	tests := []struct {

@@ -82,29 +82,41 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			return ResolvedSubject{}, err
 		}
 		if err == nil {
-			// A successful hit on a system user is TERMINAL: it must
-			// never fall through to the principal scan or provisioning
-			// (a system-user hit here means the caller addressed a
-			// system account, e.g. local://<system-user-id>).
+			// A successful Get hit on a system user is TERMINAL for both
+			// local and external paths: never fall through to a scan or
+			// provisioning (the caller addressed a system account).
 			if isSystemUser(obj) {
 				return ResolvedSubject{}, systemUserError(sub.Principal)
 			}
-			pids, _, _ := unstructured.NestedStringSlice(obj.Object, "principalIds")
-			// For external principals the id is derived from a hash of
-			// the principal. A user's provider principal can be replaced
-			// (SetPrincipalOnCurrentUserByUserID) while preserving the
-			// metadata name, so the hash-id hit must be verified: the
-			// requested principal must still appear in principalIds.
-			// Local principals are looked up by the literal user id
-			// (TrimPrefix removes the scheme), so no ownership check
-			// is needed there.
-			if isLocal || principalOwned(pids, sub.Principal) {
+			if isLocal {
+				// Local: id IS the user id (TrimPrefix, not a hash). The
+				// Get is direct ownership proof — no scan needed.
+				pids, _, _ := unstructured.NestedStringSlice(obj.Object, "principalIds")
 				return ResolvedSubject{UserID: obj.GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
 			}
-			// Hash-id hit but principal no longer owned — fall through
-			// to the authoritative list scan.
 		}
-		// Authoritative fallback: one list scan over principalIds.
+
+		if isLocal {
+			// Local principal, hash-id was NOT_FOUND: the user doesn't exist.
+			return ResolvedSubject{}, clierr.New(clierr.CodeNotFound,
+				fmt.Sprintf("no user found for principal %q", sub.Principal)).
+				WithHint("run: rancher get users")
+		}
+
+		// External principal: always run the authoritative ownership scan.
+		// A verified hash-id hit is not sufficient — a second user may also
+		// carry the same principal (GetUserByPrincipalID rejects duplicates
+		// regardless of names). Record whether the hash id was occupied by a
+		// non-owning user; provisioning cannot succeed in that case.
+		var hashIDOccupied string // non-empty: the id that is occupied
+		if err == nil {
+			pids, _, _ := unstructured.NestedStringSlice(obj.Object, "principalIds")
+			if !principalOwned(pids, sub.Principal) {
+				// Hash id found but principal not in its principalIds.
+				hashIDOccupied = obj.GetName()
+			}
+		}
+
 		list, lerr := client.List(ctx, userKind.GVR, "", "")
 		if lerr != nil {
 			return ResolvedSubject{}, lerr
@@ -125,6 +137,16 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 		switch len(owners) {
 		case 0:
+			if hashIDOccupied != "" {
+				// The deterministic id is occupied by a user that no
+				// longer owns this principal. EnsureUser would call
+				// Create and receive AlreadyExists — provisioning cannot
+				// succeed. Return a structured conflict.
+				return ResolvedSubject{}, clierr.New(clierr.CodeConflict,
+					fmt.Sprintf("principal %q cannot be provisioned: predicted user id %q is already occupied by a different identity",
+						sub.Principal, hashIDOccupied)).
+					WithHint("run: rancher get users, or pass the user id directly")
+			}
 			return ResolvedSubject{Principal: sub.Principal, Provision: true}, nil
 		case 1:
 			pids, _, _ := unstructured.NestedStringSlice(owners[0].Object, "principalIds")

@@ -398,12 +398,13 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 	assert.Nil(t, client.created, "forbidden list must not proceed to create")
 }
 
-func TestGrantStaleHashIDFallsToProvisioning(t *testing.T) {
+func TestGrantStaleHashIDOccupiedConflict(t *testing.T) {
 	t.Parallel()
 	// A user was provisioned from okta_user://alice. Its principal has since
-	// been replaced with okta_user://renamed, but the metadata name is still
-	// ProvisionedUserID("okta_user://alice"). Granting okta_user://alice must
-	// NOT silently grant the renamed user; it must take the provisioning path.
+	// been replaced with okta_user://renamed. No other user owns
+	// okta_user://alice. EnsureUser would derive the same hash id and get
+	// AlreadyExists. Grant must return CodeConflict, not enter the provisioning
+	// path and preview a binding whose reconciliation will always fail.
 	requestedPrincipal := "okta_user://alice"
 	id := ProvisionedUserID(requestedPrincipal)
 	client := &fakeClient{
@@ -412,24 +413,20 @@ func TestGrantStaleHashIDFallsToProvisioning(t *testing.T) {
 		},
 		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects":                    projectList("p-x"),
-			"projectroletemplatebindings": {},
+			"projects": projectList("p-x"),
 		},
-		allowCreate: true,
 	}
 	cmd := NewGrant(fakeFactory{client})
 
-	eff, _, err := planGrant(t, cmd, stubInput{
+	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
 		args:    []string{requestedPrincipal},
 	})
-	require.NoError(t, err)
-	require.NotNil(t, client.created)
-	_, unFound, _ := unstructured.NestedString(client.created.Object, "userName")
-	assert.False(t, unFound, "stale hash-id: must not set userName")
-	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
-	assert.Equal(t, requestedPrincipal, upn)
-	require.Len(t, eff.Warnings, 1, "must have provisioning warning")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Contains(t, ce.Message, id, "conflict message must name the occupied user id")
+	assert.Nil(t, client.created, "must not proceed to create on occupied-id conflict")
 }
 
 func TestGrantMissingRole(t *testing.T) {
