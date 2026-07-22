@@ -91,6 +91,7 @@ graph TD
     observe["internal/engine/observe"]
     rbac["internal/engine/rbac"]
     config["internal/config"]
+    credhelper["credhelper"]
     provider["internal/client/provider"]
     kube["internal/client/kube"]
     httpx["internal/client/httpx"]
@@ -209,6 +210,7 @@ graph TD
     kube --> clierr
 
     config --> clierr
+    config --> credhelper
 
     output --> clierr
 

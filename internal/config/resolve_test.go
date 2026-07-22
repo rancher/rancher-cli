@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -311,4 +312,20 @@ func TestReadOnlyOverrideStash(t *testing.T) {
 	active, sources = ReadOnlyOverride()
 	assert.True(t, active)
 	assert.Equal(t, []string{"config readOnly", "--read-only"}, sources)
+}
+
+func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
+	t.Parallel()
+	// Equivalence per SameServerURL must be exactly equality of
+	// credhelper.CanonicalServerURL outputs — one algorithm, no drift.
+	a, b := "HTTPS://EXAMPLE.com:443/path", "https://example.com"
+	ca, err := credhelper.CanonicalServerURL(a)
+	require.NoError(t, err)
+	cb, err := credhelper.CanonicalServerURL(b)
+	require.NoError(t, err)
+	assert.Equal(t, ca, cb)
+	assert.True(t, SameServerURL(a, b))
+	// Malformed inputs fall back to exact equality.
+	assert.True(t, SameServerURL("not a url", "not a url"))
+	assert.False(t, SameServerURL("not a url", "https://example.com"))
 }
