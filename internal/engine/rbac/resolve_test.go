@@ -82,7 +82,12 @@ type fakeFactory struct{ c engine.ClusterClient }
 func (f fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
 func (f fakeFactory) ContextCluster() (string, error)                               { return "", nil }
 func (f fakeFactory) ContextProject() (string, error)                               { panic("unused") }
-func (f fakeFactory) ResolveCluster(context.Context, string) (string, error)        { panic("unused") }
+func (f fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
+	if nameOrID == "" || nameOrID == "local" {
+		return "local", nil
+	}
+	return nameOrID, nil
+}
 
 func TestResolveSubjectGroupPassthrough(t *testing.T) {
 	got, err := ResolveSubject(context.Background(), fakeFactory{&fakeClient{}}, Subject{Kind: SubjectGroup, Principal: "okta_group://y"})
