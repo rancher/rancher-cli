@@ -1,6 +1,7 @@
 package clierr
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,4 +52,22 @@ func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
 	assert.Len(t, codes, 10)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
+}
+
+func TestErrorDetailsSerialization(t *testing.T) {
+	e := New(CodeConflict, "partial failure").WithDetails(map[string]any{
+		"deleted": []string{"a"},
+	})
+	b, err := json.Marshal(e)
+	require.NoError(t, err)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(b, &out))
+	details, ok := out["details"].(map[string]any)
+	require.True(t, ok, "details must serialize as an object")
+	assert.Equal(t, []any{"a"}, details["deleted"])
+
+	// omitempty: absent when unset
+	b2, err := json.Marshal(New(CodeNotFound, "x"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(b2), "details")
 }
