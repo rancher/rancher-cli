@@ -232,7 +232,17 @@ func enumCandidates(site CompletionSite, d runtime.Descriptor) []string {
 // (AC-17 steps 4-6, AC-24). Returns nil on any error (AC-18).
 // tail is the pre-computed leaf arg tail from the caller (avoids re-stripping).
 func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, c *ucli.Command, tail []string) []string {
-	clusterValue := extractClusterID(tail)
+	// Role flag-value sites derive scope from the typed tail only
+	// (roleVocabulary); the cluster fallback chain, segment validation,
+	// and display-name resolution below must not run for them — an
+	// inherited invalid or display-name cluster would otherwise suppress
+	// role completion that never needed a cluster at all.
+	roleSite := site.Kind == SiteFlagValue && site.FlagName == "role"
+
+	clusterValue := ""
+	if !roleSite {
+		clusterValue = extractClusterID(tail)
+	}
 	effectiveProject := extractEffectiveProject(tail)
 
 	// Finding 1 (SECURITY): validate the cluster segment before it enters any
@@ -285,7 +295,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	case SiteFlagValue:
 		// Round-2 finding 4: pass effectiveProject so --namespace is suppressed
 		// when a project scope is active (AC-9/AC-15).
-		return liveFlagValueCandidates(ctx, hc, site, cap, resolvedClusterID, effectiveProject)
+		return liveFlagValueCandidates(ctx, hc, site, cap, resolvedClusterID, effectiveProject, tail)
 	case SitePositional:
 		return livePositionalCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
 	}
@@ -394,11 +404,12 @@ func roleVocabulary(tail []string) roleVocab {
 }
 
 // liveFlagValueCandidates handles live flag-value sites (--cluster, --project,
-// --namespace, --node, --context AC-7/AC-8/AC-9/AC-11/AC-14).
+// --namespace, --node, --context AC-7/AC-8/AC-9/AC-11/AC-14, --role AC-role).
 // effectiveProject is passed to suppress --namespace when a project scope is
 // active (AC-9/AC-15; round-2 finding 4).
+// tail is threaded from liveCandidates for role scope detection (roleVocabulary).
 // hc is the single per-dispatch client (finding 9).
-func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string) []string {
+func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {
 	case "cluster", "context":
@@ -414,6 +425,20 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/namespaces", "")
 	case "node":
 		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/nodes", "")
+	case "role":
+		// Scope comes from the typed tail ONLY (roleVocabulary): the
+		// clusterID/effectiveProject parameters carry context/env/config
+		// fallbacks that grant/revoke's explicit-scope rule forbids here.
+		switch roleVocabulary(tail) {
+		case roleVocabGlobal:
+			raw = fetchGlobalRoles(ctx, hc, cap)
+		case roleVocabProject:
+			raw = fetchRoleTemplates(ctx, hc, cap, "project")
+		case roleVocabCluster:
+			raw = fetchRoleTemplates(ctx, hc, cap, "cluster")
+		default:
+			return nil // no scope or conflicting scope: empty, zero requests
+		}
 	default:
 		return nil
 	}

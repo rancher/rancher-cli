@@ -197,3 +197,61 @@ func TestInspectAliasDeployDispatchesToDeployment(t *testing.T) {
 	require.NoError(t, root.Run(context.Background(), []string{"rancher", "inspect", "deploy", "--help"}))
 	assert.Contains(t, out.String(), "Inspect a deployment")
 }
+
+// TestRoleValueSiteFullCallback is the real-BuildRoot v2-protocol layer (c)
+// from the role-completion spec: exercises space-form, equals-form, and
+// network-gate-off paths through the actual root.Run callback.
+// NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
+func TestRoleValueSiteFullCallback(t *testing.T) {
+	srv, _ := roleServer(t)
+
+	setup := func(t *testing.T, networkOn bool) {
+		t.Helper()
+		dir := t.TempDir()
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:     config.CompletionConfig{Network: networkOn},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		setStoredConfig(cfg, dir)
+		t.Setenv(config.EnvConfigDir, dir)
+		t.Setenv(config.EnvToken, "mgmt-token")
+		t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	}
+
+	run := func(t *testing.T, words []string, currentWord string) string {
+		t.Helper()
+		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
+		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
+		CaptureArgv(scriptArgs)
+		root, err := BuildRoot("test")
+		require.NoError(t, err)
+		var out bytes.Buffer
+		root.Writer = &out
+		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		return out.String()
+	}
+
+	t.Run("space-form --global --role → globalroles", func(t *testing.T) {
+		setup(t, true)
+		got := run(t, []string{"grant", "jane", "--global", "--role"}, "")
+		assert.Contains(t, got, "admin")
+		assert.Contains(t, got, "user")
+	})
+
+	t.Run("equals-form --global --role= → --role=<value> candidates", func(t *testing.T) {
+		setup(t, true)
+		got := run(t, []string{"grant", "jane", "--global"}, "--role=")
+		assert.Contains(t, got, "--role=admin")
+		assert.Contains(t, got, "--role=user")
+	})
+
+	t.Run("network gate off → empty", func(t *testing.T) {
+		setup(t, false)
+		got := run(t, []string{"grant", "jane", "--global", "--role"}, "")
+		assert.Empty(t, got)
+	})
+}

@@ -245,7 +245,7 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "")
+	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "", nil)
 	// All candidates returned — shell does the "c-" prefix filter.
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 }
@@ -270,7 +270,7 @@ func TestExtractEffectiveProjectExplicitEmptyClearsInherited(t *testing.T) {
 	// Use an invalid server so the HTTP call fails fast (nil → degraded, not panics).
 	cap := TokenCapability{Token: "tok", ServerURL: "http://127.0.0.1:1"}
 	hc := &http.Client{}
-	result := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", got)
+	result := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", got, nil)
 	// nil is acceptable (server unreachable); what matters is it was attempted, not short-circuited.
 	// The absence of panic and the empty-project value reaching here is the assertion.
 	_ = result
@@ -284,7 +284,7 @@ func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
 	defer cancel()
 	cap := TokenCapability{Token: "tok", ServerURL: "https://example.invalid"}
 	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", "my-project")
+	got := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", "my-project", nil)
 	assert.Nil(t, got, "round-2 finding 4: --namespace must be nil when effectiveProject is set")
 }
 
@@ -540,4 +540,105 @@ func TestRoleVocabulary(t *testing.T) {
 			assert.Equal(t, tt.want, roleVocabulary(tt.tail))
 		})
 	}
+}
+
+// TestLiveFlagValueRoleDirectWiring is layer (a): direct wiring of the role
+// case in liveFlagValueCandidates via the roleServer helper.
+func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
+	t.Parallel()
+
+	t.Run("--global → globalroles", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
+		assert.Equal(t, []string{"admin", "user"}, got)
+	})
+
+	t.Run("--project → project roletemplates", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--project", "Default", "--role"})
+		assert.Equal(t, []string{"project-member", "project-owner"}, got)
+	})
+
+	t.Run("--cluster → cluster roletemplates", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--cluster", "c-x", "--role"})
+		assert.Equal(t, []string{"cluster-owner"}, got)
+	})
+
+	t.Run("no scope → nil zero hits", func(t *testing.T) {
+		t.Parallel()
+		srv, hits := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--role"})
+		assert.Nil(t, got)
+		assert.Zero(t, hits.Load(), "no scope: must issue zero requests")
+	})
+
+	t.Run("--global --project conflict → nil zero hits", func(t *testing.T) {
+		t.Parallel()
+		srv, hits := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--project", "Default", "--role"})
+		assert.Nil(t, got)
+		assert.Zero(t, hits.Load(), "global+project conflict: must issue zero requests")
+	})
+
+	t.Run("equals-form → --role=<value> candidates", func(t *testing.T) {
+		t.Parallel()
+		srv, _ := roleServer(t)
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role", EqualsForm: true}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
+		assert.Equal(t, []string{"--role=admin", "--role=user"}, got)
+	})
+}
+
+// TestLiveCandidatesRoleBypassesClusterPreflight is the preflight-bypass
+// regression for role sites (layer b): an inherited cluster value that fails
+// isValidSegment ("prod cluster" has a space) must NOT suppress role
+// completion — roleSite bypasses the cluster pipeline entirely.
+func TestLiveCandidatesRoleBypassesClusterPreflight(t *testing.T) {
+	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
+	srv, hits := roleServer(t)
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "prod cluster"}},
+		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:     config.CompletionConfig{Network: true},
+	}
+	setStoredConfig(cfg, t.TempDir())
+	t.Setenv(config.EnvToken, "mgmt-token")
+
+	tail := []string{"grant", "jane", "--global", "--role"}
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "role"}
+	d := runtime.Descriptor{Name: "grant"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := liveCandidates(ctx, site, d, nil, tail)
+	assert.Equal(t, []string{"admin", "user"}, got)
+	assert.Equal(t, int32(1), hits.Load(), "preflight bypass: role endpoint fires exactly once")
 }
