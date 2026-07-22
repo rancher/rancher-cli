@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +94,46 @@ func stubRancherVersion(context.Context, config.Effective) (string, error) {
 // NewLogin's wiring but for direct struct construction in tests.
 func newLoginCmd(dir string, store config.CredStore) runtime.ReadCommand {
 	return &loginCmd{dir: dir, store: store, rancherVersion: stubRancherVersion}
+}
+
+// setErrStore wraps a real store, failing SetToken with a fixed error.
+type setErrStore struct {
+	config.CredStore
+	setErr error
+}
+
+func (s setErrStore) SetToken(config.ServerRef, string) error { return s.setErr }
+
+func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := &loginCmd{dir: dir, store: setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}}
+	res, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:secret"))
+	require.NoError(t, err, "read-only helper must not fail login")
+	require.NotEmpty(t, res.Warnings)
+	assert.Contains(t, res.Warnings[0], "read-only")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers["prod"]
+	assert.True(t, ok, "config written exactly as on success")
+}
+
+func TestLoginOtherStoreErrorAborts(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := &loginCmd{dir: dir, store: setErrStore{CredStore: store, setErr: errors.New("keychain exploded")}}
+	_, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:secret"))
+	require.Error(t, err)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers["prod"]
+	assert.False(t, ok, "abort-before-config-write preserved")
 }
 
 func TestLoginTokenViaStdin(t *testing.T) {

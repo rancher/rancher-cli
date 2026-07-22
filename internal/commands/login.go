@@ -121,8 +121,15 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	var warnings []string
 	if err := store.SetToken(config.ServerRef{Name: name, URL: u.String()}, token); err != nil {
-		return runtime.Result{}, err
+		if !errors.Is(err, config.ErrTokenStoreUnsupported) {
+			return runtime.Result{}, err
+		}
+		// Read-only helper: a declared, expected outcome — proceed exactly as
+		// on success, but say the token was not persisted.
+		warnings = append(warnings,
+			"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
 	}
 	if err := cfg.Write(); err != nil {
 		return runtime.Result{}, err
@@ -131,6 +138,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]string{
 		"server": name, "url": u.String(), "context": name,
 	}}
+	res.Warnings = warnings
 	versionEff := config.Effective{ServerName: name, URL: u.String(), CA: in.String("cacert"), Token: token}
 	if warning := l.warnBelowMinVersion(ctx, versionEff); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
