@@ -120,12 +120,22 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	// Fast path: when --server is given, build the cache key from flags alone and
 	// serve a warm hit WITHOUT reading config, so a broken config.yaml never
 	// blocks a cached credential.
+	//
+	// Normalize the flag value with the same default-https rule resolveConn
+	// applies, so both paths share one scheme policy. If the normalized value
+	// still does not yield a valid absolute canonical URL (contains "://"), skip
+	// the fast path entirely — never probe a legacy host-only key from the flag
+	// path, because its scheme is unknowable.
 	flagServer := in.String("server")
 	flagKey := ""
 	if name != "" && flagServer != "" {
-		flagKey = config.CacheKey(name, config.CanonicalServerIdentity(flagServer), in.String("cluster"))
-		if r, hit := t.cachedResult(flagKey, p); hit {
-			return r, nil
+		normalized := applyDefaultScheme(flagServer)
+		serverID := config.CanonicalServerIdentity(normalized)
+		if strings.Contains(serverID, "://") {
+			flagKey = config.CacheKey(name, serverID, in.String("cluster"))
+			if r, hit := t.cachedResult(flagKey, p); hit {
+				return r, nil
+			}
 		}
 	}
 
@@ -688,9 +698,7 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 	// an empty server must stay "" for the fallback-to-config check below,
 	// not become the bogus non-empty "https://".
 	if explicitServer {
-		if u, perr := url.Parse(server); perr == nil && u.Scheme == "" {
-			server = "https://" + server
-		}
+		server = applyDefaultScheme(server)
 	}
 
 	if server == "" || cluster == "" || caIn == "" {
@@ -726,6 +734,20 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}
 	return server, caPEM, cluster, nil
+}
+
+// applyDefaultScheme prepends "https://" when the value has no scheme, so
+// that both the flag fast path and resolveConn share one normalization policy.
+// An empty input is returned unchanged so the caller can detect the "no flag"
+// case.
+func applyDefaultScheme(s string) string {
+	if s == "" {
+		return s
+	}
+	if u, err := url.Parse(s); err == nil && u.Scheme == "" {
+		return "https://" + s
+	}
+	return s
 }
 
 // mintTokensPath and ErrExtGroupAbsent are reached ONLY through the Rancher

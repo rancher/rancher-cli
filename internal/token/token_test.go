@@ -190,6 +190,55 @@ func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	assert.Equal(t, "tok-r2", cred.Status.Token, "get-token must return the token scoped to the requested server")
 }
 
+// TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey is the third-re-review
+// repro: --server host (schemeless) must NOT serve a legacy host-only cache
+// record whose scheme is unknowable. The fast path must apply the default-https
+// normalization and then skip the probe when the result still does not yield a
+// valid absolute canonical URL (or in this case: the normalized key is distinct
+// from the legacy host-only key so the probe misses).
+func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Seed a legacy host-only key (CanonicalServerIdentity("host") → "host").
+	legacyKey := config.CacheKey("prod", config.CanonicalServerIdentity("host"), "c-1")
+	require.NoError(t, store.SetCachedCred(legacyKey, "legacy-tok", time.Now().Add(time.Hour), "prod", "host", "c-1"))
+	// Break config so the full path cannot proceed — if the fast path
+	// erroneously returns "legacy-tok" we never reach this error.
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	// The fast path must miss, causing the full path to fail on the broken
+	// config — proving "legacy-tok" was not returned.
+	require.Error(t, err, "schemeless --server must not serve a legacy host-only cache record")
+}
+
+// TestGetTokenSchemelessFlagHitsCurrentHTTPSKey is the positive companion: a
+// schemeless --server host normalizes to https://host and DOES hit a current-
+// format cache record seeded for https://host.
+func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Seed a current-format key for https://host.
+	httpsKey := config.CacheKey("prod", config.CanonicalServerIdentity("https://host"), "c-1")
+	require.NoError(t, store.SetCachedCred(httpsKey, "https-tok", time.Now().Add(time.Hour), "prod", "https://host", "c-1"))
+	// Break config to prove it is the fast path (not the full resolved path)
+	// that serves the hit.
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "https-tok", cred.Status.Token, "schemeless --server must hit the current https:// cache record")
+}
+
 // TestGetTokenMintsFromStoredLoginCredential is the exercise-bug-4 repro: on
 // a cache miss, get-token must mint a cluster-scoped token from the stored
 // login credential for the matching configured server BEFORE ever touching
