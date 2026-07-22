@@ -11,6 +11,7 @@ replace (
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
+	github.com/gofrs/flock v0.12.1
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1

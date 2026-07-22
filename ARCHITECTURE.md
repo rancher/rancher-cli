@@ -91,6 +91,7 @@ graph TD
     observe["internal/engine/observe"]
     rbac["internal/engine/rbac"]
     config["internal/config"]
+    fakehelper["internal/config/testdata/fakehelper"]
     credhelper["credhelper"]
     provider["internal/client/provider"]
     kube["internal/client/kube"]
@@ -211,6 +212,8 @@ graph TD
 
     config --> clierr
     config --> credhelper
+
+    fakehelper --> credhelper
 
     output --> clierr
 

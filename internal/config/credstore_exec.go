@@ -1,29 +1,226 @@
 package config
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os/exec"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/rancher/rancher-cli/credhelper"
 )
 
-var errExecNotImplemented = fmt.Errorf("exec credential helper: protocol client not yet implemented")
+// ErrTokenStoreUnsupported is execStore.SetToken's typed result for a helper
+// that answered {"unsupported":true}: the helper is read-only by design.
+// Only `auth login` treats it specially (warn and proceed); every other
+// caller handles it as a normal error.
+var ErrTokenStoreUnsupported = errors.New("credential helper does not support storing tokens")
 
-// execStore delegates login-token storage to an external helper binary
-// (rancher-credential-<helper>) speaking the credhelper wire protocol, and
-// the exec-credential cache to the file store. Protocol client lands with
-// the full implementation; until then every token method errors clearly.
+// execHelperTimeout bounds one helper invocation. Package var so tests can
+// shrink it via SetExecHelperTimeoutForTest.
+var execHelperTimeout = 30 * time.Second
+
+// SetExecHelperTimeoutForTest shrinks the helper timeout and returns a
+// restore func. In non-test code so other packages' tests can reach it.
+func SetExecHelperTimeoutForTest(d time.Duration) (restore func()) {
+	old := execHelperTimeout
+	execHelperTimeout = d
+	return func() { execHelperTimeout = old }
+}
+
+// expirySkew is the clock-skew margin for expiresAt: a token expiring within
+// the margin counts as expired, and the in-process cache refreshes that early.
+const expirySkew = 30 * time.Second
+
+type cachedShortLived struct {
+	token   string
+	expires time.Time
+}
+
+// execStore delegates login-token storage to rancher-credential-<helper> on
+// PATH, speaking credhelper protocol v1; the exec-credential cache stays on
+// the file store. Tokens with expiresAt are cached in memory only.
 type execStore struct {
-	helper string
-	dir    string
-	cache  CredStore
+	helper     string
+	dir        string
+	cache      CredStore
+	now        func() time.Time
+	mu         sync.Mutex
+	shortLived map[string]cachedShortLived // key: canonicalURL+"\n"+name
 }
 
 func newExecStore(helper, dir string) *execStore {
-	return &execStore{helper: helper, dir: dir, cache: NewFileStore(dir)}
+	return &execStore{
+		helper:     helper,
+		dir:        dir,
+		cache:      NewFileStore(dir),
+		now:        time.Now,
+		shortLived: map[string]cachedShortLived{},
+	}
 }
 
-func (s *execStore) GetToken(ref ServerRef) (string, error)     { return "", errExecNotImplemented }
-func (s *execStore) SetToken(ref ServerRef, token string) error { return errExecNotImplemented }
-func (s *execStore) DeleteToken(ref ServerRef) error            { return errExecNotImplemented }
+func (s *execStore) binary() string { return "rancher-credential-" + s.helper }
+
+// invoke runs one helper verb with req on stdin and decodes the response.
+// Decoding is verb-aware: get MUST return versioned JSON (not-found is a
+// JSON response without a token), while store/erase may exit 0 with EMPTY
+// stdout — a protocol-compliant success. Version is validated only when a
+// response body is present. Helper stderr is surfaced in errors.
+func (s *execStore) invoke(verb string, req credhelper.Request) (*credhelper.Response, error) {
+	req.ProtocolVersion = credhelper.ProtocolVersion
+	path, err := exec.LookPath(s.binary())
+	if err != nil {
+		return nil, fmt.Errorf(
+			"credential helper %q not found in PATH; install it or change credentialStore (see CREDENTIAL_HELPERS.md)",
+			s.binary())
+	}
+	in, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), execHelperTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, verb)
+	cmd.Stdin = bytes.NewReader(in)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	runErr := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("credential helper %s %s timed out after %s", s.binary(), verb, execHelperTimeout)
+	}
+	if runErr != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = runErr.Error()
+		}
+		return nil, fmt.Errorf("credential helper %s %s: %s", s.binary(), verb, msg)
+	}
+	out := bytes.TrimSpace(stdout.Bytes())
+	if len(out) == 0 {
+		if verb == credhelper.VerbGet {
+			return nil, fmt.Errorf("credential helper %s get: empty response (a get must return JSON; not-found is a response without a token)", s.binary())
+		}
+		return &credhelper.Response{ProtocolVersion: credhelper.ProtocolVersion}, nil
+	}
+	var resp credhelper.Response
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("credential helper %s %s: malformed response: %v", s.binary(), verb, err)
+	}
+	if resp.ProtocolVersion != credhelper.ProtocolVersion {
+		return nil, fmt.Errorf("credential helper %s %s: unsupported protocol version %d (CLI speaks %d)",
+			s.binary(), verb, resp.ProtocolVersion, credhelper.ProtocolVersion)
+	}
+	return &resp, nil
+}
+
+// wireRequest canonicalizes ref into the protocol request. The canonical URL
+// is the wire contract: every verb sees byte-identical identity fields.
+func wireRequest(ref ServerRef) (credhelper.Request, error) {
+	cu, err := credhelper.CanonicalServerURL(ref.URL)
+	if err != nil {
+		return credhelper.Request{}, fmt.Errorf("credential helper request: %w", err)
+	}
+	return credhelper.Request{ServerURL: cu, Name: ref.Name}, nil
+}
+
+func (s *execStore) GetToken(ref ServerRef) (string, error) {
+	req, err := wireRequest(ref)
+	if err != nil {
+		return "", err
+	}
+	key := req.ServerURL + "\n" + req.Name
+
+	s.mu.Lock()
+	if c, ok := s.shortLived[key]; ok && s.now().Add(expirySkew).Before(c.expires) {
+		s.mu.Unlock()
+		return c.token, nil
+	}
+	s.mu.Unlock()
+
+	resp, err := s.invoke(credhelper.VerbGet, req)
+	if err != nil {
+		return "", err
+	}
+	// Validate expiresAt FIRST, before any token-presence branch: a malformed
+	// timestamp is a hard malformed-response error even on a token-less
+	// response — never silently treated as not-found or non-expiring.
+	exp, err := s.parseExpiry(resp)
+	if err != nil {
+		return "", err
+	}
+	if resp.Token != "" && !exp.IsZero() && s.expired(exp) {
+		// Already expired at receipt: one immediate retry, then hard error.
+		first := resp.ExpiresAt
+		if resp, err = s.invoke(credhelper.VerbGet, req); err != nil {
+			return "", err
+		}
+		if exp, err = s.parseExpiry(resp); err != nil {
+			return "", err
+		}
+		if resp.Token != "" && !exp.IsZero() && s.expired(exp) {
+			return "", fmt.Errorf("credential helper %s returned expired tokens twice (expiresAt %s, then %s)",
+				s.binary(), first, resp.ExpiresAt)
+		}
+	}
+	if resp.Token == "" {
+		return "", ErrNoToken
+	}
+	if !exp.IsZero() {
+		s.mu.Lock()
+		s.shortLived[key] = cachedShortLived{token: resp.Token, expires: exp}
+		s.mu.Unlock()
+	}
+	return resp.Token, nil
+}
+
+// parseExpiry validates a present expiresAt; absent → zero time, nil error.
+func (s *execStore) parseExpiry(resp *credhelper.Response) (time.Time, error) {
+	if resp.ExpiresAt == "" {
+		return time.Time{}, nil
+	}
+	exp, err := time.Parse(time.RFC3339, resp.ExpiresAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("credential helper %s: malformed expiresAt %q: %v", s.binary(), resp.ExpiresAt, err)
+	}
+	return exp, nil
+}
+
+// expired reports whether exp is at/before now+skew.
+func (s *execStore) expired(exp time.Time) bool {
+	return !exp.After(s.now().Add(expirySkew))
+}
+
+func (s *execStore) SetToken(ref ServerRef, token string) error {
+	req, err := wireRequest(ref)
+	if err != nil {
+		return err
+	}
+	req.Token = token
+	resp, err := s.invoke(credhelper.VerbStore, req)
+	if err != nil {
+		return err
+	}
+	if resp.Unsupported {
+		return fmt.Errorf("credential helper %s: %w", s.binary(), ErrTokenStoreUnsupported)
+	}
+	return nil
+}
+
+func (s *execStore) DeleteToken(ref ServerRef) error {
+	req, err := wireRequest(ref)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	delete(s.shortLived, req.ServerURL+"\n"+req.Name)
+	s.mu.Unlock()
+	_, err = s.invoke(credhelper.VerbErase, req)
+	return err
+}
 
 func (s *execStore) GetCachedCred(key string) (string, time.Time, error) {
 	return s.cache.GetCachedCred(key)
