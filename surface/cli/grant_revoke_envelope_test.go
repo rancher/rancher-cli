@@ -20,8 +20,6 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
-// --- envelope decode types ---
-
 type effectData struct {
 	Action  string `json:"action"`
 	Target  string `json:"target"`
@@ -58,8 +56,6 @@ type grErrEnvelope struct {
 	Kind string    `json:"kind"`
 	Data grEnvData `json:"data"`
 }
-
-// --- fake server helpers ---
 
 func grWriteJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -173,6 +169,9 @@ type serverOpts struct {
 	// output counters (non-dry-run only)
 	realCreates atomic.Int32
 	realDeletes atomic.Int32
+
+	// body of the most recent non-dry-run GRB POST (decoded)
+	lastGRBCreate map[string]any
 }
 
 // grHandler builds an http.Handler that serves the management API paths
@@ -316,6 +315,11 @@ func grHandler(opts *serverOpts) http.Handler {
 			dryRun := r.URL.Query().Get("dryRun") == "All"
 			if !dryRun {
 				opts.realCreates.Add(1)
+				body, _ := io.ReadAll(r.Body)
+				_ = r.Body.Close()
+				var obj map[string]any
+				_ = json.Unmarshal(body, &obj)
+				opts.lastGRBCreate = obj
 			}
 			grWriteJSON(w, grCreatedObj("", "grb-new"))
 		default:
@@ -548,10 +552,9 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 
 		require.NoError(t, runErr)
 		require.NotEmpty(t, stdout)
-		// Stdout must be a non-error envelope.
 		var raw map[string]any
 		require.NoError(t, json.Unmarshal(stdout, &raw))
-		assert.NotEqual(t, "Error", raw["kind"], "stdout must be a success envelope, not Error")
+		assert.Equal(t, "ProjectRoleTemplateBinding", raw["kind"])
 		assert.Equal(t, int32(1), opts.realCreates.Load(), "exactly one non-dry-run create")
 	})
 
@@ -569,8 +572,16 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		require.NotEmpty(t, stdout)
 		var raw map[string]any
 		require.NoError(t, json.Unmarshal(stdout, &raw))
-		assert.NotEqual(t, "Error", raw["kind"])
+		assert.Equal(t, "GlobalRoleBinding", raw["kind"])
 		assert.Equal(t, int32(1), opts.realCreates.Load(), "GRB created once")
+
+		// The GRB POST body must carry generateName "grb-" and no namespace.
+		require.NotNil(t, opts.lastGRBCreate, "GRB POST body must have been captured")
+		meta, _ := opts.lastGRBCreate["metadata"].(map[string]any)
+		require.NotNil(t, meta, "GRB POST body must have metadata")
+		assert.Equal(t, "grb-", meta["generateName"], "GRB generateName must be \"grb-\"")
+		_, hasNS := meta["namespace"]
+		assert.False(t, hasNS, "GRB POST body must not have metadata.namespace")
 	})
 
 	t.Run("revoke multi preview", func(t *testing.T) {
@@ -672,7 +683,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		require.NotEmpty(t, stdout)
 		var raw map[string]any
 		require.NoError(t, json.Unmarshal(stdout, &raw))
-		assert.NotEqual(t, "Error", raw["kind"])
+		assert.Equal(t, "GlobalRoleBindingDelete", raw["kind"])
 		assert.Equal(t, int32(1), opts.realDeletes.Load(), "GRB deleted once")
 	})
 }
