@@ -112,6 +112,20 @@ func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	}))
 }
 
+func TestDrainLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
+	t.Parallel()
+	keyring.MockInit()
+	dir := t.TempDir()
+
+	// "exec:../evil" passes the "exec:" prefix check but fails ValidHelperName:
+	// DrainLoginToken must error (not silently skip) and must not attempt to
+	// exec anything. The provenance file is empty, so file/keychain drains also
+	// report nothing — only the validation error is returned.
+	_, err := DrainLoginToken(dir, execRef(), "exec:../evil")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "../evil", "error must name the invalid helper")
+}
+
 func TestDrainCrashResidueErasesRecordedIdentity(t *testing.T) {
 	// Crash boundary through the REQUIRED path: an intent was recorded but
 	// the process died before store ran. A later policy-independent drain

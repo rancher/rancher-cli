@@ -61,9 +61,9 @@ func (s *provenanceState) remove(e ProvenanceEntry) {
 	s.Entries = out
 }
 
-// forServer returns the recorded entries for a config-entry name, validated:
-// a helper name failing the grammar is a hard error at the call site (the
-// file may have been tampered with), so callers exec nothing unvetted.
+// forServer returns the recorded entries for a config-entry name. Helper names
+// are validated in withProvenanceLock's load loop before any callback runs —
+// entries that reach a callback have already passed ValidHelperName.
 func (s *provenanceState) forServer(name string) []ProvenanceEntry {
 	var out []ProvenanceEntry
 	for _, e := range s.Entries {

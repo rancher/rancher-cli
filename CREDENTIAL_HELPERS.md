@@ -127,6 +127,10 @@ path "secret/data/rancher-cli/*"     { capabilities = ["create", "update", "read
 path "secret/metadata/rancher-cli/*" { capabilities = ["delete"] }
 ```
 
+The paths above use the default mount (`secret`) and path prefix
+(`rancher-cli`); adjust them if `RANCHER_VAULT_MOUNT` or `RANCHER_VAULT_PATH`
+are overridden.
+
 (`update` matters: without it the first login works and every re-login
 fails.)
 

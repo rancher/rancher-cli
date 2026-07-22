@@ -497,7 +497,9 @@ func DrainLoginToken(dir string, ref ServerRef, policy string) ([]string, error)
 	// a helper credential. The provenance lock spans erase + unrecord.
 	targets := map[ProvenanceEntry]struct{}{}
 	if name, ok := execHelperName(policy); ok {
-		if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
+		if !credhelper.ValidHelperName(name) {
+			errs = append(errs, fmt.Errorf("invalid credential helper name %q in effective policy; refusing to execute it", name))
+		} else if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
 			targets[ProvenanceEntry{Helper: name, Name: ref.Name, CanonicalURL: cu}] = struct{}{}
 		} else if ref.URL != "" {
 			errs = append(errs, fmt.Errorf("credential helper drain: %w", cerr))
