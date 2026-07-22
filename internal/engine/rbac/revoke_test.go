@@ -79,7 +79,7 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 	assert.Contains(t, eff.Target, "(2)")
 	assert.False(t, eff.ConflictDetection, "multi-binding revoke: no single rv precondition applies")
 	require.Len(t, eff.Warnings, 1)
-	assert.Contains(t, eff.Warnings[0], "sequentially")
+	assert.Equal(t, "2 bindings are deleted sequentially; on failure some may already be deleted", eff.Warnings[0])
 
 	// Plan dry-runs every matched delete (prtb-pm and prtb-po, sorted).
 	assert.Equal(t, []bool{true, true}, client.deleteDryRuns)
@@ -182,8 +182,7 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Hint, "project-member")
-	assert.Contains(t, ce.Hint, "project-owner")
+	assert.Equal(t, "subject holds: project-member, project-owner", ce.Hint)
 }
 
 func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
@@ -218,18 +217,18 @@ func TestRevokePartialFailure(t *testing.T) {
 	// is forced to fail with a CodeConflict error. Plan must complete
 	// (deleteErrs only fires on dryRun == false). Execute returns a
 	// clierr with Deleted == [alpha], Failed.Name == beta, Unattempted == [gamma].
-	conflictErr := clierr.New(clierr.CodeConflict, "rv conflict")
+	conflictErr := clierr.New(clierr.CodeConflict, "rv conflict").WithRetryable(true)
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"clusterroletemplatebindings": {Items: []unstructured.Unstructured{
-				revokeBinding("prtb-alpha", "c-x", "rv-alpha", "roleTemplateName", "cluster-owner", "u-abc", "", ""),
-				revokeBinding("prtb-beta", "c-x", "rv-beta", "roleTemplateName", "cluster-member", "u-abc", "", ""),
-				revokeBinding("prtb-gamma", "c-x", "rv-gamma", "roleTemplateName", "cluster-reader", "u-abc", "", ""),
+				revokeBinding("crtb-alpha", "c-x", "rv-alpha", "roleTemplateName", "cluster-owner", "u-abc", "", ""),
+				revokeBinding("crtb-beta", "c-x", "rv-beta", "roleTemplateName", "cluster-member", "u-abc", "", ""),
+				revokeBinding("crtb-gamma", "c-x", "rv-gamma", "roleTemplateName", "cluster-reader", "u-abc", "", ""),
 			}},
 		},
 		allowDelete: true,
-		deleteErrs:  map[string]error{"prtb-beta": conflictErr},
+		deleteErrs:  map[string]error{"crtb-beta": conflictErr},
 	}
 	cmd := NewRevoke(fakeFactory{client})
 
@@ -249,15 +248,16 @@ func TestRevokePartialFailure(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, execErr, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.True(t, ce.Retryable, "partialFailure must hoist Retryable from the underlying error")
 	assert.Contains(t, ce.Hint, "re-run")
 
 	// Type assertion pins the Details shape.
 	pf, ok := ce.Details.(RevokePartialFailure)
 	require.True(t, ok, "Details must be RevokePartialFailure")
-	assert.Equal(t, []string{"prtb-alpha"}, pf.Deleted)
-	assert.Equal(t, "prtb-beta", pf.Failed.Name)
+	assert.Equal(t, []string{"crtb-alpha"}, pf.Deleted)
+	assert.Equal(t, "crtb-beta", pf.Failed.Name)
 	assert.Equal(t, clierr.CodeConflict, pf.Failed.Code)
-	assert.Equal(t, []string{"prtb-gamma"}, pf.Unattempted)
+	assert.Equal(t, []string{"crtb-gamma"}, pf.Unattempted)
 
 	// JSON decode pins the wire field names.
 	data, marshalErr := json.Marshal(pf)
