@@ -314,6 +314,66 @@ func TestReadOnlyOverrideStash(t *testing.T) {
 	assert.Equal(t, []string{"config readOnly", "--read-only"}, sources)
 }
 
+// effectiveTestConfig is a one-server config with a resolving current context.
+func effectiveTestConfig(name, url string) *Config {
+	return &Config{
+		CurrentContext: name,
+		Servers:        map[string]Server{name: {URL: url}},
+		Contexts:       map[string]Context{name: {Server: name}},
+	}
+}
+
+// recordingStore serves one token and counts GetToken calls; the other
+// CredStore methods are inherited from an embedded file store that is never
+// reached in these tests.
+type recordingStore struct {
+	CredStore
+	name, token string
+	getCalls    int
+}
+
+func (r *recordingStore) GetToken(ref ServerRef) (string, error) {
+	r.getCalls++
+	if ref.Name == r.name {
+		return r.token, nil
+	}
+	return "", ErrNoToken
+}
+
+// failingStore errors on every token read — stands in for a broken helper.
+type failingStore struct{ CredStore }
+
+func (failingStore) GetToken(ServerRef) (string, error) {
+	return "", errors.New("helper exploded")
+}
+
+func TestEffectiveEnvTokenSkipsStore(t *testing.T) {
+	t.Setenv(EnvToken, "env-id:env-secret")
+	cfg := effectiveTestConfig("prod", "https://rancher.example.com")
+	eff, err := cfg.Effective(failingStore{})
+	require.NoError(t, err, "env token must bypass the store entirely")
+	assert.Equal(t, "env-id:env-secret", eff.Token)
+}
+
+func TestEffectiveDivergentURLDoesNotReadStoredToken(t *testing.T) {
+	t.Setenv(EnvURL, "https://other.example.com")
+	cfg := effectiveTestConfig("prod", "https://rancher.example.com")
+	st := &recordingStore{name: "prod", token: "stored-id:stored-secret"}
+	eff, err := cfg.Effective(st)
+	require.NoError(t, err)
+	assert.Empty(t, eff.Token, "stored token must not leak to a divergent host")
+	assert.Zero(t, st.getCalls, "store must not be read at all on divergence")
+}
+
+func TestEffectiveEquivalentURLStillReadsToken(t *testing.T) {
+	t.Setenv(EnvURL, "HTTPS://RANCHER.example.com:443")
+	cfg := effectiveTestConfig("prod", "https://rancher.example.com")
+	st := &recordingStore{name: "prod", token: "stored-id:stored-secret"}
+	eff, err := cfg.Effective(st)
+	require.NoError(t, err)
+	assert.Equal(t, "stored-id:stored-secret", eff.Token)
+}
+
 func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
 	t.Parallel()
 	// Equivalence per SameServerURL must be exactly equality of

@@ -97,19 +97,39 @@ type Effective struct {
 }
 
 // Effective merges env vars over the current context/server. Env wins.
-// RANCHER_CLI_TOKEN is used directly and never read from the store.
+// Ordering is deliberate: the effective URL and env token are resolved BEFORE
+// any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
+// configured store is broken (CI escape hatch), and (b) a stored token is
+// read only when the effective URL still addresses the server it belongs to —
+// a divergent RANCHER_CLI_URL never receives another server's credential.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	var eff Effective
-	storedURL := ""
-
-	// Start from file if a current context resolves.
-	if name, s, err := c.CurrentServer(); err == nil {
+	name, s, serverErr := c.CurrentServer()
+	if serverErr == nil {
 		ctx := c.Contexts[c.CurrentContext]
 		eff = Effective{
 			ServerName: name, URL: s.URL, CA: s.CA,
 			Cluster: ctx.Cluster, Project: ctx.Project,
 		}
-		storedURL = s.URL
+	}
+
+	// Effective URL first (env > file).
+	if v := os.Getenv(EnvURL); v != "" {
+		if serverErr == nil && !SameServerURL(v, s.URL) {
+			// Never pair a CA or display name with a server they were not
+			// issued for; and (below) never read the stored token either.
+			eff.CA = ""
+			eff.ServerName = ""
+		}
+		eff.URL = v
+	}
+
+	// Token: env short-circuits the store entirely; otherwise read the
+	// stored token only when the effective URL still matches the configured
+	// server it was stored for.
+	if v := os.Getenv(EnvToken); v != "" {
+		eff.Token = v
+	} else if serverErr == nil && SameServerURL(eff.URL, s.URL) {
 		tok, terr := store.GetToken(ServerRef{Name: name, URL: s.URL})
 		switch {
 		case terr == nil:
@@ -121,27 +141,8 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		}
 	}
 
-	// Env overrides (env > file).
-	if v := os.Getenv(EnvURL); v != "" {
-		if !SameServerURL(v, storedURL) {
-			// RANCHER_CLI_URL is pointing this invocation at a server other than
-			// the one eff.CA/eff.ServerName belong to — never pair a CA (or a
-			// display name) with a server it was never issued for. This is
-			// the choke point every command shares (get/create/patch/delete,
-			// auth check, kubeconfig): clear both here, once, rather than at
-			// each caller. RANCHER_CLI_CACERT, checked next, still applies
-			// normally, exactly like a pure env-only session with no stored
-			// context at all.
-			eff.CA = ""
-			eff.ServerName = ""
-		}
-		eff.URL = v
-	}
 	if v := os.Getenv(EnvCACert); v != "" {
 		eff.CA = v
-	}
-	if v := os.Getenv(EnvToken); v != "" {
-		eff.Token = v
 	}
 	if v := os.Getenv(EnvContext); v != "" {
 		cl, pr, hasProject := SplitContext(v)
