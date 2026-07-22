@@ -191,6 +191,8 @@ graph TD
     observe --> runtime
     observe --> clierr
 
+    rbac --> engine
+    rbac --> kinds
     rbac --> clierr
 
     provider --> engine
