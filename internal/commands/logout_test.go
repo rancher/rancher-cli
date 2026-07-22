@@ -2,6 +2,9 @@ package commands
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -232,6 +235,93 @@ func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
 	assert.Contains(t, df["acme"], "helper:fake")
 	assert.Contains(t, df["other"], "helper:fake")
 	assert.Empty(t, helperCreds(t, statePath), "--all erases every helper-held credential")
+}
+
+// TestLogoutAllDrainsProvenanceResidueForUnconfiguredServer is the impl-review
+// finding-2 repro: a helper credential recorded in provenance for a server
+// name absent from config.yaml (a crash/failed-write residue) is unreachable
+// from the per-server logout loop, so `logout --all` must drain it via the
+// provenance residue path and report it.
+func TestLogoutAllDrainsProvenanceResidueForUnconfiguredServer(t *testing.T) {
+	t.Setenv("PATH", buildCommandsFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	keyring.MockInit()
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CredentialStore: "exec:fake",
+		Servers:         map[string]config.Server{},
+		Contexts:        map[string]config.Context{},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	// Store a helper credential + provenance for a name that never made it
+	// into config.yaml.
+	store, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
+	require.NotEmpty(t, helperCreds(t, statePath), "precondition: helper holds the residue credential")
+
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+
+	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
+	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the drained residue under its server name")
+	assert.Empty(t, helperCreds(t, statePath), "the residue helper credential must be erased")
+
+	residue, err := config.DrainProvenanceResidue(dir)
+	require.NoError(t, err)
+	assert.Empty(t, residue, "provenance must be fully drained")
+}
+
+// TestLogoutAllDrainsResidueAfterFailedConfigWrite is finding-2's review-
+// requested scenario: a login whose helper store succeeds but whose config
+// write then fails strands a live helper credential + provenance entry for a
+// server never persisted to config.yaml. `logout --all` must still clean it.
+func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("symlink-based config-write failure needs POSIX symlink semantics")
+	}
+	t.Setenv("PATH", buildCommandsFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	keyring.MockInit()
+
+	dir := t.TempDir()
+	// A real config behind a symlink at the config path: config.Load follows
+	// it fine, but atomicWriteFile refuses to write THROUGH a symlink — so
+	// cfg.Write fails deterministically while the provenance write-ahead (a
+	// different, non-symlink file) still succeeds.
+	real := filepath.Join(dir, "config.real.yaml")
+	realCfg := &config.Config{CredentialStore: "exec:fake", Servers: map[string]config.Server{}, Contexts: map[string]config.Context{}}
+	realCfg.SetPath(real)
+	require.NoError(t, realCfg.Write())
+	require.NoError(t, os.Symlink(real, config.FilePath(dir)))
+
+	store, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+
+	_, err = newLoginCmd(dir, store).Execute(context.Background(),
+		args{s: map[string]string{"server": "https://ghost.ex", "name": "ghost"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:secret"))
+	require.Error(t, err, "the config write must fail (symlink refusal)")
+	require.NotEmpty(t, helperCreds(t, statePath), "the helper stored the credential before the config write failed")
+
+	// logout --all reads the unchanged config (ghost is absent from it) yet
+	// must still drain the stranded helper credential via provenance.
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+		args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded residue")
+
+	residue, err := config.DrainProvenanceResidue(dir)
+	require.NoError(t, err)
+	assert.Empty(t, residue)
 }
 
 func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {

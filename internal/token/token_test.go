@@ -600,7 +600,8 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 	}
 
 	var notices bytes.Buffer
-	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", ui.New(&notices, strings.NewReader(""), true, false))
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", ui.New(&notices, strings.NewReader(""), true, false))
+	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-a", name)
 	assert.Equal(t, "tok-a", tok)
@@ -688,7 +689,8 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	}
 
 	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
-		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		require.NoError(t, serr)
 		require.True(t, ok)
 		assert.Equal(t, "prod-a", name)
 		assert.Equal(t, "tok-a", tok)
@@ -697,7 +699,8 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	t.Run("the current context's server wins the tie, regardless of name order", func(t *testing.T) {
 		cfg.CurrentContext = "ctx-b"
 		cfg.Contexts = map[string]config.Context{"ctx-b": {Server: "prod-b"}}
-		name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		require.NoError(t, serr)
 		require.True(t, ok)
 		assert.Equal(t, "prod-b", name)
 		assert.Equal(t, "tok-b", tok)
@@ -718,7 +721,8 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+	require.NoError(t, serr)
 	require.True(t, ok, "a tokenless top-ranked candidate must not short-circuit the search")
 	assert.Equal(t, "prod-b", name)
 	assert.Equal(t, "tok-b", tok)
@@ -737,10 +741,27 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, ok := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", ui.Discard())
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", ui.Discard())
+	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-b", name, "--name must win over the lexicographic default")
 	assert.Equal(t, "tok-b", tok)
+}
+
+// TestStoredTokenForServerMatchesEquivalentURLSpellings is the impl-review
+// finding-4 repro: candidate matching must use canonical server identity, so
+// a configured "https://host" is found for a "HTTPS://HOST:443" query (case
+// and an explicit default port are irrelevant) rather than skipped.
+func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "tok"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: "https://host"}}}
+
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", ui.Discard())
+	require.NoError(t, serr)
+	require.True(t, ok, "an equivalent URL spelling must still match the configured server")
+	assert.Equal(t, "prod", name)
+	assert.Equal(t, "tok", tok)
 }
 
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {

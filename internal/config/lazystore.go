@@ -61,6 +61,21 @@ func (l *lazyStore) DeleteToken(ref ServerRef) error {
 	return s.DeleteToken(ref)
 }
 
+// ShortLivedTokenExpiry forwards the optional ShortLivedTokenStore interface
+// through the resolved backend, so an exec store reached lazily still reports
+// its in-memory short-lived expiry. Returns false when the backend fails to
+// resolve or does not implement the interface.
+func (l *lazyStore) ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool) {
+	s, err := l.backend()
+	if err != nil {
+		return time.Time{}, false
+	}
+	if slt, ok := s.(ShortLivedTokenStore); ok {
+		return slt.ShortLivedTokenExpiry(ref)
+	}
+	return time.Time{}, false
+}
+
 func (l *lazyStore) GetCachedCred(key string) (string, time.Time, error) {
 	s, err := l.backend()
 	if err != nil {

@@ -2,11 +2,32 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
+
+// TestDrainExecCacheForServerNormalizesLegacyHostSpelling is the impl-review
+// finding-4 repro: a cache record whose Server host was stored with a
+// different-but-equivalent spelling (uppercase, explicit default port) must
+// still be drained on logout, since the drain now compares canonical hosts
+// rather than raw bytes.
+func TestDrainExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewFileStore(dir)
+	// Pre-seed a legacy-cased/ported record: Server field spelled "HOST:443".
+	legacyKey := CacheKey("kubeuser", "HOST:443", "c-1")
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:443", "c-1"))
+
+	deleted, err := DrainExecCacheForServer(fs, "https://host")
+	require.NoError(t, err)
+	assert.Equal(t, []string{legacyKey}, deleted, "an equivalent host spelling must still drain the legacy record")
+
+	_, _, gerr := fs.GetCachedCred(legacyKey)
+	assert.ErrorIs(t, gerr, ErrNoToken, "the legacy-cased cache entry must be gone")
+}
 
 func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	// Login stored via exec:fake (records provenance); drain runs with

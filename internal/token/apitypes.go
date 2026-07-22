@@ -14,6 +14,12 @@ import (
 type Token struct {
 	Token     string `json:"token,omitempty"`
 	ExpiresAt string `json:"expiresAt,omitempty"`
+
+	// noDiskCache, when set, forbids writing this token to the on-disk
+	// exec-credential cache: it marks a credential the backing store
+	// guarantees only in memory (a credential-helper short-lived token served
+	// through the legacy pre-ext.cattle.io fallback). It is never serialized.
+	noDiskCache bool
 }
 
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.

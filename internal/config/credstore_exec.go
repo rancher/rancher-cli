@@ -14,6 +14,15 @@ import (
 	"github.com/rancher/rancher-cli/credhelper"
 )
 
+// ShortLivedTokenStore is the optional interface a CredStore implements when it
+// can report the in-memory expiry of the last short-lived token it served for
+// an identity. get-token's legacy (pre-ext.cattle.io) fallback consults it so a
+// helper-minted short-lived token is never written to the on-disk cache past —
+// or at all beyond — its real expiry.
+type ShortLivedTokenStore interface {
+	ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool)
+}
+
 // ErrTokenStoreUnsupported is execStore.SetToken's typed result for a helper
 // that answered {"unsupported":true}: the helper is read-only by design.
 // Only `auth login` treats it specially (warn and proceed); every other
@@ -175,6 +184,25 @@ func (s *execStore) GetToken(ref ServerRef) (string, error) {
 		s.mu.Unlock()
 	}
 	return resp.Token, nil
+}
+
+// ShortLivedTokenExpiry reports the in-memory cached expiry for ref's identity
+// (canonical URL + name), and true, when the last token this store served for
+// it carried an expiresAt (a short-lived, memory-only credential). It returns
+// false when no such token was cached — a long-lived token, or none served yet
+// this process — or when ref cannot be canonicalized.
+func (s *execStore) ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool) {
+	req, err := wireRequest(ref)
+	if err != nil {
+		return time.Time{}, false
+	}
+	key := req.ServerURL + "\n" + req.Name
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.shortLived[key]; ok {
+		return c.expires, true
+	}
+	return time.Time{}, false
 }
 
 // parseExpiry validates a present expiresAt; absent → zero time, nil error.

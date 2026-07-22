@@ -123,6 +123,40 @@ func withProvenanceLock(dir string, fn func(*provenanceState) error) error {
 	return fnErr
 }
 
+// DrainProvenanceResidue erases EVERY remaining recorded helper credential,
+// independently of what config.yaml still lists. `logout --all` calls it after
+// draining the configured servers so a credential whose server name never
+// reached config.yaml — a crash (or failed config write) between a successful
+// helper store and the config write leaves the helper holding a live token
+// plus a provenance entry no configured-server logout can reach — is still
+// drained. Runs under the provenance lock; each entry's helper name has
+// already passed ValidHelperName in the lock loader. Entries whose erase
+// succeeds are removed; failures are retained for a later retry and their
+// errors joined. Returns "helper:<helper>@<name>" identifiers for the entries
+// actually drained.
+func DrainProvenanceResidue(dir string) ([]string, error) {
+	var (
+		drained []string
+		eerrs   []error
+	)
+	lerr := withProvenanceLock(dir, func(st *provenanceState) error {
+		// Snapshot the entries: st.remove mutates st.Entries mid-loop.
+		remaining := make([]ProvenanceEntry, len(st.Entries))
+		copy(remaining, st.Entries)
+		for _, e := range remaining {
+			es := newExecStore(e.Helper, dir)
+			if _, ierr := es.invoke(credhelper.VerbErase, credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name}); ierr != nil {
+				eerrs = append(eerrs, fmt.Errorf("credential helper %q erase: %w", e.Helper, ierr))
+				continue // entry stays for retry
+			}
+			st.remove(e)
+			drained = append(drained, "helper:"+e.Helper+"@"+e.Name)
+		}
+		return errors.Join(eerrs...)
+	})
+	return drained, lerr
+}
+
 // persistProvenance is a swappable seam over persistProvenanceToDisk so
 // tests can inject persistence failures at chosen call ordinals.
 var persistProvenance = persistProvenanceToDisk

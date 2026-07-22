@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -167,6 +168,23 @@ func (l logoutCmd) drainAll(cfg *config.Config, targets []string, policy string)
 	if err != nil {
 		return nil, nil, clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("failed to drain exec-credential cache: %v", err)).
+			WithHint(fmt.Sprintf("already logged out: %v", done))
+	}
+
+	// Reach helper credentials whose server name never made it into
+	// config.yaml (a crash or failed config write between a successful helper
+	// store and cfg.Write): no per-server drain above could see them. Their
+	// provenance identifiers read "helper:<helper>@<server-name>"; merge each
+	// into deletedFrom under that server name so the envelope stays stable.
+	residue, rerr := config.DrainProvenanceResidue(l.dir)
+	for _, id := range residue {
+		if at := strings.LastIndex(id, "@"); at >= 0 {
+			deletedFrom[id[at+1:]] = append(deletedFrom[id[at+1:]], id[:at])
+		}
+	}
+	if rerr != nil {
+		return nil, nil, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("failed to drain credential-helper residue: %v", rerr)).
 			WithHint(fmt.Sprintf("already logged out: %v", done))
 	}
 	return deletedFrom, deletedCache, nil

@@ -192,6 +192,10 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 			// (GetCachedCred only evicts a past, non-zero expiry) — never
 			// cache an immortal stale token.
 			p.Notice("not caching: the minted token carried no expiry")
+		case rancherToken.noDiskCache:
+			// A credential-helper short-lived token served through the legacy
+			// fallback is memory-only by contract — never write it to disk.
+			p.Notice("not caching: the credential helper serves this token from memory only")
 		default:
 			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, name, serverHost, clusterID); cacheErr != nil {
 				p.Notice("cache write failed: " + cacheErr.Error())
@@ -843,16 +847,15 @@ func serverCandidateRank(name, wantName, curServer string) int {
 // WINNING RANK had a stored token — an exact --name match (rank 0) winning
 // outright is a certainty, not a tie-break, even if some unrelated
 // lower-ranked server also happens to have a stale token.
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, p runtime.Prompter) (name, tok string, ok bool) {
-	target := kube.BaseURL(server)
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, p runtime.Prompter) (name, tok string, ref config.ServerRef, ok bool, err error) {
 	var candidates []string
 	for n, s := range cfg.Servers {
-		if kube.BaseURL(s.URL) == target {
+		if config.SameServerURL(s.URL, server) {
 			candidates = append(candidates, n)
 		}
 	}
 	if len(candidates) == 0 {
-		return "", "", false
+		return "", "", config.ServerRef{}, false, nil
 	}
 	sort.Strings(candidates)
 
@@ -865,27 +868,45 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
 
-	type hit struct{ name, tok string }
+	type hit struct {
+		name, tok string
+		ref       config.ServerRef
+	}
 	hitsByRank := map[int][]hit{}
+	// firstHardErr remembers the FIRST non-not-found helper/store failure — a
+	// missing helper binary, timeout, malformed response, version mismatch,
+	// backend outage — so a genuinely misconfigured store is surfaced rather
+	// than silently treated as "no credential" and papered over by the
+	// interactive fallback. A clean miss (ErrNoToken / empty token) is skipped.
+	var firstHardErr error
 	for _, n := range candidates {
-		t, err := store.GetToken(config.ServerRef{Name: n, URL: cfg.Servers[n].URL})
-		if err != nil || strings.TrimSpace(t) == "" {
+		r := config.ServerRef{Name: n, URL: cfg.Servers[n].URL}
+		t, gerr := store.GetToken(r)
+		if gerr != nil {
+			if !errors.Is(gerr, config.ErrNoToken) && firstHardErr == nil {
+				firstHardErr = gerr
+			}
 			continue
 		}
-		r := rankOf(n)
-		hitsByRank[r] = append(hitsByRank[r], hit{n, t})
+		if strings.TrimSpace(t) == "" {
+			continue
+		}
+		hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], hit{n, t, r})
 	}
-	for r := 0; r < serverCandidateRankCount; r++ {
-		hs := hitsByRank[r]
+	for rank := 0; rank < serverCandidateRankCount; rank++ {
+		hs := hitsByRank[rank]
 		if len(hs) == 0 {
 			continue
 		}
 		if len(hs) > 1 {
 			p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", len(hs), hs[0].name))
 		}
-		return hs[0].name, hs[0].tok, true
+		return hs[0].name, hs[0].tok, hs[0].ref, true, nil
 	}
-	return "", "", false
+	// No candidate produced a token. If any candidate failed with a hard
+	// error, surface it — a helper misconfiguration must not silently fall
+	// through to interactive auth.
+	return "", "", config.ServerRef{}, false, firstHardErr
 }
 
 // clustersPath is the management Cluster collection/object path, reached
@@ -995,7 +1016,13 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		p.Notice(fmt.Sprintf("config unreadable: %v — skipping stored-credential mint", err))
 		return Token{}, errNoStoredCredential
 	}
-	name, stored, ok := storedTokenForServer(cfg, t.store, server, wantName, p)
+	name, stored, ref, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, p)
+	if serr != nil {
+		// A hard store/helper failure (missing binary, timeout, malformed
+		// response, version mismatch, backend outage) must surface, never be
+		// papered over by falling through to interactive auth.
+		return Token{}, serr
+	}
 	if !ok {
 		return Token{}, errNoStoredCredential
 	}
@@ -1010,12 +1037,31 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		case errors.Is(err, ErrExtGroupAbsent):
 			// Legacy Rancher with no ext.cattle.io: use the stored token
 			// itself, matching auth login's own fallback. The stored token
-			// carries no expiry of its own, so cache it for a bounded,
-			// conservative TTL rather than never (a zero expiry) or
+			// normally carries no expiry of its own, so cache it for a
+			// bounded, conservative TTL rather than never (a zero expiry) or
 			// forever.
-			expiry := time.Now().Add(legacyMintTTL).UTC().Format(time.RFC3339)
-			p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyMintTTL))
-			return Token{Token: stored, ExpiresAt: expiry}, nil
+			//
+			// But when the backing store is a credential helper serving a
+			// SHORT-LIVED token (one with a real expiresAt, held in memory
+			// only), that token must NOT be persisted to the on-disk cache,
+			// and its returned expiry must never outlast the helper's real
+			// one: cap the expiry at the helper's, and mark it noDiskCache.
+			expiry := time.Now().Add(legacyMintTTL)
+			noDiskCache := false
+			if slt, isSLT := t.store.(config.ShortLivedTokenStore); isSLT {
+				if helperExp, short := slt.ShortLivedTokenExpiry(ref); short {
+					noDiskCache = true
+					if helperExp.Before(expiry) {
+						expiry = helperExp
+					}
+				}
+			}
+			if noDiskCache {
+				p.Notice("this Rancher does not serve ext.cattle.io; serving the credential-helper token from memory only (not cached to disk)")
+			} else {
+				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyMintTTL))
+			}
+			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
 		case errors.Is(err, errMintDenied):
 			p.Notice(fmt.Sprintf("minting from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
 			return Token{}, errNoStoredCredential
@@ -1031,9 +1077,8 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 // matches — so an explicit --server with no --cacert never silently borrows
 // a different server's trust root.
 func caForServer(cfg *config.Config, server string) string {
-	target := kube.BaseURL(server)
 	for _, s := range cfg.Servers {
-		if kube.BaseURL(s.URL) == target {
+		if config.SameServerURL(s.URL, server) {
 			return s.CA
 		}
 	}

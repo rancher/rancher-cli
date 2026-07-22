@@ -557,7 +557,7 @@ func DrainAllExecCache(dir string) ([]string, error) {
 // entry was cached — and returns the deleted entries' keys. Entries cached
 // against a different server are left alone.
 func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
-	host := ServerHost(serverURL)
+	host := canonicalCacheHost(ServerHost(serverURL))
 	if host == "" {
 		return nil, nil
 	}
@@ -567,7 +567,7 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 	}
 	var deleted []string
 	for _, c := range creds {
-		if c.Server != host {
+		if canonicalCacheHost(c.Server) != host {
 			continue
 		}
 		if err := store.DeleteCachedCred(c.Key); err != nil {
@@ -576,6 +576,22 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 		deleted = append(deleted, c.Key)
 	}
 	return deleted, nil
+}
+
+// canonicalCacheHost normalizes a cache-record host (or a drain target's host)
+// for comparison only: lowercased and default-port-stripped, via the shared
+// canonical-URL algorithm. A byte-wise Server comparison would otherwise leave
+// a legacy record spelled HOST:443 undrained against a https://host logout,
+// stranding a live cache entry. ServerHost still GENERATES the stored key; this
+// is applied only when matching, so existing records keep their spelling.
+func canonicalCacheHost(host string) string {
+	if host == "" {
+		return ""
+	}
+	if cu, err := credhelper.CanonicalServerURL("https://" + host); err == nil {
+		return strings.TrimPrefix(cu, "https://")
+	}
+	return strings.ToLower(host)
 }
 
 // ServerHost reduces a server URL to its host, matching CacheKey's
