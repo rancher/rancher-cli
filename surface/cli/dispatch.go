@@ -356,6 +356,43 @@ func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap Tok
 	return "" // not found or ambiguous
 }
 
+// roleVocab identifies which role vocabulary a --role completion should
+// offer, derived from the scope flags on the typed line.
+type roleVocab int
+
+const (
+	roleVocabNone roleVocab = iota
+	roleVocabGlobal
+	roleVocabProject
+	roleVocabCluster
+)
+
+// roleVocabulary maps the typed tail's scope flags to a role vocabulary,
+// reproducing rbac.ResolveScope's scope→vocabulary mapping and conflict
+// REJECTION — but by flag PRESENCE (flagPresent), a deliberate mid-edit
+// heuristic, not ResolveScope's value parsing: a completion line is
+// unfinished by nature ("--project= <TAB>" is about to receive a value),
+// and completion only suggests — a heuristic mismatch costs an unhelpful
+// list, never a wrong mutation. The context/env/config cluster fallbacks
+// are deliberately NOT consulted: grant/revoke refuse implicit scope, so
+// completion must not suggest a vocabulary the command would reject.
+func roleVocabulary(tail []string) roleVocab {
+	global := flagPresent(tail, "global")
+	project := flagPresent(tail, "project")
+	cluster := flagPresent(tail, "cluster")
+	switch {
+	case global && (project || cluster):
+		return roleVocabNone // ResolveScope rejects the combination
+	case global:
+		return roleVocabGlobal
+	case project:
+		return roleVocabProject
+	case cluster:
+		return roleVocabCluster
+	}
+	return roleVocabNone
+}
+
 // liveFlagValueCandidates handles live flag-value sites (--cluster, --project,
 // --namespace, --node, --context AC-7/AC-8/AC-9/AC-11/AC-14).
 // effectiveProject is passed to suppress --namespace when a project scope is

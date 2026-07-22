@@ -512,3 +512,32 @@ func TestFlagNameCandidatesDedupeSharedAlias(t *testing.T) {
 	}
 	assert.Equal(t, 1, count, "shared short alias -x must be emitted exactly once, got %v", got)
 }
+
+func TestRoleVocabulary(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		tail []string
+		want roleVocab
+	}{
+		{name: "no scope flag", tail: []string{"grant", "jane", "--role"}, want: roleVocabNone},
+		{name: "global", tail: []string{"grant", "jane", "--global", "--role"}, want: roleVocabGlobal},
+		{name: "project", tail: []string{"grant", "jane", "--project", "Default", "--role"}, want: roleVocabProject},
+		{name: "project with cluster qualifier", tail: []string{"grant", "jane", "--project", "Default", "--cluster", "c-x", "--role"}, want: roleVocabProject},
+		{name: "cluster alone", tail: []string{"grant", "jane", "--cluster", "c-x", "--role"}, want: roleVocabCluster},
+		{name: "conflict global+project", tail: []string{"grant", "jane", "--global", "--project", "Default", "--role"}, want: roleVocabNone},
+		{name: "conflict global+cluster", tail: []string{"grant", "jane", "--global", "--cluster", "c-x", "--role"}, want: roleVocabNone},
+		// Presence heuristic rows (spec: deliberate mid-edit heuristic, NOT
+		// ResolveScope value parsing).
+		{name: "heuristic global=false counts as global", tail: []string{"grant", "jane", "--global=false", "--role"}, want: roleVocabGlobal},
+		{name: "heuristic empty project value", tail: []string{"grant", "jane", "--project=", "--role"}, want: roleVocabProject},
+		{name: "heuristic empty cluster value", tail: []string{"grant", "jane", "--cluster=", "--role"}, want: roleVocabCluster},
+		{name: "equals-form project", tail: []string{"grant", "jane", "--project=Default", "--role"}, want: roleVocabProject},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, roleVocabulary(tt.tail))
+		})
+	}
+}
