@@ -72,11 +72,15 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	userKind, _ := kinds.Lookup("user")
 
 	if sub.Principal != "" {
+		isLocal := strings.HasPrefix(sub.Principal, "local://")
 		id := strings.TrimPrefix(sub.Principal, "local://")
-		if id == sub.Principal { // not local — use the EnsureUser hash id
+		if !isLocal {
 			id = ProvisionedUserID(sub.Principal)
 		}
 		obj, err := client.Get(ctx, userKind.GVR, "", id)
+		if err != nil && !isNotFound(err) {
+			return ResolvedSubject{}, err
+		}
 		if err == nil {
 			// A successful hit on a system user is TERMINAL: it must
 			// never fall through to the principal scan or provisioning
@@ -86,16 +90,26 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 				return ResolvedSubject{}, systemUserError(sub.Principal)
 			}
 			pids, _, _ := unstructured.NestedStringSlice(obj.Object, "principalIds")
-			return ResolvedSubject{UserID: obj.GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
-		}
-		if !isNotFound(err) {
-			return ResolvedSubject{}, err
+			// For external principals the id is derived from a hash of
+			// the principal. A user's provider principal can be replaced
+			// (SetPrincipalOnCurrentUserByUserID) while preserving the
+			// metadata name, so the hash-id hit must be verified: the
+			// requested principal must still appear in principalIds.
+			// Local principals are looked up by the literal user id
+			// (TrimPrefix removes the scheme), so no ownership check
+			// is needed there.
+			if isLocal || principalOwned(pids, sub.Principal) {
+				return ResolvedSubject{UserID: obj.GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
+			}
+			// Hash-id hit but principal no longer owned — fall through
+			// to the authoritative list scan.
 		}
 		// Authoritative fallback: one list scan over principalIds.
 		list, lerr := client.List(ctx, userKind.GVR, "", "")
 		if lerr != nil {
 			return ResolvedSubject{}, lerr
 		}
+		var owners []*unstructured.Unstructured
 		for i := range list.Items {
 			u := &list.Items[i]
 			if isSystemUser(u) {
@@ -104,11 +118,27 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 			for _, p := range pids {
 				if p == sub.Principal {
-					return ResolvedSubject{UserID: u.GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
+					owners = append(owners, u)
+					break
 				}
 			}
 		}
-		return ResolvedSubject{Principal: sub.Principal, Provision: true}, nil
+		switch len(owners) {
+		case 0:
+			return ResolvedSubject{Principal: sub.Principal, Provision: true}, nil
+		case 1:
+			pids, _, _ := unstructured.NestedStringSlice(owners[0].Object, "principalIds")
+			return ResolvedSubject{UserID: owners[0].GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
+		default:
+			cands := make([]clierr.Candidate, 0, len(owners))
+			for _, u := range owners {
+				cands = append(cands, candidate(u))
+			}
+			return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
+				fmt.Sprintf("%d users share principal %q", len(owners), sub.Principal)).
+				WithCandidates(cands).
+				WithHint("pass the user id")
+		}
 	}
 
 	// Bare name/id: exact-id Get wins outright (deliberate precedence
@@ -184,6 +214,16 @@ func candidate(u *unstructured.Unstructured) clierr.Candidate {
 		display, _, _ = unstructured.NestedString(u.Object, "username")
 	}
 	return clierr.Candidate{ID: u.GetName(), Name: display}
+}
+
+// principalOwned reports whether principal appears in pids.
+func principalOwned(pids []string, principal string) bool {
+	for _, p := range pids {
+		if p == principal {
+			return true
+		}
+	}
+	return false
 }
 
 // nearCandidates filters users to case-insensitive substring matches of

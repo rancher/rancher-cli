@@ -269,6 +269,34 @@ func TestRevokePartialFailure(t *testing.T) {
 	assert.Contains(t, raw, "unattempted")
 }
 
+func TestRevokeStaleHashIDNoMatch(t *testing.T) {
+	t.Parallel()
+	// A user was provisioned as ProvisionedUserID("okta_user://alice").
+	// Its principal has since been replaced. Revoking okta_user://alice must
+	// NOT match the renamed user's bindings; it must return NOT_FOUND.
+	requestedPrincipal := "okta_user://alice"
+	id := ProvisionedUserID(requestedPrincipal)
+	client := &fakeClient{
+		users: []map[string]any{
+			userObj(id, "Alice", "alice", "okta_user://renamed"),
+		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"clusterroletemplatebindings": {Items: []unstructured.Unstructured{
+				revokeBinding("crtb-renamed", "c-x", "rv1", "roleTemplateName", "cluster-owner", id, "okta_user://renamed", ""),
+			}},
+		},
+	}
+	cmd := NewRevoke(fakeFactory{client})
+
+	_, _, err := planRevoke(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x"},
+		args:    []string{requestedPrincipal},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code, "stale hash-id must not match renamed user's bindings")
+}
+
 func TestRevokeGlobalScope(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{

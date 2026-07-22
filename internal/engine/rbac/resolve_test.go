@@ -271,6 +271,51 @@ func TestResolveSubjectExternalPrincipalHashHit(t *testing.T) {
 	assert.Zero(t, c.lists, "hash-id hit must not list")
 }
 
+func TestResolveSubjectExternalPrincipalHashHitWrongOwner(t *testing.T) {
+	// A user provisioned as hash(okta_user://alice) has since had its
+	// principal replaced with okta_user://renamed. Resolving the OLD
+	// principal must NOT return that user; it must fall through to the
+	// list scan, find no match, and provision.
+	requestedPrincipal := "okta_user://alice"
+	id := ProvisionedUserID(requestedPrincipal)
+	c := &fakeClient{users: []map[string]any{
+		userObj(id, "Alice", "alice", "okta_user://renamed"),
+	}}
+	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: requestedPrincipal})
+	require.NoError(t, err)
+	assert.True(t, got.Provision, "stale hash-id hit must fall through to provisioning")
+	assert.Equal(t, requestedPrincipal, got.Principal)
+	assert.Equal(t, 1, c.lists, "must do one list scan after hash-id ownership mismatch")
+}
+
+func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
+	// Two non-system users share the same principal (malformed cluster).
+	// Resolution must return AMBIGUOUS_SELECTION regardless of list order.
+	principal := "okta_user://shared"
+	// Neither user has the hash id — forces the list scan path.
+	user1 := userObj("u-aaa", "Alice", "alice", principal)
+	user2 := userObj("u-bbb", "Bob", "bob", principal)
+	tests := []struct {
+		name  string
+		users []map[string]any
+	}{
+		{name: "alice first", users: []map[string]any{user1, user2}},
+		{name: "bob first", users: []map[string]any{user2, user1}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &fakeClient{users: tt.users}
+			_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: principal})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+			assert.Len(t, ce.Candidates, 2)
+			assert.Equal(t, "pass the user id", ce.Hint)
+		})
+	}
+}
+
 func TestResolveSubjectExternalPrincipalListScanHit(t *testing.T) {
 	// User exists under a non-hash id (e.g. created before EnsureUser, or
 	// renamed) — the principalIds list scan must find it.

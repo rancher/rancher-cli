@@ -397,6 +397,40 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 	assert.Nil(t, client.created, "forbidden list must not proceed to create")
 }
 
+func TestGrantStaleHashIDFallsToProvisioning(t *testing.T) {
+	t.Parallel()
+	// A user was provisioned from okta_user://alice. Its principal has since
+	// been replaced with okta_user://renamed, but the metadata name is still
+	// ProvisionedUserID("okta_user://alice"). Granting okta_user://alice must
+	// NOT silently grant the renamed user; it must take the provisioning path.
+	requestedPrincipal := "okta_user://alice"
+	id := ProvisionedUserID(requestedPrincipal)
+	client := &fakeClient{
+		users: []map[string]any{
+			userObj(id, "Alice", "alice", "okta_user://renamed"),
+		},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projects":                    projectList("p-x"),
+			"projectroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{requestedPrincipal},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client.created)
+	_, unFound, _ := unstructured.NestedString(client.created.Object, "userName")
+	assert.False(t, unFound, "stale hash-id: must not set userName")
+	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
+	assert.Equal(t, requestedPrincipal, upn)
+	require.Len(t, eff.Warnings, 1, "must have provisioning warning")
+}
+
 func TestGrantMissingRole(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{}
