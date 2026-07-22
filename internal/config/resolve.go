@@ -110,7 +110,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 			Cluster: ctx.Cluster, Project: ctx.Project,
 		}
 		storedURL = s.URL
-		tok, terr := store.GetToken(name)
+		tok, terr := store.GetToken(ServerRef{Name: name, URL: s.URL})
 		switch {
 		case terr == nil:
 			eff.Token = tok

@@ -32,7 +32,7 @@ func seedDeleteServer(t *testing.T, current string, servers []string, contexts m
 	}
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
-		require.NoError(t, store.SetToken(s, "id:sec"))
+		require.NoError(t, store.SetToken(config.ServerRef{Name: s}, "id:sec"))
 	}
 	for ctxName, server := range contexts {
 		cfg.Contexts[ctxName] = config.Context{Server: server}
@@ -102,9 +102,9 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	assert.True(t, ok, "unrelated context kept")
 	assert.Equal(t, "other", cfg.CurrentContext)
 
-	_, err = store.GetToken("acme")
+	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken, "token drained")
-	_, err = store.GetToken("other")
+	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	require.NoError(t, err, "unrelated server's token kept")
 }
 

@@ -102,7 +102,7 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 
 	// Write a file-store token for server A using the real API (round-3 finding 2:
 	// config.WriteFileToken does not exist; use NewFileStore.SetToken instead).
-	require.NoError(t, config.NewFileStore(dir).SetToken("srv-a", "token-for-a"))
+	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "srv-a"}, "token-for-a"))
 	setStoredConfig(cfg, dir)
 
 	// RANCHER_CLI_URL points at server B.

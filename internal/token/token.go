@@ -868,7 +868,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	type hit struct{ name, tok string }
 	hitsByRank := map[int][]hit{}
 	for _, n := range candidates {
-		t, err := store.GetToken(n)
+		t, err := store.GetToken(config.ServerRef{Name: n, URL: cfg.Servers[n].URL})
 		if err != nil || strings.TrimSpace(t) == "" {
 			continue
 		}

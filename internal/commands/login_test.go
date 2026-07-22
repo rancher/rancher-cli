@@ -113,7 +113,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster)
 	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project)
 
-	tok, err := store.GetToken("acme")
+	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "id-1:secret-1", tok)
 }
@@ -131,7 +131,7 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
-	tok, err := store.GetToken("acme")
+	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "ext/token-abc:secretxyz", tok)
 }
@@ -193,7 +193,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
 	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, p)
 	require.NoError(t, err)
-	tok, err := store.GetToken("acme")
+	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "id:sec", tok)
 }
@@ -336,10 +336,10 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	}
 	ks, err := config.OpenStore("keychain", dir)
 	require.NoError(t, err)
-	tok, err := ks.GetToken("acme")
+	tok, err := ks.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "id:sec", tok)
-	if _, ferr := config.NewFileStore(dir).GetToken("acme"); !errors.Is(ferr, config.ErrNoToken) {
+	if _, ferr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"}); !errors.Is(ferr, config.ErrNoToken) {
 		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
 	}
 }
@@ -413,7 +413,7 @@ func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T)
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
-	tok, err := store.GetToken("prod")
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "ext/derived-1:secretvalue", tok, "the derived token D is stored, not the session token S")
 
@@ -436,7 +436,7 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	require.NoError(t, err)
 
-	tok, err := store.GetToken("prod")
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "token-sess2:sessionsecret", tok, "no ext group: the session token itself is stored (legacy semantics)")
 	assert.Contains(t, errBuf.String(), "does not serve ext.cattle.io")
@@ -453,7 +453,7 @@ func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T)
 	_, err := NewLogin(dir, store).(runtime.ReadCommand).Execute(context.Background(), in, p)
 	require.NoError(t, err)
 
-	tok, err := store.GetToken("prod")
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "ext/derived-1:secretvalue", tok, "a revoke failure must not block login")
 	assert.Contains(t, errBuf.String(), "could not revoke the transient session token")
@@ -529,7 +529,7 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
-	_, tokErr := store.GetToken("prod")
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
 	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
 }
 
@@ -612,7 +612,7 @@ func TestLoginVersionProbeFailureNeverFailsLogin(t *testing.T) {
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
 
-	tok, err := store.GetToken("acme")
+	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "id:sec", tok, "the token is stored regardless of the version probe's outcome")
 }

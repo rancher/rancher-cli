@@ -38,9 +38,9 @@ type stubStore struct {
 	tokenErr error
 }
 
-func (s stubStore) GetToken(string) (string, error) { return s.token, s.tokenErr }
-func (s stubStore) SetToken(string, string) error   { return nil }
-func (s stubStore) DeleteToken(string) error        { return nil }
+func (s stubStore) GetToken(ServerRef) (string, error) { return s.token, s.tokenErr }
+func (s stubStore) SetToken(ServerRef, string) error   { return nil }
+func (s stubStore) DeleteToken(ServerRef) error        { return nil }
 func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
@@ -74,7 +74,7 @@ func TestEffectiveSurfacesStoreError(t *testing.T) {
 
 func TestEffectiveFromFile(t *testing.T) {
 	store := NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken("acme", "id:secret"))
+	require.NoError(t, store.SetToken(ServerRef{Name: "acme"}, "id:secret"))
 	c := &Config{
 		CurrentContext: "prod",
 		Contexts:       map[string]Context{"prod": {Server: "acme", Cluster: "c-x", Project: "p-y"}},
@@ -154,7 +154,7 @@ func TestSameServerURL(t *testing.T) {
 
 func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 	store := NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken("prod", "id:secret"))
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "id:secret"))
 	c := &Config{
 		CurrentContext: "prod",
 		Contexts:       map[string]Context{"prod": {Server: "prod"}},

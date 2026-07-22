@@ -34,7 +34,7 @@ func seedRootConfig(t *testing.T, srv *httptest.Server) *clientFactory {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
 		"current-context: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n    ca: "+certPath+"\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("acme", "token-abc:secret"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "token-abc:secret"))
 	return newClientFactory(dir, store)
 }
 
@@ -64,7 +64,7 @@ func TestRootClientRejectsUnknownCA(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
 		"current-context: acme\nservers:\n  acme:\n    url: "+srv.URL+"\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("acme", "t:s"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "t:s"))
 	rc, err := newClientFactory(dir, store).Root()
 	require.NoError(t, err)
 	_, err = rc.GetJSON(context.Background(), "/x")

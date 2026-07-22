@@ -37,28 +37,28 @@ func (l *lazyStore) backend() (CredStore, error) {
 	return l.store, l.err
 }
 
-func (l *lazyStore) GetToken(server string) (string, error) {
+func (l *lazyStore) GetToken(ref ServerRef) (string, error) {
 	s, err := l.backend()
 	if err != nil {
 		return "", err
 	}
-	return s.GetToken(server)
+	return s.GetToken(ref)
 }
 
-func (l *lazyStore) SetToken(server, token string) error {
+func (l *lazyStore) SetToken(ref ServerRef, token string) error {
 	s, err := l.backend()
 	if err != nil {
 		return err
 	}
-	return s.SetToken(server, token)
+	return s.SetToken(ref, token)
 }
 
-func (l *lazyStore) DeleteToken(server string) error {
+func (l *lazyStore) DeleteToken(ref ServerRef) error {
 	s, err := l.backend()
 	if err != nil {
 		return err
 	}
-	return s.DeleteToken(server)
+	return s.DeleteToken(ref)
 }
 
 func (l *lazyStore) GetCachedCred(key string) (string, time.Time, error) {

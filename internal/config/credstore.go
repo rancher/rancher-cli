@@ -32,11 +32,20 @@ var keyringObserverFn func(op string)
 // tests; it is a no-op in production (keyringObserverFn is nil by default).
 func SetKeyringObserverForTest(fn func(op string)) { keyringObserverFn = fn }
 
+// ServerRef identifies a server entry at the credential-store boundary: the
+// config-entry name (the storage key for file/keychain backends) plus the
+// server URL (required by the exec helper protocol, which is keyed on
+// canonical URL + name). Callers always have both in scope.
+type ServerRef struct {
+	Name string
+	URL  string
+}
+
 // CredStore persists per-server Rancher tokens and cached exec credentials.
 type CredStore interface {
-	GetToken(server string) (string, error)
-	SetToken(server, token string) error
-	DeleteToken(server string) error
+	GetToken(ref ServerRef) (string, error)
+	SetToken(ref ServerRef, token string) error
+	DeleteToken(ref ServerRef) error
 	GetCachedCred(key string) (token string, expiry time.Time, err error)
 	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error
 	DeleteCachedCred(key string) error
@@ -129,39 +138,39 @@ func (f *fileStore) write(m map[string]string) error {
 	return atomicWriteFile(f.path, b, 0600)
 }
 
-func (f *fileStore) GetToken(server string) (string, error) {
+func (f *fileStore) GetToken(ref ServerRef) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m, err := f.read()
 	if err != nil {
 		return "", err
 	}
-	tok, ok := m[server]
+	tok, ok := m[ref.Name]
 	if !ok {
 		return "", ErrNoToken
 	}
 	return tok, nil
 }
 
-func (f *fileStore) SetToken(server, token string) error {
+func (f *fileStore) SetToken(ref ServerRef, token string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m, err := f.read()
 	if err != nil {
 		return err
 	}
-	m[server] = token
+	m[ref.Name] = token
 	return f.write(m)
 }
 
-func (f *fileStore) DeleteToken(server string) error {
+func (f *fileStore) DeleteToken(ref ServerRef) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m, err := f.read()
 	if err != nil {
 		return err
 	}
-	delete(m, server)
+	delete(m, ref.Name)
 	return f.write(m)
 }
 
@@ -317,25 +326,25 @@ func keyringUnreachable(err error) bool {
 	return err != nil && !errors.Is(err, keyring.ErrNotFound) && !errors.Is(err, keyring.ErrSetDataTooBig)
 }
 
-func (k *keyringStore) GetToken(server string) (string, error) {
+func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
 	if keyringObserverFn != nil {
 		keyringObserverFn("get")
 	}
-	tok, err := keyring.Get(keyringService, server)
+	tok, err := keyring.Get(keyringService, ref.Name)
 	if err == nil {
 		return tok, nil
 	}
 	if errors.Is(err, keyring.ErrNotFound) {
 		// Read-through: tokens stored under an earlier "file" pin keep
 		// working after an upgrade re-pin; they age out via logout/re-login.
-		return k.cache.GetToken(server)
+		return k.cache.GetToken(ref)
 	}
 	// Backend unreachable (XP-6): degrade the READ to the file store — a
 	// valid token in credentials.yaml must keep working on a machine whose
 	// pinned keychain is temporarily unusable (headless SSH, locked
 	// keychain). Reads create no new plaintext, so this is pure resilience;
 	// the WRITE path (SetToken) deliberately does not degrade.
-	ftok, ferr := k.cache.GetToken(server)
+	ftok, ferr := k.cache.GetToken(ref)
 	switch {
 	case ferr == nil:
 		return ftok, nil
@@ -343,20 +352,20 @@ func (k *keyringStore) GetToken(server string) (string, error) {
 		// Double miss: surface the keyring error, not ErrNoToken — the
 		// token may exist in the unreachable keychain, and "no stored
 		// token" would misread as logged-out.
-		return "", fmt.Errorf("keyring get %q: %w%s", server, err, k.pinHint)
+		return "", fmt.Errorf("keyring get %q: %w%s", ref.Name, err, k.pinHint)
 	default:
 		// The file store FAILED (malformed/unreadable credentials.yaml) —
 		// a distinct problem the user must see; don't mask it as a
 		// keychain-only issue.
-		return "", fmt.Errorf("keyring get %q: %w%s; file credential store: %w", server, err, k.pinHint, ferr)
+		return "", fmt.Errorf("keyring get %q: %w%s; file credential store: %w", ref.Name, err, k.pinHint, ferr)
 	}
 }
 
-func (k *keyringStore) SetToken(server, token string) error {
+func (k *keyringStore) SetToken(ref ServerRef, token string) error {
 	if keyringObserverFn != nil {
 		keyringObserverFn("set")
 	}
-	err := keyring.Set(keyringService, server, token)
+	err := keyring.Set(keyringService, ref.Name, token)
 	if err == nil {
 		return nil
 	}
@@ -367,27 +376,27 @@ func (k *keyringStore) SetToken(server, token string) error {
 		// explicit opt-in remedy instead.
 		return fmt.Errorf(
 			"keyring set %q: %w — credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
-			server, err, EnvCredentialStore, k.pinHint)
+			ref.Name, err, EnvCredentialStore, k.pinHint)
 	}
-	return fmt.Errorf("keyring set %q: %w%s", server, err, k.pinHint)
+	return fmt.Errorf("keyring set %q: %w%s", ref.Name, err, k.pinHint)
 }
 
-func (k *keyringStore) DeleteToken(server string) error {
+func (k *keyringStore) DeleteToken(ref ServerRef) error {
 	if keyringObserverFn != nil {
 		keyringObserverFn("delete")
 	}
-	err := keyring.Delete(keyringService, server)
+	err := keyring.Delete(keyringService, ref.Name)
 	if keyringUnreachable(err) {
 		// XP-6: treat unreachable like a miss — drain the file store below
 		// (removing plaintext is strictly safe) — but say so: the keychain
 		// copy, if any, could not be checked. auth logout's DrainLoginToken
 		// independently surfaces keyring errors, so nothing is silently
 		// left behind on that path.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only%s", server, err, k.pinHint)
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only%s", ref.Name, err, k.pinHint)
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).
-	if ferr := k.cache.DeleteToken(server); ferr != nil && !errors.Is(ferr, ErrNoToken) {
+	if ferr := k.cache.DeleteToken(ref); ferr != nil && !errors.Is(ferr, ErrNoToken) {
 		return ferr
 	}
 	return nil
@@ -462,9 +471,9 @@ func DrainLoginToken(dir, server string) ([]string, error) {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", server, kerr))
 	}
 	fs := NewFileStore(dir)
-	switch _, terr := fs.GetToken(server); {
+	switch _, terr := fs.GetToken(ServerRef{Name: server}); {
 	case terr == nil:
-		if derr := fs.DeleteToken(server); derr != nil {
+		if derr := fs.DeleteToken(ServerRef{Name: server}); derr != nil {
 			errs = append(errs, fmt.Errorf("file credential store: %w", derr))
 		} else {
 			from = append(from, "file")

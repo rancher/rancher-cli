@@ -29,7 +29,7 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
 		cfg.Contexts[s] = config.Context{Server: s}
-		require.NoError(t, store.SetToken(s, "id:sec"))
+		require.NoError(t, store.SetToken(config.ServerRef{Name: s}, "id:sec"))
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -48,9 +48,9 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	require.True(t, isDF, "Result carries per-server deletedFrom")
 	assert.Equal(t, []string{"file"}, df["acme"], "mock keychain is empty, so only the file backend reports a drain")
 
-	_, err = store.GetToken("acme")
+	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
-	_, err = store.GetToken("other")
+	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	require.NoError(t, err) // untouched
 
 	cfg, err := config.Load(config.FilePath(dir))
@@ -64,9 +64,9 @@ func TestLogoutByName(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
-	_, err = store.GetToken("other")
+	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
-	_, err = store.GetToken("acme")
+	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err) // current untouched
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -90,9 +90,9 @@ func TestLogoutAll(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
-	_, err = store.GetToken("acme")
+	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
-	_, err = store.GetToken("other")
+	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -226,7 +226,7 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	require.NoError(t, store.SetToken("acme", "id:sec"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "id:sec"))
 
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)

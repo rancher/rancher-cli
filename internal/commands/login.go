@@ -121,7 +121,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	if err := store.SetToken(name, token); err != nil {
+	if err := store.SetToken(config.ServerRef{Name: name, URL: u.String()}, token); err != nil {
 		return runtime.Result{}, err
 	}
 	if err := cfg.Write(); err != nil {

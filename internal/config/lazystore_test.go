@@ -21,7 +21,7 @@ import (
 func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
-	require.NoError(t, fs.SetToken("prod", "tok"))
+	require.NoError(t, fs.SetToken(ServerRef{Name: "prod"}, "tok"))
 
 	var calls int
 	l := &lazyStore{resolve: func() (CredStore, error) {
@@ -34,7 +34,7 @@ func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tok, err := l.GetToken("prod")
+			tok, err := l.GetToken(ServerRef{Name: "prod"})
 			assert.NoError(t, err)
 			assert.Equal(t, "tok", tok)
 		}()
@@ -50,8 +50,8 @@ func TestLazyStoreDeferredErrorIsStable(t *testing.T) {
 	boom := errors.New("writing credential store pin: disk full")
 	l := &lazyStore{resolve: func() (CredStore, error) { return nil, boom }}
 
-	_, err1 := l.GetToken("prod")
-	err2 := l.SetToken("prod", "tok")
+	_, err1 := l.GetToken(ServerRef{Name: "prod"})
+	err2 := l.SetToken(ServerRef{Name: "prod"}, "tok")
 	require.ErrorIs(t, err1, boom)
 	require.ErrorIs(t, err2, boom)
 }
@@ -82,8 +82,8 @@ func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
 	// Env flips to an INVALID policy after construction; the captured
 	// "file" policy must still be what resolves.
 	t.Setenv(EnvCredentialStore, "wat")
-	require.NoError(t, l.SetToken("prod", "tok"))
-	tok, err := NewFileStore(dir).GetToken("prod")
+	require.NoError(t, l.SetToken(ServerRef{Name: "prod"}, "tok"))
+	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
 }
@@ -124,7 +124,7 @@ func TestLoginChoreographyFreshAutoUsableKeychain(t *testing.T) {
 	require.NoError(t, err)
 	store, err := RepinForLogin(dir, "", lazy)
 	require.NoError(t, err)
-	require.NoError(t, store.SetToken("prod", "tok"))
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "keychain", ReadPin(dir))
@@ -161,13 +161,13 @@ func TestLoginChoreographyFreshAutoUnusableKeychain(t *testing.T) {
 	store, err := RepinForLogin(dir, "", lazy)
 	require.NoError(t, err)
 	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
-	require.NoError(t, store.SetToken("prod", "tok"))
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "file", ReadPin(dir))
 	assert.Equal(t, 1, strings.Count(buf.String(), "keychain unavailable; credentials will be stored in plaintext"))
 	assert.NotContains(t, buf.String(), "pinned credential store: keychain")
-	tok, err := NewFileStore(dir).GetToken("prod")
+	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
 }

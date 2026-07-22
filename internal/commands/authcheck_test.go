@@ -181,7 +181,7 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("acme", "id:secret"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "id:secret"))
 	// Extract the test server's CA cert so RESTConfig can verify it (secure-by-default).
 	cert := srv.Certificate()
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
@@ -292,7 +292,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 	dir := t.TempDir()
 	writeAuthCheckConfig(t, dir)
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("acme", "ext/stored-1:storedsecret"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "ext/stored-1:storedsecret"))
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/env-1:envsecret")
 
 	var gotName string

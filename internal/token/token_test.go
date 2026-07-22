@@ -217,7 +217,7 @@ func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -253,7 +253,7 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -289,7 +289,7 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -352,7 +352,7 @@ func TestGetTokenCachesMintedExpiry(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -385,7 +385,7 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -427,7 +427,7 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -473,7 +473,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prodserver"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -509,7 +509,7 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prodserver"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -555,7 +555,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prodserver", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prodserver"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prodserver": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -590,8 +590,8 @@ func candidateIDsToken(cs []clierr.Candidate) []string {
 // lower-ranked server happens to also carry a stale token.
 func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken("prod-a", "tok-a")) // exact --name match, rank 0
-	require.NoError(t, store.SetToken("prod-z", "tok-z")) // unrelated, rank 3 (stale)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a")) // exact --name match, rank 0
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-z"}, "tok-z")) // unrelated, rank 3 (stale)
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"prod-a": {URL: "https://r.ex"},
@@ -628,7 +628,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "stored-login-token"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -678,8 +678,8 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 // smallest name — not whichever a Go map iteration happens to yield.
 func TestStoredTokenForServerTieBreak(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken("prod-a", "tok-a"))
-	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"prod-a": {URL: "https://r.ex"},
@@ -711,7 +711,7 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
 	// prod-a ranks first lexicographically but has no stored token.
-	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"prod-a": {URL: "https://r.ex"},
@@ -729,8 +729,8 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 // even when neither is the current context's server.
 func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken("prod-a", "tok-a"))
-	require.NoError(t, store.SetToken("prod-b", "tok-b"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"prod-a": {URL: "https://r.ex"},

@@ -19,19 +19,19 @@ import (
 func TestFileStoreRoundTrip(t *testing.T) {
 	s := NewFileStore(t.TempDir())
 	t.Run("missing token", func(t *testing.T) {
-		_, err := s.GetToken("acme")
+		_, err := s.GetToken(ServerRef{Name: "acme"})
 		assert.ErrorIs(t, err, ErrNoToken)
 	})
 	t.Run("set then get", func(t *testing.T) {
-		require.NoError(t, s.SetToken("acme", "tok-abc:secret"))
-		got, err := s.GetToken("acme")
+		require.NoError(t, s.SetToken(ServerRef{Name: "acme"}, "tok-abc:secret"))
+		got, err := s.GetToken(ServerRef{Name: "acme"})
 		require.NoError(t, err)
 		assert.Equal(t, "tok-abc:secret", got)
 	})
 	t.Run("delete", func(t *testing.T) {
-		require.NoError(t, s.SetToken("acme", "x"))
-		require.NoError(t, s.DeleteToken("acme"))
-		_, err := s.GetToken("acme")
+		require.NoError(t, s.SetToken(ServerRef{Name: "acme"}, "x"))
+		require.NoError(t, s.DeleteToken(ServerRef{Name: "acme"}))
+		_, err := s.GetToken(ServerRef{Name: "acme"})
 		assert.ErrorIs(t, err, ErrNoToken)
 	})
 }
@@ -39,8 +39,8 @@ func TestFileStoreRoundTrip(t *testing.T) {
 func TestOpenStoreFilePolicy(t *testing.T) {
 	s, err := OpenStore("file", t.TempDir())
 	require.NoError(t, err)
-	require.NoError(t, s.SetToken("acme", "y"))
-	got, err := s.GetToken("acme")
+	require.NoError(t, s.SetToken(ServerRef{Name: "acme"}, "y"))
+	got, err := s.GetToken(ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "y", got)
 }
@@ -201,22 +201,22 @@ func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
 	// Loose (0644): warns once, then deduped for the same path.
 	looseDir := t.TempDir()
 	loose := NewFileStore(looseDir)
-	require.NoError(t, loose.SetToken("acme", "id:sec"))
+	require.NoError(t, loose.SetToken(ServerRef{Name: "acme"}, "id:sec"))
 	require.NoError(t, os.Chmod(filepath.Join(looseDir, "credentials.yaml"), 0o644))
-	_, err := loose.GetToken("acme")
+	_, err := loose.GetToken(ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "group/world-readable", "0644 credentials must warn")
 
 	buf.Reset()
-	_, err = loose.GetToken("acme")
+	_, err = loose.GetToken(ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.NotContains(t, buf.String(), "group/world-readable", "warning must fire once per path per process")
 
 	// Tight (0600), fresh path: silent.
 	buf.Reset()
 	tight := NewFileStore(t.TempDir())
-	require.NoError(t, tight.SetToken("acme", "id:sec")) // written 0600
-	_, err = tight.GetToken("acme")
+	require.NoError(t, tight.SetToken(ServerRef{Name: "acme"}, "id:sec")) // written 0600
+	_, err = tight.GetToken(ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.NotContains(t, buf.String(), "group/world-readable", "0600 credentials must be silent")
 }
@@ -280,11 +280,11 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 func TestKeyringGetTokenReadsThroughToFile(t *testing.T) {
 	keyring.MockInit() // in-memory keyring, empty
 	dir := t.TempDir()
-	if err := NewFileStore(dir).SetToken("prod", "id:secret"); err != nil {
+	if err := NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "id:secret"); err != nil {
 		t.Fatal(err)
 	}
 	s := newPinnedKeyringStore(dir, false)
-	tok, err := s.GetToken("prod")
+	tok, err := s.GetToken(ServerRef{Name: "prod"})
 	if err != nil || tok != "id:secret" {
 		t.Fatalf("read-through: got %q, %v", tok, err)
 	}
@@ -294,7 +294,7 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
-	_ = NewFileStore(dir).SetToken("prod", "in-file")
+	_ = NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file")
 	from, _, err := DrainToken(dir, "prod", "https://prod.ex")
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +305,7 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	if _, err := keyring.Get(keyringService, "prod"); err == nil {
 		t.Error("token still in keychain")
 	}
-	if _, err := NewFileStore(dir).GetToken("prod"); err == nil {
+	if _, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"}); err == nil {
 		t.Error("token still in file store")
 	}
 }
@@ -314,7 +314,7 @@ func TestDrainTokenAlsoDrainsExecCache(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := NewFileStore(dir)
-	require.NoError(t, store.SetToken("prod", "in-file"))
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
 
 	_, drainedCache, err := DrainToken(dir, "prod", "https://prod.ex")
@@ -399,10 +399,10 @@ func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	// Token lives only in the file store (e.g. written under an earlier file pin).
-	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 	s := newPinnedKeyringStore(dir, false)
-	require.NoError(t, s.DeleteToken("prod"))
-	_, err := NewFileStore(dir).GetToken("prod")
+	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
+	_, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also drain the file store")
 }
 
@@ -414,7 +414,7 @@ func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain boom"))
 	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
 	dir := t.TempDir()
-	require.NoError(t, NewFileStore(dir).SetToken("prod", "in-file"))
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 
 	var buf bytes.Buffer
 	orig := logrus.StandardLogger().Out
@@ -424,7 +424,7 @@ func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
 	from, _, err := DrainToken(dir, "prod", "https://prod.ex")
 	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store drains")
 	assert.Contains(t, from, "file", "file backend must still be drained")
-	_, gerr := NewFileStore(dir).GetToken("prod")
+	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
 	assert.Contains(t, buf.String(), "keychain unreachable", "the unreachable keychain must still be visibly warned about")
 }
@@ -450,12 +450,12 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 // file token — the headless-with-keychain-pin case (XP-6).
 func TestKeyringUnreachableGetReadsThroughToFile(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, NewFileStore(dir).SetToken("prod", "file-token"))
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "file-token"))
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	tok, err := s.GetToken("prod")
+	tok, err := s.GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "file-token", tok)
 }
@@ -470,7 +470,7 @@ func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	_, err := s.GetToken("prod")
+	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrNoToken)
 	assert.Contains(t, err.Error(), "no session bus")
@@ -486,7 +486,7 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	_, err := s.GetToken("prod")
+	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no session bus")
 	assert.Contains(t, err.Error(), "file credential store")
@@ -501,7 +501,7 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 func TestKeyringUnreachableDeleteDrainsFile(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
-	require.NoError(t, fs.SetToken("prod", "file-token"))
+	require.NoError(t, fs.SetToken(ServerRef{Name: "prod"}, "file-token"))
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
 	t.Cleanup(keyring.MockInit)
 
@@ -511,8 +511,8 @@ func TestKeyringUnreachableDeleteDrainsFile(t *testing.T) {
 	defer logrus.SetOutput(orig)
 
 	s := newPinnedKeyringStore(dir, true)
-	require.NoError(t, s.DeleteToken("prod"))
-	_, err := fs.GetToken("prod")
+	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
+	_, err := fs.GetToken(ServerRef{Name: "prod"})
 	assert.ErrorIs(t, err, ErrNoToken)
 	assert.Contains(t, buf.String(), "keychain unreachable")
 	assert.Contains(t, buf.String(), "file store only")
@@ -528,7 +528,7 @@ func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	err := s.SetToken("prod", "oversized-token")
+	err := s.SetToken(ServerRef{Name: "prod"}, "oversized-token")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "unreachable")
 	assert.Contains(t, err.Error(), keyring.ErrSetDataTooBig.Error())
@@ -544,7 +544,7 @@ func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	err := s.SetToken("prod", "new-token")
+	err := s.SetToken(ServerRef{Name: "prod"}, "new-token")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unreachable")
 	assert.Contains(t, err.Error(), EnvCredentialStore+"=file")

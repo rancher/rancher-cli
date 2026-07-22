@@ -21,7 +21,7 @@ func seedDrainConfig(t *testing.T) string {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
 		"current-context: acme\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
-	require.NoError(t, config.NewFileStore(dir).SetToken("acme", "id:sec"))
+	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "acme"}, "id:sec"))
 	t.Setenv(config.EnvConfigDir, dir)
 	return dir
 }
@@ -40,7 +40,7 @@ func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "delete-server must not write a credstore pin")
-	_, terr := config.NewFileStore(dir).GetToken("acme")
+	_, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be drained")
 }
 
@@ -55,6 +55,6 @@ func TestAuthLogoutThroughRootWritesNoPin(t *testing.T) {
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "logout must not write a credstore pin")
-	_, terr := config.NewFileStore(dir).GetToken("acme")
+	_, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be drained")
 }

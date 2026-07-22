@@ -43,9 +43,9 @@ type countingStore struct {
 	getCalls int
 }
 
-func (c *countingStore) GetToken(string) (string, error) { c.getCalls++; return c.token, nil }
-func (c *countingStore) SetToken(string, string) error   { return nil }
-func (c *countingStore) DeleteToken(string) error        { return nil }
+func (c *countingStore) GetToken(config.ServerRef) (string, error) { c.getCalls++; return c.token, nil }
+func (c *countingStore) SetToken(config.ServerRef, string) error   { return nil }
+func (c *countingStore) DeleteToken(config.ServerRef) error        { return nil }
 func (c *countingStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
