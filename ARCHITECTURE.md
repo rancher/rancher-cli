@@ -118,6 +118,7 @@ graph TD
     cli --> provider
     cli --> kube
     cli --> config
+    cli --> credhelper
     cli --> clierr
     cli --> output
     cli --> httpx

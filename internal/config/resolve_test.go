@@ -269,6 +269,19 @@ func TestEffectiveContextOverridePrecedence(t *testing.T) {
 	})
 }
 
+// TestEffectiveUnsupportedSchemeSkipsStore is the final-re-review finding-2
+// repro at the config-package level: Config.Effective must never read the
+// credential store when the configured server URL uses an unsupported scheme.
+// The token is left empty and no error is returned; the helper is never invoked.
+func TestEffectiveUnsupportedSchemeSkipsStore(t *testing.T) {
+	cfg := effectiveTestConfig("prod", "ftp://host")
+	st := &recordingStore{name: "prod", token: "stored-token"}
+	eff, err := cfg.Effective(st)
+	require.NoError(t, err, "unsupported scheme must not cause an error from Effective")
+	assert.Empty(t, eff.Token, "ftp:// URL must not trigger a store read")
+	assert.Zero(t, st.getCalls, "store.GetToken must not be called for unsupported schemes")
+}
+
 // TestResolveDirWindowsDefault exercises the GOOS=windows final-fallback
 // branch cross-platform via the goos seam: with no flag/env/XDG, the
 // default must be os.UserConfigDir()/rancher (=%APPDATA%\rancher on a

@@ -124,6 +124,44 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 	}
 }
 
+// TestGetTokenFTPConfigServerHelperNeverInvoked is the final-re-review
+// finding-2 repro at the get-token level: when the config's current server
+// URL uses an unsupported scheme (ftp://), Config.Effective must not invoke
+// the exec credential helper before post-resolution validation rejects it.
+//
+// The fakehelper is in "ok" mode — any invocation writes a get entry to the
+// state log (creating the file). The state file absent after the command
+// proves zero helper calls.
+func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
+	useTokenFakeHelper(t, "ok")
+	statePath := os.Getenv("FAKEHELPER_STATE")
+
+	dir := t.TempDir()
+	store, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+	cfg := &config.Config{
+		CredentialStore: "exec:fake",
+		CurrentContext:  "ctx",
+		Contexts:        map[string]config.Context{"ctx": {Server: "prod"}},
+		Servers:         map[string]config.Server{"prod": {URL: "ftp://host"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
+	_, err = cmd.Execute(context.Background(),
+		tin{s: map[string]string{"name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "ftp:// config server must be rejected by post-resolution validation")
+	assert.Contains(t, err.Error(), "ftp://host", "error must name the invalid resolved server")
+
+	// The state file is created only on helper invocation. If it is absent,
+	// the helper was never called.
+	_, statErr := os.Stat(statePath)
+	assert.True(t, os.IsNotExist(statErr),
+		"exec helper must not be invoked for a config server URL with an unsupported scheme")
+}
+
 // TestGetTokenHelperNotFoundFallsBackToInteractive is finding-3's other half:
 // a clean not-found from the helper (no token) is NOT a hard error and must
 // still fall through to the interactive provider flow.

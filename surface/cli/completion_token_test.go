@@ -83,6 +83,59 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 	assert.Empty(t, cap.Token, "ambiguous exec-cred must yield empty")
 }
 
+// TestResolveCompletionTokenInvalidServerURLYieldsEmpty is the final-re-review
+// finding-1 repro: completion must return an empty capability for a configured
+// server URL that fails HTTP(S) validation, never surfacing a stored record.
+//
+// Three sub-cases: unsupported scheme (ftp://), malformed URL (https://[::1),
+// and empty hostname (https://:443). Each seeds both a file-store token and an
+// exec-cache entry for the bad URL, then asserts the returned capability is empty.
+func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
+	cases := []struct {
+		name      string
+		serverURL string
+	}{
+		{"unsupported scheme ftp", "ftp://host"},
+		{"malformed unclosed IPv6", "https://[::1"},
+		{"empty hostname default port", "https://:443"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// NOT parallel: mutates storedConfig and env globals.
+			t.Setenv(config.EnvToken, "")
+			keyring.MockInit()
+			dir := t.TempDir()
+
+			// Seed a file-store token for the server entry with the bad URL.
+			fileStore := config.NewFileStore(dir)
+			require.NoError(t, fileStore.SetToken(config.ServerRef{Name: "bad"}, "should-not-surface"))
+
+			// Seed an exec-cache entry under the bad URL's identity.
+			badID := config.CanonicalServerIdentity(tc.serverURL)
+			require.NoError(t, fileStore.SetCachedCred(
+				config.CacheKey("bad", badID, "c-1"),
+				"also-should-not-surface", time.Now().Add(time.Hour),
+				"bad", badID, "c-1",
+			))
+
+			cfg := &config.Config{
+				CurrentContext:  "ctx",
+				Contexts:        map[string]config.Context{"ctx": {Server: "bad"}},
+				Servers:         map[string]config.Server{"bad": {URL: tc.serverURL}},
+				CredentialStore: "file",
+			}
+			cfg.SetPath(config.FilePath(dir))
+			require.NoError(t, cfg.Write())
+			setStoredConfig(cfg, dir)
+
+			cap := resolveCompletionToken(nil, "c-1")
+			assert.Empty(t, cap.Token,
+				"invalid server URL %q must yield empty capability, not surface a stored credential",
+				tc.serverURL)
+		})
+	}
+}
+
 // TestFileStoreTokenCrossServerURLOverride proves round-2 finding 3:
 // RANCHER_CLI_URL pointing at server B must not send server A's token to B.
 func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {

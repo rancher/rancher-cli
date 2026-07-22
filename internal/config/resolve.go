@@ -96,6 +96,19 @@ type Effective struct {
 	Project    string
 }
 
+// isSupportedSchemeURL reports whether rawURL canonicalizes to an http or
+// https identity. The credential store is read ONLY when this returns true;
+// for an exec store that means the helper binary is never invoked for an
+// unsupported or malformed server URL, so it acts as a pre-read guard.
+func isSupportedSchemeURL(rawURL string) bool {
+	cu, err := credhelper.CanonicalServerURL(rawURL)
+	if err != nil {
+		return false
+	}
+	scheme, _, ok := strings.Cut(cu, "://")
+	return ok && (scheme == "http" || scheme == "https")
+}
+
 // Effective merges env vars over the current context/server. Env wins.
 // Ordering is deliberate: the effective URL and env token are resolved BEFORE
 // any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
@@ -129,7 +142,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	// server it was stored for.
 	if v := os.Getenv(EnvToken); v != "" {
 		eff.Token = v
-	} else if serverErr == nil && SameServerURL(eff.URL, s.URL) {
+	} else if serverErr == nil && SameServerURL(eff.URL, s.URL) && isSupportedSchemeURL(s.URL) {
 		tok, terr := store.GetToken(ServerRef{Name: name, URL: s.URL})
 		switch {
 		case terr == nil:

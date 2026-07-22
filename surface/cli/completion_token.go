@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
@@ -113,6 +114,19 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 	if conn.ServerURL == "" {
 		return TokenCapability{}
 	}
+
+	// Validate the server URL before any stored-credential read. Completion
+	// is best-effort: an unsupported or malformed URL silently yields an
+	// empty capability rather than surfacing a stored record that cannot
+	// be safely used (AC-22: never trigger a helper exec for an invalid identity).
+	canonServerURL, csErr := credhelper.CanonicalServerURL(conn.ServerURL)
+	if csErr != nil {
+		return TokenCapability{}
+	}
+	if scheme, _, ok := strings.Cut(canonServerURL, "://"); !ok || (scheme != "http" && scheme != "https") {
+		return TokenCapability{}
+	}
+
 	dir := ""
 	if v, ok := loadedConfigView(); ok {
 		dir = v.ConfigDir()
@@ -137,7 +151,7 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 	if clusterID == "" {
 		return TokenCapability{}
 	}
-	serverID := config.CanonicalServerIdentity(conn.ServerURL)
+	serverID := canonServerURL
 	// Finding 8: use WithTokens variant to propagate the token through the
 	// first file read; avoids a second parse of token-cache.yaml.
 	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID)
