@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1444,4 +1445,219 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 	for _, p := range paths {
 		assert.NotContains(t, p, "v3-public", "no request may fall back to the removed /v3-public API")
 	}
+}
+
+// TestApplyDefaultSchemeHostPort verifies that a host:port authority without
+// an explicit scheme receives the https:// default.
+func TestApplyDefaultSchemeHostPort(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"host:8443", "https://host:8443"},
+		{"[::1]", "https://[::1]"},
+		{"[::1]:8443", "https://[::1]:8443"},
+		{"host", "https://host"},
+		{"http://host", "http://host"},
+		{"https://host:8443", "https://host:8443"},
+		{"ftp://host", "ftp://host"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		got := applyDefaultScheme(tc.in)
+		assert.Equal(t, tc.want, got, "applyDefaultScheme(%q)", tc.in)
+	}
+}
+
+// TestGetTokenHostPortWarmCacheHit verifies that a --server host:port flag
+// (schemeless) normalizes to https://host:port and hits a warm cache entry.
+func TestGetTokenHostPortWarmCacheHit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	key := config.CacheKey("prod", config.CanonicalServerIdentity("https://host:8443"), "c-1")
+	require.NoError(t, store.SetCachedCred(key, "tok-8443", time.Now().Add(time.Hour), "prod", "https://host:8443", "c-1"))
+	// Break config — if fast path misses the full path fails, proving no hit.
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "host:8443", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "tok-8443", cred.Status.Token, "host:port flag must hit the https:// warm cache record")
+}
+
+// TestGetTokenIPv6WarmCacheHit verifies that a --server [::1]:8443 flag
+// (schemeless bracketed IPv6) normalizes to https://[::1]:8443 and hits a
+// warm cache entry.
+func TestGetTokenIPv6WarmCacheHit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	key := config.CacheKey("prod", config.CanonicalServerIdentity("https://[::1]:8443"), "c-1")
+	require.NoError(t, store.SetCachedCred(key, "tok-ipv6", time.Now().Add(time.Hour), "prod", "https://[::1]:8443", "c-1"))
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "[::1]:8443", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "tok-ipv6", cred.Status.Token, "[::1]:port flag must hit the https:// warm cache record")
+}
+
+// TestGetTokenMalformedServerNoFastPathCacheHit verifies that a malformed
+// --server value (e.g. https://[::1 — unclosed bracket) cannot produce a
+// fast-path cache hit even when a matching cache record exists under the
+// lowercased fallback identity.
+func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Seed a record under the lowercased-fallback identity that
+	// CanonicalServerIdentity produces for the malformed URL.
+	malformed := "https://[::1"
+	fallbackID := config.CanonicalServerIdentity(malformed)
+	key := config.CacheKey("prod", fallbackID, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
+	// Break config — if fast path incorrectly hits, no error is returned.
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "malformed --server must not produce a fast-path cache hit")
+}
+
+// TestGetTokenUnsupportedSchemeNoFastPathCacheHit verifies that a --server
+// value with an unsupported scheme (e.g. ftp://host) cannot produce a
+// fast-path cache hit even when a matching cache record exists.
+func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	ftpID := config.CanonicalServerIdentity("ftp://host")
+	key := config.CacheKey("prod", ftpID, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
+		ui.Discard())
+	require.Error(t, err, "unsupported scheme --server must not produce a fast-path cache hit")
+}
+
+// TestGetTokenHostPortColdPathNormalizesToHTTPS verifies the cold path (empty
+// cache, valid minimal config) for a schemeless host:port --server flag: the
+// value must be normalised to https://host:port BEFORE the connection attempt,
+// so the request actually reaches the HTTPS server at that address.
+//
+// Without normalisation the schemeless URL reaches getAuthProviders, which
+// passes it to http.NewRequestWithContext; the Go HTTP client rejects a
+// schemeless URL with "unsupported protocol scheme", the TLS server is never
+// contacted, and the hits assertion fails (RED). With normalisation the TLS
+// connection succeeds (via --skip-verify) and the server records the hit (GREEN).
+func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
+	t.Parallel()
+	var hits int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			atomic.AddInt32(&hits, 1)
+			// Return a provider so the code advances past provider discovery.
+			// The interactive prompter (ui.Discard, NoInput=true) then fails
+			// with CodeAuth — the point is the server was reached.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	// addr is "127.0.0.1:PORT" — the schemeless form of the TLS server's address.
+	addr := srv.Listener.Addr().String()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Minimal valid config: readable, no current context, no stored credential.
+	cfg := &config.Config{}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	// Empty cache → cold path. --skip-verify bypasses the self-signed cert so
+	// the connection attempt can actually reach the test TLS server.
+	_, err := cmd.Execute(context.Background(),
+		tin{
+			s: map[string]string{"server": addr, "name": "prod"},
+			b: map[string]bool{"skip-verify": true},
+		},
+		ui.Discard())
+	// Non-interactive localProvider → CodeAuth; the important signal is that
+	// the test server was hit, proving https://addr reached the connection path.
+	require.Error(t, err)
+	assert.Greater(t, atomic.LoadInt32(&hits), int32(0),
+		"normalised https://host:port must reach the connection path, not error on a schemeless URL")
+}
+
+// TestGetTokenIPv6ColdPathNormalizesToHTTPS verifies the cold path (empty
+// cache, valid minimal config) for a schemeless bracketed IPv6 --server flag:
+// [::1]:PORT must normalise to https://[::1]:PORT before the connection attempt,
+// so the request actually reaches the HTTPS server at that address.
+//
+// The test binds a TLS server to [::1]:0 (OS-assigned free port) and skips if
+// the IPv6 loopback is unavailable on the host. Without normalisation the
+// schemeless URL reaches getAuthProviders, which passes it to
+// http.NewRequestWithContext; the Go HTTP client rejects it with "first path
+// segment in URL cannot contain colon", the TLS server is never contacted, and
+// the hits assertion fails (RED). With normalisation the TLS dial succeeds
+// (via --skip-verify) and the server records the hit (GREEN).
+func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
+	t.Parallel()
+
+	ln, lerr := net.Listen("tcp6", "[::1]:0")
+	if lerr != nil {
+		t.Skip("IPv6 loopback not available on this host:", lerr)
+	}
+
+	var hits int32
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+			atomic.AddInt32(&hits, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	srv := httptest.NewUnstartedServer(mux)
+	srv.Listener = ln
+	srv.StartTLS()
+	defer srv.Close()
+
+	// addr is "[::1]:PORT" — the schemeless form of the TLS server's address.
+	addr := srv.Listener.Addr().String()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	cfg := &config.Config{}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{
+			s: map[string]string{"server": addr, "name": "prod"},
+			b: map[string]bool{"skip-verify": true},
+		},
+		ui.Discard())
+	require.Error(t, err)
+	assert.Greater(t, atomic.LoadInt32(&hits), int32(0),
+		"normalised https://[::1]:port must reach the connection path, not error on a schemeless IPv6 URL")
 }

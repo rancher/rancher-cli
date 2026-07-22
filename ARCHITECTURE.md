@@ -136,6 +136,7 @@ graph TD
 
     token --> runtime
     token --> config
+    token --> credhelper
     token --> httpx
     token --> kube
     token --> ui

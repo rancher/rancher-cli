@@ -15,11 +15,13 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -130,11 +132,12 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	flagKey := ""
 	if name != "" && flagServer != "" {
 		normalized := applyDefaultScheme(flagServer)
-		serverID := config.CanonicalServerIdentity(normalized)
-		if strings.Contains(serverID, "://") {
-			flagKey = config.CacheKey(name, serverID, in.String("cluster"))
-			if r, hit := t.cachedResult(flagKey, p); hit {
-				return r, nil
+		if cu, err := credhelper.CanonicalServerURL(normalized); err == nil {
+			if scheme, _, ok := strings.Cut(cu, "://"); ok && (scheme == "https" || scheme == "http") {
+				flagKey = config.CacheKey(name, cu, in.String("cluster"))
+				if r, hit := t.cachedResult(flagKey, p); hit {
+					return r, nil
+				}
 			}
 		}
 	}
@@ -736,15 +739,21 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 	return server, caPEM, cluster, nil
 }
 
+// schemeRE matches an explicit URI scheme followed by "://", independent of
+// url.Parse's inference. url.Parse parses "host:8443" as scheme "host" and
+// fails on schemeless bracketed IPv6, so syntactic detection is necessary.
+var schemeRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+\-.]*://`)
+
 // applyDefaultScheme prepends "https://" when the value has no scheme, so
 // that both the flag fast path and resolveConn share one normalization policy.
 // An empty input is returned unchanged so the caller can detect the "no flag"
-// case.
+// case. Scheme detection uses schemeRE rather than url.Parse to handle
+// host:port and bracketed IPv6 authorities correctly.
 func applyDefaultScheme(s string) string {
 	if s == "" {
 		return s
 	}
-	if u, err := url.Parse(s); err == nil && u.Scheme == "" {
+	if !schemeRE.MatchString(s) {
 		return "https://" + s
 	}
 	return s
