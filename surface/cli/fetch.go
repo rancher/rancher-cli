@@ -347,11 +347,21 @@ func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability
 	return sanitizeCandidates(out)
 }
 
-// fetchUsers lists management Users and returns the union of each user's
-// metadata.name and top-level username field. System users (any principalIds
-// entry with prefix "system:") are excluded. Management list: requires a
-// management token — exec-cred-only capabilities (IDOnly) return nil without
-// a request, same boundary as fetchRoleTemplates.
+// fetchUsers lists management Users and returns candidates suitable for the
+// grant/revoke subject positional. System users (any principalIds entry with
+// prefix "system:") are excluded.
+//
+// Candidates:
+//   - metadata.name id — always emitted; Get-by-id resolution is deterministic.
+//   - username — emitted ONLY when it uniquely resolves: no other non-system user
+//     carries the same string as their username OR displayName. A user whose own
+//     displayName equals their own username is not double-counted (self-collision
+//     does not suppress). This mirrors the ambiguity check in ResolveSubject so
+//     that a candidate offered by completion will not fail with AMBIGUOUS_SELECTION
+//     at execution time.
+//
+// Management list: requires a management token — exec-cred-only capabilities
+// (IDOnly) return nil without a request, same boundary as fetchRoleTemplates.
 func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
@@ -361,7 +371,16 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
 		return nil
 	}
-	var names []string
+
+	type userEntry struct {
+		id          string
+		username    string
+		displayName string
+	}
+
+	// First pass: collect non-system users, deduped by metadata.name id.
+	seenID := map[string]bool{}
+	var entries []userEntry
 	for _, item := range col.Items {
 		if isSystemUserItem(item) {
 			continue
@@ -370,11 +389,40 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 		if meta == nil {
 			continue
 		}
-		if name, _ := meta["name"].(string); name != "" {
-			names = append(names, name)
+		id, _ := meta["name"].(string)
+		if id == "" || seenID[id] {
+			continue
 		}
-		if username, _ := item["username"].(string); username != "" {
-			names = append(names, username)
+		seenID[id] = true
+		username, _ := item["username"].(string)
+		displayName, _ := item["displayName"].(string)
+		entries = append(entries, userEntry{id: id, username: username, displayName: displayName})
+	}
+
+	// Build string frequency: count distinct users whose username OR displayName
+	// equals each string. A user whose username == displayName contributes only
+	// once to the count (set-per-user avoids double-counting self-collision).
+	freq := make(map[string]int)
+	for _, e := range entries {
+		perUser := map[string]struct{}{}
+		if e.username != "" {
+			perUser[e.username] = struct{}{}
+		}
+		if e.displayName != "" {
+			perUser[e.displayName] = struct{}{}
+		}
+		for s := range perUser {
+			freq[s]++
+		}
+	}
+
+	// Second pass: emit id unconditionally; emit username only when it uniquely
+	// resolves (freq == 1: no other user would produce AMBIGUOUS_SELECTION).
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.id)
+		if e.username != "" && freq[e.username] == 1 {
+			names = append(names, e.username)
 		}
 	}
 	return dedupe(sanitizeCandidates(names))

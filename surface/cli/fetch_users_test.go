@@ -57,6 +57,69 @@ func TestFetchUsersUnionAndSystemExclusion(t *testing.T) {
 	assert.Equal(t, 1, count, "metadata.name == username must appear exactly once after dedupe")
 }
 
+// TestFetchUsersUsernameUniqueness covers the three cases from the reviewer's
+// uniqueness rule: shared username suppressed, username colliding with another
+// user's displayName suppressed, own displayName==username emitted.
+func TestFetchUsersUsernameUniqueness(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shared username not emitted; both ids present", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"items":[
+				{"metadata":{"name":"u-dev-1"},"username":"dev","principalIds":["local://u-dev-1"]},
+				{"metadata":{"name":"u-dev-2"},"username":"dev","principalIds":["local://u-dev-2"]}
+			]}`))
+		}))
+		t.Cleanup(srv.Close)
+		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
+		got := fetchUsers(context.Background(), srv.Client(), cap)
+		assert.NotContains(t, got, "dev", "shared username must not be a candidate")
+		assert.Contains(t, got, "u-dev-1")
+		assert.Contains(t, got, "u-dev-2")
+	})
+
+	t.Run("username colliding with other user displayName not emitted; both ids present", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"items":[
+				{"metadata":{"name":"u-ops-1"},"username":"ops","principalIds":["local://u-ops-1"]},
+				{"metadata":{"name":"u-ops-2"},"username":"other","displayName":"ops","principalIds":["local://u-ops-2"]}
+			]}`))
+		}))
+		t.Cleanup(srv.Close)
+		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
+		got := fetchUsers(context.Background(), srv.Client(), cap)
+		assert.NotContains(t, got, "ops", "username colliding with another user's displayName must not be a candidate")
+		assert.Contains(t, got, "u-ops-1")
+		assert.Contains(t, got, "u-ops-2")
+		// "other" is unique (freq=1): should appear.
+		assert.Contains(t, got, "other")
+	})
+
+	t.Run("own displayName equals own username (self-collision) is emitted", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"items":[
+				{"metadata":{"name":"u-solo"},"username":"solo","displayName":"solo","principalIds":["local://u-solo"]}
+			]}`))
+		}))
+		t.Cleanup(srv.Close)
+		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
+		got := fetchUsers(context.Background(), srv.Client(), cap)
+		assert.Contains(t, got, "solo", "self-collision (username==displayName) must not suppress the candidate")
+		assert.Contains(t, got, "u-solo")
+		// "solo" appears exactly once (self-collision does not double-count).
+		count := 0
+		for _, c := range got {
+			if c == "solo" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count, "solo must appear exactly once")
+	})
+}
+
 func TestFetchUsersTokenBoundary(t *testing.T) {
 	t.Parallel()
 	srv, hits := userServer(t)
