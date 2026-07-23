@@ -291,15 +291,44 @@ Every command emits one JSON document per invocation under `-o json` — an
   as one document. `rancher schema <command>` (e.g. `rancher schema get pod`)
   filters the manifest to that command.
 
-## Safety model (exercised by `create project`; more in later waves)
+## Safety model
 
-Server-mutating commands run through one path: `--dry-run` previews a
-server-computed `Effect` (no change); without it, a mutation is refused unless
-the exact confirmation flags are present. The refusal names them:
+Every server-mutating command runs one pipeline, in order:
 
-    --apply                 execute the mutation
-    --yes                   confirm a destructive effect
-    --allow-deprecated      permit a deprecated-tier write
+1. `--dry-run` previews a server-computed `Effect` (action, diff, warnings) and
+   changes nothing.
+2. `--apply` is the execute gate. A bare mutating invocation — no `--dry-run`,
+   no `--apply` — is refused with `CONFIRMATION_REQUIRED`, and the refusal
+   names the exact flags required:
+
+       --apply                 execute the mutation
+       --yes                   confirm a destructive effect
+       --allow-deprecated      permit a deprecated-tier write
+
+3. `--yes` stacks on `--apply` (never alone) when the effect is destructive:
+   every `delete`, `revoke`, writes to sensitive kinds (`patch feature`,
+   `grant`), and shown-once minting (`create token`, `create kubeconfig`). The
+   schema marks each command `destructive: true|false|dependsOnInput` —
+   `dependsOnInput` means the input decides (e.g. `create resource -f`
+   escalates only when the manifest's kind is sensitive).
+4. `--allow-deprecated` is required additionally for a deprecated-tier write.
+5. Within a single invocation, updates and deletes carry a resourceVersion
+   precondition from their own plan — if the resource changes between the
+   plan's dry-run and execution, the mutation fails (exit `5`,
+   conflict/precondition) instead of clobbering. A separate `--dry-run`
+   invocation is a preview only; the later `--apply` run re-plans and pins
+   against the state it sees then. Creates have no precondition (there is
+   no existing object to pin).
+
+Rule of thumb: `--apply` says "yes, mutate"; `--yes` says "yes, I saw it's
+destructive".
+
+Why this shape: the CLI is agent-first. Intent is stated in machine-checkable
+flags, never inferred, and there is no interactive "are you sure?" prompt — a
+prompt can't be scripted, retried, or audited. Every refusal is a structured
+error naming exactly what's missing, so an agent (or a script) escalates
+deliberately or stops. Interactive users pay a little flag overhead for that
+guarantee.
 
 `--dry-run` is valid only for mutating commands (rejected elsewhere with
 `DRY_RUN_NOT_APPLICABLE`). Each server op carries a support **tier**
