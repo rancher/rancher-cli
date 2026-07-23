@@ -325,10 +325,11 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 			return true
 		case "role":
 			// Role completion derives scope from the typed tail only (roleVocabulary).
-			// The roleSite bypass in liveCandidates already skips extractClusterID,
-			// leaving clusterValue="". This explicit false prevents the early-return
-			// at line 258 from silently killing role completion. Both guards must
-			// hold together — changing either one without the other breaks role TAB.
+			// The roleSite bypass in liveCandidates skips extractClusterID, leaving
+			// clusterValue="". This explicit false prevents liveCandidates' cluster
+			// early-return from silently killing role completion when clusterValue is
+			// empty. Both guards must hold together — changing either one without the
+			// other breaks role TAB.
 			return false
 		}
 		return false

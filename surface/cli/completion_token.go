@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher-cli/credhelper"
@@ -226,11 +227,12 @@ func flagPresent(argTail []string, flagName string) bool {
 }
 
 // boolFlagSet reports whether a boolean flag is semantically set on the tail:
-// bare "--name" or "--name=true" count; an explicit "--name=false" is a
-// complete negation, not a mid-edit token, and counts as absent. Used by
-// roleVocabulary so that "--global=false" does not select the global
-// vocabulary — unlike string flags, a boolean false is unambiguous and
-// should not trigger the mid-edit heuristic.
+// bare "--name" counts as true; "--name=<value>" is parsed via strconv.ParseBool
+// (covering "true"/"false"/"1"/"0"/"t"/"f"/"T"/"F"/"TRUE"/"FALSE" etc.); an
+// unparseable value is treated as present (mid-edit token). Used by
+// roleVocabulary so that "--global=false", "--global=0", "--global=False" do
+// not select the global vocabulary — unlike string flags, any boolean-false
+// spelling is unambiguous and should not trigger the mid-edit heuristic.
 func boolFlagSet(argTail []string, flagName string) bool {
 	long := "--" + flagName
 	prefix := long + "="
@@ -239,7 +241,10 @@ func boolFlagSet(argTail []string, flagName string) bool {
 			return true
 		}
 		if strings.HasPrefix(a, prefix) {
-			return strings.TrimPrefix(a, prefix) != "false"
+			if v, err := strconv.ParseBool(strings.TrimPrefix(a, prefix)); err == nil {
+				return v
+			}
+			return true // unparseable: mid-edit token, treat as present
 		}
 	}
 	return false

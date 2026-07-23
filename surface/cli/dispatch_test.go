@@ -529,10 +529,14 @@ func TestRoleVocabulary(t *testing.T) {
 		{name: "conflict global+cluster", tail: []string{"grant", "jane", "--global", "--cluster", "c-x", "--role"}, want: roleVocabNone},
 		// Presence heuristic rows (spec: deliberate mid-edit heuristic, NOT
 		// ResolveScope value parsing).
-		// --global uses boolFlagSet: "--global=false" is an explicit negation and
-		// counts as absent; "--global=true" counts as present.
+		// --global uses boolFlagSet + strconv.ParseBool: all false-spellings
+		// count as absent; true-spellings and unparseable values count as present.
 		{name: "heuristic global=false counts as absent", tail: []string{"grant", "jane", "--global=false", "--role"}, want: roleVocabNone},
+		{name: "heuristic global=0 counts as absent", tail: []string{"grant", "jane", "--global=0", "--role"}, want: roleVocabNone},
+		{name: "heuristic global=False counts as absent", tail: []string{"grant", "jane", "--global=False", "--role"}, want: roleVocabNone},
 		{name: "heuristic global=true counts as present", tail: []string{"grant", "jane", "--global=true", "--role"}, want: roleVocabGlobal},
+		{name: "heuristic global=1 counts as present", tail: []string{"grant", "jane", "--global=1", "--role"}, want: roleVocabGlobal},
+		{name: "heuristic global=garbage counts as present (mid-edit)", tail: []string{"grant", "jane", "--global=garbage", "--role"}, want: roleVocabGlobal},
 		{name: "heuristic global=false with project → project vocab", tail: []string{"grant", "jane", "--global=false", "--project", "Default", "--role"}, want: roleVocabProject},
 		{name: "heuristic empty project value", tail: []string{"grant", "jane", "--project=", "--role"}, want: roleVocabProject},
 		{name: "heuristic empty cluster value", tail: []string{"grant", "jane", "--cluster=", "--role"}, want: roleVocabCluster},
