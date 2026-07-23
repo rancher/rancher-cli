@@ -165,6 +165,9 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 
 	// Bare name/id: exact-id Get wins outright (deliberate precedence
 	// change from MatchOneOrError's ambiguity detection — spec'd).
+	// On Get miss, list scan matches exact equality on displayName OR
+	// username; a single user matching both fields counts once;
+	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.
 	obj, err := client.Get(ctx, userKind.GVR, "", sub.Bare)
 	if err == nil {
 		if isSystemUser(obj) {
@@ -180,7 +183,10 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	if err != nil {
 		return ResolvedSubject{}, err
 	}
-	var displayMatches []*unstructured.Unstructured
+	// nameMatches collects users where displayName == input OR username == input.
+	// Each list item is evaluated once, so a user whose both fields equal the
+	// input appends exactly once.
+	var nameMatches []*unstructured.Unstructured
 	var all []*unstructured.Unstructured
 	for i := range list.Items {
 		u := &list.Items[i]
@@ -189,24 +195,25 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 		all = append(all, u)
 		display, _, _ := unstructured.NestedString(u.Object, "displayName")
-		if display == sub.Bare {
-			displayMatches = append(displayMatches, u)
+		username, _, _ := unstructured.NestedString(u.Object, "username")
+		if display == sub.Bare || username == sub.Bare {
+			nameMatches = append(nameMatches, u)
 		}
 	}
-	switch len(displayMatches) {
+	switch len(nameMatches) {
 	case 1:
-		return resolvedFromUser(displayMatches[0])
+		return resolvedFromUser(nameMatches[0])
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
 			WithCandidates(nearCandidates(sub.Bare, all)).
 			WithHint("run: rancher get users")
 	default:
-		cands := make([]clierr.Candidate, 0, len(displayMatches))
-		for _, u := range displayMatches {
+		cands := make([]clierr.Candidate, 0, len(nameMatches))
+		for _, u := range nameMatches {
 			cands = append(cands, candidate(u))
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d users have display name %q", len(displayMatches), sub.Bare)).
+			fmt.Sprintf("%d users match %q", len(nameMatches), sub.Bare)).
 			WithCandidates(cands).
 			WithHint("pass the user id")
 	}

@@ -369,6 +369,42 @@ func TestResolveSubjectExternalPrincipalProvisions(t *testing.T) {
 	assert.Equal(t, ResolvedSubject{Principal: "okta_user://ghost", Provision: true}, got)
 }
 
+func TestResolveSubjectBareByUsername(t *testing.T) {
+	// Motivating case: user has no displayName, only a username.
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-adm", "", "adm-user", "local://u-adm"),
+	}}
+	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "adm-user"})
+	require.NoError(t, err)
+	assert.Equal(t, "u-adm", got.UserID)
+	assert.Equal(t, "local://u-adm", got.Principal)
+}
+
+func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
+	// User A has displayName "dev"; user B has username "dev" — input "dev" is ambiguous.
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-aaa", "dev", "aaa", "local://u-aaa"),
+		userObj("u-bbb", "", "dev", "local://u-bbb"),
+	}}
+	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "dev"})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Len(t, ce.Candidates, 2)
+	assert.Equal(t, "pass the user id", ce.Hint)
+}
+
+func TestResolveSubjectBareSameUserBothFields(t *testing.T) {
+	// One user whose displayName and username are both "ops" — matches once, not ambiguous.
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-ops", "ops", "ops", "local://u-ops"),
+	}}
+	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "ops"})
+	require.NoError(t, err)
+	assert.Equal(t, "u-ops", got.UserID)
+	assert.Equal(t, "local://u-ops", got.Principal)
+}
+
 func TestResolveSubjectErrorPassthrough(t *testing.T) {
 	forbidden := clierr.New(clierr.CodeRBAC, "users is forbidden")
 	tests := []struct {
