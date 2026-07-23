@@ -117,6 +117,22 @@ stdout '(?m)^e2e-cluster-role$'
 exec rancher --rancher-completion-proto=2 grant x --role --rancher-completion-cur= --generate-shell-completion
 ! stdout .
 
+# AC-subject: grant positional subject completion with full management token.
+# Seeded users: e2e-compl-u1 (username=e2e-compl-user1), e2e-compl-u2 (username=e2e-compl-user2).
+# Both metadata.name and username spellings must appear as candidates.
+exec rancher --rancher-completion-proto=2 grant --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^e2e-compl-u1$'
+stdout '(?m)^e2e-compl-user1$'
+stdout '(?m)^e2e-compl-u2$'
+stdout '(?m)^e2e-compl-user2$'
+
+# revoke also completes subjects.
+exec rancher --rancher-completion-proto=2 revoke --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^e2e-compl-u1$'
+stdout '(?m)^e2e-compl-user1$'
+stdout '(?m)^e2e-compl-u2$'
+stdout '(?m)^e2e-compl-user2$'
+
 env RANCHER_CLI_TOKEN=
 
 # Corrupt config: the SC-1 hard requirement extends to the TAB-time

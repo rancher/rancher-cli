@@ -347,6 +347,54 @@ func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability
 	return sanitizeCandidates(out)
 }
 
+// fetchUsers lists management Users and returns the union of each user's
+// metadata.name and top-level username field. System users (any principalIds
+// entry with prefix "system:") are excluded. Management list: requires a
+// management token — exec-cred-only capabilities (IDOnly) return nil without
+// a request, same boundary as fetchRoleTemplates.
+func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
+	if cap.Token == "" || cap.IDOnly {
+		return nil
+	}
+	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/users"
+	var col k8sItemsList
+	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
+		return nil
+	}
+	var names []string
+	for _, item := range col.Items {
+		if isSystemUserItem(item) {
+			continue
+		}
+		meta, _ := item["metadata"].(map[string]any)
+		if meta == nil {
+			continue
+		}
+		if name, _ := meta["name"].(string); name != "" {
+			names = append(names, name)
+		}
+		if username, _ := item["username"].(string); username != "" {
+			names = append(names, username)
+		}
+	}
+	return dedupe(sanitizeCandidates(names))
+}
+
+// isSystemUserItem reports whether the user item represents a system account:
+// any entry in principalIds with the "system:" prefix.
+func isSystemUserItem(item map[string]any) bool {
+	pids, ok := item["principalIds"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, pid := range pids {
+		if s, ok := pid.(string); ok && strings.HasPrefix(s, "system:") {
+			return true
+		}
+	}
+	return false
+}
+
 // dedupe removes duplicates from a sorted slice (input must be sorted).
 func dedupe(s []string) []string {
 	if len(s) == 0 {

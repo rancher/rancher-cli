@@ -174,6 +174,7 @@ func TestMain(m *testing.M) {
 	seedNamespaces()
 	seedCloudCredential()
 	seedRoleObjects()
+	seedUserObjects()
 
 	code := m.Run()
 	srv.Close()
@@ -495,6 +496,32 @@ func seedRoleObjects() {
 	}}
 	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil {
 		panic("seeding globalrole e2e-global-role: " + err.Error())
+	}
+}
+
+// seedUserObjects creates deterministic User fixtures for subject completion
+// e2e rows. Usernames are prefixed with "e2e-compl-" to avoid collisions with
+// the per-script u-alice fixture in project-members.txtar (displayName: alice).
+// principalIds use the local:// prefix so they are not treated as system users.
+func seedUserObjects() {
+	userGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"}
+	for _, u := range []struct {
+		id       string
+		username string
+	}{
+		{"e2e-compl-u1", "e2e-compl-user1"},
+		{"e2e-compl-u2", "e2e-compl-user2"},
+	} {
+		obj := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion":   "management.cattle.io/v3",
+			"kind":         "User",
+			"metadata":     map[string]any{"name": u.id},
+			"username":     u.username,
+			"principalIds": []any{"local://" + u.id},
+		}}
+		if _, err := dynCli.Resource(userGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+			panic("seeding user " + u.id + ": " + err.Error())
+		}
 	}
 }
 

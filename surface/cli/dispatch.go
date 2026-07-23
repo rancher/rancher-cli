@@ -242,12 +242,19 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// line 258 does not fire. Both guards must hold simultaneously.
 	roleSite := site.Kind == SiteFlagValue && site.FlagName == "role"
 
+	// Subject positional sites (index 0 of grant/revoke) fetch management
+	// users and need no cluster. Apply the same preflight bypass as roleSite:
+	// an inherited invalid cluster value (e.g. "prod cluster" with a space)
+	// must not suppress subject completion that never needed a cluster.
+	subjectSite := site.Kind == SitePositional && site.Index == 0 &&
+		(d.Name == "grant" || d.Name == "revoke")
+
 	clusterValue := ""
-	if !roleSite {
+	if !roleSite && !subjectSite {
 		clusterValue = extractClusterID(tail)
 	}
 	effectiveProject := ""
-	if !roleSite {
+	if !roleSite && !subjectSite {
 		effectiveProject = extractEffectiveProject(tail)
 	}
 
@@ -487,6 +494,18 @@ func livePositionalCandidates(
 	if site.Index != 0 {
 		return nil // only first positional completes for resource names
 	}
+
+	// Subject positional completion for grant/revoke (AC-subject):
+	// fetch management users and return the union of name + username.
+	// --type group → no listable group source; return nil, zero requests.
+	// Bare --type with no value yields "" from extractFlagValue → treat as user.
+	if d.Name == "grant" || d.Name == "revoke" {
+		if extractFlagValue(tail, "type") == "group" {
+			return nil
+		}
+		return fetchUsers(ctx, hc, cap)
+	}
+
 	// Round-2 finding 7: gate on AC-10 verbs (get/patch/delete only).
 	// inspect leaves get NO live positional completion.
 	if !isAC10Verb(d.Name) {
