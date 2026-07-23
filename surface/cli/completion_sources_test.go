@@ -224,6 +224,11 @@ func TestRoleValueSiteFullCallback(t *testing.T) {
 
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
+		// Snapshot all three package globals CaptureArgv mutates and restore
+		// them after the sub-test so -shuffle=on does not leak stale state into
+		// unrelated tests (third-party review finding 2).
+		origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
+		t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
 		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
 		CaptureArgv(scriptArgs)
