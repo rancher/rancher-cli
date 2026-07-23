@@ -274,13 +274,13 @@ var table = []Kind{
 	{
 		Key: "globalrolebinding", Name: "globalrolebinding", Aliases: []string{"globalrolebindings"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalrolebindings"},
-		Policy: NSNone, K8sKind: "GlobalRoleBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSNone, K8sKind: "GlobalRoleBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "clusterroletemplatebinding", Name: "clusterroletemplatebinding", Aliases: []string{"crtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterroletemplatebindings"},
-		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{

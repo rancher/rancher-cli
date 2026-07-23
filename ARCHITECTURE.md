@@ -445,6 +445,19 @@ rejected at `BuildRoot`.
 
 Verb reservation. get/create/patch/delete are reserved for kind-table resources — a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
 
+**Two layers over one substrate.** Generic verbs are the exact, declarative substrate,
+generated from the kind table: `get`/`patch` for every row, `delete` behind the row's
+`Deletable` flag — an allowlist, because delete is irreversible and each kind earns the
+verb on review. `create` is the one verb the table cannot generate (a creation input
+shape is not expressible as a table row), so it is bespoke per kind, with
+`create resource -f` as the manifest-driven generic path. Task-level commands —
+`grant`/`revoke`, `create project`, … — compose over the same Plan* substrate and add
+resolution and ergonomics (subject lookup, duplicate detection, partial-failure
+reporting); both layers run the one safety pipeline. The RBAC binding kinds
+(PRTB/CRTB/GRB) are intentionally mutable through BOTH layers — kubectl parity, where
+`kubectl create rolebinding` is the sugar and `kubectl apply -f` the substrate:
+`grant`/`revoke` for operators, the raw verbs for manifest-driven and declarative flows.
+
 **Schema manifest as the discovery contract.** `rancher schema` emits a golden-tested
 manifest: per-command args/flags, `commandType`, `destructive`
 (`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, tier,

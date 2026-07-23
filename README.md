@@ -175,10 +175,10 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
-Generated per kind from the 40-kind table: `get <kind>` (40), `patch <kind>`
-(40), `delete <kind>` (20 deletable, including `projectroletemplatebinding`,
-`token`, and `kubeconfig`) — 100 generated commands, 135 total together with
-the fixed commands above. The authoritative, always-current list is
+Generated per kind from the 46-kind table: `get <kind>` (46), `patch <kind>`
+(46), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
+kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
+120 generated commands, 158 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 
 `feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
@@ -210,6 +210,25 @@ logs outside the curated targets stay with `inspect pod` and kubectl.
 story: pair it with rancherlabs/support-tools' node collector for the
 node-level half (journald, the system-agent unit, OS state) that no API
 call can reach.
+
+### Which verbs exist for which kinds
+
+- `get` and `patch` exist for every kind in the schema kind vocabulary.
+  One exception: `patch clusterregistrationtoken` is refused — the kind is
+  read-only.
+- `delete` exists only where removal is a sane operator action.
+  Controller-owned objects (Fleet bundles, CAPI machines), server config
+  (`setting`, `feature`), identity (`user`), and role definitions
+  (`roletemplate`, `globalrole`) are not deletable — delete the owning
+  source object instead. The management `cluster` kind is not deletable
+  either; cluster removal goes through `delete provisioning-cluster`.
+- `create` is bespoke per kind where a real creation UX exists (`project`,
+  `namespace`, `secret`, `token`, `kubeconfig`, `cluster`); `create
+  resource -f` covers any supported kind from a manifest.
+- RBAC bindings (`projectroletemplatebinding`, `clusterroletemplatebinding`,
+  `globalrolebinding`): prefer `grant`/`revoke` — subject resolution,
+  duplicate detection, partial-failure reporting. The raw verbs exist for
+  manifest-driven and declarative flows.
 
 ### Project scope (`--project`)
 

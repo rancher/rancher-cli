@@ -777,6 +777,50 @@
     },
     {
       "aliases": [
+        "crtb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name` (defaults to the current context)",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete clusterroletemplatebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete the clusterroletemplatebinding"
+    },
+    {
+      "aliases": [
         "configmaps",
         "cm"
       ],
@@ -1063,6 +1107,44 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Delete the gitrepo"
+    },
+    {
+      "aliases": [
+        "globalrolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "delete globalrolebinding",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Delete the globalrolebinding"
     },
     {
       "aliases": [
