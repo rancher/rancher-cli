@@ -127,6 +127,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 
 ## Commands
 
+<!-- conformance:commands-table -->
 | Command | Purpose |
 |---|---|
 | `auth login --server <url> [--name --cacert --context]` | Store a server + token; set current context. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
@@ -143,12 +144,16 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `config delete-server <name>` | Remove a configured server, every context that targets it, and drain its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
 | `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
 | `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
+| `config set-completion [--network true\|false] [--timeout <budget>]` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 | `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — public tier; dry-run/apply |
 | `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — public tier; dry-run/apply |
 | `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — public tier; dry-run/apply |
 | `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
 | `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — public tier; sensitive; dry-run/apply --yes |
 | `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — public tier; sensitive; dry-run/apply --yes |
+| `create cluster <name> (--import \| --custom \| --machine-config <kind>/<name> --cloud-credential <cc>) [--k8s-version --pool-name --etcd --controlplane --worker --quantity]` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool (multi-pool goes through `create resource -f`) — crd tier; dry-run/apply |
+| `get cloud-credential [name]` | List cloud credentials or show one — secret values never shown |
+| `get kubernetes-versions` | List available Kubernetes versions (rke2/k3s), merged with the server's default and supported-range settings |
 | `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — public tier; dry-run/apply |
 | `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — public tier; dry-run/apply |
 | `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — public tier; dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
@@ -163,6 +168,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 | `schema [command]` | Machine-readable capability manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
+<!-- /conformance:commands-table -->
 
 `config use-server` switches to a context that targets the named server
 (creating one if needed); `config use-context` activates a named context
@@ -175,11 +181,14 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
+<!-- conformance:surface-counts -->
 Generated per kind from the 46-kind table: `get <kind>` (46), `patch <kind>`
 (46), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
 kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
 120 generated commands, 158 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
+<!-- /conformance:surface-counts -->
+
 
 `feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
 those generated kinds — not deletable, sensitive (flipping a flag via
