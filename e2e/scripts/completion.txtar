@@ -108,6 +108,11 @@ stdout '(?m)^e2e-global-role$'
 exec rancher --rancher-completion-proto=2 grant x --project p-x --cluster c-x --role --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^e2e-project-role$'
 
+# Cluster scope: --cluster --role <TAB> → fetchRoleTemplates(cluster) → contains e2e-cluster-role, not e2e-project-role.
+exec rancher --rancher-completion-proto=2 grant x --cluster c-test --role --rancher-completion-cur= --generate-shell-completion
+stdout '(?m)^e2e-cluster-role$'
+! stdout e2e-project-role
+
 # No scope: --role <TAB> with no scope flag → roleVocabNone → empty.
 exec rancher --rancher-completion-proto=2 grant x --role --rancher-completion-cur= --generate-shell-completion
 ! stdout .

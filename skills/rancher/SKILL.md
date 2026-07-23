@@ -182,7 +182,7 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 
 ### 10. Role grants and secrets
 
-- `rancher grant <subject> --role <r> (--project <p> [--cluster <c>] | --cluster <c> | --global)` —
+- `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` —
   grant a role at project, cluster, or global scope. Subject is a user/group
   name, id, or fully qualified principal. Groups must be passed as a fully
   qualified group principal id (e.g. `okta_group://<id>`); `--type` only
@@ -195,7 +195,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   bindings gone.
 - `rancher get roletemplates -o json` — filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
-  same as a CONTEXT column.
+  same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or
+  `--global`) is on the line, `--role <TAB>` completes live (requires the
+  network-completion opt-in).
 - `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` —
   an ordinary namespaced secret without hand-rolling base64.
 - `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` —
