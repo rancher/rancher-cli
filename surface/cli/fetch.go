@@ -259,8 +259,11 @@ func projectCandidates(items []map[string]any) []string {
 // of those whose top-level context field equals roleContext ("project" or
 // "cluster"). Management list: requires a management token — exec-cred-only
 // capabilities (IDOnly) return nil without a request, same boundary as
-// fetchClusters/fetchProjects. The filter is client-side: context is a
-// custom CRD field, not selectable server-side.
+// fetchClusters/fetchProjects. The filter is client-side: the RoleTemplate
+// CRD (management.cattle.io_roletemplates) declares no spec.selectableFields
+// entry for the context field, so the Kubernetes fieldSelector mechanism only
+// covers metadata.name and metadata.namespace — any context= filter must be
+// applied after the full list is fetched.
 func fetchRoleTemplates(ctx context.Context, hc *http.Client, cap TokenCapability, roleContext string) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
