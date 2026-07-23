@@ -237,13 +237,19 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// and display-name resolution below must not run for them — an
 	// inherited invalid or display-name cluster would otherwise suppress
 	// role completion that never needed a cluster at all.
+	// Twin requirement: siteNeedsCluster also carries an explicit
+	// "case role: return false" so the clusterValue=="" early-return at
+	// line 258 does not fire. Both guards must hold simultaneously.
 	roleSite := site.Kind == SiteFlagValue && site.FlagName == "role"
 
 	clusterValue := ""
 	if !roleSite {
 		clusterValue = extractClusterID(tail)
 	}
-	effectiveProject := extractEffectiveProject(tail)
+	effectiveProject := ""
+	if !roleSite {
+		effectiveProject = extractEffectiveProject(tail)
+	}
 
 	// Finding 1 (SECURITY): validate the cluster segment before it enters any
 	// REST path. A value containing "/" or other non-DNS characters fails here;
@@ -317,6 +323,13 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 		switch site.FlagName {
 		case "project", "namespace", "node":
 			return true
+		case "role":
+			// Role completion derives scope from the typed tail only (roleVocabulary).
+			// The roleSite bypass in liveCandidates already skips extractClusterID,
+			// leaving clusterValue="". This explicit false prevents the early-return
+			// at line 258 from silently killing role completion. Both guards must
+			// hold together — changing either one without the other breaks role TAB.
+			return false
 		}
 		return false
 	}
@@ -387,7 +400,7 @@ const (
 // are deliberately NOT consulted: grant/revoke refuse implicit scope, so
 // completion must not suggest a vocabulary the command would reject.
 func roleVocabulary(tail []string) roleVocab {
-	global := flagPresent(tail, "global")
+	global := boolFlagSet(tail, "global") // boolean: "--global=false" is a negation, not mid-edit
 	project := flagPresent(tail, "project")
 	cluster := flagPresent(tail, "cluster")
 	switch {
@@ -409,6 +422,9 @@ func roleVocabulary(tail []string) roleVocab {
 // active (AC-9/AC-15; round-2 finding 4).
 // tail is threaded from liveCandidates for role scope detection (roleVocabulary).
 // hc is the single per-dispatch client (finding 9).
+// For role sites, clusterID and effectiveProject are intentionally empty and
+// ignored — role scope is derived exclusively from tail via roleVocabulary,
+// never from inherited context/env/config values.
 func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {

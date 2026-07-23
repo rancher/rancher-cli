@@ -529,7 +529,11 @@ func TestRoleVocabulary(t *testing.T) {
 		{name: "conflict global+cluster", tail: []string{"grant", "jane", "--global", "--cluster", "c-x", "--role"}, want: roleVocabNone},
 		// Presence heuristic rows (spec: deliberate mid-edit heuristic, NOT
 		// ResolveScope value parsing).
-		{name: "heuristic global=false counts as global", tail: []string{"grant", "jane", "--global=false", "--role"}, want: roleVocabGlobal},
+		// --global uses boolFlagSet: "--global=false" is an explicit negation and
+		// counts as absent; "--global=true" counts as present.
+		{name: "heuristic global=false counts as absent", tail: []string{"grant", "jane", "--global=false", "--role"}, want: roleVocabNone},
+		{name: "heuristic global=true counts as present", tail: []string{"grant", "jane", "--global=true", "--role"}, want: roleVocabGlobal},
+		{name: "heuristic global=false with project → project vocab", tail: []string{"grant", "jane", "--global=false", "--project", "Default", "--role"}, want: roleVocabProject},
 		{name: "heuristic empty project value", tail: []string{"grant", "jane", "--project=", "--role"}, want: roleVocabProject},
 		{name: "heuristic empty cluster value", tail: []string{"grant", "jane", "--cluster=", "--role"}, want: roleVocabCluster},
 		{name: "equals-form project", tail: []string{"grant", "jane", "--project=Default", "--role"}, want: roleVocabProject},

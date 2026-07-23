@@ -211,13 +211,35 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 }
 
 // flagPresent reports whether --flagName or --flagName=... appears in argTail,
-// regardless of whether a value follows.
+// regardless of whether a value follows. Used for string flags where an
+// equals-form token with an empty or partial value is a mid-edit heuristic
+// ("--project= <TAB>" is about to receive a value; presence is sufficient).
 func flagPresent(argTail []string, flagName string) bool {
 	long := "--" + flagName
 	prefix := long + "="
 	for _, a := range argTail {
 		if a == long || strings.HasPrefix(a, prefix) {
 			return true
+		}
+	}
+	return false
+}
+
+// boolFlagSet reports whether a boolean flag is semantically set on the tail:
+// bare "--name" or "--name=true" count; an explicit "--name=false" is a
+// complete negation, not a mid-edit token, and counts as absent. Used by
+// roleVocabulary so that "--global=false" does not select the global
+// vocabulary — unlike string flags, a boolean false is unambiguous and
+// should not trigger the mid-edit heuristic.
+func boolFlagSet(argTail []string, flagName string) bool {
+	long := "--" + flagName
+	prefix := long + "="
+	for _, a := range argTail {
+		if a == long {
+			return true
+		}
+		if strings.HasPrefix(a, prefix) {
+			return strings.TrimPrefix(a, prefix) != "false"
 		}
 	}
 	return false
