@@ -275,3 +275,105 @@ func TestSchemaExitCodeStripOrdersByExitThenName(t *testing.T) {
 		"exit codes: GENERIC=1 · AMBIGUOUS_SELECTION=2 · VALIDATION=2 · AUTH=3 · RBAC=6",
 		got)
 }
+
+// tocManifest is a hand-ordered manifest exercising every SE-9 TOC shape: a
+// leading unnamed section, a named section, a generated group that also holds
+// a non-generated command, a later unnamed section, and a second generated
+// group that must NOT render a second vocabulary block.
+func tocManifest() Manifest {
+	return Manifest{
+		CLIVersion: "v9.9",
+		ExitCodes:  map[string]int{"GENERIC": 1, "VALIDATION": 2},
+		Commands: []SchemaCommand{
+			{Name: "auth login", Usage: "Log in"},
+			{Name: "completion", Usage: "Emit a completion script"},
+			{Name: "get kubernetes-versions", Usage: "List installable versions"},
+			{Name: "get pod", Usage: "List pods"},
+			{Name: "grant", Usage: "Grant a role"},
+			{Name: "patch pod", Usage: "Patch a pod"},
+			{Name: "schema", Usage: "Print the capability manifest"},
+		},
+		Kinds: []SchemaKind{{Name: "pod", Verbs: map[string]VerbState{
+			"get":    {State: VerbAvailable},
+			"patch":  {State: VerbAvailable},
+			"delete": {State: VerbAbsent},
+		}}},
+		Groups: []SchemaGroup{
+			{Name: "", Commands: []string{"schema", "completion"}},
+			{Name: "auth", Commands: []string{"auth login"}},
+			{Name: "get", Commands: []string{"get pod", "get kubernetes-versions"}},
+			{Name: "", Commands: []string{"grant"}},
+			{Name: "patch", Commands: []string{"patch pod"}},
+		},
+	}
+}
+
+// TestSchemaTOCSectionOrderAndVocabularyBlock covers SE-9: the bare TOC
+// renders the manifest's sections in order, one line per non-generated
+// command, with generated get/patch/delete collapsed into ONE kind-vocabulary
+// block at the position of the first generated command's group, counts
+// derived from the manifest, a version+counts header, and the exit-code +
+// `-o json` footer.
+func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
+	t.Parallel()
+	text := renderTOC(tocManifest())
+	lines := strings.Split(text, "\n")
+
+	assert.Equal(t, "rancher v9.9 — 7 commands · 1 kinds", lines[0],
+		"header carries the CLI version and derived counts")
+
+	idx := func(line string) int {
+		i := slices.Index(lines, line)
+		require.GreaterOrEqual(t, i, 0, "missing TOC line %q\nfull TOC:\n%s", line, text)
+		return i
+	}
+	schemaAt := idx("schema — Print the capability manifest")
+	completionAt := idx("completion — Emit a completion script")
+	authHdrAt := idx("auth:")
+	authAt := idx("  auth login — Log in")
+	blockAt := idx("get/patch/delete <kind> — 2 generated commands across 1 kinds")
+	blockPointerAt := idx("  kind view: rancher schema <kind>")
+	getHdrAt := idx("get:")
+	kvAt := idx("  get kubernetes-versions — List installable versions")
+	grantAt := idx("grant — Grant a role")
+	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
+	pointerAt := idx("full manifest: rancher schema -o json")
+
+	assert.Less(t, schemaAt, completionAt, "unnamed leading section keeps registration order")
+	assert.Less(t, completionAt, authHdrAt)
+	assert.Less(t, authHdrAt, authAt)
+	assert.Less(t, authAt, blockAt, "the block sits at the first generated group's position")
+	assert.Equal(t, blockAt+1, blockPointerAt)
+	assert.Less(t, blockPointerAt, getHdrAt, "the generated group's own non-generated commands follow the block")
+	assert.Less(t, getHdrAt, kvAt)
+	assert.Less(t, kvAt, grantAt, "the later unnamed section renders at its own position")
+	assert.Less(t, grantAt, stripAt)
+	assert.Less(t, stripAt, pointerAt)
+
+	assert.NotContains(t, lines, "  get pod — List pods", "generated commands collapse into the block")
+	assert.NotContains(t, lines, "patch:", "a fully generated section renders nothing of its own")
+	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one vocabulary block")
+}
+
+// TestSchemaSearchFragment covers SE-11's fragment rendering: a match visible
+// in the rendered line (name or usage) carries no fragment; an alias match
+// names the full alias form; a desc match shows the surrounding fragment with
+// ellipses.
+func TestSchemaSearchFragment(t *testing.T) {
+	t.Parallel()
+	c := SchemaCommand{
+		Name: "get pod", Aliases: []string{"pods", "po"}, Usage: "List pods or show one",
+		Desc: "Reads pods on the downstream cluster via the management proxy, one page at a time.",
+	}
+	assert.Equal(t, "", searchFragment(c, "get pod"), "name match is visible in the line")
+	assert.Equal(t, "", searchFragment(c, "show one"), "usage match is visible in the line")
+	assert.Equal(t, "alias: get pods", searchFragment(c, "get pods"),
+		"an alias-only match names the full alias form")
+
+	frag := searchFragment(c, "MANAGEMENT")
+	assert.Contains(t, frag, "desc: ")
+	assert.Contains(t, frag, "management proxy")
+	assert.Contains(t, frag, "…", "a mid-desc match is clipped with ellipses")
+
+	assert.Equal(t, "", searchFragment(c, "zzz"), "no match yields no fragment")
+}

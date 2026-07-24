@@ -13,18 +13,28 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// tin is a minimal Input stub for tests that only need positional Args and
-// bool flags.
+// tin is a minimal Input stub for tests that only need positional Args plus
+// bool and string flags.
 type tin struct {
 	a     []string
 	flags map[string]bool
+	strs  map[string]string
 }
 
-func (t tin) String(string) string { return "" }
+func (t tin) String(name string) string { return t.strs[name] }
 func (t tin) Bool(name string) bool {
 	return t.flags[name]
 }
 func (t tin) Args() []string { return t.a }
+
+// viewManifest unwraps the SE-19 schema view a schema Result carries as Data,
+// returning the wrapped (possibly filtered) manifest.
+func viewManifest(t *testing.T, res Result) Manifest {
+	t.Helper()
+	v, ok := res.Data.(schemaView)
+	require.True(t, ok, "schema Result.Data must be the SE-19 view, got %T", res.Data)
+	return v.manifest
+}
 
 func TestSchemaFilter(t *testing.T) {
 	t.Parallel()
@@ -36,14 +46,14 @@ func TestSchemaFilter(t *testing.T) {
 	t.Run("no args returns the full manifest", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 		require.NoError(t, err)
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		assert.Len(t, m.Commands, 2)
 	})
 
 	t.Run("multi-word name filters to one", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
 		require.NoError(t, err)
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		require.Len(t, m.Commands, 1)
 		assert.Equal(t, "get pod", m.Commands[0].Name)
 		assert.NotEmpty(t, m.ErrorCodes, "filtered manifest keeps the shared context")
@@ -52,7 +62,7 @@ func TestSchemaFilter(t *testing.T) {
 	t.Run("alias matches", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pods"}}, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "get pod", res.Data.(Manifest).Commands[0].Name)
+		assert.Equal(t, "get pod", viewManifest(t, res).Commands[0].Name)
 	})
 
 	t.Run("unknown command is VALIDATION", func(t *testing.T) {
@@ -77,6 +87,7 @@ func cardRegistry() *Registry {
 	}})
 	reg.Register(fakeRead{d: Descriptor{
 		Name: "get project", Usage: "List projects", CommandType: ReadOnly,
+		Desc:    "Reads management projects across all clusters.",
 		Network: true, Auth: true,
 	}})
 	reg.Register(fakeMutating{d: Descriptor{
@@ -106,7 +117,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher get pod [name]", lines[0])
 		assert.Contains(t, lines, "gates: none (read-only)")
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		require.Len(t, m.Commands, 1)
 		assert.Equal(t, "get pod", m.Commands[0].Name)
 	})
@@ -121,11 +132,12 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 	})
 
-	t.Run("bare manifest has no Text yet (TOC is a later slice)", func(t *testing.T) {
+	t.Run("bare manifest renders the TOC as Text (SE-9)", func(t *testing.T) {
 		t.Parallel()
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 		require.NoError(t, err)
-		assert.Empty(t, res.Text)
+		assert.True(t, strings.HasPrefix(res.Text, "rancher test — "),
+			"bare schema Text is the TOC, headed by the CLI version and counts")
 	})
 }
 
@@ -137,7 +149,7 @@ func TestSchemaSelectionPrunesGroups(t *testing.T) {
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
 	require.NoError(t, err)
-	m := res.Data.(Manifest)
+	m := viewManifest(t, res)
 	require.Len(t, m.Groups, 1)
 	assert.Equal(t, "get", m.Groups[0].Name)
 	assert.Equal(t, []string{"get pod"}, m.Groups[0].Commands)
@@ -253,7 +265,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher kubeconfig", lines[0])
 		assert.Contains(t, lines, "kind view: rancher schema kubeconfig --kind")
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		require.Len(t, m.Commands, 1)
 		assert.Equal(t, "kubeconfig", m.Commands[0].Name)
 		assert.Len(t, m.Kinds, 5, "command selection leaves the kind vocabulary untouched")
@@ -265,7 +277,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 			tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "kind: kubeconfig\n"))
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		require.Len(t, m.Kinds, 1)
 		assert.Equal(t, "kubeconfig", m.Kinds[0].Name)
 	})
@@ -300,7 +312,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(),
 			tin{a: []string{name}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
-		m := res.Data.(Manifest)
+		m := viewManifest(t, res)
 		require.Len(t, m.Kinds, 1)
 		return strings.Split(res.Text, "\n"), m.Kinds[0]
 	}
@@ -611,7 +623,7 @@ func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
 
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 	require.NoError(t, err)
-	m := res.Data.(Manifest)
+	m := viewManifest(t, res)
 	assert.True(t, m.ReadOnly)
 	assert.Equal(t, []string{"config readOnly"}, m.ReadOnlySources)
 	assert.Equal(t, "2.14", m.MinRancherVersion)
@@ -625,7 +637,230 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 	require.NoError(t, err)
-	m := res.Data.(Manifest)
+	m := viewManifest(t, res)
 	assert.False(t, m.ReadOnly)
 	assert.Empty(t, m.ReadOnlySources)
+}
+
+// TestSchemaFilters covers SE-10: --verb, --destructive, --tier, and
+// --mutating filter the manifest's commands (composing with each other and
+// with --search), prune Groups to the retained set (SE-18), and render the
+// filtered TOC as Text.
+func TestSchemaFilters(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	run := func(t *testing.T, in tin) (Manifest, string) {
+		t.Helper()
+		res, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+		require.NoError(t, err)
+		return viewManifest(t, res), res.Text
+	}
+	names := func(m Manifest) []string {
+		out := make([]string, len(m.Commands))
+		for i, c := range m.Commands {
+			out[i] = c.Name
+		}
+		return out
+	}
+
+	t.Run("--verb keeps commands whose first name token matches", func(t *testing.T) {
+		t.Parallel()
+		m, text := run(t, tin{strs: map[string]string{"verb": "get"}})
+		assert.Equal(t, []string{"get pod", "get project"}, names(m))
+		require.Len(t, m.Groups, 1, "sections prune to the retained set")
+		assert.Equal(t, "get", m.Groups[0].Name)
+		assert.Contains(t, text, "2 commands match --verb get")
+		assert.Contains(t, text, "get pod — List pods or show one")
+	})
+
+	t.Run("--destructive keeps true and dependsOnInput", func(t *testing.T) {
+		t.Parallel()
+		m, _ := run(t, tin{flags: map[string]bool{"destructive": true}})
+		assert.Equal(t, []string{"delete project"}, names(m))
+	})
+
+	t.Run("--tier keeps the tier's commands", func(t *testing.T) {
+		t.Parallel()
+		m, _ := run(t, tin{strs: map[string]string{"tier": "norman"}})
+		assert.Equal(t, []string{"delete project"}, names(m))
+	})
+
+	t.Run("--mutating keeps mutating commands", func(t *testing.T) {
+		t.Parallel()
+		m, _ := run(t, tin{flags: map[string]bool{"mutating": true}})
+		assert.Equal(t, []string{"delete project"}, names(m))
+	})
+
+	t.Run("filters compose (AND)", func(t *testing.T) {
+		t.Parallel()
+		m, _ := run(t, tin{
+			strs:  map[string]string{"verb": "delete"},
+			flags: map[string]bool{"destructive": true},
+		})
+		assert.Equal(t, []string{"delete project"}, names(m))
+	})
+
+	t.Run("filters compose with --search", func(t *testing.T) {
+		t.Parallel()
+		m, _ := run(t, tin{strs: map[string]string{"verb": "get", "search": "pods"}})
+		assert.Equal(t, []string{"get pod"}, names(m))
+	})
+
+	t.Run("composed filters can produce zero hits, naming every active filter", func(t *testing.T) {
+		t.Parallel()
+		m, text := run(t, tin{strs: map[string]string{"verb": "get", "tier": "norman"}})
+		assert.Empty(t, m.Commands)
+		assert.Empty(t, m.Groups)
+		assert.Equal(t, "no commands match --verb get --tier norman\n", text)
+	})
+}
+
+// TestSchemaSearch covers SE-11: --search is a case-insensitive substring over
+// name, aliases, usage, and desc; the filtered TOC shows the matching
+// fragment; zero hits print a no-matches message naming the active filters and
+// exit 0.
+func TestSchemaSearch(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+
+	t.Run("desc match is case-insensitive and shows the fragment", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{strs: map[string]string{"search": "MANAGEMENT"}}, nil)
+		require.NoError(t, err)
+		m := viewManifest(t, res)
+		require.Len(t, m.Commands, 1)
+		assert.Equal(t, "get project", m.Commands[0].Name)
+		assert.Contains(t, res.Text, "[desc: ")
+		assert.Contains(t, res.Text, "management projects")
+	})
+
+	t.Run("name match needs no fragment", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{strs: map[string]string{"search": "delete"}}, nil)
+		require.NoError(t, err)
+		m := viewManifest(t, res)
+		require.Len(t, m.Commands, 1)
+		assert.Equal(t, "delete project", m.Commands[0].Name)
+		assert.Contains(t, res.Text, "delete project — Delete a project")
+		assert.NotContains(t, res.Text, "[", "a match visible in the line carries no fragment")
+	})
+
+	t.Run("zero hits exit 0 with a message naming the filters", func(t *testing.T) {
+		t.Parallel()
+		var out, errBuf bytes.Buffer
+		ce := Run(context.Background(), cmd, tin{strs: map[string]string{"search": "zzz"}},
+			IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		require.Nil(t, ce, "zero hits are not an error")
+		assert.Equal(t, "no commands match --search \"zzz\"\n", out.String())
+	})
+}
+
+// TestSchemaSelectorFilterConflict covers SE-20: a positional selector
+// (command or kind) or --kind combined with any of the five filter/search
+// flags is a VALIDATION error naming the conflict.
+func TestSchemaSelectorFilterConflict(t *testing.T) {
+	t.Parallel()
+
+	t.Run("command selector plus --verb", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		_, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "--verb")
+		assert.Contains(t, ce.Message, "selector")
+		assert.Contains(t, ce.Hint, "drop the selector or the filter")
+	})
+
+	t.Run("kind selector plus --search", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"crt"}, strs: map[string]string{"search": "pod"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "--search")
+	})
+
+	t.Run("--kind plus a filter", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{flags: map[string]bool{"kind": true}, strs: map[string]string{"tier": "crd"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "--tier")
+		assert.Contains(t, ce.Message, "--kind")
+	})
+
+	t.Run("every filter flag conflicts with a selector", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cases := []tin{
+			{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}},
+			{a: []string{"get", "pod"}, flags: map[string]bool{"destructive": true}},
+			{a: []string{"get", "pod"}, strs: map[string]string{"tier": "crd"}},
+			{a: []string{"get", "pod"}, flags: map[string]bool{"mutating": true}},
+			{a: []string{"get", "pod"}, strs: map[string]string{"search": "pod"}},
+		}
+		for _, in := range cases {
+			_, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+		}
+	})
+}
+
+// TestSchemaGroupsCommandsConsistency is the SE-18 invariant after every W4
+// result shape: the flattened Groups[].Commands set-equals the manifest's
+// Commands names, empty sections are dropped, and a zero hit carries empty
+// Groups.
+func TestSchemaGroupsCommandsConsistency(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	shapes := []struct {
+		name    string
+		in      tin
+		zeroHit bool
+	}{
+		{"bare", tin{}, false},
+		{"command selection", tin{a: []string{"kubeconfig"}}, false},
+		{"kind selection", tin{a: []string{"crt"}}, false},
+		{"filtered", tin{strs: map[string]string{"verb": "get"}}, false},
+		{"search hit", tin{strs: map[string]string{"search": "kubeconfig"}}, false},
+		{"zero hit", tin{strs: map[string]string{"search": "zzzz"}}, true},
+	}
+	for _, tc := range shapes {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
+			require.NoError(t, err)
+			m := viewManifest(t, res)
+			want := map[string]bool{}
+			for _, c := range m.Commands {
+				want[c.Name] = true
+			}
+			got := map[string]bool{}
+			for _, g := range m.Groups {
+				require.NotEmpty(t, g.Commands, "empty sections are dropped")
+				for _, n := range g.Commands {
+					got[n] = true
+				}
+			}
+			assert.Equal(t, want, got, "flattened Groups set-equals Commands")
+			if tc.zeroHit {
+				assert.Empty(t, m.Commands)
+				assert.Empty(t, m.Groups)
+			} else {
+				assert.NotEmpty(t, m.Commands)
+			}
+		})
+	}
 }

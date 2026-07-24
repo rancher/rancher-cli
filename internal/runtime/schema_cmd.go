@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -34,8 +35,20 @@ func (s *schemaCmd) Describe() Descriptor {
 		Name:  "schema",
 		Usage: "Print the capability manifest, optionally filtered to one command",
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
-		Flags: []ArgSpec{{Name: "kind", Type: "bool",
-			Desc: "resolve the selector as a kind, not a command"}},
+		Flags: []ArgSpec{
+			{Name: "kind", Type: "bool",
+				Desc: "resolve the selector as a kind, not a command"},
+			{Name: "verb", Type: "string",
+				Desc: "show only commands with this verb (the first word of the command name)"},
+			{Name: "destructive", Type: "bool",
+				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
+			{Name: "tier", Type: "string",
+				Desc: "show only commands served at this tier"},
+			{Name: "mutating", Type: "bool",
+				Desc: "show only mutating commands"},
+			{Name: "search", Type: "string",
+				Desc: "case-insensitive substring search over command names, aliases, usage, and descriptions"},
+		},
 		CommandType: ReadOnly,
 		Examples:    []string{"rancher schema -o json", "rancher schema get pod -o json"},
 		Toolset:     "core",
@@ -48,12 +61,23 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		m.ReadOnly, m.ReadOnlySources = s.readOnly()
 	}
 	asKind := in.Bool("kind")
+	f := filtersFrom(in)
+	if f.active() {
+		// SE-20: filters and --search span the whole surface; a positional
+		// selector (or --kind, itself a selection modifier) conflicts.
+		if len(in.Args()) > 0 || asKind {
+			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
+		}
+		fm := filterManifest(m, f)
+		return Result{Kind: "Schema", Data: newSchemaView(fm, commandNames(fm)),
+			Text: renderFilteredTOC(fm, f)}, nil
+	}
 	if len(in.Args()) == 0 {
 		if asKind {
 			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector").
 				WithHint("pass a kind name, e.g. `rancher schema kubeconfig --kind`")
 		}
-		return Result{Kind: "Schema", Data: m}, nil
+		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOC(m)}, nil
 	}
 	want := strings.Join(in.Args(), " ")
 	// Resolution order (SE-5/SE-6): command match wins; a positional that
@@ -69,14 +93,127 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 				if k, collides := lookupKind(m.Kinds, want); collides {
 					text += "kind view: rancher schema " + k.Name + " --kind\n"
 				}
-				return Result{Kind: "Schema", Data: sel, Text: text}, nil
+				return Result{Kind: "Schema", Data: newSchemaView(sel, []string{c.Name}), Text: text}, nil
 			}
 		}
 	}
 	if k, ok := lookupKind(m.Kinds, want); ok {
-		return Result{Kind: "Schema", Data: filterToKind(m, k), Text: renderKindCard(k)}, nil
+		return Result{Kind: "Schema", Data: newSchemaView(filterToKind(m, k), []string{k.Name}),
+			Text: renderKindCard(k)}, nil
 	}
 	return Result{}, unknownSelection(m, want, asKind)
+}
+
+// schemaFilters holds the five SE-10/SE-11 filter/search flags. All active
+// filters must match for a command to be retained (they compose as AND).
+type schemaFilters struct {
+	verb        string
+	tier        string
+	search      string
+	destructive bool
+	mutating    bool
+}
+
+func filtersFrom(in Input) schemaFilters {
+	return schemaFilters{
+		verb:        in.String("verb"),
+		tier:        in.String("tier"),
+		search:      in.String("search"),
+		destructive: in.Bool("destructive"),
+		mutating:    in.Bool("mutating"),
+	}
+}
+
+func (f schemaFilters) active() bool {
+	return f.verb != "" || f.tier != "" || f.search != "" || f.destructive || f.mutating
+}
+
+// describe names the active flags as typed, for conflict errors and the
+// filtered TOC's header/no-matches message.
+func (f schemaFilters) describe() []string {
+	var out []string
+	if f.verb != "" {
+		out = append(out, "--verb "+f.verb)
+	}
+	if f.destructive {
+		out = append(out, "--destructive")
+	}
+	if f.tier != "" {
+		out = append(out, "--tier "+f.tier)
+	}
+	if f.mutating {
+		out = append(out, "--mutating")
+	}
+	if f.search != "" {
+		out = append(out, "--search "+strconv.Quote(f.search))
+	}
+	return out
+}
+
+// keep reports whether c survives every active filter: --verb matches the
+// first name token, --destructive keeps true and dependsOnInput, --tier the
+// resolver tier, --mutating the commandType, --search SE-11's substring set.
+func (f schemaFilters) keep(c SchemaCommand) bool {
+	if f.verb != "" {
+		verb, _, _ := strings.Cut(c.Name, " ")
+		if verb != f.verb {
+			return false
+		}
+	}
+	if f.destructive && c.Destructive != "true" && c.Destructive != "dependsOnInput" {
+		return false
+	}
+	if f.tier != "" && c.Tier != f.tier {
+		return false
+	}
+	if f.mutating && c.CommandType != Mutating {
+		return false
+	}
+	if f.search != "" && !searchMatches(c, strings.ToLower(f.search)) {
+		return false
+	}
+	return true
+}
+
+// searchMatches is SE-11's match set: a case-insensitive substring of the
+// command's name or full alias forms (matchesSubstring), usage, or desc.
+func searchMatches(c SchemaCommand, q string) bool {
+	if matchesSubstring(c, q) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(c.Usage), q) ||
+		strings.Contains(strings.ToLower(c.Desc), q)
+}
+
+// filterManifest applies f to m's commands and prunes Groups to the retained
+// set per SE-18. Kinds are untouched: command filters describe commands, not
+// the kind vocabulary. Commands stays a non-nil slice so a zero-hit manifest
+// still serializes the valid empty `commands` array (SE-2).
+func filterManifest(m Manifest, f schemaFilters) Manifest {
+	keep := map[string]bool{}
+	cmds := make([]SchemaCommand, 0, len(m.Commands))
+	for _, c := range m.Commands {
+		if f.keep(c) {
+			cmds = append(cmds, c)
+			keep[c.Name] = true
+		}
+	}
+	m.Commands = cmds
+	m.Groups = filterGroups(m.Groups, keep)
+	return m
+}
+
+// filterSelectorConflict is SE-20's VALIDATION error: filters/--search span
+// the whole surface and cannot combine with a positional selector or with
+// --kind (which requires one).
+func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
+	with := "--kind"
+	if hasSelector {
+		with = "a schema selector"
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("%s cannot combine with %s", strings.Join(f.describe(), ", "), with)).
+		WithHint("filters and --search search the whole surface; drop the selector or the filter")
 }
 
 // lookupKind resolves a positional selector against the manifest's kind rows

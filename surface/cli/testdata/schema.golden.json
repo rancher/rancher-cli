@@ -7247,6 +7247,31 @@
           "desc": "resolve the selector as a kind, not a command",
           "name": "kind",
           "type": "bool"
+        },
+        {
+          "desc": "show only commands with this verb (the first word of the command name)",
+          "name": "verb",
+          "type": "string"
+        },
+        {
+          "desc": "show only destructive commands (destructive true or dependsOnInput)",
+          "name": "destructive",
+          "type": "bool"
+        },
+        {
+          "desc": "show only commands served at this tier",
+          "name": "tier",
+          "type": "string"
+        },
+        {
+          "desc": "show only mutating commands",
+          "name": "mutating",
+          "type": "bool"
+        },
+        {
+          "desc": "case-insensitive substring search over command names, aliases, usage, and descriptions",
+          "name": "search",
+          "type": "string"
         }
       ],
       "name": "schema",

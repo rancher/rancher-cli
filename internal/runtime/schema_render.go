@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
@@ -236,6 +237,184 @@ func verbLine(verb string, vs VerbState) string {
 		}
 		return verb + ": not available"
 	}
+}
+
+// renderTOC builds the bare-`schema` table of contents (SE-9): a header of
+// CLI version plus derived counts, the manifest's ordered sections with one
+// line per non-generated command, the generated get/patch/delete commands
+// collapsed into ONE kind-vocabulary block at the position of the first
+// generated command's group, and a footer of the exit-code strip plus the
+// `-o json` pointer. Rendered via Result.Text under default/table only.
+func renderTOC(m Manifest) string {
+	generated := generatedCommandNames(m.Kinds)
+	byName := commandIndex(m.Commands)
+	genCount := 0
+	for _, c := range m.Commands {
+		if generated[c.Name] {
+			genCount++
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "rancher %s — %d commands · %d kinds\n", m.CLIVersion, len(m.Commands), len(m.Kinds))
+	blockDone := false
+	for _, g := range m.Groups {
+		indent := ""
+		if g.Name != "" {
+			indent = "  "
+		}
+		var lines []string
+		hasGenerated := false
+		for _, name := range g.Commands {
+			if generated[name] {
+				hasGenerated = true
+				continue
+			}
+			c, ok := byName[name]
+			if !ok {
+				c = SchemaCommand{Name: name}
+			}
+			lines = append(lines, indent+tocLine(c))
+		}
+		if hasGenerated && !blockDone {
+			blockDone = true
+			fmt.Fprintf(&b, "\nget/patch/delete <kind> — %d generated commands across %d kinds\n",
+				genCount, len(m.Kinds))
+			b.WriteString("  kind view: rancher schema <kind>\n")
+		}
+		if len(lines) > 0 {
+			b.WriteString("\n")
+			if g.Name != "" {
+				b.WriteString(g.Name + ":\n")
+			}
+			for _, l := range lines {
+				b.WriteString(l + "\n")
+			}
+		}
+	}
+	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
+	b.WriteString("full manifest: rancher schema -o json\n")
+	return b.String()
+}
+
+// renderFilteredTOC builds the filter/search result view (SE-10/SE-11):
+// a match-count header naming the active filters, every retained command as
+// its own line in pruned-section order (no vocabulary collapse — the matches
+// ARE the content), a search's matching fragment where the match is not
+// already visible in the line, and the `-o json` pointer. Zero hits render
+// the no-matches message alone; the caller returns success either way.
+func renderFilteredTOC(m Manifest, f schemaFilters) string {
+	filters := strings.Join(f.describe(), " ")
+	if len(m.Commands) == 0 {
+		return "no commands match " + filters + "\n"
+	}
+	byName := commandIndex(m.Commands)
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d commands match %s\n", len(m.Commands), filters)
+	for _, g := range m.Groups {
+		b.WriteString("\n")
+		indent := ""
+		if g.Name != "" {
+			b.WriteString(g.Name + ":\n")
+			indent = "  "
+		}
+		for _, name := range g.Commands {
+			line := tocLine(byName[name])
+			if f.search != "" {
+				if frag := searchFragment(byName[name], f.search); frag != "" {
+					line += "  [" + frag + "]"
+				}
+			}
+			b.WriteString(indent + line + "\n")
+		}
+	}
+	b.WriteString("\nfull manifest: rancher schema -o json\n")
+	return b.String()
+}
+
+// tocLine renders one TOC entry: `name — usage`, or the bare name when the
+// command carries no usage line.
+func tocLine(c SchemaCommand) string {
+	if c.Usage == "" {
+		return c.Name
+	}
+	return c.Name + " — " + c.Usage
+}
+
+// generatedCommandNames derives the generated command set from the kind
+// vocabulary (SE-17's rule: available and refused verbs are registered
+// commands, absent verbs are not) — never from name-shape guessing.
+func generatedCommandNames(ks []SchemaKind) map[string]bool {
+	out := map[string]bool{}
+	for _, k := range ks {
+		for verb, vs := range k.Verbs {
+			if vs.State == VerbAvailable || vs.State == VerbRefused {
+				out[verb+" "+k.Name] = true
+			}
+		}
+	}
+	return out
+}
+
+// commandIndex maps command names to their manifest entries for the TOC's
+// section walk (Groups carry names; lines need usage text).
+func commandIndex(cmds []SchemaCommand) map[string]SchemaCommand {
+	out := make(map[string]SchemaCommand, len(cmds))
+	for _, c := range cmds {
+		out[c.Name] = c
+	}
+	return out
+}
+
+// searchFragment shows WHERE a search term matched when the TOC line itself
+// does not (SE-11): "" for a name or usage match (already visible), the full
+// alias form for an alias match, or an ellipsed fragment of the desc around
+// the match. The term is matched case-insensitively, mirroring searchMatches.
+func searchFragment(c SchemaCommand, term string) string {
+	q := strings.ToLower(term)
+	if strings.Contains(strings.ToLower(c.Name), q) ||
+		strings.Contains(strings.ToLower(c.Usage), q) {
+		return ""
+	}
+	verb, _, verbed := strings.Cut(c.Name, " ")
+	for _, a := range c.Aliases {
+		full := a
+		if verbed {
+			full = verb + " " + a
+		}
+		if strings.Contains(strings.ToLower(full), q) {
+			return "alias: " + full
+		}
+	}
+	if i := strings.Index(strings.ToLower(c.Desc), q); i >= 0 && i+len(term) <= len(c.Desc) {
+		return "desc: " + fragmentAround(c.Desc, i, len(term))
+	}
+	return ""
+}
+
+// fragmentContext is how many bytes of surrounding desc a search fragment
+// keeps on each side of the match before clipping with ellipses.
+const fragmentContext = 20
+
+// fragmentAround clips s to a window around the match at byte offset idx of
+// length n, expanding the cut points to rune boundaries and marking clipped
+// ends with ellipses.
+func fragmentAround(s string, idx, n int) string {
+	start := max(idx-fragmentContext, 0)
+	end := min(idx+n+fragmentContext, len(s))
+	for start > 0 && !utf8.RuneStart(s[start]) {
+		start--
+	}
+	for end < len(s) && !utf8.RuneStart(s[end]) {
+		end++
+	}
+	frag := s[start:end]
+	if start > 0 {
+		frag = "…" + frag
+	}
+	if end < len(s) {
+		frag += "…"
+	}
+	return frag
 }
 
 // exitCodeStrip renders the global code→exit map as one footer line, ordered
