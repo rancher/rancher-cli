@@ -100,6 +100,7 @@ graph TD
     clierr["internal/clierr"]
     ui["internal/ui"]
     testrancher["internal/testrancher"]
+    fidelity["internal/testrancher/fidelity"]
 
     main --> cli
 
