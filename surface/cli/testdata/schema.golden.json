@@ -7250,6 +7250,25 @@
         },
         {
           "desc": "show only commands with this verb (the first word of the command name)",
+          "enum": [
+            "auth",
+            "completion",
+            "config",
+            "create",
+            "delete",
+            "get",
+            "grant",
+            "images",
+            "inspect",
+            "kubeconfig",
+            "logs",
+            "patch",
+            "project",
+            "revoke",
+            "schema",
+            "support-bundle",
+            "usage"
+          ],
           "name": "verb",
           "type": "string"
         },
@@ -7260,6 +7279,10 @@
         },
         {
           "desc": "show only commands served at this tier",
+          "enum": [
+            "public",
+            "crd"
+          ],
           "name": "tier",
           "type": "string"
         },

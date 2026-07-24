@@ -38,11 +38,22 @@ func (s *schemaCmd) Describe() Descriptor {
 		Flags: []ArgSpec{
 			{Name: "kind", Type: "bool",
 				Desc: "resolve the selector as a kind, not a command"},
+			// The verb enum is a static literal — the descriptor cannot see
+			// the registry's full command set at Describe time. The surface
+			// test TestSchemaVerbEnumMatchesCommandVerbs pins it to the real
+			// registry's distinct first name tokens; a new verb fails there
+			// until this list is updated.
 			{Name: "verb", Type: "string",
+				Enum: []string{"auth", "completion", "config", "create", "delete", "get",
+					"grant", "images", "inspect", "kubeconfig", "logs", "patch",
+					"project", "revoke", "schema", "support-bundle", "usage"},
 				Desc: "show only commands with this verb (the first word of the command name)"},
 			{Name: "destructive", Type: "bool",
 				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
+			// Tiers PRESENT in the manifest, not every declared safety.Tier —
+			// pinned by TestSchemaTierEnumMatchesCommandTiers.
 			{Name: "tier", Type: "string",
+				Enum: []string{"public", "crd"},
 				Desc: "show only commands served at this tier"},
 			{Name: "mutating", Type: "bool",
 				Desc: "show only mutating commands"},

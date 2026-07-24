@@ -276,6 +276,45 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "enum static site must yield zero HTTP requests")
 }
 
+// TestSchemaVerbFlagValueCompletionSurfaces drives `schema --verb <TAB>`
+// through the real Adapt-installed ShellComplete callback (BuildRoot +
+// root.Run, v2 protocol): the flag-value site must surface the descriptor's
+// --verb enum via the layer-1 enumCandidates path — offline, sorted, exactly
+// the enum set. Hermetic: no config file, network gate off, file credential
+// store; a network or keyring touch would fail the empty-config run.
+func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	scriptArgs := []string{"--rancher-completion-proto=2", "schema", "--verb",
+		"--rancher-completion-cur=", "--generate-shell-completion"}
+	CaptureArgv(scriptArgs)
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+
+	// The expected set is the descriptor's own enum (sorted, as
+	// resolveStaticEnum emits) — no third hand-copied verb list; the enum's
+	// content is pinned to the registry by TestSchemaVerbEnumMatchesCommandVerbs.
+	var want []string
+	for _, f := range runtime.NewSchemaCommand(nil, "", "", nil).Describe().Flags {
+		if f.Name == "verb" {
+			want = append(want, f.Enum...)
+		}
+	}
+	require.NotEmpty(t, want, "schema's --verb flag must carry an enum")
+	sort.Strings(want)
+
+	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	assert.Equal(t, want, got, "schema --verb <TAB> must surface exactly the enum candidates")
+}
+
 // Finding 4: unit-test the generic GVR path builders directly. A synthetic
 // downstream kind added to the kinds table gets the correct API path without
 // any dispatch edit.

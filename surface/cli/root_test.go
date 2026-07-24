@@ -130,6 +130,101 @@ func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 	assert.Equal(t, string(pcRow.Binding.Stability), stability)
 }
 
+// TestSchemaVerbEnumMatchesCommandVerbs pins the --verb enum in schema's
+// descriptor to the surface it filters: the enum is a static literal in
+// schemaCmd.Describe(), so a new top-level verb (a new distinct first token of
+// a command name) must fail here until the literal is updated. Runs against
+// the full real registry — the only place every command is wired.
+func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data struct {
+			Commands []struct {
+				Name  string `json:"name"`
+				Flags []struct {
+					Name string   `json:"name"`
+					Enum []string `json:"enum"`
+				} `json:"flags"`
+			} `json:"commands"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+
+	seen := map[string]bool{}
+	var wantVerbs []string
+	var verbEnum []string
+	for _, c := range env.Data.Commands {
+		verb, _, _ := strings.Cut(c.Name, " ")
+		if !seen[verb] {
+			seen[verb] = true
+			wantVerbs = append(wantVerbs, verb)
+		}
+		if c.Name == "schema" {
+			for _, f := range c.Flags {
+				if f.Name == "verb" {
+					verbEnum = f.Enum
+				}
+			}
+		}
+	}
+	assert.ElementsMatch(t, wantVerbs, verbEnum,
+		"schema --verb enum drifted from the registry's verbs; update the Enum literal in schemaCmd.Describe()")
+}
+
+// TestSchemaTierEnumMatchesCommandTiers pins the --tier enum to the tiers
+// actually PRESENT in the manifest's commands, not every declared
+// safety.Tier: an enum value with zero possible matches would make
+// completion suggest an impossible filter that validation then accepts.
+func TestSchemaTierEnumMatchesCommandTiers(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data struct {
+			Commands []struct {
+				Name  string `json:"name"`
+				Tier  string `json:"tier"`
+				Flags []struct {
+					Name string   `json:"name"`
+					Enum []string `json:"enum"`
+				} `json:"flags"`
+			} `json:"commands"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+
+	seen := map[string]bool{}
+	var wantTiers []string
+	var tierEnum []string
+	for _, c := range env.Data.Commands {
+		if c.Tier != "" && !seen[c.Tier] {
+			seen[c.Tier] = true
+			wantTiers = append(wantTiers, c.Tier)
+		}
+		if c.Name == "schema" {
+			for _, f := range c.Flags {
+				if f.Name == "tier" {
+					tierEnum = f.Enum
+				}
+			}
+		}
+	}
+	assert.ElementsMatch(t, wantTiers, tierEnum,
+		"schema --tier enum drifted from the tiers present in the manifest; update the Enum literal in schemaCmd.Describe()")
+}
+
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
