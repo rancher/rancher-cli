@@ -3,6 +3,7 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -57,7 +58,21 @@ func (t table) Rows() [][]string {
 		row := make([]string, 0, len(t.k.Columns)+1)
 		row = append(row, t.items[i].GetName())
 		for _, c := range t.k.Columns {
-			v, _, _ := unstructured.NestedString(o, c.Path...)
+			v, ok, _ := unstructured.NestedString(o, c.Path...)
+			if !ok {
+				// Bool leaves render "true"/"false" (nodedriver's ACTIVE/
+				// BUILTIN are bools in the served v3 NodeDriver). An ABSENT
+				// field in a Bool-marked column renders "false": an omitempty
+				// bool (NodeDriverSpec's builtin) drops false from the wire,
+				// so blank would misread as unknown. Other non-string leaves
+				// (int64, array) still render blank — rows keep omitting such
+				// columns deliberately (token, kubeconfig).
+				if b, bok, _ := unstructured.NestedBool(o, c.Path...); bok {
+					v = strconv.FormatBool(b)
+				} else if c.Bool {
+					v = "false"
+				}
+			}
 			row = append(row, v)
 		}
 		rows = append(rows, row)

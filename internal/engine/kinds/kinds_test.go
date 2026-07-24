@@ -19,6 +19,7 @@ var cliOnlyKinds = map[string]bool{
 	"amazonec2config": true, "azureconfig": true, "digitaloceanconfig": true,
 	"harvesterconfig": true, "vmwarevsphereconfig": true,
 	"clusterregistrationtoken": true,
+	"nodedriver":               true,
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {
@@ -121,6 +122,7 @@ func TestLookupByNameAliasAndKey(t *testing.T) {
 		"crtb":          "clusterroletemplatebinding",
 		"machine":       "capimachine",
 		"fleet-cluster": "fleetcluster",
+		"nodedrivers":   "nodedriver",
 	} {
 		k, ok := Lookup(q)
 		require.True(t, ok, q)

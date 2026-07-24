@@ -124,6 +124,21 @@ func projectObj(name, display, cluster string) unstructured.Unstructured {
 	}}
 }
 
+// nodeDriverObj mirrors the served wire shape: NodeDriverSpec.Builtin is
+// `json:"builtin,omitempty"` upstream, so a non-builtin driver carries NO
+// "builtin" key at all; Active is `json:"active"` (no omitempty) and is
+// always present.
+func nodeDriverObj(name, display string, active, builtin bool) unstructured.Unstructured {
+	spec := map[string]any{"displayName": display, "active": active}
+	if builtin {
+		spec["builtin"] = builtin
+	}
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+		"spec":     spec,
+	}}
+}
+
 func mustKind(t *testing.T, name string) kinds.Kind {
 	t.Helper()
 	k, ok := kinds.Lookup(name)
@@ -176,6 +191,47 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
 	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner"}, tab.Rows()[1])
+}
+
+// TestGetNodeDriverListsWithColumns pins the nodedriver row's read surface:
+// the served v3 NodeDriver carries spec.displayName (string) and spec.active/
+// spec.builtin (bools — rendered through the table renderer's bool fallback).
+// The non-builtin driver's JSON omits spec.builtin entirely (omitempty on the
+// wire) and its BUILTIN cell must still render "false", not blank.
+func TestGetNodeDriverListsWithColumns(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{
+		nodeDriverObj("amazonec2", "Amazon EC2", true, true),
+		nodeDriverObj("custom-driver", "My Driver", false, false),
+	}}
+	cmd := NewGet(mustKind(t, "nodedriver"), &recFactory{client: client})
+
+	d := cmd.Describe()
+	assert.Equal(t, "get nodedriver", d.Name)
+	assert.Equal(t, []string{"nodedrivers"}, d.Aliases)
+
+	res := execGet(t, cmd, input{})
+	assert.Equal(t, "NodeDriverList", res.Kind)
+	tab, ok := res.Data.(output.Tabular)
+	require.True(t, ok)
+	assert.Equal(t, []string{"NAME", "DISPLAYNAME", "ACTIVE", "BUILTIN"}, tab.Columns())
+	require.Len(t, tab.Rows(), 2)
+	assert.Equal(t, []string{"amazonec2", "Amazon EC2", "true", "true"}, tab.Rows()[0])
+	assert.Equal(t, []string{"custom-driver", "My Driver", "false", "false"}, tab.Rows()[1])
+}
+
+// TestGetNodeDriverSingle pins the named get: nodedrivers are cluster-scoped
+// (NSNone) management resources, so the Get goes to the local cluster with no
+// namespace.
+func TestGetNodeDriverSingle(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{nodeDriverObj("amazonec2", "Amazon EC2", true, true)}}
+	fac := &recFactory{client: client}
+	res := execGet(t, NewGet(mustKind(t, "nodedriver"), fac), input{args: []string{"amazonec2"}})
+	assert.Equal(t, "NodeDriver", res.Kind)
+	assert.Equal(t, []string{"amazonec2"}, client.getName)
+	assert.Equal(t, []string{""}, client.getNS, "nodedrivers are cluster-scoped")
+	assert.Equal(t, []string{engine.LocalCluster}, fac.clusterCalls, "nodedrivers are served by the management cluster")
 }
 
 func TestGetClusterSingle(t *testing.T) {

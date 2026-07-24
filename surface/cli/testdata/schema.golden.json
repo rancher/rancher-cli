@@ -3281,6 +3281,42 @@
     },
     {
       "aliases": [
+        "nodedrivers"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "name": "get nodedriver",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "List nodedrivers or show one"
+    },
+    {
+      "aliases": [
         "persistentvolumes",
         "pv"
       ],
@@ -5933,6 +5969,57 @@
       "tier": "crd",
       "toolset": "core",
       "usage": "Patch the node with an RFC 6902 JSON patch"
+    },
+    {
+      "aliases": [
+        "nodedrivers"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "desc": "inline RFC 6902 JSON `patch` ops",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "desc": "patch `file`, or - for stdin",
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "name": "patch nodedriver",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Patch the nodedriver with an RFC 6902 JSON patch"
     },
     {
       "aliases": [

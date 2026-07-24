@@ -525,6 +525,14 @@ func livePositionalCandidates(
 			return fetchClusters(ctx, hc, cap, "")
 		case "project":
 			return fetchProjects(ctx, hc, cap, clusterID)
+		case "nodedriver":
+			// Management-plane list served by the local cluster; requires a
+			// management token — exec-cred-only capabilities (IDOnly) cannot
+			// authorize it, same boundary as fetchClusters (zero requests).
+			if cap.IDOnly {
+				return nil
+			}
+			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
 		default:
 			// Other management kinds: no generic downstream path applies.
 			return nil

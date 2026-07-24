@@ -182,10 +182,10 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
 <!-- conformance:surface-counts -->
-Generated per kind from the 46-kind table: `get <kind>` (46), `patch <kind>`
-(46), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
+Generated per kind from the 47-kind table: `get <kind>` (47), `patch <kind>`
+(47), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
 kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
-120 generated commands, 158 total together with the fixed commands above. The authoritative, always-current list is
+122 generated commands, 160 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 
@@ -193,9 +193,16 @@ kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
 `feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
 those generated kinds — not deletable, sensitive (flipping a flag via
 `patch feature` escalates to `--yes`). Its interesting fields
-(`spec.value`, `status.default`, `status.lockedValue`) are booleans, which
-render blank under the string-only table columns — `-o json` is the real
-read for a feature's actual state.
+(`spec.value`, `status.default`, `status.lockedValue`) are tri-state
+booleans (an absent `spec.value` means "follow the default"), which a
+table cell would misread — `-o json` is the real read for a feature's
+actual state.
+
+`nodedriver` (Rancher's `management.cattle.io/v3` NodeDriver registry — the
+server side of `create cluster`'s node-driver mode) is a read-mostly
+generated kind: not deletable, sensitive (`patch nodedriver` toggles a
+driver's platform-wide availability and escalates to `--yes`). `get
+nodedrivers` lists NAME, DISPLAYNAME, ACTIVE, and BUILTIN.
 
 `token` and `kubeconfig` are registered with an empty GVR version, resolved
 via discovery at call time (the same mechanism the CAPI kinds use) — on a

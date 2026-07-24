@@ -22,6 +22,11 @@ const (
 type Column struct {
 	Header string
 	Path   []string // unstructured.NestedString path; empty = metadata.name
+	// Bool marks the leaf boolean-typed: an absent field renders "false"
+	// instead of blank, because an omitempty bool (e.g. NodeDriverSpec's
+	// builtin) drops its false value from the wire entirely. Unmarked
+	// (string-typed) columns keep rendering absent fields blank.
+	Bool bool
 }
 
 // NamespacePolicy decides namespace semantics and flag generation for a
@@ -243,9 +248,10 @@ var table = []Kind{
 	},
 	{
 		// Feature's interesting fields (spec.value, status.default,
-		// status.lockedValue) are BOOLS — blank under the string-only NestedString
-		// column renderer, hence the single DESCRIPTION column; -o json is the
-		// real read.
+		// status.lockedValue) are BOOLS. The table renderer can render bools
+		// now (nodedriver's ACTIVE/BUILTIN), but the single DESCRIPTION column
+		// stays: spec.value is a tri-state (absent = follow the default), and
+		// a blank-vs-"false" cell would misread — -o json is the real read.
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
@@ -340,9 +346,9 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierPublic, Stability: safety.Beta},
 		Columns: []Column{
-			// STRING leaves only — table Rows uses unstructured.NestedString,
-			// which silently renders "" for bool/int64/array paths (that is why
-			// there is no EXPIRED bool column; EXPIRES carries the signal).
+			// STRING leaves only — table Rows renders int64/array paths as ""
+			// (bools render since the nodedriver row's fallback; there is
+			// still no EXPIRED bool column — EXPIRES carries the signal).
 			{Header: "USER", Path: []string{"spec", "userID"}},
 			{Header: "KIND", Path: []string{"spec", "kind"}},
 			{Header: "EXPIRES", Path: []string{"status", "expiresAt"}},
@@ -401,6 +407,31 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "vmwarevsphereconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "VmwarevsphereConfig", Scope: Management, Deletable: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+	},
+
+	{
+		// The server-side registry of node drivers (management.cattle.io/v3
+		// NodeDriver) — the discovery surface behind `create cluster`'s
+		// node-driver mode. Read surface only for now: Deletable: false, and
+		// Sensitive: true so the generated patch (toggling spec.active flips
+		// driver availability platform-wide, like a setting/feature) escalates
+		// to --yes. Column field paths follow rancher's NodeDriverSpec
+		// (machine_types.go): displayName is a string; active and builtin are
+		// BOOLS (Bool: true), rendered via the table renderer's bool fallback.
+		// builtin is `json:"builtin,omitempty"` upstream, so a non-builtin
+		// driver omits the field — Bool makes the absent field render "false"
+		// instead of blank (active, `json:"active"`, is always present, but
+		// is marked too: it is boolean-typed all the same).
+		Key: "nodedriver", Name: "nodedriver", Aliases: []string{"nodedrivers"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodedrivers"},
+		Policy: NSNone, K8sKind: "NodeDriver", Scope: Management, Deletable: false, Sensitive: true,
+		Completable: true,
+		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "DISPLAYNAME", Path: []string{"spec", "displayName"}},
+			{Header: "ACTIVE", Path: []string{"spec", "active"}, Bool: true},
+			{Header: "BUILTIN", Path: []string{"spec", "builtin"}, Bool: true},
+		},
 	},
 
 	{

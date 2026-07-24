@@ -1,7 +1,7 @@
 # schema manifest is the discovery contract
 exec rancher schema -o json
 cp stdout schema.json
-jsonquery schema.json 'data.commands.#' 158
+jsonquery schema.json 'data.commands.#' 160
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
