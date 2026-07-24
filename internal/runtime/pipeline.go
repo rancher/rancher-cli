@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"text/template"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
@@ -50,6 +51,10 @@ type IO struct {
 // command are overwritten, never trusted.
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) *clierr.Error {
 	d := cmd.Describe()
+
+	if ce := validateFormat(streams.Format); ce != nil {
+		return renderErr(streams, ce)
+	}
 
 	if d.CommandType == Mutating && streams.ReadOnly {
 		return renderErr(streams, clierr.New(clierr.CodeValidation,
@@ -144,6 +149,38 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	return renderResult(streams, res)
+}
+
+// validateFormat closes the -o/--output value set: the OutputFormats literals
+// (plus "" for the default) and template=<go-template>, whose source must
+// parse. Run calls it before dispatch so an unknown format is a structured
+// VALIDATION error and a mutation can never execute and then fail at render.
+// The template parse here makes Render's own parse effectively pre-checked;
+// the duplicate parse is cheap and intentional (Render keeps it as defense in
+// depth for non-pipeline callers).
+func validateFormat(format string) *clierr.Error {
+	if format == "" {
+		return nil
+	}
+	for _, f := range OutputFormats {
+		if format == f {
+			return nil
+		}
+	}
+	if src, ok := strings.CutPrefix(format, output.TemplatePrefix); ok {
+		if src == "" {
+			return clierr.New(clierr.CodeValidation, "--output template source is empty").
+				WithHint("pass -o template='{{ .field }}'")
+		}
+		if _, err := template.New("out").Parse(src); err != nil {
+			return clierr.New(clierr.CodeValidation, fmt.Sprintf("invalid template: %v", err)).
+				WithHint("template must be valid Go text/template syntax")
+		}
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|"))).
+		WithHint(fmt.Sprintf("allowed: %s, template=<go-template>", strings.Join(OutputFormats, ", ")))
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:

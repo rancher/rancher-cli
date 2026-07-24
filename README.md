@@ -272,13 +272,14 @@ Every command emits one JSON document per invocation under `-o json` — an
 ```
 
 - **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
-  `name` (`.metadata.name`/ids only) · any other value is a Go template over
-  the JSON view of `data` (same shape as `-o json`). A kind without a table
-  projection falls back to indented JSON under the default `table` format;
-  use `-o json` for the versioned envelope. Some commands (e.g. `logs`) render
-  a plain-text default under `table`/default format instead, with warnings on
-  stderr as `# warning: <w>` lines; `-o json`/`yaml`/template/`name` still see
-  the normal envelope over `data`.
+  `name` (`.metadata.name`/ids only) · `template=<go-template>` — a Go template
+  over the JSON view of `data` (same shape as `-o json`). Any other value is
+  rejected with a `VALIDATION` error before the command runs. A kind without a
+  table projection falls back to indented JSON under the default `table`
+  format; use `-o json` for the versioned envelope. Some commands (e.g. `logs`)
+  render a plain-text default under `table`/default format instead, with
+  warnings on stderr as `# warning: <w>` lines;
+  `-o json`/`yaml`/`template=`/`name` still see the normal envelope over `data`.
 - **Errors** are structured, on stderr, always the JSON envelope regardless of
   `-o`, with the error object under `data`. A plain-text notice (the
   credential-store pin warning) may precede it on stderr — the

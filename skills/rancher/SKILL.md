@@ -74,8 +74,9 @@ envelope:
 ```
 
 Read `data`; surface `warnings` to the user. Other formats: `table` (default,
-human), `yaml`, `name` (ids only), or any other value as a Go template over
-the JSON view of `data` (same shape as `-o json`).
+for users), `yaml`, `name` (ids only), or `template=<go-template>` — a Go template
+over the JSON view of `data` (same shape as `-o json`). Anything else is a
+`VALIDATION` error.
 
 ### 4. Mutation safety loop — never skip
 

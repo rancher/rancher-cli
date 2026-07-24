@@ -697,7 +697,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("template renders over JSON view of Data", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "{{index .pods 0}}"}, safety.Binding{})
+		ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "template={{index .pods 0}}"}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.Equal(t, "pod-1\n", out.String())
 	})
@@ -826,9 +826,102 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
 }
 
+// TestRunValidatesOutputFormat pins the -o contract: the closed set of
+// literals plus template=<go-template>, validated BEFORE the command runs.
+// Anything else is a structured VALIDATION error — never Go template source.
+func TestRunValidatesOutputFormat(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{"", "table", "json", "yaml", "name", "template={{.foo}}"}
+	for _, format := range valid {
+		t.Run("valid format="+format, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d:   Descriptor{Name: "get thing", CommandType: ReadOnly},
+				res: Result{Kind: "Thing", Data: map[string]string{"foo": "bar"}},
+			}
+			var out, errBuf bytes.Buffer
+			ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+		})
+	}
+
+	invalid := []struct {
+		name    string
+		format  string
+		message string
+		hint    string
+	}{
+		{
+			name:    "unknown value",
+			format:  "wide",
+			message: `--output="wide" is not one of table|json|yaml|name|template=<go-template>`,
+			hint:    "allowed: table, json, yaml, name, template=<go-template>",
+		},
+		{
+			name:    "bare template",
+			format:  "template",
+			message: `--output="template" is not one of table|json|yaml|name|template=<go-template>`,
+			hint:    "allowed: table, json, yaml, name, template=<go-template>",
+		},
+		{
+			name:    "empty template source",
+			format:  "template=",
+			message: "--output template source is empty",
+			hint:    "pass -o template='{{ .field }}'",
+		},
+		{
+			name:    "template parse error",
+			format:  "template={{",
+			message: "invalid template:",
+			hint:    "template must be valid Go text/template syntax",
+		},
+	}
+	for _, tc := range invalid {
+		t.Run("invalid "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d:   Descriptor{Name: "get thing", CommandType: ReadOnly},
+				res: Result{Kind: "Thing", Data: map[string]string{"foo": "bar"}},
+			}
+			var out, errBuf bytes.Buffer
+			ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: tc.format}, safety.Binding{})
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, tc.message)
+			assert.Equal(t, tc.hint, ce.Hint)
+			assert.Empty(t, out.String(), "nothing may reach stdout for an invalid -o")
+
+			env := decodeEnvelope(t, errBuf.Bytes())
+			assert.Equal(t, "Error", env["kind"])
+			data, ok := env["data"].(map[string]any)
+			require.True(t, ok)
+			errObj, ok := data["error"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, errObj["code"])
+		})
+	}
+}
+
+// TestRunInvalidOutputFormatRefusesMutatingBeforePlan proves the pre-execution
+// guarantee: a mutation must never execute and then fail at render, so an
+// invalid -o refuses the command before Plan is ever invoked (Plan sends real
+// write-verb requests unconditionally).
+func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
+	t.Parallel()
+	cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
+	var out, errBuf bytes.Buffer
+	ce := Run(context.Background(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "wide", Apply: true},
+		safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, `--output="wide"`)
+}
+
 func TestRenderErrAlwaysJSON(t *testing.T) {
 	t.Parallel()
-	for _, format := range []string{"", "json", "yaml", "name", "table", "{{.error.code}}"} {
+	for _, format := range []string{"", "json", "yaml", "name", "table", "template={{.error.code}}"} {
 		t.Run("format="+format, func(t *testing.T) {
 			var errBuf bytes.Buffer
 			ce := clierr.New(clierr.CodeNotFound, "nope").WithHint("look elsewhere")

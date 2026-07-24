@@ -7248,13 +7248,12 @@
     },
     {
       "appliesTo": "all",
-      "desc": "'name' = ids only",
+      "desc": "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data",
       "enum": [
         "table",
         "json",
         "yaml",
-        "name",
-        "template"
+        "name"
       ],
       "name": "-o/--output",
       "type": "enum"

@@ -1,0 +1,20 @@
+# Hermetic and network-free by construction: -o/--output validation and
+# template rendering run before/without any server call, so schema and
+# config path carry the whole scenario.
+
+# VALIDATION: the -o value set is closed — an unknown format is a structured
+# JSON envelope on stderr with a non-zero exit, before the command runs.
+! exec rancher schema -o wide
+jsonquery stderr data.error.code VALIDATION
+stderr 'template=<go-template>'
+
+# Bare "template" (without =) is not a format; the template form requires
+# template=<go-template>.
+! exec rancher schema -o template
+jsonquery stderr data.error.code VALIDATION
+
+# template=<go-template> renders the Go template over the JSON view of data:
+# config path's data carries {path, exists}, so {{.path}} prints the resolved
+# config file path.
+exec rancher config path -o template={{.path}}
+stdout $RANCHER_CLI_CONFIG_DIR/config.yaml

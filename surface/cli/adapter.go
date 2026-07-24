@@ -29,7 +29,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive change"},
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
-		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template"},
+		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
 		&ucli.StringFlag{Name: "context", Usage: "scope operations to cluster[:project]; :project scopes downstream reads"},
 		&ucli.StringFlag{Name: "project", Usage: "scope operations to project namespaces (downstream namespaced resources only)"},
 		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way)"},

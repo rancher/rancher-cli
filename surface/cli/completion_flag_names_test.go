@@ -187,7 +187,7 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	// Flag colon format: --output has usage "table|json|yaml|name|template".
+	// Flag colon format: --output has usage "table|json|yaml|name|template=<tpl>".
 	flagOut := runNameLikeCompletion(t, []string{"usage"}, "--")
 	foundFlagColon := false
 	for _, line := range strings.Split(strings.TrimSpace(flagOut), "\n") {
@@ -377,7 +377,7 @@ func TestGroupAliasOnlyPrefixSvc(t *testing.T) {
 
 // TestGroupSpaceFormFlagValueCompletion: `get --output <TAB>` (space form,
 // current word empty after the value-taking flag) must return bare enum values
-// (json/yaml/table/name/template), not the kind list. Before the fix, the empty
+// (json/yaml/table/name), not the kind list. Before the fix, the empty
 // rawCurrentWord fell through to the bare-word/kind-list branch.
 func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -393,7 +393,7 @@ func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
 	assert.Contains(t, tokens, "yaml", "get --output <TAB> must include yaml")
 	assert.Contains(t, tokens, "table", "get --output <TAB> must include table")
 	assert.Contains(t, tokens, "name", "get --output <TAB> must include name")
-	assert.Contains(t, tokens, "template", "get --output <TAB> must include template")
+	assert.NotContains(t, tokens, "template", "get --output <TAB> must not suggest bare template (only template=<tpl> is valid, not completable)")
 	// Must not spill into kind names.
 	assert.NotContains(t, tokens, "pod", "get --output <TAB> must not include kind names")
 }

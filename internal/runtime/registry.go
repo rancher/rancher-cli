@@ -19,10 +19,11 @@ type GlobalFlag struct {
 	Env       []string `json:"env,omitempty"`
 }
 
-// OutputFormats is the canonical set of --output / -o values. Referenced by
-// both GlobalFlags and globalArgSpecs in the surface layer so there is one
-// source of truth.
-var OutputFormats = []string{"table", "json", "yaml", "name", "template"}
+// OutputFormats is the canonical set of --output / -o literal values;
+// template=<go-template> is additionally accepted but is not a completable
+// literal. Referenced by both GlobalFlags and globalArgSpecs in the surface
+// layer so there is one source of truth.
+var OutputFormats = []string{"table", "json", "yaml", "name"}
 
 // ShellCompletionShells is the single shared list of shells `completion
 // <shell>` emits scripts for — used both to populate the schema manifest's
@@ -41,7 +42,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
 		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-tier write"},
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
-		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only"},
+		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "debug logging"},
 		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; the :project scopes namespaced reads on downstream clusters (--project overrides it); a trailing colon (cluster:) clears it; precedence: flag, then RANCHER_CLI_CONTEXT, then config", Env: []string{"RANCHER_CLI_CONTEXT"}},

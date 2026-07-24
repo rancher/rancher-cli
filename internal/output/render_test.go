@@ -64,7 +64,7 @@ func TestRenderTemplatePreservesIntegerPrecision(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	env := &Envelope{Data: widget{Bytes: 1073741824}}
-	require.NoError(t, Render(&buf, "{{.bytes}}", env))
+	require.NoError(t, Render(&buf, "template={{.bytes}}", env))
 	assert.Equal(t, "1073741824\n", buf.String(),
 		"a large int64 must round-trip through the JSON view verbatim, not as scientific notation")
 }
@@ -81,15 +81,57 @@ func TestRenderTemplateUsesJSONView(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	env := &Envelope{Data: widget{DisplayName: "w1"}}
-	require.NoError(t, Render(&buf, "{{.displayName}}", env))
+	require.NoError(t, Render(&buf, "template={{.displayName}}", env))
 	assert.Equal(t, "w1\n", buf.String(),
 		"templates must see the serialized (json-tag) shape, not Go field names")
 
 	// A json.Marshaler-only payload (like resources.table) must be addressable too.
 	buf.Reset()
 	env = &Envelope{Data: onlyMarshaler{}}
-	require.NoError(t, Render(&buf, "{{.name}}", env))
+	require.NoError(t, Render(&buf, "template={{.name}}", env))
 	assert.Equal(t, "m\n", buf.String())
+}
+
+func TestRenderTemplatePrefixRequired(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	env := &Envelope{Data: map[string]string{"name": "w1"}}
+	require.NoError(t, Render(&buf, TemplatePrefix+"{{.name}}", env))
+	assert.Equal(t, "w1\n", buf.String())
+}
+
+func TestRenderRejectsUnknownFormat(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"wide", "template", "{{.name}}"} {
+		t.Run("format="+format, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			err := Render(&buf, format, &Envelope{Data: map[string]string{"name": "w1"}})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unsupported output format")
+			assert.Empty(t, buf.String())
+		})
+	}
+}
+
+// TestRenderTemplateEmptySource: a bare "template=" must be an error, not a
+// silent bare-newline render — the pipeline's validateFormat rejects it, and
+// Render's defense-in-depth contract for direct callers must match.
+func TestRenderTemplateEmptySource(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	err := Render(&buf, TemplatePrefix, &Envelope{Data: map[string]string{"name": "w1"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty template source")
+	assert.Empty(t, buf.String(), "an empty template source must render nothing")
+}
+
+func TestRenderTemplateInvalidSource(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	err := Render(&buf, TemplatePrefix+"{{", &Envelope{Data: map[string]string{"name": "w1"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid template:")
 }
 
 // TestRenderJSONNoHTMLEscape above pins the -o json path. The two below cover

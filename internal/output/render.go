@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 	"text/template"
 
@@ -17,8 +18,15 @@ type Tabular interface {
 	Rows() [][]string
 }
 
+// TemplatePrefix marks an --output value as Go template source: everything
+// after it is the template. The single source of truth for the prefix — the
+// pipeline's format validation and Render both key off it.
+const TemplatePrefix = "template="
+
 // Render writes env to w in the requested format.
-// format: "" or "table" (user-facing), "json", "yaml", "name" (ids), else a Go template.
+// format: "" or "table" (user-facing), "json", "yaml", "name" (ids), or
+// "template=<go-template>". Anything else is an error; the pipeline validates
+// the format before the command runs, so hitting it here is defense in depth.
 func Render(w io.Writer, format string, env *Envelope) error {
 	switch format {
 	case "", "table":
@@ -35,7 +43,17 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	case "name":
 		return renderName(w, env)
 	default:
-		tmpl, err := template.New("out").Parse(format)
+		src, ok := strings.CutPrefix(format, TemplatePrefix)
+		if !ok {
+			return fmt.Errorf("unsupported output format %q", format)
+		}
+		// An empty source parses fine but would render a bare newline; the
+		// pipeline's validateFormat already rejects it, so match that contract
+		// here for direct callers.
+		if src == "" {
+			return fmt.Errorf("empty template source")
+		}
+		tmpl, err := template.New("out").Parse(src)
 		if err != nil {
 			return fmt.Errorf("invalid template: %w", err)
 		}
