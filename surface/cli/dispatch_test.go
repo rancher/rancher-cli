@@ -41,7 +41,7 @@ func TestEnumCandidatesEqualsForm(t *testing.T) {
 
 func TestEnumCandidatesGlobalOutputSpaceForm(t *testing.T) {
 	t.Parallel()
-	want := []string{"json", "name", "table", "yaml"}
+	want := []string{"json", "name", "table", "template=", "template={{.}}", "yaml"}
 	d := runtime.Descriptor{}
 
 	for _, spelling := range []string{"--output", "-o"} {
@@ -62,14 +62,14 @@ func TestEnumCandidatesGlobalOutputEqualsForm(t *testing.T) {
 		t.Parallel()
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "output", FlagSpelling: "--output", EqualsForm: true}
 		got := enumCandidates(site, d)
-		assert.Equal(t, []string{"--output=json", "--output=name", "--output=table", "--output=yaml"}, got)
+		assert.Equal(t, []string{"--output=json", "--output=name", "--output=table", "--output=template=", "--output=template={{.}}", "--output=yaml"}, got)
 	})
 
 	t.Run("-o=", func(t *testing.T) {
 		t.Parallel()
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "output", FlagSpelling: "-o", EqualsForm: true}
 		got := enumCandidates(site, d)
-		assert.Equal(t, []string{"-o=json", "-o=name", "-o=table", "-o=yaml"}, got)
+		assert.Equal(t, []string{"-o=json", "-o=name", "-o=table", "-o=template=", "-o=template={{.}}", "-o=yaml"}, got)
 	})
 }
 

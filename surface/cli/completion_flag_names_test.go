@@ -393,7 +393,9 @@ func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
 	assert.Contains(t, tokens, "yaml", "get --output <TAB> must include yaml")
 	assert.Contains(t, tokens, "table", "get --output <TAB> must include table")
 	assert.Contains(t, tokens, "name", "get --output <TAB> must include name")
-	assert.NotContains(t, tokens, "template", "get --output <TAB> must not suggest bare template (only template=<tpl> is valid, not completable)")
+	assert.NotContains(t, tokens, "template", "get --output <TAB> must not suggest bare template (not a valid value)")
+	assert.Contains(t, tokens, "template=", "get --output <TAB> must include the template= form for discoverability")
+	assert.Contains(t, tokens, "template={{.}}", "get --output <TAB> must include the runnable seed template")
 	// Must not spill into kind names.
 	assert.NotContains(t, tokens, "pod", "get --output <TAB> must not include kind names")
 }

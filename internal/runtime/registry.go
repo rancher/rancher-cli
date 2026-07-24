@@ -20,10 +20,18 @@ type GlobalFlag struct {
 }
 
 // OutputFormats is the canonical set of --output / -o literal values;
-// template=<go-template> is additionally accepted but is not a completable
-// literal. Referenced by both GlobalFlags and globalArgSpecs in the surface
-// layer so there is one source of truth.
+// template=<go-template> is additionally accepted. Referenced by GlobalFlags
+// (the schema enum) and, via OutputFormatCompletions, by globalArgSpecs in
+// the surface layer so there is one source of truth.
 var OutputFormats = []string{"table", "json", "yaml", "name"}
+
+// OutputFormatCompletions is what -o <TAB> suggests: the literal formats plus
+// the template form — the bare prefix for discoverability and a seed template
+// that runs as-is on any command (renders the whole data view) for the user
+// to build on. The template entries are deliberately absent from the schema
+// enum, which stays the closed literal set.
+var OutputFormatCompletions = append(append([]string{}, OutputFormats...),
+	output.TemplatePrefix, output.TemplatePrefix+"{{.}}")
 
 // ShellCompletionShells is the single shared list of shells `completion
 // <shell>` emits scripts for — used both to populate the schema manifest's

@@ -68,11 +68,20 @@ func equalsFormCandidates(spelling string, values []string) []string {
 
 // resolveStaticEnum returns enum candidates for a flag-value site, sorted.
 // Called for both space-form (bare values) and equals-form (full tokens).
+// Static enums are compiled-in literals, not server data, so the AC-21
+// shell-safe charset does not gate them — "template={{.}}" must survive.
+// Live candidates keep sanitizeCandidates at their own call sites.
 func resolveStaticEnum(enum []string, site CompletionSite) []string {
+	sorted := append([]string{}, enum...)
+	sort.Strings(sorted)
 	if site.EqualsForm {
-		return equalsFormCandidates(site.FlagSpelling, enum)
+		out := make([]string, 0, len(sorted))
+		for _, v := range sorted {
+			out = append(out, site.FlagSpelling+"="+v)
+		}
+		return out
 	}
-	return sanitizeCandidates(enum)
+	return sorted
 }
 
 // completionTimeout returns the effective completion timeout from the stored

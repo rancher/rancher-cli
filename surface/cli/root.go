@@ -229,61 +229,13 @@ var groupUsages = map[string]string{
 //
 // Under v2, rawCurrentWord is classified the same way the leaf path does it
 // (ParseArgTail/classifyCurrentWordV2): equals-form flag values, partial flag
-// names, and bare words are each routed to the appropriate candidate generator.
+// names, and bare words are each routed to the appropriate candidate
+// generator. The classification lives in completeCurrentWordV2, shared with
+// the root command's own ShellComplete; only the bare-word branch — the
+// alias-aware subcommand listing — is supplied here.
 func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 	if rawProtoV2 {
-		w := cmd.Root().Writer
-		// Classify the current word: equals-form flag value, partial flag name,
-		// or bare word (including empty — "list all" for `get <TAB>`).
-		if strings.HasPrefix(rawCurrentWord, "-") {
-			if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
-				// Equals-form flag value (e.g. --output=json<TAB>, --context=prod<TAB>):
-				// route through the full dispatch pipeline (enum → live), the same as
-				// the leaf path does — BUT only when the flag is a recognized global
-				// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
-				// name for any unknown flag, so without this guard a per-leaf flag like
-				// --cluster= would resolve to FlagName:"cluster", get dispatched, and
-				// fire a live cluster-list HTTP request before any kind is chosen.
-				// An empty Descriptor is passed — enumCandidates and liveCandidates
-				// both fall back to globalArgSpecs for global flags, so --output enum
-				// and --context live candidates are found without any leaf flags.
-				spelling := rawCurrentWord[:eq]
-				canonical := resolveFlagCanonical(spelling, globalArgSpecs)
-				if flagTakesValue(canonical, globalArgSpecs) {
-					site := CompletionSite{
-						Kind:         SiteFlagValue,
-						FlagName:     canonical,
-						FlagSpelling: spelling,
-						EqualsForm:   true,
-						Partial:      rawCurrentWord[eq+1:],
-					}
-					tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-					for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
-						_, _ = fmt.Fprintln(w, cand)
-					}
-				}
-				// Per-leaf or bool flag in equals-form at group level: no candidates.
-				// The shell falls back to file completion for the value.
-			} else {
-				// Partial flag name (e.g. "--cl"): emit flag-name candidates.
-				for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {
-					_, _ = fmt.Fprintln(w, cand)
-				}
-			}
-		} else {
-			// Space-form flag value (e.g. `get --output <TAB>`, `get --context <TAB>`):
-			// if the last token in the arg tail is a value-taking flag, the current
-			// word is its partial value — route through the full dispatch pipeline
-			// (enum → live), the same as the leaf path does, and skip the kind-list
-			// branch. An empty Descriptor is sufficient; enum and live both fall back
-			// to globalArgSpecs for global flags.
-			tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-			if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
-				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
-					_, _ = fmt.Fprintln(w, cand)
-				}
-				return
-			}
+		completeCurrentWordV2(ctx, cmd, func(w io.Writer) {
 			// Bare word (or empty): prefix-filter subcommand names and aliases
 			// by rawCurrentWord independently. An empty rawCurrentWord matches
 			// everything (strings.HasPrefix(s, "") is always true), preserving the
@@ -303,7 +255,7 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 					}
 				}
 			}
-		}
+		})
 		return
 	}
 	// v1 / subcommand path: derive lastArg from cmd.Args(), which in v1
@@ -334,6 +286,68 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 			printCompletionCandidate(w, alias, leaf.Usage)
 		}
 	}
+}
+
+// completeCurrentWordV2 is the single v2-protocol classification of the
+// current word for non-leaf ShellComplete callbacks (verb groups and the root
+// command): equals-form flag value, space-form flag value, partial flag name,
+// or bare word. Flag-value sites route through the full dispatch pipeline
+// (enum → live), partial flag names get flag-name candidates; only the
+// bare-word branch differs per level, so the caller supplies it (a group
+// lists its leaves with aliases, the root lists top-level commands).
+func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func(w io.Writer)) {
+	w := cmd.Root().Writer
+	if strings.HasPrefix(rawCurrentWord, "-") {
+		if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
+			// Equals-form flag value (e.g. --output=json<TAB>, --context=prod<TAB>):
+			// route through the full dispatch pipeline (enum → live), the same as
+			// the leaf path does — BUT only when the flag is a recognized global
+			// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
+			// name for any unknown flag, so without this guard a per-leaf flag like
+			// --cluster= would resolve to FlagName:"cluster", get dispatched, and
+			// fire a live cluster-list HTTP request before any kind is chosen.
+			// An empty Descriptor is passed — enumCandidates and liveCandidates
+			// both fall back to globalArgSpecs for global flags, so --output enum
+			// and --context live candidates are found without any leaf flags.
+			spelling := rawCurrentWord[:eq]
+			canonical := resolveFlagCanonical(spelling, globalArgSpecs)
+			if flagTakesValue(canonical, globalArgSpecs) {
+				site := CompletionSite{
+					Kind:         SiteFlagValue,
+					FlagName:     canonical,
+					FlagSpelling: spelling,
+					EqualsForm:   true,
+					Partial:      rawCurrentWord[eq+1:],
+				}
+				tail := stripRoutingPrefixByCmd(rawArgv, cmd)
+				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+			}
+			// Per-leaf or bool flag in equals-form at this level: no candidates.
+			// The shell falls back to file completion for the value.
+			return
+		}
+		// Partial flag name (e.g. "--cl"): emit flag-name candidates.
+		for _, cand := range nameLikeCandidates(cmd, rawCurrentWord) {
+			_, _ = fmt.Fprintln(w, cand)
+		}
+		return
+	}
+	// Space-form flag value (e.g. `get --output <TAB>`, `rancher -o <TAB>`):
+	// if the last token in the arg tail is a value-taking flag, the current
+	// word is its partial value — route through the full dispatch pipeline
+	// (enum → live), the same as the leaf path does, and skip the bare-word
+	// branch. An empty Descriptor is sufficient; enum and live both fall back
+	// to globalArgSpecs for global flags.
+	tail := stripRoutingPrefixByCmd(rawArgv, cmd)
+	if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
+		for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
+			_, _ = fmt.Fprintln(w, cand)
+		}
+		return
+	}
+	bareWord(w)
 }
 
 // printCompletionCandidate writes one completion candidate line using
@@ -464,14 +478,19 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	}
 
 	rootShellComplete := func(ctx context.Context, c *ucli.Command) {
-		// v2 protocol: use rawCurrentWord (stripped from argv). For v1, fall
-		// back to DefaultCompleteWithFlags which reads os.Args directly for
-		// the root command (cmd.parent == nil path in DefaultCompleteWithFlags).
+		// v2 protocol: use rawCurrentWord (stripped from argv), classified by
+		// the same shared routing the verb groups use — so root-level flag-value
+		// sites (`rancher -o <TAB>`, `rancher --output=<TAB>`) reach the dispatch
+		// pipeline instead of the command listing. The bare-word branch keeps
+		// the top-level command listing. For v1, fall back to
+		// DefaultCompleteWithFlags which reads os.Args directly for the root
+		// command (cmd.parent == nil path in DefaultCompleteWithFlags).
 		if rawProtoV2 {
-			w := c.Root().Writer
-			for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
-				_, _ = fmt.Fprintln(w, cand)
-			}
+			completeCurrentWordV2(ctx, c, func(w io.Writer) {
+				for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+					_, _ = fmt.Fprintln(w, cand)
+				}
+			})
 			return
 		}
 		ucli.DefaultCompleteWithFlags(ctx, c)
