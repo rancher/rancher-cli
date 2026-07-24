@@ -63,6 +63,11 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
             $description = $_.Trim()
         }
         if ($completion -like "$escapedWord*") {
+            # Continuation candidates ("amazonec2config/", "template=") need
+            # no special handling here: PowerShell inserts CompletionText
+            # verbatim and never appends a trailing space, so acceptance
+            # keeps the cursor in the same word. bash and zsh need explicit
+            # handling - see bash.sh and zsh.sh.
             [System.Management.Automation.CompletionResult]::new($completion, $completion, 'ParameterValue', $description)
         }
     }

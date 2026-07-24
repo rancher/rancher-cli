@@ -19,7 +19,27 @@ _rancher() {
 	opts=("${(@f)$(${words[1]} --rancher-completion-proto=2 ${words[2,-2]} "--rancher-completion-cur=${current}" --generate-shell-completion)}")
 
 	if [[ "${opts[1]}" != "" ]]; then
-		_describe 'values' opts
+		# A candidate whose token ends in a continuation character is a
+		# prefix stage, not a finished argument — "amazonec2config/" expects
+		# a name after the slash, "template=" expects a Go template after the
+		# equals. compadd's default suffix (a space) would end the word on
+		# acceptance, so those are added with -S '' (empty suffix) and the
+		# next keystroke keeps extending the same word. fish and PowerShell
+		# need no equivalent — see the notes in fish.sh and pwsh.ps1.
+		local -a __rancher_continuing __rancher_finished
+		local __rancher_candidate __rancher_token
+		for __rancher_candidate in "${opts[@]}"; do
+			__rancher_token="${__rancher_candidate%%:*}"
+			if [[ "${__rancher_token}" == */ || "${__rancher_token}" == *= ]]; then
+				__rancher_continuing+=("${__rancher_candidate}")
+			else
+				__rancher_finished+=("${__rancher_candidate}")
+			fi
+		done
+		local ret=1
+		(( ${#__rancher_continuing[@]} )) && _describe 'values' __rancher_continuing -S '' && ret=0
+		(( ${#__rancher_finished[@]} )) && _describe 'values' __rancher_finished && ret=0
+		return ret
 	else
 		_files
 	fi

@@ -119,12 +119,77 @@ __rancher_bash_autocomplete() {
         fi
       done
       COMPREPLY=("${listed[@]}")
+    elif [[ ${#matches[@]} -gt 0 ]]; then
+      # Registration uses -o nospace, so readline never appends the
+      # argument-ending space itself and each candidate marks its own
+      # boundary instead. A FINISHED candidate gets an explicit trailing
+      # space appended, so accepting it still ends the argument; a candidate
+      # ending in a continuation character is a prefix stage, not a finished
+      # argument — "amazonec2config/" expects a name after the slash,
+      # "template=" expects a Go template after the equals — and gets none,
+      # so the cursor stays in the same word for the second-stage
+      # completion. This is the git-completion pattern, chosen over a
+      # per-invocation `compopt -o nospace` because compopt does not exist
+      # on bash 3 (macOS stock): candidate-side spaces behave identically on
+      # bash 3 and 4+. Multiple matches are unaffected either way — readline
+      # inserts only the common prefix, which never reaches a trailing space
+      # ("pod " and "pods " share only "pod"). fish and PowerShell need no
+      # equivalent — see the notes in fish.sh and pwsh.ps1.
+      COMPREPLY=()
+      local __rancher_match
+      for __rancher_match in "${matches[@]}"; do
+        if [[ "${__rancher_match}" == */ || "${__rancher_match}" == *= ]]; then
+          COMPREPLY+=("${__rancher_match}")
+        else
+          COMPREPLY+=("${__rancher_match} ")
+        fi
+      done
     else
-      COMPREPLY=("${matches[@]}")
+      # No candidates from the binary: hand off to filename completion.
+      #
+      # bash 4+ (compopt exists): COMPREPLY stays empty so readline's own
+      # -o default fallback runs, and its appended space — which the
+      # registration-level -o nospace would strip after a completed file
+      # name — is re-enabled for this invocation. Readline then owns
+      # quoting, tilde handling, and boundaries natively.
+      #
+      # bash 3 (macOS stock, no compopt): the native fallback would insert
+      # completed file names with NO argument delimiter at all, so generate
+      # the candidates here instead, with the same per-candidate boundaries
+      # the script's own candidates carry — "/" (no space) after
+      # directories, a trailing space after everything else. Entries are
+      # escaped with printf %q (a bash 3.2 builtin) because readline
+      # inserts COMPREPLY entries verbatim (this compspec has no
+      # -o filenames), so the entry itself must be shell-quoted for a name
+      # with spaces to land as one word. Residual, the most pure bash 3 can
+      # do: a typed prefix that is ALREADY quoted/escaped matches nothing
+      # here and falls through to the native (spaceless) fallback, only
+      # bare "~"/"~/..." prefixes are tilde-expanded (to the expanded
+      # $HOME text, as readline's expand-tilde does; "~user" falls
+      # through), and a file name with an embedded newline mis-splits.
+      if type compopt &>/dev/null; then
+        compopt +o nospace 2>/dev/null
+      else
+        local __rancher_fallback_cur="${cur}"
+        if [[ "${__rancher_fallback_cur}" == "~" || "${__rancher_fallback_cur}" == "~/"* ]]; then
+          __rancher_fallback_cur="${HOME}${__rancher_fallback_cur#\~}"
+        fi
+        local __rancher_name
+        while IFS=$'\n' read -r __rancher_name; do
+          if [[ -z "${__rancher_name}" ]]; then
+            continue
+          fi
+          if [[ -d "${__rancher_name}" ]]; then
+            COMPREPLY+=("$(printf '%q' "${__rancher_name}")/")
+          else
+            COMPREPLY+=("$(printf '%q' "${__rancher_name}") ")
+          fi
+        done < <(compgen -f -- "${__rancher_fallback_cur}")
+      fi
     fi
 
     return 0
   fi
 }
 
-complete -o bashdefault -o default -F __rancher_bash_autocomplete rancher
+complete -o bashdefault -o default -o nospace -F __rancher_bash_autocomplete rancher

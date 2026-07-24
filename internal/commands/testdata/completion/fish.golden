@@ -38,5 +38,12 @@ end
 
 # Clear existing completions for rancher
 complete -c rancher -e
-# Register completion function
+# Register completion function.
+#
+# Continuation candidates ("amazonec2config/", "template=") need no special
+# handling here: fish itself withholds the trailing space for completions
+# ending in / = @ : . , - (complete -a entries carry AUTO_SPACE and fish's
+# resolve_auto_space turns those suffixes into NO_SPACE), so acceptance keeps
+# the cursor in the same token. bash and zsh need explicit handling — see
+# bash.sh and zsh.sh.
 complete -c rancher -f -a '(__rancher_perform_completion)'
