@@ -61,7 +61,11 @@ type Kind struct {
 	K8sKind          string          // manifest `kind:` value ("Deployment") — consumed by parity branch 2 reverse lookup
 	Scope            Scope
 	Deletable        bool // false = no generic delete generated (clusters, nodes)
-	Sensitive        bool // patch on this kind is Destructive (parity branch 2)
+	// NoDeleteReason states, for a Deletable: false row, why generic delete
+	// is absent — surfaced by `rancher schema` (SE-7). "" renders a plain
+	// "not available". Meaningless on Deletable: true rows; leave empty.
+	NoDeleteReason string
+	Sensitive      bool // patch on this kind is Destructive (parity branch 2)
 	// WaitDefault is the --for expression bare --wait applies; "" = no default
 	// (bare --wait rejects) — an explicit --for is honored regardless. Set only
 	// for kinds where the expression is grounded in a real, well-known
@@ -86,9 +90,10 @@ var table = []Kind{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
 		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Completable: true,
-		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns:     []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
+		NoDeleteReason: "cluster deletion goes through delete provisioning-cluster",
+		Completable:    true,
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:        []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
@@ -102,8 +107,9 @@ var table = []Kind{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
 		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, WaitDefault: "condition=Ready",
-		Completable: true,
-		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "owned by the cluster lifecycle; remove the machine instead",
+		Completable:    true,
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
@@ -186,7 +192,8 @@ var table = []Kind{
 		Key: "persistentvolume", Name: "persistentvolume", Aliases: []string{"persistentvolumes", "pv"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"},
 		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "released through its claim; delete the persistentvolumeclaim instead",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "persistentvolumeclaim", Name: "persistentvolumeclaim", Aliases: []string{"persistentvolumeclaims", "pvc"},
@@ -204,7 +211,8 @@ var table = []Kind{
 		Key: "event", Name: "event", Aliases: []string{"events", "ev"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"},
 		Policy: NSPlain, K8sKind: "Event", Scope: Downstream, Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "expires on its own TTL",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 
 	{
@@ -217,19 +225,22 @@ var table = []Kind{
 		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "clustergroup", Name: "clustergroup", Aliases: []string{"clustergroups"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clustergroups"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ClusterGroup", Scope: Management, Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		// K8sKind "Cluster" is shared with provisioningcluster/capicluster —
@@ -237,14 +248,16 @@ var table = []Kind{
 		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 
 	{
 		Key: "setting", Name: "setting", Aliases: []string{"settings"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"},
 		Policy: NSNone, K8sKind: "Setting", Scope: Management, Deletable: false, Sensitive: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "server configuration — tune, never remove",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		// Feature's interesting fields (spec.value, status.default,
@@ -255,27 +268,31 @@ var table = []Kind{
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns: []Column{{Header: "DESCRIPTION", Path: []string{"status", "description"}}},
+		NoDeleteReason: "server configuration — tune, never remove",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:        []Column{{Header: "DESCRIPTION", Path: []string{"status", "description"}}},
 	},
 	{
 		Key: "user", Name: "user", Aliases: []string{"users"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
 		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: false, Sensitive: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "identity record; managed through Rancher user administration",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"},
 		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Sensitive: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns: []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY", Path: []string{"displayName"}}},
+		NoDeleteReason: "role vocabulary consumed by grant/revoke",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY", Path: []string{"displayName"}}},
 	},
 	{
 		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalroles"},
 		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Sensitive: true,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "role vocabulary consumed by grant/revoke",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "globalrolebinding", Name: "globalrolebinding", Aliases: []string{"globalrolebindings"},
@@ -310,25 +327,29 @@ var table = []Kind{
 		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "controller-owned; delete the owning source object",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
 		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters"},
@@ -442,8 +463,9 @@ var table = []Kind{
 		Key: "clusterregistrationtoken", Name: "clusterregistrationtoken", Aliases: []string{"clusterregistrationtokens", "crt"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens"},
 		Policy: NSPlain, K8sKind: "ClusterRegistrationToken", Scope: Management, Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns: []Column{{Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
+		NoDeleteReason: "consumed, not deleted",
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns:        []Column{{Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
 }
 

@@ -115,6 +115,11 @@ type kindOverride struct {
 	get   func(k kinds.Kind, d runDeps) runtime.Command
 	patch func(k kinds.Kind, d runDeps) runtime.Command
 	del   func(k kinds.Kind, d runDeps) runtime.Command
+	// refusals marks override commands that are pure refusals (registered,
+	// but declining at Plan), keyed by verb; the note is surfaced as the
+	// verb's state in the schema manifest (SE-17). A verb listed here must
+	// also have its constructor set above.
+	refusals map[string]string
 }
 
 // delOverrideOnNonDeletable reports whether ov installs a del override for a
@@ -138,8 +143,9 @@ func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
 // patch is refused outright — the row is read-only surface.
 var kindOverrideTable = map[string]kindOverride{
 	"clusterregistrationtoken": {
-		get:   func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
-		patch: func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
+		get:      func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
+		patch:    func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
+		refusals: map[string]string{"patch": "read-only: consumed, not edited"},
 	},
 	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
 	// diff/redaction/RV-precondition behavior — only an advisory etcd-quorum
@@ -172,14 +178,72 @@ func kindOverrides() map[string]kindOverride {
 	return kindOverrideTable
 }
 
-// wireEntry validates one entry and returns its urfave leaf. It probes
-// Describe() with zero deps (Describe must be dir/store/client-independent),
-// checks the name's group matches the declared group, requires every engine
-// command — read or mutating (CommandType != Local) — to resolve to a binding,
-// registers the probe, and wires it through the single run adapter.
-func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli.Command, error) {
+// schemaKinds builds the manifest's kind rows (SE-8) with the effective verb
+// surface (SE-17) from the same two sources buildEntries generates commands
+// from — the kind table and the override registry — so the manifest cannot
+// drift from what is actually registered: a refusals entry surfaces as
+// "refused"; a del override on a Deletable: false row surfaces delete as
+// "available" (the provisioningcluster case); a delete neither the row nor
+// an override generates is "absent", carrying the row's NoDeleteReason.
+func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime.SchemaKind {
+	out := make([]runtime.SchemaKind, 0, len(rows))
+	for _, k := range rows {
+		ov := overrides[k.Key]
+		verbs := map[string]runtime.VerbState{
+			"get":   registeredVerbState(k, "get", ov),
+			"patch": registeredVerbState(k, "patch", ov),
+		}
+		if k.Deletable || delOverrideOnNonDeletable(k, ov) {
+			verbs["delete"] = registeredVerbState(k, "delete", ov)
+		} else {
+			verbs["delete"] = runtime.VerbState{State: runtime.VerbAbsent, Note: k.NoDeleteReason}
+		}
+		out = append(out, runtime.SchemaKind{
+			Name:             k.Name,
+			Aliases:          k.Aliases,
+			Key:              k.Key,
+			Group:            k.GVR.Group,
+			Version:          k.GVR.Version,
+			Resource:         k.GVR.Resource,
+			Scope:            string(k.Scope),
+			NamespacePolicy:  string(k.Policy),
+			DefaultNamespace: k.DefaultNamespace,
+			Sensitive:        k.Sensitive,
+			Completable:      k.Completable,
+			WaitDefault:      k.WaitDefault,
+			Verbs:            verbs,
+		})
+	}
+	return out
+}
+
+// registeredVerbState describes a verb that HAS a registered command:
+// available unless the override marks it a refusal. Tier/stability come from
+// the row's own Binding — the same source kinds.Bindings() (and BuildRoot's
+// del-override resolver) feed the resolver from.
+func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.VerbState {
+	vs := runtime.VerbState{
+		State:     runtime.VerbAvailable,
+		Tier:      string(k.Binding.Tier),
+		Stability: string(k.Binding.Stability),
+	}
+	if note, refused := ov.refusals[verb]; refused {
+		vs.State = runtime.VerbRefused
+		vs.Note = note
+	}
+	return vs
+}
+
+// wireEntry validates one entry and returns its urfave leaf plus the
+// command's registered name (BuildRoot records it in the entry's root
+// section — SE-18). It probes Describe() with zero deps (Describe must be
+// dir/store/client-independent), checks the name's group matches the declared
+// group, requires every engine command — read or mutating (CommandType !=
+// Local) — to resolve to a binding, registers the probe, and wires it through
+// the single run adapter.
+func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli.Command, string, error) {
 	if e.make == nil {
-		return nil, fmt.Errorf("entry in group %q has no constructor", e.group)
+		return nil, "", fmt.Errorf("entry in group %q has no constructor", e.group)
 	}
 	d := e.make(runDeps{}).Describe()
 
@@ -187,21 +251,21 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	// top-level command) or two (group + leaf). Reject 3+ tokens with a clear
 	// message rather than a misleading group mismatch.
 	if n := strings.Count(d.Name, " "); n > 1 {
-		return nil, fmt.Errorf("command name %q must be one or two space-separated tokens, has %d", d.Name, n+1)
+		return nil, "", fmt.Errorf("command name %q must be one or two space-separated tokens, has %d", d.Name, n+1)
 	}
 	if g := groupName(d.Name); g != e.group {
-		return nil, fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
+		return nil, "", fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
 	}
 	// Engine commands (read or mutating) must resolve to a binding; Local
 	// config/auth commands carry no tier.
 	if d.CommandType != runtime.Local {
 		if _, ok := resolver.Resolve(d.Name); !ok {
-			return nil, fmt.Errorf("engine command %q has no resolver binding", d.Name)
+			return nil, "", fmt.Errorf("engine command %q has no resolver binding", d.Name)
 		}
 	}
 
 	reg.Register(e.make(runDeps{}))
-	return adaptEntry(reg, e.make), nil
+	return adaptEntry(reg, e.make), d.Name, nil
 }
 
 // groupUsages documents the known verb groups. A group discovered from the
@@ -423,6 +487,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		return nil, fmt.Errorf("resolver: %w", err)
 	}
 	reg := runtime.NewRegistry(resolver)
+	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))
 
 	// support-bundle needs the registry (for its own rancher/schema.json
 	// collector) in scope at construction time, so it is wired here rather
@@ -433,9 +498,10 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	}})
 
 	groups := map[string][]*ucli.Command{}
+	sectionCmds := map[string][]string{}
 	var order []string
 	for _, e := range entries {
-		leaf, err := wireEntry(reg, resolver, e)
+		leaf, name, err := wireEntry(reg, resolver, e)
 		if err != nil {
 			return nil, err
 		}
@@ -443,6 +509,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			order = append(order, e.group)
 		}
 		groups[e.group] = append(groups[e.group], leaf)
+		sectionCmds[e.group] = append(sectionCmds[e.group], name)
 	}
 
 	// schema is a fixed command backed by the registry (no dir/store, no
@@ -458,6 +525,22 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// `rancher schema` with no test failure.
 	completionCmd := commands.NewCompletion()
 	reg.Register(completionCmd)
+
+	// The manifest's ordered sections mirror assembleCommands below exactly
+	// (SE-18): the fixed top-level commands lead, then each entry group at
+	// first appearance — the ungrouped ("") run at its real position — with
+	// commands in registration order. Empty groups are skipped, as in
+	// assembleCommands.
+	sections := []runtime.SchemaGroup{{Name: "", Commands: []string{
+		schemaCmd.Describe().Name, completionCmd.Describe().Name,
+	}}}
+	for _, g := range order {
+		if len(sectionCmds[g]) == 0 {
+			continue
+		}
+		sections = append(sections, runtime.SchemaGroup{Name: g, Commands: sectionCmds[g]})
+	}
+	reg.SetGroups(sections)
 
 	if err := reg.Validate(); err != nil {
 		return nil, fmt.Errorf("command registry: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,24 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 	require.Len(t, byName["widgets set"].Flags, 1)
 	assert.Equal(t, "token", byName["widgets set"].Flags[0].Name)
 	assert.True(t, byName["widgets set"].Flags[0].Required)
+}
+
+// TestSchemaManifestExitCodes pins SE-16: the manifest's NEW exitCodes map
+// carries an exit status for every code in ErrorCodes, matching what clierr
+// itself reports — ErrorCodes stays untouched (additive rule).
+func TestSchemaManifestExitCodes(t *testing.T) {
+	t.Parallel()
+	m := NewRegistry(stubResolver{}).Schema("v-test", "2.14")
+
+	assert.Equal(t, clierr.AllCodes(), m.ErrorCodes, "ErrorCodes is untouched by SE-16")
+	require.NotEmpty(t, m.ExitCodes)
+	assert.Equal(t, clierr.CodeExits(), m.ExitCodes)
+	for _, code := range m.ErrorCodes {
+		exit, ok := m.ExitCodes[code]
+		require.True(t, ok, "error code %q has no exit mapping", code)
+		assert.Equal(t, clierr.ExitCode(code), exit)
+		assert.Positive(t, exit, "every error code exits non-zero")
+	}
 }
 
 func TestValidateRejectsDuplicateNames(t *testing.T) {

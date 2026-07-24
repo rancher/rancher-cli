@@ -53,11 +53,24 @@ func New(code, message string) *Error { return &Error{Code: code, Message: messa
 func (e *Error) Error() string { return e.Message }
 
 // ExitCode returns the process exit status for this error's code.
-func (e *Error) ExitCode() int {
-	if c, ok := exitCodes[e.Code]; ok {
+func (e *Error) ExitCode() int { return ExitCode(e.Code) }
+
+// ExitCode returns the process exit status for code; unknown codes exit 1.
+func ExitCode(code string) int {
+	if c, ok := exitCodes[code]; ok {
 		return c
 	}
 	return 1
+}
+
+// CodeExits returns a copy of the full code→exit mapping (for the schema
+// manifest's exitCodes field).
+func CodeExits() map[string]int {
+	out := make(map[string]int, len(exitCodes))
+	for code, exit := range exitCodes {
+		out[code] = exit
+	}
+	return out
 }
 
 func (e *Error) WithHint(h string) *Error            { e.Hint = h; return e }
