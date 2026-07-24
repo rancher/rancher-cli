@@ -98,7 +98,12 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "import", Type: "bool", Desc: "imported cluster (no RKE config)"},
 			{Name: "custom", Type: "bool", Desc: "custom cluster; nodes join separately via a registration command"},
-			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for a node-driver pool, e.g. amazonec2config/mycfg"},
+			// The closed kind set is derived from the SAME single source the
+			// VALIDATION hint uses (machineConfigKindsHint over
+			// kinds.MachineConfigGroup), so schema and hint can never drift.
+			// Deliberately NOT ArgSpec.Enum: the flag's values are kind/name
+			// composites, so the runtime enum validator would reject them all.
+			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for a node-driver pool; kinds: " + machineConfigKindsHint()},
 			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id|name` for a node-driver pool"},
 			{Name: "k8s-version", Type: "string", Desc: "Kubernetes `version`; required for --custom and node-driver, optional for --import"},
 			{Name: "pool-name", Type: "string", Desc: "node-driver pool name (default: pool1)"},

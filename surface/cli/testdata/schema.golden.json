@@ -398,7 +398,7 @@
           "type": "bool"
         },
         {
-          "desc": "machine config `kind/name` for a node-driver pool, e.g. amazonec2config/mycfg",
+          "desc": "machine config `kind/name` for a node-driver pool; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig",
           "name": "machine-config",
           "type": "string"
         },

@@ -365,6 +365,41 @@ func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+// TestMachineConfigFlagDescListsClosedKindSet pins the schema-visible Desc of
+// --machine-config to the closed kind set, spelled as a LITERAL — deliberately
+// not recomputed via machineConfigKindsHint(), which would restate the
+// production derivation (same independent-source doctrine as
+// TestMachineConfigKindsTracksKindsTable). The Desc is derived from the same
+// single source as the VALIDATION hint, so schema and hint can never drift;
+// this literal is the tripwire that a kind-table edit reaches both.
+func TestMachineConfigFlagDescListsClosedKindSet(t *testing.T) {
+	t.Parallel()
+	d := NewCreateCluster(fakeFactory{}, fakeRootFactory{}).Describe()
+	var desc string
+	for _, f := range d.Flags {
+		if f.Name == "machine-config" {
+			desc = f.Desc
+		}
+	}
+	assert.Equal(t,
+		"machine config `kind/name` for a node-driver pool; kinds: "+
+			"amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig",
+		desc)
+}
+
+// TestMachineConfigFlagCarriesNoEnum pins that the closed kind set is carried
+// in Desc, never as ArgSpec.Enum: the flag's values are kind/name composites,
+// and the runtime enum validator would reject every real value.
+func TestMachineConfigFlagCarriesNoEnum(t *testing.T) {
+	t.Parallel()
+	d := NewCreateCluster(fakeFactory{}, fakeRootFactory{}).Describe()
+	for _, f := range d.Flags {
+		if f.Name == "machine-config" {
+			assert.Empty(t, f.Enum, "kind/name composites must not be enum-validated")
+		}
+	}
+}
+
 // TestCreateClusterModeExclusivity covers every combination the brief names:
 // --import + --custom, and either of those with the node-driver flags.
 func TestCreateClusterModeExclusivity(t *testing.T) {
