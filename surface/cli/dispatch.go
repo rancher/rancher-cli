@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -199,6 +200,13 @@ func dispatchSite(
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
 		}
+		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
+		// kind-table literals (kinds.MachineConfigGroup rows), not server
+		// data — served statically like an enum, before (and regardless of)
+		// the network gate. The live layer owns the `<kind>/partial` form.
+		if cands := machineConfigPrefixCandidates(site, d); len(cands) > 0 {
+			return cands
+		}
 	}
 
 	// Layer 2: config-local (ShellCompleter delegation) for positionals.
@@ -249,12 +257,23 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	subjectSite := site.Kind == SitePositional && site.Index == 0 &&
 		(d.Name == "grant" || d.Name == "revoke")
 
+	// create cluster's node-driver flag sites (--machine-config,
+	// --cloud-credential) fetch management-server-only data (fleet-default
+	// machine configs, cattle-global-data credential secrets) and never
+	// need a cluster. Same preflight bypass as roleSite/subjectSite: an
+	// inherited invalid cluster value (e.g. "prod cluster" with a space)
+	// must not suppress completion that never needed a cluster at all.
+	// Twin requirement: siteNeedsCluster carries explicit false cases for
+	// both flags so the clusterValue=="" early-return below cannot fire.
+	nodeDriverFlagSite := site.Kind == SiteFlagValue && d.Name == "create cluster" &&
+		(site.FlagName == "machine-config" || site.FlagName == "cloud-credential")
+
 	clusterValue := ""
-	if !roleSite && !subjectSite {
+	if !roleSite && !subjectSite && !nodeDriverFlagSite {
 		clusterValue = extractClusterID(tail)
 	}
 	effectiveProject := ""
-	if !roleSite && !subjectSite {
+	if !roleSite && !subjectSite && !nodeDriverFlagSite {
 		effectiveProject = extractEffectiveProject(tail)
 	}
 
@@ -337,6 +356,11 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 			// early-return from silently killing role completion when clusterValue is
 			// empty. Both guards must hold together — changing either one without the
 			// other breaks role TAB.
+			return false
+		case "machine-config", "cloud-credential":
+			// create cluster's node-driver sites are management-server-only
+			// fetches; the nodeDriverFlagSite bypass in liveCandidates leaves
+			// clusterValue="". Same twin-guard contract as role above.
 			return false
 		}
 		return false
@@ -449,6 +473,15 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/namespaces", "")
 	case "node":
 		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/nodes", "")
+	case "machine-config":
+		// Live `<kind>/partial` form only — the bare `<kind>/` prefixes are
+		// compiled-in and served statically by machineConfigPrefixCandidates
+		// before the network gate. Returns directly: the composed tokens
+		// carry a "/" that the shared sanitize/equals-form tail below would
+		// drop (the trust boundary lives inside the helper).
+		return machineConfigNameCandidates(ctx, hc, site, cap)
+	case "cloud-credential":
+		raw = fetchCloudCredentials(ctx, hc, cap)
 	case "role":
 		// Scope comes from the typed tail ONLY (roleVocabulary): the
 		// clusterID/effectiveProject parameters carry context/env/config
@@ -558,6 +591,73 @@ func livePositionalCandidates(
 		return nil
 	}
 	return fetchK8sResources(ctx, hc, cap, clusterID, gvrNamespacedPath(k), ns)
+}
+
+// machineConfigPrefixCandidates serves the `<kind>/` prefixes for create
+// cluster's --machine-config flag while the typed value has no "/" yet.
+// The kinds are compiled-in literals — every kinds.MachineConfigGroup row,
+// the same single source createcluster.go's VALIDATION hint and schema desc
+// derive from — not server data, so like resolveStaticEnum the AC-21
+// shell-safe charset does not gate them: the "/" (and trailing "/") must
+// survive. Returns nil for every other site; the live layer
+// (machineConfigNameCandidates) owns the `<kind>/partial` form.
+func machineConfigPrefixCandidates(site CompletionSite, d runtime.Descriptor) []string {
+	if d.Name != "create cluster" || site.FlagName != "machine-config" ||
+		strings.Contains(site.Partial, "/") {
+		return nil
+	}
+	var out []string
+	for _, k := range kinds.All() {
+		if k.GVR.Group != kinds.MachineConfigGroup {
+			continue
+		}
+		tok := k.Name + "/"
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// machineConfigNameCandidates completes the `<kind>/partial` form of create
+// cluster's --machine-config: it lists that kind's CRs in the fleet-default
+// workspace (the fixed namespace create cluster provisions into) and
+// composes `<kind>/<name>` tokens.
+//
+// TRUST BOUNDARY (AC-21): the NAME segments are server data and are
+// sanitized with the shell-safe charset (inside fetchK8sResources) BEFORE
+// composition; the `<kind>/` prefix is a compiled-in kind-table literal
+// appended afterwards — the composed token deliberately carries a "/"
+// without widening the global charset, the same doctrine as
+// resolveStaticEnum's compiled-in enum values.
+//
+// Management-plane list on the local cluster: requires a management token —
+// exec-cred-only capabilities (IDOnly) return nil with zero requests, the
+// same boundary as fetchClusters.
+func machineConfigNameCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability) []string {
+	kindTok, _, hasSlash := strings.Cut(site.Partial, "/")
+	if !hasSlash {
+		return nil // no "/" yet: the static prefix layer owns this site
+	}
+	k, found := kinds.Lookup(kindTok)
+	if !found || k.GVR.Group != kinds.MachineConfigGroup {
+		return nil // unknown or non-machine-config kind: zero requests
+	}
+	if cap.IDOnly {
+		return nil
+	}
+	names := fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), k.DefaultNamespace)
+	out := make([]string, 0, len(names))
+	for _, n := range names { // names arrive sanitized and sorted
+		tok := k.Name + "/" + n
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
+	return out
 }
 
 // gvrPath returns the cluster-scoped K8s API path for a kind's GVR.

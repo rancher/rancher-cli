@@ -356,6 +356,104 @@ func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability
 	return sanitizeCandidates(out)
 }
 
+// fetchCloudCredentials lists the Secrets in cattle-global-data and returns
+// candidates for create cluster's --cloud-credential flag. The conventions
+// are mirrored from internal/engine/provisioning/cloudcred.go — the same
+// path create cluster's Plan resolves the flag through — because completion
+// reads over raw HTTP (AC-20/AC-22), never a ClusterClient: the fixed
+// cattle-global-data namespace, the "cc-" secret-name prefix, the
+// field.cattle.io/name display annotation, and the "credentialConfig-"
+// data-key marker (fetchProjects mirrors projects/resolve.go the same way).
+//
+// SECRET HYGIENE (cloudcred.go spec D-R2-1): only metadata and `data` KEY
+// NAMES are read — a `data` VALUE must never flow into a candidate.
+//
+// Candidates:
+//   - secret name (cc-xxxxx id) — always; ResolveCloudCredential's exact-ID
+//     fast path accepts it deterministically.
+//   - display name — ONLY when it resolves unambiguously (MatchOneOrError's
+//     doctrine): unique among the credentials' display names and not equal
+//     to any credential id. A suggestion must never fail with
+//     AMBIGUOUS_SELECTION at execution time.
+//
+// Management list: requires a management token — exec-cred-only capabilities
+// (IDOnly) return nil without a request, same boundary as fetchClusters.
+func fetchCloudCredentials(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
+	if cap.Token == "" || cap.IDOnly {
+		return nil
+	}
+	url := cap.ServerURL + "/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets"
+	var col k8sItemsList
+	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
+		return nil
+	}
+	return cloudCredentialCandidates(col.Items)
+}
+
+// cloudCredentialCandidates extracts credential ids and uniquely-resolving
+// display names from a cattle-global-data secrets list. Reads metadata and
+// data KEY NAMES only — never a data value (see fetchCloudCredentials).
+func cloudCredentialCandidates(items []map[string]any) []string {
+	type ccEntry struct{ id, display string }
+	var entries []ccEntry
+	seenID := map[string]bool{}
+	for _, item := range items {
+		meta, _ := item["metadata"].(map[string]any)
+		if meta == nil {
+			continue
+		}
+		id, _ := meta["name"].(string)
+		if id == "" || seenID[id] {
+			continue
+		}
+		// Credential-shaped only (cloudcred.go credentialObjects): named
+		// cc-*, or carrying a *credentialConfig-* data KEY.
+		if !strings.HasPrefix(id, "cc-") && !hasCredentialConfigKey(item) {
+			continue
+		}
+		seenID[id] = true
+		display := ""
+		if anns, _ := meta["annotations"].(map[string]any); anns != nil {
+			display, _ = anns["field.cattle.io/name"].(string)
+		}
+		entries = append(entries, ccEntry{id: id, display: display})
+	}
+
+	idSet := map[string]bool{}
+	displayFreq := map[string]int{}
+	for _, e := range entries {
+		idSet[e.id] = true
+		if e.display != "" {
+			displayFreq[e.display]++
+		}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range entries {
+		if !seen[e.id] {
+			seen[e.id] = true
+			out = append(out, e.id)
+		}
+		if e.display != "" && displayFreq[e.display] == 1 && !idSet[e.display] && !seen[e.display] {
+			seen[e.display] = true
+			out = append(out, e.display)
+		}
+	}
+	return sanitizeCandidates(out)
+}
+
+// hasCredentialConfigKey scans `data` KEY NAMES ONLY — never a value — for
+// the credentialConfig- marker (cloudcred.go driverFromDataKeys).
+func hasCredentialConfigKey(item map[string]any) bool {
+	data, _ := item["data"].(map[string]any)
+	for k := range data {
+		if strings.Contains(k, "credentialConfig-") {
+			return true
+		}
+	}
+	return false
+}
+
 // fetchUsers lists management Users and returns candidates suitable for the
 // grant/revoke subject positional. System users (any principalIds entry with
 // prefix "system:") are excluded.
