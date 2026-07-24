@@ -1,0 +1,33 @@
+# The plain-text schema views ARE the operator contract under the default
+# format — this scenario string-matches stdout on purpose (the one place
+# that is correct); structured shapes stay with schema.txtar's jsonquery.
+
+# SE-1/SE-3: a destructive mutating command's card renders the contract line
+# and the --apply --yes gate line
+exec rancher schema patch setting
+stdout '(?m)^contract: mutating · crd · beta · destructive=true · network · auth$'
+stdout '(?m)^gates: --apply --yes$'
+
+# SE-5: the kind card shows the effective verb surface, including the CRT
+# patch refusal with its note
+exec rancher schema clusterregistrationtoken
+stdout '(?m)^kind: clusterregistrationtoken$'
+stdout '(?m)^  patch: refused — read-only: consumed, not edited$'
+
+# SE-11: --search finds matches and exits 0
+exec rancher schema --search kubeconfig
+stdout 'commands match --search "kubeconfig"'
+stdout '(?m)^  create kubeconfig — '
+
+# SE-11: zero hits print the no-matches message naming the filter, exit 0
+exec rancher schema --search zzz-no-such-term
+stdout 'no commands match --search "zzz-no-such-term"'
+
+# SE-6: a command/kind collision resolves as the command card, footnoting
+# the kind view; --kind forces the kind card
+exec rancher schema kubeconfig
+stdout '(?m)^rancher kubeconfig$'
+stdout '(?m)^kind view: rancher schema kubeconfig --kind$'
+exec rancher schema kubeconfig --kind
+stdout '(?m)^kind: kubeconfig$'
+stdout '(?m)^  get: available \(public · beta\)$'

@@ -119,8 +119,12 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
     rancher create project web --cluster c-m-abc123 --dry-run
     rancher create project web --cluster c-m-abc123 --apply
 
-    # Discover the full command surface as JSON (for agents)
-    rancher schema -o json
+    # Discover the command surface: TOC, per-command card, per-kind verbs
+    rancher schema
+    rancher schema delete project        # one command: contract + gates
+    rancher schema pod                   # one kind: aliases, routing, verbs
+    rancher schema --search kubeconfig   # find commands by substring
+    rancher schema -o json               # full manifest (for agents)
 
     # Verify connectivity + credentials
     rancher auth check -o json
@@ -166,7 +170,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
-| `schema [command]` | Machine-readable capability manifest |
+| `schema [command\|kind] [--kind] [--verb --destructive --tier --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` is the full manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 <!-- /conformance:commands-table -->
 
@@ -246,6 +250,10 @@ call can reach.
   duplicate detection, partial-failure reporting. The raw verbs exist for
   manifest-driven and declarative flows.
 
+`rancher schema <kind>` shows one kind's effective verb table — available
+(with tier and stability), refused (with the reason), or not available
+(with the reason removal is routed elsewhere).
+
 ### Project scope (`--project`)
 
 The global `--project <id-or-name>` flag scopes Downstream namespaced kinds
@@ -303,10 +311,20 @@ Every command emits one JSON document per invocation under `-o json` — an
   Rancher's proxy paths reject an invalid or insufficient token as a 403
   (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
-  `apiVersion`, the error-code enum, the global flags, and every command with
-  its args, flags, `commandType`, and (for server ops) `tier`/`stability`,
-  as one document. `rancher schema <command>` (e.g. `rancher schema get pod`)
-  filters the manifest to that command.
+  `apiVersion`, the error-code enum with exit codes, the global flags, the
+  kind vocabulary (aliases, GVR, scope, per-kind verb availability), and
+  every command with its args, flags, `commandType`, and (for server ops)
+  `tier`/`stability`, as one document. `rancher schema <command|kind>`
+  narrows to one command (e.g. `rancher schema get pod`) or one kind (e.g.
+  `rancher schema clusterregistrationtoken`) — a name that is both
+  (`kubeconfig`) resolves as the command; `--kind` forces the kind reading.
+  `--verb`, `--destructive`, `--tier`, `--mutating`, and `--search <term>`
+  filter the whole surface instead (they don't combine with a selector);
+  zero hits still exit `0`. Under the default format, bare `schema` prints
+  a grouped table of contents, a command selector prints the command's card
+  (usage, flags, contract line, gate line), and a kind selector prints the
+  kind's card (identity, routing, verb table with refusal/absence reasons);
+  every form still emits the full envelope under `-o json`.
 
 ## Safety model
 
