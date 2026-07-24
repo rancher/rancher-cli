@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -292,4 +295,44 @@ func TestGVRPathNamedGroup(t *testing.T) {
 	}
 	assert.Equal(t, "/apis/apps/v1/deployments", gvrPath(k))
 	assert.Equal(t, "/apis/apps/v1/namespaces/{namespace}/deployments", gvrNamespacedPath(k))
+}
+
+// TestSchemaPositionalCompletionSurfaces drives schema's SE-12 selector
+// candidates through the real Adapt-installed ShellComplete callback
+// (BuildRoot + root.Run), the same wiring path the use-context callback tests
+// pin. The candidates come from schemaCmd.CompleteArgs via the config-local
+// dispatch layer; no network is involved. Multi-token selector candidates
+// ("get pods") are dropped at this layer by the AC-21 completion charset
+// (sanitizeCandidates rejects spaces), so the shell sees the single-token
+// subset — the full candidate set is pinned at the runtime layer by
+// TestSchemaPositionalCompletionShape.
+func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+
+	require.NoError(t, root.Run(context.Background(), []string{
+		"rancher", "--config", dir, "schema", "--generate-shell-completion",
+	}))
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	require.NotEmpty(t, lines)
+
+	for _, want := range []string{"pod", "pods", "po", "cluster", "managementcluster"} {
+		assert.Contains(t, lines, want, "kind names, aliases, and keys surface as candidates")
+	}
+	kubeconfigs := 0
+	for _, l := range lines {
+		if l == "kubeconfig" {
+			kubeconfigs++
+		}
+	}
+	assert.Equal(t, 1, kubeconfigs, "the kubeconfig command/kind collision surfaces exactly once")
+	assert.True(t, sort.StringsAreSorted(lines), "surfaced candidates stay sorted: %v", lines)
+	for _, l := range lines {
+		assert.NotContains(t, l, " ",
+			"the AC-21 charset admits no multi-token candidate at the surface layer")
+	}
 }

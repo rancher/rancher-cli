@@ -55,6 +55,48 @@ func (s *schemaCmd) Describe() Descriptor {
 	}
 }
 
+// CompleteArgs implements ShellCompleter: `schema <TAB>` offers every valid
+// schema selector, offline from the registry alone (SE-12) — full command
+// names; command aliases in their full typed form ("get pods", "get po" —
+// never the bare leaf alias, which Execute's selection would reject; the verb
+// comes from the command name's first token); and kind names, keys, and
+// aliases as bare tokens. The set is deduplicated (a command/kind collision
+// like kubeconfig yields one candidate) and deterministically sorted. Every
+// candidate resolves through Execute's own selection logic — a command match
+// wins a collision, a kind identifier falls through to the kind view.
+func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView) []string {
+	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
+	seen := map[string]bool{}
+	var out []string
+	add := func(sel string) {
+		if !seen[sel] {
+			seen[sel] = true
+			out = append(out, sel)
+		}
+	}
+	for _, c := range m.Commands {
+		add(c.Name)
+		verb, _, verbed := strings.Cut(c.Name, " ")
+		if !verbed {
+			// A single-token command's bare alias is not a selector: Execute
+			// resolves aliases only in the "<verb> <alias>" form (matchesAlias).
+			continue
+		}
+		for _, a := range c.Aliases {
+			add(verb + " " + a)
+		}
+	}
+	for _, k := range m.Kinds {
+		add(k.Name)
+		add(k.Key)
+		for _, a := range k.Aliases {
+			add(a)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, error) {
 	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
 	if s.readOnly != nil {

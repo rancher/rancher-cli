@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"sort"
 	"strings"
 	"testing"
 
@@ -863,4 +864,110 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 			}
 		})
 	}
+}
+
+// completionRegistry builds the SE-12 shape exemplars: a verbed command whose
+// aliases are also kind identifiers (get pod), a verbed command whose alias is
+// NOT a kind identifier (get project → projects, so the bare-leaf-alias
+// exclusion is observable), the kubeconfig command/kind collision, and a kind
+// whose key differs from its name (cluster → managementcluster).
+func completionRegistry() *Registry {
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "get pod", Aliases: []string{"pods", "po"}, CommandType: ReadOnly,
+	}})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "get project", Aliases: []string{"projects"}, CommandType: ReadOnly,
+	}})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "get kubeconfig", Aliases: []string{"kubeconfigs"}, CommandType: ReadOnly,
+	}})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "kubeconfig", Usage: "Print an exec-credential kubeconfig for a cluster",
+		CommandType: Local,
+	}})
+	reg.SetKinds([]SchemaKind{
+		{
+			Name: "pod", Key: "pod", Aliases: []string{"pods", "po"},
+			Resource: "pods", Scope: "downstream", NamespacePolicy: "plain",
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Tier: "crd", Stability: "beta"}},
+		},
+		{
+			Name: "kubeconfig", Key: "kubeconfig", Aliases: []string{"kubeconfigs"},
+			Resource: "kubeconfigs", Scope: "management", NamespacePolicy: "none",
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Tier: "public", Stability: "beta"}},
+		},
+		{
+			Name: "cluster", Key: "managementcluster", Aliases: []string{"clusters"},
+			Resource: "clusters", Scope: "management", NamespacePolicy: "none",
+			Verbs: map[string]VerbState{"get": {State: VerbAbsent, Note: "listing not wired in this fixture"}},
+		},
+	})
+	return reg
+}
+
+// TestSchemaPositionalCompletionCandidatesResolve is SE-12's shipping gate:
+// every candidate CompleteArgs offers must resolve through the actual
+// selection logic in Execute — a suggestion `rancher schema` would then
+// reject cannot ship. Run against every registry fixture so command-only,
+// collision-heavy, and alias-heavy surfaces are all covered.
+func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
+	t.Parallel()
+	regs := map[string]*Registry{
+		"commands only":         cardRegistry(),
+		"kinds plus collision":  kindRegistry(),
+		"aliased verb commands": completionRegistry(),
+	}
+	for name, reg := range regs {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+			sc, ok := cmd.(ShellCompleter)
+			require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
+			cands := sc.CompleteArgs(context.Background(), nil)
+			require.NotEmpty(t, cands)
+			for _, cand := range cands {
+				res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: strings.Fields(cand)}, nil)
+				require.NoError(t, err, "candidate %q must resolve as a schema selector", cand)
+				m := viewManifest(t, res)
+				assert.True(t, len(m.Commands) == 1 || len(m.Kinds) == 1,
+					"candidate %q must select one command or one kind", cand)
+			}
+		})
+	}
+}
+
+// TestSchemaPositionalCompletionShape pins SE-12's candidate shape: command
+// aliases appear only in their full typed form ("get pods", never a bare
+// "projects"), kind names/keys/aliases appear as bare tokens, the
+// command/kind collision (kubeconfig) dedupes to one candidate, and the set
+// is deterministically sorted with no duplicates.
+func TestSchemaPositionalCompletionShape(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14", nil)
+	sc, ok := cmd.(ShellCompleter)
+	require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
+	cands := sc.CompleteArgs(context.Background(), nil)
+
+	assert.True(t, sort.StringsAreSorted(cands), "candidates are deterministically sorted: %v", cands)
+	counts := map[string]int{}
+	for _, c := range cands {
+		counts[c]++
+	}
+	for cand, n := range counts {
+		assert.Equal(t, 1, n, "candidate %q must appear exactly once", cand)
+	}
+
+	for _, want := range []string{"get pod", "get project", "get kubeconfig", "kubeconfig"} {
+		assert.Contains(t, cands, want, "full command names are candidates")
+	}
+	for _, want := range []string{"get pods", "get po", "get projects", "get kubeconfigs"} {
+		assert.Contains(t, cands, want, "command aliases appear in their full typed form")
+	}
+	assert.NotContains(t, cands, "projects",
+		"a command alias never appears in its bare leaf form (it is not a selector)")
+	for _, want := range []string{"pod", "pods", "po", "cluster", "clusters", "managementcluster", "kubeconfigs"} {
+		assert.Contains(t, cands, want, "kind names, aliases, and keys are bare-token candidates")
+	}
+	assert.Equal(t, 1, counts["kubeconfig"], "the command/kind collision dedupes to one candidate")
 }
