@@ -446,8 +446,9 @@ var table = []Kind{
 		Key: "nodedriver", Name: "nodedriver", Aliases: []string{"nodedrivers"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodedrivers"},
 		Policy: NSNone, K8sKind: "NodeDriver", Scope: Management, Deletable: false, Sensitive: true,
-		Completable: true,
-		Binding:     safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		NoDeleteReason: "drivers are deactivated via spec.active, not deleted; builtin drivers are Rancher-managed",
+		Completable:    true,
+		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "DISPLAYNAME", Path: []string{"spec", "displayName"}},
 			{Header: "ACTIVE", Path: []string{"spec", "active"}, Bool: true},
