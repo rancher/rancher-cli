@@ -59,6 +59,11 @@ Two gotchas:
   string-match rendered JSON — decode the envelope and assert on fields.
 - **Descriptions:** operator-facing help is terse and plain; the schema `desc`
   carries the fuller, precise wording. Keep internal jargon out of both.
+- **Completion ships with the surface.** A change that adds or alters a
+  value-taking flag or argument includes its shell completion (static enum
+  or live fetch) and completion tests in the same change. A suggestion must
+  be valid verbatim — never offer a value the command would reject or
+  resolve ambiguously.
 
 ## Before claiming done
 
