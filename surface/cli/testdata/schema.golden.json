@@ -7242,6 +7242,13 @@
         "rancher schema -o json",
         "rancher schema get pod -o json"
       ],
+      "flags": [
+        {
+          "desc": "resolve the selector as a kind, not a command",
+          "name": "kind",
+          "type": "bool"
+        }
+      ],
       "name": "schema",
       "network": false,
       "toolset": "core",

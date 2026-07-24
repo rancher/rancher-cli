@@ -138,6 +138,106 @@ func gateLine(ct CommandType, destructive, stability string) string {
 	}
 }
 
+// renderKindCard builds the operator-facing card for one kind (SE-5):
+// identity (canonical name, key, aliases), the GVR, scope, the namespace
+// policy with the routing flags a named op needs, wait default, traits
+// (sensitive, completable), and the effective verb table from the manifest's
+// SE-17 data. Rendered via Result.Text under default/table only; the
+// structured formats keep serving Result.Data.
+func renderKindCard(k SchemaKind) string {
+	var b strings.Builder
+	b.WriteString("kind: " + k.Name + "\n")
+	b.WriteString("key: " + k.Key + "\n")
+	if len(k.Aliases) > 0 {
+		b.WriteString("aliases: " + strings.Join(k.Aliases, ", ") + "\n")
+	}
+	if k.Group != "" {
+		b.WriteString("group: " + k.Group + "\n")
+	}
+	if k.Version != "" {
+		b.WriteString("version: " + k.Version + "\n")
+	}
+	b.WriteString("resource: " + k.Resource + "\n")
+	b.WriteString("scope: " + k.Scope + "\n")
+	b.WriteString(kindNamespaceLine(k) + "\n")
+	if k.WaitDefault != "" {
+		b.WriteString("wait: bare --wait waits for " + k.WaitDefault + "\n")
+	}
+	var traits []string
+	if k.Sensitive {
+		traits = append(traits, "sensitive")
+	}
+	if k.Completable {
+		traits = append(traits, "completable")
+	}
+	if len(traits) > 0 {
+		b.WriteString("traits: " + strings.Join(traits, " · ") + "\n")
+	}
+	b.WriteString("\nverbs:\n")
+	for _, verb := range []string{"get", "patch", "delete"} {
+		if vs, ok := k.Verbs[verb]; ok {
+			b.WriteString("  " + verbLine(verb, vs) + "\n")
+		}
+	}
+	return b.String()
+}
+
+// kindNamespaceLine renders the kind's namespace policy plus the routing
+// flags a named op needs — the card counterpart of the kinds package's
+// NamespacePolicy semantics, computed from manifest strings only.
+func kindNamespaceLine(k SchemaKind) string {
+	switch k.NamespacePolicy {
+	case "none":
+		if k.Scope == "downstream" {
+			return "namespace: none (cluster-scoped); named ops need --cluster"
+		}
+		return "namespace: none (cluster-scoped)"
+	case "cluster":
+		return "namespace: cluster (the namespace is a cluster id); named ops need --cluster"
+	case "workspace":
+		return "namespace: workspace; named ops take --namespace (default " + k.DefaultNamespace + ")"
+	case "plain":
+		if k.Scope == "downstream" {
+			return "namespace: plain; named ops need --namespace and --cluster"
+		}
+		return "namespace: plain; named ops need --namespace"
+	default:
+		return "namespace: " + k.NamespacePolicy
+	}
+}
+
+// verbLine renders one verb of the SE-5 table, worded exactly per spec:
+// `available (tier · stability)` | `refused — <note>` |
+// `not available — <reason>` | `not available`. The degenerate shapes
+// (available without a binding, refused without a note) drop the empty
+// segment rather than rendering stray punctuation.
+func verbLine(verb string, vs VerbState) string {
+	switch vs.State {
+	case VerbAvailable:
+		var meta []string
+		if vs.Tier != "" {
+			meta = append(meta, vs.Tier)
+		}
+		if vs.Stability != "" {
+			meta = append(meta, vs.Stability)
+		}
+		if len(meta) > 0 {
+			return verb + ": available (" + strings.Join(meta, " · ") + ")"
+		}
+		return verb + ": available"
+	case VerbRefused:
+		if vs.Note != "" {
+			return verb + ": refused — " + vs.Note
+		}
+		return verb + ": refused"
+	default:
+		if vs.Note != "" {
+			return verb + ": not available — " + vs.Note
+		}
+		return verb + ": not available"
+	}
+}
+
 // exitCodeStrip renders the global code→exit map as one footer line, ordered
 // by exit status then code name so the strip is deterministic.
 func exitCodeStrip(exits map[string]int) string {

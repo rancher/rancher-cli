@@ -31,9 +31,11 @@ func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string, readO
 
 func (s *schemaCmd) Describe() Descriptor {
 	return Descriptor{
-		Name:        "schema",
-		Usage:       "Print the capability manifest, optionally filtered to one command",
-		Args:        []ArgSpec{{Name: "command", Type: "string"}},
+		Name:  "schema",
+		Usage: "Print the capability manifest, optionally filtered to one command",
+		Args:  []ArgSpec{{Name: "command", Type: "string"}},
+		Flags: []ArgSpec{{Name: "kind", Type: "bool",
+			Desc: "resolve the selector as a kind, not a command"}},
 		CommandType: ReadOnly,
 		Examples:    []string{"rancher schema -o json", "rancher schema get pod -o json"},
 		Toolset:     "core",
@@ -45,21 +47,76 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	if s.readOnly != nil {
 		m.ReadOnly, m.ReadOnlySources = s.readOnly()
 	}
+	asKind := in.Bool("kind")
 	if len(in.Args()) == 0 {
+		if asKind {
+			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector").
+				WithHint("pass a kind name, e.g. `rancher schema kubeconfig --kind`")
+		}
 		return Result{Kind: "Schema", Data: m}, nil
 	}
 	want := strings.Join(in.Args(), " ")
-	for _, c := range m.Commands {
-		if c.Name == want || matchesAlias(c, want) {
-			m.Commands = []SchemaCommand{c}
-			m.Groups = filterGroups(m.Groups, map[string]bool{c.Name: true})
-			return Result{Kind: "Schema", Data: m, Text: renderCommandCard(m, c)}, nil
+	// Resolution order (SE-5/SE-6): command match wins; a positional that
+	// names no command is looked up against Manifest.Kinds; --kind skips the
+	// command pass and forces the kind interpretation.
+	if !asKind {
+		for _, c := range m.Commands {
+			if c.Name == want || matchesAlias(c, want) {
+				sel := m
+				sel.Commands = []SchemaCommand{c}
+				sel.Groups = filterGroups(m.Groups, map[string]bool{c.Name: true})
+				text := renderCommandCard(sel, c)
+				if k, collides := lookupKind(m.Kinds, want); collides {
+					text += "kind view: rancher schema " + k.Name + " --kind\n"
+				}
+				return Result{Kind: "Schema", Data: sel, Text: text}, nil
+			}
 		}
 	}
-	// Kind selection (SE-5) resolves here in a later slice: a positional that
-	// names no command is looked up against Manifest.Kinds before falling
-	// through to the unknown-selection error.
-	return Result{}, unknownSelection(m.Commands, want)
+	if k, ok := lookupKind(m.Kinds, want); ok {
+		return Result{Kind: "Schema", Data: filterToKind(m, k), Text: renderKindCard(k)}, nil
+	}
+	return Result{}, unknownSelection(m, want, asKind)
+}
+
+// lookupKind resolves a positional selector against the manifest's kind rows
+// by exact match on the canonical name, the key, or any alias — manifest data
+// only, mirroring kinds.Lookup without importing it (SE-5).
+func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
+	for _, k := range ks {
+		if want == k.Name || want == k.Key {
+			return k, true
+		}
+		for _, a := range k.Aliases {
+			if want == a {
+				return k, true
+			}
+		}
+	}
+	return SchemaKind{}, false
+}
+
+// filterToKind shapes the manifest for a kind selection (SE-2's kind row):
+// kinds holds exactly the selected kind, commands exactly its registered
+// generated verbs — available OR refused, both registered per SE-17; absent
+// verbs have no command — and Groups pruned to the same set (SE-18).
+func filterToKind(m Manifest, k SchemaKind) Manifest {
+	keep := map[string]bool{}
+	for verb, vs := range k.Verbs {
+		if vs.State == VerbAvailable || vs.State == VerbRefused {
+			keep[verb+" "+k.Name] = true
+		}
+	}
+	cmds := make([]SchemaCommand, 0, len(keep))
+	for _, c := range m.Commands {
+		if keep[c.Name] {
+			cmds = append(cmds, c)
+		}
+	}
+	m.Kinds = []SchemaKind{k}
+	m.Commands = cmds
+	m.Groups = filterGroups(m.Groups, keep)
+	return m
 }
 
 // filterGroups prunes each ordered section to the retained command names and
@@ -87,11 +144,17 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 const maxNearestMatches = 10
 
 // unknownSelection builds SE-4's VALIDATION error for a positional that
-// matches nothing, listing nearest matches when any exist.
-func unknownSelection(cmds []SchemaCommand, want string) error {
-	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", want)).
+// matches nothing, listing nearest matches when any exist. Under --kind
+// (kindOnly) the selector could only ever be a kind, so the message and the
+// candidate set are restricted to kinds.
+func unknownSelection(m Manifest, want string, kindOnly bool) error {
+	noun := "command or kind"
+	if kindOnly {
+		noun = "kind"
+	}
+	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).
 		WithHint("run `rancher schema -o json` for the full command list")
-	matches := nearestCommands(cmds, want)
+	matches := nearestSelectors(m, want, kindOnly)
 	if len(matches) == 0 {
 		return ce
 	}
@@ -104,15 +167,32 @@ func unknownSelection(cmds []SchemaCommand, want string) error {
 			strings.Join(matches, ", ")))
 }
 
-// nearestCommands finds SE-4's nearest matches: a case-insensitive substring
+// nearestSelectors finds SE-4's nearest matches: a case-insensitive substring
 // search of want over command names and full alias forms (the "<verb> <alias>"
-// shape matchesAlias resolves). Deduplicated to command names, sorted, capped.
-func nearestCommands(cmds []SchemaCommand, want string) []string {
+// shape matchesAlias resolves) plus kind names, keys, and aliases — every
+// candidate deduplicated to its selectable name (a command/kind collision
+// yields one candidate), sorted, capped. kindOnly restricts the search to
+// kinds, matching --kind's forced interpretation.
+func nearestSelectors(m Manifest, want string, kindOnly bool) []string {
 	q := strings.ToLower(want)
+	seen := map[string]bool{}
 	var out []string
-	for _, c := range cmds {
-		if matchesSubstring(c, q) {
-			out = append(out, c.Name)
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	if !kindOnly {
+		for _, c := range m.Commands {
+			if matchesSubstring(c, q) {
+				add(c.Name)
+			}
+		}
+	}
+	for _, k := range m.Kinds {
+		if kindMatchesSubstring(k, q) {
+			add(k.Name)
 		}
 	}
 	sort.Strings(out)
@@ -120,6 +200,18 @@ func nearestCommands(cmds []SchemaCommand, want string) []string {
 		out = out[:maxNearestMatches]
 	}
 	return out
+}
+
+// kindMatchesSubstring reports whether the lowercased query q occurs in k's
+// canonical name, key, or any alias.
+func kindMatchesSubstring(k SchemaKind, q string) bool {
+	ids := append([]string{k.Name, k.Key}, k.Aliases...)
+	for _, id := range ids {
+		if strings.Contains(strings.ToLower(id), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesSubstring reports whether the lowercased query q occurs in c's name

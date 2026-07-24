@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -156,6 +157,113 @@ func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 	card := renderCommandCard(cardManifest(), c)
 	assert.Contains(t, strings.Split(card, "\n"),
 		"gates: --apply; --yes when the input is destructive (see description)")
+}
+
+// TestSchemaKindCardFields pins the SE-5 kind card: identity (canonical
+// name, key, aliases), GVR, scope, the namespace/routing line, wait default,
+// traits, and the verb table in get/patch/delete order.
+func TestSchemaKindCardFields(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{
+		Name: "gitrepo", Key: "gitrepo", Aliases: []string{"gitrepos"},
+		Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "gitrepos",
+		Scope: "management", NamespacePolicy: "workspace", DefaultNamespace: "fleet-default",
+		WaitDefault: "condition=Ready", Sensitive: true, Completable: true,
+		Verbs: map[string]VerbState{
+			"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"delete": {State: VerbAbsent, Note: "controller-owned; delete the owning source object"},
+		},
+	}
+	card := renderKindCard(k)
+	lines := strings.Split(card, "\n")
+
+	assert.Equal(t, "kind: gitrepo", lines[0])
+	assert.Contains(t, lines, "key: gitrepo")
+	assert.Contains(t, lines, "aliases: gitrepos")
+	assert.Contains(t, lines, "group: fleet.cattle.io")
+	assert.Contains(t, lines, "version: v1alpha1")
+	assert.Contains(t, lines, "resource: gitrepos")
+	assert.Contains(t, lines, "scope: management")
+	assert.Contains(t, lines, "namespace: workspace; named ops take --namespace (default fleet-default)")
+	assert.Contains(t, lines, "wait: bare --wait waits for condition=Ready")
+	assert.Contains(t, lines, "traits: sensitive · completable")
+
+	verbsAt := slices.Index(lines, "verbs:")
+	require.GreaterOrEqual(t, verbsAt, 0)
+	assert.Equal(t, "  get: available (crd · beta)", lines[verbsAt+1])
+	assert.Equal(t, "  patch: available (crd · beta)", lines[verbsAt+2])
+	assert.Equal(t, "  delete: not available — controller-owned; delete the owning source object", lines[verbsAt+3])
+}
+
+// TestSchemaKindCardOmitsEmptyFields pins the card for a minimal kind: no
+// aliases, group, version, wait, or traits lines when those fields are empty.
+func TestSchemaKindCardOmitsEmptyFields(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{
+		Name: "widget", Key: "widget", Resource: "widgets",
+		Scope: "downstream", NamespacePolicy: "plain",
+		Verbs: map[string]VerbState{
+			"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"delete": {State: VerbAbsent},
+		},
+	}
+	lines := strings.Split(renderKindCard(k), "\n")
+
+	assert.Equal(t, "kind: widget", lines[0])
+	for _, l := range lines {
+		assert.False(t, strings.HasPrefix(l, "aliases:"))
+		assert.False(t, strings.HasPrefix(l, "group:"))
+		assert.False(t, strings.HasPrefix(l, "version:"))
+		assert.False(t, strings.HasPrefix(l, "wait:"))
+		assert.False(t, strings.HasPrefix(l, "traits:"))
+	}
+	assert.Contains(t, lines, "  delete: not available")
+}
+
+// TestSchemaKindNamespaceLine enumerates the namespace-policy routing line:
+// the policy plus the routing flags a named op needs, per the kinds package's
+// policy semantics carried into the manifest.
+func TestSchemaKindNamespaceLine(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		policy, scope, defaultNS, want string
+	}{
+		{"none", "management", "", "namespace: none (cluster-scoped)"},
+		{"none", "downstream", "", "namespace: none (cluster-scoped); named ops need --cluster"},
+		{"cluster", "management", "", "namespace: cluster (the namespace is a cluster id); named ops need --cluster"},
+		{"workspace", "management", "fleet-default", "namespace: workspace; named ops take --namespace (default fleet-default)"},
+		{"plain", "management", "", "namespace: plain; named ops need --namespace"},
+		{"plain", "downstream", "", "namespace: plain; named ops need --namespace and --cluster"},
+	}
+	for _, tc := range cases {
+		got := kindNamespaceLine(SchemaKind{
+			NamespacePolicy: tc.policy, Scope: tc.scope, DefaultNamespace: tc.defaultNS,
+		})
+		assert.Equal(t, tc.want, got, "policy=%s scope=%s", tc.policy, tc.scope)
+	}
+}
+
+// TestSchemaKindVerbLine covers the SE-5 wording as a function of VerbState,
+// including the degenerate shapes production data never produces.
+func TestSchemaKindVerbLine(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		vs   VerbState
+		want string
+	}{
+		{"available with binding", VerbState{State: VerbAvailable, Tier: "crd", Stability: "beta"}, "get: available (crd · beta)"},
+		{"available without binding", VerbState{State: VerbAvailable}, "get: available"},
+		{"refused with note", VerbState{State: VerbRefused, Note: "read-only: consumed, not edited"}, "get: refused — read-only: consumed, not edited"},
+		{"refused without note", VerbState{State: VerbRefused}, "get: refused"},
+		{"reasoned absence", VerbState{State: VerbAbsent, Note: "expires on its own TTL"}, "get: not available — expires on its own TTL"},
+		{"plain absence", VerbState{State: VerbAbsent}, "get: not available"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, verbLine("get", tc.vs), tc.name)
+	}
 }
 
 func TestSchemaExitCodeStripOrdersByExitThenName(t *testing.T) {
