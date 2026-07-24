@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -51,11 +52,94 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	for _, c := range m.Commands {
 		if c.Name == want || matchesAlias(c, want) {
 			m.Commands = []SchemaCommand{c}
-			return Result{Kind: "Schema", Data: m}, nil
+			m.Groups = filterGroups(m.Groups, map[string]bool{c.Name: true})
+			return Result{Kind: "Schema", Data: m, Text: renderCommandCard(m, c)}, nil
 		}
 	}
-	return Result{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", want)).
+	// Kind selection (SE-5) resolves here in a later slice: a positional that
+	// names no command is looked up against Manifest.Kinds before falling
+	// through to the unknown-selection error.
+	return Result{}, unknownSelection(m.Commands, want)
+}
+
+// filterGroups prunes each ordered section to the retained command names and
+// drops empty sections, preserving relative order (SE-18's consistency rule:
+// the manifest never carries two contradictory command sets).
+func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
+	var out []SchemaGroup
+	for _, g := range gs {
+		var names []string
+		for _, n := range g.Commands {
+			if keep[n] {
+				names = append(names, n)
+			}
+		}
+		if len(names) > 0 {
+			out = append(out, SchemaGroup{Name: g.Name, Commands: names})
+		}
+	}
+	return out
+}
+
+// maxNearestMatches caps SE-4's candidate list: a short query can substring-
+// match a large slice of the generated commands, and past a screenful the
+// list stops helping.
+const maxNearestMatches = 10
+
+// unknownSelection builds SE-4's VALIDATION error for a positional that
+// matches nothing, listing nearest matches when any exist.
+func unknownSelection(cmds []SchemaCommand, want string) error {
+	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", want)).
 		WithHint("run `rancher schema -o json` for the full command list")
+	matches := nearestCommands(cmds, want)
+	if len(matches) == 0 {
+		return ce
+	}
+	cands := make([]clierr.Candidate, len(matches))
+	for i, name := range matches {
+		cands[i] = clierr.Candidate{ID: name, Name: name}
+	}
+	return ce.WithCandidates(cands).
+		WithHint(fmt.Sprintf("nearest matches: %s — run `rancher schema -o json` for the full command list",
+			strings.Join(matches, ", ")))
+}
+
+// nearestCommands finds SE-4's nearest matches: a case-insensitive substring
+// search of want over command names and full alias forms (the "<verb> <alias>"
+// shape matchesAlias resolves). Deduplicated to command names, sorted, capped.
+func nearestCommands(cmds []SchemaCommand, want string) []string {
+	q := strings.ToLower(want)
+	var out []string
+	for _, c := range cmds {
+		if matchesSubstring(c, q) {
+			out = append(out, c.Name)
+		}
+	}
+	sort.Strings(out)
+	if len(out) > maxNearestMatches {
+		out = out[:maxNearestMatches]
+	}
+	return out
+}
+
+// matchesSubstring reports whether the lowercased query q occurs in c's name
+// or in any alias — the full "<verb> <alias>" form when the name is verbed,
+// the bare alias otherwise.
+func matchesSubstring(c SchemaCommand, q string) bool {
+	if strings.Contains(strings.ToLower(c.Name), q) {
+		return true
+	}
+	verb, _, verbed := strings.Cut(c.Name, " ")
+	for _, a := range c.Aliases {
+		full := a
+		if verbed {
+			full = verb + " " + a
+		}
+		if strings.Contains(strings.ToLower(full), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesAlias reports whether want names c via a kind alias. Aliases on
