@@ -93,6 +93,21 @@ reuse_state() {
   cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
   running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || return 1
   [ "${cid}" = "${running}" ] || return 1
+  # The kept container must have been created from the CURRENTLY pinned
+  # image: reusing across an ORACLE_IMAGE bump would stamp new goldens with
+  # an image that never ran, defeating provenance.
+  saved_image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["oracleImage"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  [ "${saved_image}" = "${ORACLE_IMAGE}" ] || {
+    echo "==> kept container was created from a different oracle image; recreating"
+    return 1
+  }
+  # The kept container must be loopback-bound: a reused oracle published on
+  # every interface would expose known test credentials to the network.
+  bound_ip="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "443/tcp") 0).HostIp}}' "${CONTAINER}" 2>/dev/null)" || return 1
+  [ "${bound_ip}" = "127.0.0.1" ] || {
+    echo "==> kept container is not loopback-bound; recreating"
+    return 1
+  }
   curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong || return 1
   ADMIN_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adminToken"])' "${STATE_FILE}")" || return 1
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
@@ -107,8 +122,10 @@ else
   rm -f "${STATE_FILE}"
   BOOTSTRAP_PW="$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
   echo "==> booting ${ORACLE_IMAGE}"
+  # Loopback-only: the oracle serves known test credentials and must never
+  # be reachable from the surrounding network.
   docker run -d --name "${CONTAINER}" --privileged \
-    -p "${HOST_PORT}:443" \
+    -p "127.0.0.1:${HOST_PORT}:443" \
     -e CATTLE_BOOTSTRAP_PASSWORD="${BOOTSTRAP_PW}" \
     "${ORACLE_IMAGE}" >/dev/null
   wait_for_ping
@@ -132,8 +149,8 @@ else
   if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
     cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
     umask 177
-    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2]},open(sys.argv[3],"w"))' \
-      "${cid}" "${ADMIN_TOKEN}" "${STATE_FILE}"
+    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3]},open(sys.argv[4],"w"))' \
+      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${STATE_FILE}"
     umask 022
   fi
 fi
