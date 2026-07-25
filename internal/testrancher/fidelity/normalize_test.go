@@ -15,7 +15,12 @@ func TestNormalizeScrubsAndDeletes(t *testing.T) {
 			"resourceVersion": "4711",
 			"managedFields":   []any{map[string]any{"manager": "kubectl"}},
 		},
-		"status": map[string]any{"bearerToken": "ext/name:secret"},
+		"status": map[string]any{
+			"bearerToken":    "ext/name:secret",
+			"value":          "raw-secret",
+			"hash":           "$3:1:salt:digest",
+			"lastUpdateTime": "2026-07-25T02:00:00Z",
+		},
 	}
 	Normalize(body, DefaultNormalizeRules())
 	meta := body["metadata"].(map[string]any)
@@ -23,7 +28,11 @@ func TestNormalizeScrubsAndDeletes(t *testing.T) {
 	assert.Equal(t, "<rv>", meta["resourceVersion"])
 	assert.NotContains(t, meta, "managedFields")
 	assert.Equal(t, "e2e-fid-x", meta["name"], "untargeted fields stay")
-	assert.Equal(t, "<secret>", body["status"].(map[string]any)["bearerToken"])
+	status := body["status"].(map[string]any)
+	assert.Equal(t, "<secret>", status["bearerToken"])
+	assert.Equal(t, "<secret>", status["value"], "the bare token value is a live secret too")
+	assert.Equal(t, "<secret>", status["hash"], "the stored token digest is scrubbed too")
+	assert.Equal(t, "<ts>", status["lastUpdateTime"], "the per-mint timestamp is volatile")
 }
 
 func TestNormalizeTraversesArraysAndWildcards(t *testing.T) {
