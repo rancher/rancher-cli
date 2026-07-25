@@ -66,9 +66,17 @@ func NewRealTargetFromEnv() (*RealTarget, error) {
 	}, nil
 }
 
-func (t *RealTarget) BaseURL() string      { return t.baseURL }
+// BaseURL is the oracle server root without a trailing slash.
+func (t *RealTarget) BaseURL() string { return t.baseURL }
+
+// Client is an HTTP client that trusts the oracle's CA (TLS verification is
+// never skipped).
 func (t *RealTarget) Client() *http.Client { return t.client }
 
+// Bearer resolves the admin, standard, or revoked identity to a live bearer
+// against the real server. The admin token is supplied by the harness; the
+// standard and revoked bearers are provisioned lazily and memoized. none and
+// garbage are resolved by the executor, not here.
 func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 	switch id {
 	case IdentityAdmin:

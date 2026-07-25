@@ -506,6 +506,8 @@ disabled implicitly. HTTP(S) proxies are honored from the environment.
     make validate     # gofmt + go vet + lint + race tests (the commit gate)
     make ci           # build + validate
     make e2e          # end-to-end suite against a fake, envtest-backed Rancher
+    make e2e-real     # verify fidelity goldens against a real Rancher in Docker (manual; never CI)
+    make e2e-real-update  # re-record the fidelity oracle goldens
 
 A committed `.githooks/pre-commit` runs `make validate` on every commit
 (`git config core.hooksPath .githooks`, set during setup).
