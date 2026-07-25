@@ -126,10 +126,13 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			WithHint("one of: " + machineConfigKindsHint())
 	}
 
+	// Credential rejection (MC-8) folds case — lowercased key → the
+	// canonical casing from the metadata — so no casing of a credential
+	// field slips past and persists a secret as a plaintext CR field.
 	meta, _ := kinds.MachineConfigFieldsFor(k.Name)
-	credential := map[string]bool{}
+	credential := map[string]string{}
 	for _, c := range meta.Credential {
-		credential[c] = true
+		credential[strings.ToLower(c)] = c
 	}
 	curatedFieldFlag := map[string]string{}
 	for _, cf := range doCuratedFlags {
@@ -145,11 +148,20 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	}
 	var entries []setEntry
 	seen := map[string]bool{}
-	for _, entry := range in.Strings("set") {
+	for i, entry := range in.Strings("set") {
+		// Shape errors identify the occurrence by 1-based index only —
+		// never by content: a malformed entry may be a pasted secret, and
+		// reflecting it would echo it to stderr and into shell history/CI
+		// logs.
 		key, raw, ok := strings.Cut(entry, "=")
-		if !ok || key == "" {
+		if !ok {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set %q must be <field>=<value>", entry)).
+				fmt.Sprintf("--set argument #%d must be <field>=<value>", i+1)).
+				WithHint("e.g. --set region=nyc3")
+		}
+		if key == "" {
+			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("--set argument #%d has an empty field name", i+1)).
 				WithHint("e.g. --set region=nyc3")
 		}
 		if key == "apiVersion" || key == "kind" || key == "metadata" || key == "status" {
@@ -193,9 +205,12 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 					WithHint(fmt.Sprintf("pass --%s instead of --set %s=...", flag, e.key))
 			}
 		}
-		if credential[e.key] {
-			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("%q is a credential field and never belongs on a machine config", e.key)).
+		if canonical, isCredential := credential[strings.ToLower(e.key)]; isCredential {
+			msg := fmt.Sprintf("%q is a credential field and never belongs on a machine config", canonical)
+			if e.key != canonical {
+				msg = fmt.Sprintf("%q is the credential field %q and never belongs on a machine config", e.key, canonical)
+			}
+			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg).
 				WithHint("credentials live on a cloud credential (cc-* secret); reference it via create cluster --cloud-credential")
 		}
 		fields[e.key] = parseSetValue(e.raw)

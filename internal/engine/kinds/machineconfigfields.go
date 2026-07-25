@@ -27,8 +27,9 @@ type MachineConfigFields struct {
 	// suggestions-valid-verbatim.
 	Known []string
 	// Credential-carried fields — rejected by create machine-config with a
-	// cloud-credential hint (MC-8), never suggested. Exact confirmed
-	// casings; matching is exact, never fuzzy.
+	// cloud-credential hint (MC-8), never suggested. Stored in the
+	// canonical confirmed casings (they feed completion and docs); the
+	// rejection folds case, so any casing of these names is refused.
 	Credential []string
 }
 

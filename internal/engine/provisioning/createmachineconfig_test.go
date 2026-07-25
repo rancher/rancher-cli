@@ -200,17 +200,33 @@ func TestCreateMachineConfigSetValueParsing(t *testing.T) {
 	assert.Equal(t, "a=b", obj.Object["userdata"], "cut at the FIRST =")
 }
 
-// TestCreateMachineConfigSetMalformed pins MC-6's shape errors.
+// TestCreateMachineConfigSetMalformed pins MC-6's shape errors — and that
+// they NEVER reflect the entry's content: a bare pasted secret (no '=') or
+// an empty-key assignment ('=secret') would otherwise echo the secret to
+// stderr and into shell history/CI logs. The error names the offending
+// occurrence by its 1-based index only.
 func TestCreateMachineConfigSetMalformed(t *testing.T) {
 	t.Parallel()
-	for _, entry := range []string{"no-equals", "=value"} {
-		t.Run(entry, func(t *testing.T) {
+	const secret = "dop_v1_9f2c4e6a8b0d1f3a5c7e9b2d4f6a8c0e"
+	cases := []struct {
+		name    string
+		sl      []string
+		message string
+	}{
+		{"no equals", []string{secret}, "--set argument #1 must be <field>=<value>"},
+		{"no equals second occurrence", []string{"region=us-east-1", secret}, "--set argument #2 must be <field>=<value>"},
+		{"empty key", []string{"=" + secret}, "--set argument #1 has an empty field name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := buildMachineConfig(t, mcInput{
-				a: []string{"amazonec2config", "x"}, sl: []string{entry},
+				a: []string{"amazonec2config", "x"}, sl: tc.sl,
 			})
 			ce := requireValidation(t, err)
-			assert.Contains(t, ce.Message, entry)
+			assert.Equal(t, tc.message, ce.Message)
+			assert.NotContains(t, ce.Message, secret, "the entry's content must never be reflected")
+			assert.NotContains(t, ce.Hint, secret, "the entry's content must never be reflected")
 		})
 	}
 }
@@ -298,7 +314,8 @@ func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 // credential-carried key per kind, passed as a WELL-FORMED key=value
 // assignment (so the credential check, not the shape check, is what
 // fires), is VALIDATION naming the key with a cloud-credential hint —
-// exact-match on the confirmed casing.
+// here in the canonical confirmed casing (case folding is pinned by
+// TestCreateMachineConfigCredentialRejectedCaseInsensitive).
 func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
@@ -314,6 +331,34 @@ func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 			_, err := buildMachineConfig(t, mcInput{a: []string{kind, "x"}, sl: []string{key + "=dummy"}})
 			ce := requireValidation(t, err)
 			assert.Contains(t, ce.Message, key)
+			assert.Contains(t, ce.Hint, "cloud credential")
+		})
+	}
+}
+
+// TestCreateMachineConfigCredentialRejectedCaseInsensitive pins MC-8's
+// case folding: a credential key in ANY casing (--set AccessKey=...,
+// --set ACCESSTOKEN=...) must not slip past the rejection and persist a
+// secret as a plaintext CR field. The VALIDATION message names the
+// CANONICAL casing from the metadata so the user learns the real field
+// name, with the cloud-credential hint.
+func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		kind      string
+		key       string
+		canonical string
+	}{
+		{"digitaloceanconfig", "AccessToken", "accessToken"},
+		{"digitaloceanconfig", "ACCESSTOKEN", "accessToken"},
+		{"vmwarevsphereconfig", "Password", "password"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind+" "+tc.key, func(t *testing.T) {
+			t.Parallel()
+			_, err := buildMachineConfig(t, mcInput{a: []string{tc.kind, "x"}, sl: []string{tc.key + "=dummy"}})
+			ce := requireValidation(t, err)
+			assert.Contains(t, ce.Message, `"`+tc.canonical+`"`, "names the canonical casing")
 			assert.Contains(t, ce.Hint, "cloud credential")
 		})
 	}
