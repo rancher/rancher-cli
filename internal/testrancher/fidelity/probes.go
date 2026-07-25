@@ -122,13 +122,28 @@ func tokProbes() []Probe {
 	// an empty spec.clusterName the façade emits on GET).
 	const tokenShapeDivergence = "façade returns a minimal Token {apiVersion,kind,status:{bearerToken,expiresAt}} on mint and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
 
+	// The mint/get/revoke Token bodies carry the acting admin's per-install
+	// user id (spec.userID, the cattle.io/user-id label, and the userPrincipal
+	// name "local://<id>"), which differs across fresh boots; scrub it exactly
+	// as auth/standard-mint does for its own user. metadata.labels.* stays
+	// probe-level on purpose — as a default rule it would blank meaningful
+	// labels on other kinds (e.g. the mut/* Secrets).
+	tokenIdentity := func() []NormalizeRule {
+		return []NormalizeRule{
+			{Path: "metadata.name", Replace: "<name>"},
+			{Path: "metadata.labels.*", Replace: "<label>"},
+			{Path: "spec.userID", Replace: "<user-id>"},
+			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
+		}
+	}
+
 	mintShape := Probe{
 		Name: "tok/mint-shape",
 		Observations: []Observation{
 			mint,
 			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize:        []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
+		Normalize:        tokenIdentity(),
 		FacadeDivergence: tokenShapeDivergence,
 		Teardown:         []Step{revokeLeftover},
 	}
@@ -143,7 +158,7 @@ func tokProbes() []Probe {
 			},
 			{Name: "still-there", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize:        []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
+		Normalize:        tokenIdentity(),
 		FacadeDivergence: tokenShapeDivergence,
 		Teardown:         []Step{revokeLeftover},
 	}
@@ -164,12 +179,11 @@ func tokProbes() []Probe {
 		},
 		// The 500 Status embeds the generated token name and its live
 		// resourceVersion in the top-level message and in details.causes.
-		Normalize: []NormalizeRule{
-			{Path: "metadata.name", Replace: "<name>"},
-			{Path: "message", Replace: "<message>"},
-			{Path: "details.causes.message", Replace: "<message>"},
-		},
-		FacadeDivergence: "on a stale-resourceVersion token delete the façade returns 409 Conflict with no body (the correct precondition-failed shape); the oracle returns 500 InternalError with a k8s Status — a real-server bug (see report), not a façade gap. The mint observation also diverges on Token shape (minimal vs full).",
+		Normalize: append(tokenIdentity(),
+			NormalizeRule{Path: "message", Replace: "<message>"},
+			NormalizeRule{Path: "details.causes.message", Replace: "<message>"},
+		),
+		FacadeDivergence: "façade returns 409 Conflict with no body where the 2.14.3 oracle returns 500 InternalError with a k8s Status for a stale preconditions.resourceVersion delete; the mint observation also diverges on Token shape (minimal vs full).",
 		Teardown:         []Step{revokeLeftover},
 	}
 
@@ -182,11 +196,10 @@ func tokProbes() []Probe {
 		},
 		// The 404 "gone" Status names the deleted token in details.name and in
 		// the message; both carry the generated token name.
-		Normalize: []NormalizeRule{
-			{Path: "metadata.name", Replace: "<name>"},
-			{Path: "details.name", Replace: "<name>"},
-			{Path: "message", Replace: "<message>"},
-		},
+		Normalize: append(tokenIdentity(),
+			NormalizeRule{Path: "details.name", Replace: "<name>"},
+			NormalizeRule{Path: "message", Replace: "<message>"},
+		),
 		FacadeDivergence: "façade mint and revoke return a minimal Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
 	}
 	return []Probe{mintShape, dryrunDelete, stalePrecondition, revoke}
