@@ -95,6 +95,19 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 		order = append(order, "create")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"u-new"}`))
+	})
+	mux.HandleFunc("POST /v3/globalrolebindings", func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "grb")
+		var grb struct {
+			GlobalRoleID string `json:"globalRoleId"`
+			UserID       string `json:"userId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&grb)
+		assert.Equal(t, "user", grb.GlobalRoleID, "the baseline user role is bound")
+		assert.Equal(t, "u-new", grb.UserID, "the binding targets the just-created user")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{}`))
 	})
 	mux.HandleFunc("POST /v1-public/login", func(w http.ResponseWriter, r *http.Request) {
@@ -113,11 +126,11 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	bearer, err := tgt.Bearer(context.Background(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/std-1:sec-1", bearer)
-	assert.Equal(t, []string{"lookup", "delete", "create", "login"}, order,
-		"the stale user is removed before the create, then the new user logs in")
+	assert.Equal(t, []string{"lookup", "delete", "create", "grb", "login"}, order,
+		"the stale user is removed, the new user is created and bound to the baseline role, then logs in")
 
 	again, err := tgt.Bearer(context.Background(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the standard bearer is memoized")
-	assert.Len(t, order, 4, "memoization must not re-provision")
+	assert.Len(t, order, 5, "memoization must not re-provision")
 }

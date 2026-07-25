@@ -85,7 +85,12 @@ const (
 )
 
 // standardBearer provisions the e2e-fid-standard local user (idempotently:
-// delete-before-create keeps kept-container reruns clean) and logs in as it.
+// delete-before-create keeps kept-container reruns clean), binds the
+// baseline `user` global role — a bare /v3/users create attaches no global
+// role bindings, and a role-less user is not the spec's "standard identity"
+// (it gets schema-hidden 404s instead of real RBAC 403s) — and logs in as
+// it. Cleanup relies on Rancher cascading a deleted user's global role
+// bindings.
 func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -102,8 +107,21 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 		"username":           standardUsername,
 		"password":           standardPassword,
 	}
-	if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated); err != nil {
+	created, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated)
+	if err != nil {
 		return "", fmt.Errorf("creating standard user: %w", err)
+	}
+	userID, _ := created["id"].(string)
+	if userID == "" {
+		return "", fmt.Errorf("creating standard user: create response has no id")
+	}
+	grb := map[string]any{
+		"type":         "globalRoleBinding",
+		"globalRoleId": "user",
+		"userId":       userID,
+	}
+	if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/globalrolebindings", grb, http.StatusCreated); err != nil {
+		return "", fmt.Errorf("binding baseline user role to standard user: %w", err)
 	}
 	bearer, err := t.login(ctx, standardUsername, standardPassword)
 	if err != nil {
