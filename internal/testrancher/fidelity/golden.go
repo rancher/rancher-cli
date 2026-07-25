@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 )
 
 // ObservationResult is one observation's normalized recorded response.
@@ -33,14 +32,12 @@ func GoldenPath(dir, probeName string) string {
 
 // LoadGolden reads one golden. A missing file satisfies
 // errors.Is(err, os.ErrNotExist) so callers can distinguish not-yet-recorded
-// from corrupt.
+// from corrupt. The path is built by trusted callers from a fixed testdata
+// root and a probe name — the suites legitimately address it via a "../.."
+// relative path — never from external input, so it is read directly. The
+// gosec G304 answer here is provenance, not a ".." reject that would break
+// those relative paths.
 func LoadGolden(path string) (Golden, error) {
-	// Goldens live under a fixed testdata root addressed by probe name, so a
-	// cleaned path with a ".." element is a bug, never a valid golden — reject
-	// it rather than read through a traversal.
-	if strings.Contains(filepath.Clean(path), "..") {
-		return Golden{}, fmt.Errorf("loading golden: refusing path with traversal: %q", path)
-	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Golden{}, fmt.Errorf("loading golden: %w", err)
