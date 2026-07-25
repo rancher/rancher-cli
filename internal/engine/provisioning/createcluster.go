@@ -47,16 +47,23 @@ func machineConfigKinds() map[string]bool {
 	return out
 }
 
-// machineConfigKindsHint renders machineConfigKinds sorted, for a
-// VALIDATION hint.
-func machineConfigKindsHint() string {
+// machineConfigKindNames renders machineConfigKinds sorted — the single
+// source for create cluster's VALIDATION hint, create machine-config's
+// <kind> Enum (MC-2), and both schema descs.
+func machineConfigKindNames() []string {
 	set := machineConfigKinds()
 	keys := make([]string, 0, len(set))
 	for k := range set {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	return strings.Join(keys, ", ")
+	return keys
+}
+
+// machineConfigKindsHint renders machineConfigKinds sorted, for a
+// VALIDATION hint.
+func machineConfigKindsHint() string {
+	return strings.Join(machineConfigKindNames(), ", ")
 }
 
 // clusterMode is the three mutually-exclusive shapes build recognizes.
