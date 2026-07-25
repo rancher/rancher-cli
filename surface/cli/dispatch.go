@@ -195,7 +195,7 @@ func dispatchSite(
 	c *ucli.Command,
 	tail []string,
 ) []string {
-	// Layer 1: enum static (AC-13).
+	// Layer 1: enum static (AC-13), for flag values AND positionals (MC-14).
 	if site.Kind == SiteFlagValue {
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
@@ -205,6 +205,14 @@ func dispatchSite(
 		// data — served statically like an enum, before (and regardless of)
 		// the network gate. The live layer owns the `<kind>/partial` form.
 		if cands := machineConfigPrefixCandidates(site, d); len(cands) > 0 {
+			return cands
+		}
+	}
+	if site.Kind == SitePositional {
+		// Ownership, not first-match: an enum-carrying positional is fully
+		// static, so even an empty (unmatched-partial) result terminates
+		// the dispatch here.
+		if cands, owned := positionalEnumCandidates(site, d); owned {
 			return cands
 		}
 	}
@@ -234,6 +242,34 @@ func enumCandidates(site CompletionSite, d runtime.Descriptor) []string {
 		}
 	}
 	return nil
+}
+
+// positionalEnumCandidates returns static enum candidates for a positional
+// site — Descriptor.Args[site.Index].Enum filtered by the typed partial
+// (MC-14) — plus an OWNERSHIP flag: owned is true whenever the indexed arg
+// carries an Enum, in which case the caller must terminate the dispatch
+// with these candidates even when the filter matched nothing (an unmatched
+// partial must not fall through to the delegation/live layers and
+// resurface an unfiltered list). Index-aware by construction, so an
+// enum-less positional (a <name> site, MC-15) or an index past the
+// declared args is not owned. Compiled-in literals, same charset doctrine
+// as resolveStaticEnum: the shell-safe sanitize gate does not apply.
+func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]string, bool) {
+	if site.Index < 0 || site.Index >= len(d.Args) {
+		return nil, false
+	}
+	enum := d.Args[site.Index].Enum
+	if len(enum) == 0 {
+		return nil, false
+	}
+	var out []string
+	for _, v := range enum {
+		if strings.HasPrefix(v, site.Partial) {
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out, true
 }
 
 // liveCandidates issues at most two HTTP requests to fetch resource names
