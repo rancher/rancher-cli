@@ -28,9 +28,11 @@ type args struct {
 	a []string
 }
 
-func (x args) String(k string) string { return x.s[k] }
-func (x args) Bool(k string) bool     { return x.b[k] }
-func (x args) Args() []string         { return x.a }
+func (x args) String(k string) string  { return x.s[k] }
+func (x args) Bool(k string) bool      { return x.b[k] }
+func (x args) Strings(string) []string { return nil }
+func (x args) IsSet(string) bool       { return false }
+func (x args) Args() []string          { return x.a }
 
 type errReader struct{}
 

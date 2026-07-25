@@ -91,9 +91,11 @@ type in struct {
 	args []string
 }
 
-func (i in) String(string) string { return "" }
-func (i in) Bool(string) bool     { return false }
-func (i in) Args() []string       { return i.args }
+func (i in) String(string) string    { return "" }
+func (i in) Bool(string) bool        { return false }
+func (i in) Strings(string) []string { return nil }
+func (i in) IsSet(string) bool       { return false }
+func (i in) Args() []string          { return i.args }
 
 var _ runtime.Input = in{}
 

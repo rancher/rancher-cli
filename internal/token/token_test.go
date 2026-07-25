@@ -33,9 +33,11 @@ type tin struct {
 	a []string
 }
 
-func (t tin) String(k string) string { return t.s[k] }
-func (t tin) Bool(k string) bool     { return t.b[k] }
-func (t tin) Args() []string         { return t.a }
+func (t tin) String(k string) string  { return t.s[k] }
+func (t tin) Bool(k string) bool      { return t.b[k] }
+func (t tin) Strings(string) []string { return nil }
+func (t tin) IsSet(string) bool       { return false }
+func (t tin) Args() []string          { return t.a }
 
 func TestExecCredentialJSONShape(t *testing.T) {
 	cred := newExecCredential("kubeconfig-u-abc:xyz", time.Time{})

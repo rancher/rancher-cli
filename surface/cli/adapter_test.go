@@ -162,3 +162,67 @@ func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 	assert.True(t, got.ReadOnly)
 	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
 }
+
+// sliceEchoCmd captures what the adapted input delivered.
+type sliceEchoCmd struct {
+	got        []string
+	setPresent bool
+	boolOn     bool
+	boolSet    bool
+}
+
+func (c *sliceEchoCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:        "slice-echo",
+		CommandType: runtime.ReadOnly,
+		Flags: []runtime.ArgSpec{
+			{Name: "set", Type: "stringSlice"},
+			{Name: "monitoring", Type: "bool"},
+		},
+	}
+}
+
+func (c *sliceEchoCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	c.got = in.Strings("set")
+	c.setPresent = in.IsSet("set")
+	c.boolOn = in.Bool("monitoring")
+	c.boolSet = in.IsSet("monitoring")
+	return runtime.Result{Kind: "Echo", Data: map[string]any{}}, nil
+}
+
+// TestAdaptedStringSliceFlagRoundTrip pins MC-6a/MC-5a through the real
+// urfave adapter: a stringSlice descriptor becomes a StringSliceFlag whose
+// occurrences arrive ordered and NEVER comma-split, and IsSet reports flag
+// presence for tri-state booleans.
+func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	t.Run("occurrences ordered, commas preserved, presence reported", func(t *testing.T) {
+		t.Parallel()
+		echo := &sliceEchoCmd{}
+		cmd := Adapt(runtime.NewRegistry(provider.NewResolver()), echo)
+		cmd.Writer = &bytes.Buffer{}
+		cmd.ErrWriter = &bytes.Buffer{}
+		err := cmd.Run(context.Background(), []string{"slice-echo",
+			"--set", "tags=a,b", "--set", "region=nyc3", "--monitoring=false"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"tags=a,b", "region=nyc3"}, echo.got,
+			"one ordered entry per occurrence; no comma splitting")
+		assert.True(t, echo.setPresent)
+		assert.False(t, echo.boolOn)
+		assert.True(t, echo.boolSet, "--monitoring=false is present-and-false, not absent")
+	})
+
+	t.Run("omitted flags report absent", func(t *testing.T) {
+		t.Parallel()
+		echo := &sliceEchoCmd{}
+		cmd := Adapt(runtime.NewRegistry(provider.NewResolver()), echo)
+		cmd.Writer = &bytes.Buffer{}
+		cmd.ErrWriter = &bytes.Buffer{}
+		err := cmd.Run(context.Background(), []string{"slice-echo"})
+		require.NoError(t, err)
+		assert.Empty(t, echo.got)
+		assert.False(t, echo.setPresent)
+		assert.False(t, echo.boolSet)
+	})
+}

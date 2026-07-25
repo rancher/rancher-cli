@@ -26,7 +26,9 @@ func (t tin) String(name string) string { return t.strs[name] }
 func (t tin) Bool(name string) bool {
 	return t.flags[name]
 }
-func (t tin) Args() []string { return t.a }
+func (t tin) Strings(string) []string { return nil }
+func (t tin) IsSet(string) bool       { return false }
+func (t tin) Args() []string          { return t.a }
 
 // viewManifest unwraps the SE-19 schema view a schema Result carries as Data,
 // returning the wrapped (possibly filtered) manifest.

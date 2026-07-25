@@ -40,7 +40,9 @@ func (i crtInput) Bool(name string) bool {
 	}
 	return false
 }
-func (i crtInput) Args() []string { return i.args }
+func (i crtInput) Strings(string) []string { return nil }
+func (i crtInput) IsSet(string) bool       { return false }
+func (i crtInput) Args() []string          { return i.args }
 
 var _ runtime.Input = crtInput{}
 

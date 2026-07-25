@@ -213,6 +213,34 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		}
 	}
 	for _, f := range d.Flags {
+		if f.Type == "stringSlice" {
+			entries := in.Strings(f.Name)
+			if f.Required && len(entries) == 0 {
+				return clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("--%s is required", f.Name)).
+					WithHint(fmt.Sprintf("pass --%s <value>", f.Name))
+			}
+			if len(f.Enum) > 0 {
+				for _, v := range entries {
+					if v == "" {
+						continue
+					}
+					ok := false
+					for _, e := range f.Enum {
+						if v == e {
+							ok = true
+							break
+						}
+					}
+					if !ok {
+						return clierr.New(clierr.CodeValidation,
+							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|"))).
+							WithHint(fmt.Sprintf("allowed: %s", strings.Join(f.Enum, ", ")))
+					}
+				}
+			}
+			continue
+		}
 		v := in.String(f.Name)
 		if f.Required && v == "" {
 			return clierr.New(clierr.CodeValidation,

@@ -259,3 +259,33 @@ func TestSanitizedArgsStripsEmptyCurField(t *testing.T) {
 	got := SanitizedArgs(in)
 	assert.Equal(t, []string{"rancher", "usage", "--generate-shell-completion"}, got)
 }
+
+// TestParseArgTailRepeatableFlagArity pins MC-6a's completion arity: a
+// stringSlice flag takes a value on EVERY occurrence — a second --set after
+// a completed first one is a flag-value site, and a completed pair counts
+// no positional.
+func TestParseArgTailRepeatableFlagArity(t *testing.T) {
+	t.Parallel()
+	leaf := runtime.Descriptor{
+		Name: "create machine-config",
+		Flags: []runtime.ArgSpec{
+			{Name: "set", Type: "stringSlice"},
+		},
+	}
+
+	t.Run("second occurrence is a value site", func(t *testing.T) {
+		t.Parallel()
+		site := ParseArgTail([]string{"digitaloceanconfig", "cfg", "--set", "region=nyc3", "--set"},
+			"", true, leaf, globalArgSpecs)
+		assert.Equal(t, SiteFlagValue, site.Kind)
+		assert.Equal(t, "set", site.FlagName)
+	})
+
+	t.Run("completed occurrences do not shift positional index", func(t *testing.T) {
+		t.Parallel()
+		site := ParseArgTail([]string{"digitaloceanconfig", "--set", "region=nyc3"},
+			"", true, leaf, globalArgSpecs)
+		assert.Equal(t, SitePositional, site.Kind)
+		assert.Equal(t, 1, site.Index)
+	})
+}

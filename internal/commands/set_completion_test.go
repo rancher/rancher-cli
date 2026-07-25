@@ -23,6 +23,8 @@ type setCompletionInput struct {
 
 func (f setCompletionInput) String(name string) string { return f.flags[name] }
 func (f setCompletionInput) Bool(string) bool          { return false }
+func (f setCompletionInput) Strings(string) []string   { return nil }
+func (f setCompletionInput) IsSet(string) bool         { return false }
 func (f setCompletionInput) Args() []string            { return f.args }
 
 func TestSetCompletionNetwork(t *testing.T) {

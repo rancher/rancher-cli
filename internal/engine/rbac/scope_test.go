@@ -17,6 +17,8 @@ type stubInput struct {
 
 func (s stubInput) String(name string) string { return s.strings[name] }
 func (s stubInput) Bool(name string) bool     { return s.bools[name] }
+func (s stubInput) Strings(string) []string   { return nil }
+func (s stubInput) IsSet(string) bool         { return false }
 func (s stubInput) Args() []string            { return s.args }
 
 func TestResolveScopeGlobal(t *testing.T) {

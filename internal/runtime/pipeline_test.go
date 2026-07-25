@@ -15,14 +15,18 @@ import (
 )
 
 type mapInput struct {
-	s map[string]string
-	b map[string]bool
-	a []string
+	s  map[string]string
+	b  map[string]bool
+	a  []string
+	sl map[string][]string
+	is map[string]bool
 }
 
-func (m mapInput) String(k string) string { return m.s[k] }
-func (m mapInput) Bool(k string) bool     { return m.b[k] }
-func (m mapInput) Args() []string         { return m.a }
+func (m mapInput) String(k string) string    { return m.s[k] }
+func (m mapInput) Bool(k string) bool        { return m.b[k] }
+func (m mapInput) Strings(k string) []string { return m.sl[k] }
+func (m mapInput) IsSet(k string) bool       { return m.is[k] }
+func (m mapInput) Args() []string            { return m.a }
 
 type fakeRead struct {
 	d   Descriptor
@@ -943,4 +947,38 @@ func TestRenderErrAlwaysJSON(t *testing.T) {
 			assert.Equal(t, "look elsewhere", env.Data.Error.Hint)
 		})
 	}
+}
+
+// TestValidateInputStringSlicePerEntry pins MC-6a's validateInput
+// semantics: Required means at least one occurrence; Enum membership is
+// checked on every entry.
+func TestValidateInputStringSlicePerEntry(t *testing.T) {
+	t.Parallel()
+	d := Descriptor{
+		Name: "x",
+		Flags: []ArgSpec{
+			{Name: "mode", Type: "stringSlice", Required: true, Enum: []string{"a", "b"}},
+		},
+	}
+
+	t.Run("required with zero occurrences fails", func(t *testing.T) {
+		t.Parallel()
+		ce := validateInput(d, mapInput{})
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "--mode is required")
+	})
+
+	t.Run("enum checked per entry", func(t *testing.T) {
+		t.Parallel()
+		ce := validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "c"}}})
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, `"c"`)
+	})
+
+	t.Run("all entries valid passes", func(t *testing.T) {
+		t.Parallel()
+		assert.Nil(t, validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "b"}}}))
+	})
 }

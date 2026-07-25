@@ -127,3 +127,34 @@ func TestValidatePassesWellFormedRegistry(t *testing.T) {
 	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
 	require.NoError(t, reg.Validate())
 }
+
+type ssResolver struct{}
+
+func (ssResolver) Resolve(string) (safety.Binding, bool) { return safety.Binding{}, false }
+func (ssResolver) All() map[string]safety.Binding        { return nil }
+
+type ssCmd struct{}
+
+func (ssCmd) Describe() Descriptor {
+	return Descriptor{
+		Name:        "ss-cmd",
+		CommandType: ReadOnly,
+		Flags:       []ArgSpec{{Name: "set", Type: "stringSlice"}},
+	}
+}
+
+func (ssCmd) Execute(context.Context, Input, Prompter) (Result, error) {
+	return Result{}, nil
+}
+
+// TestSchemaPublishesStringSliceFlagType pins MC-6a's manifest contract:
+// the stringSlice flag type is published verbatim in the schema manifest.
+func TestSchemaPublishesStringSliceFlagType(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(ssResolver{})
+	reg.Register(ssCmd{})
+	m := reg.Schema("v0-test", "2.14")
+	require.Len(t, m.Commands, 1)
+	require.Len(t, m.Commands[0].Flags, 1)
+	assert.Equal(t, "stringSlice", m.Commands[0].Flags[0].Type)
+}

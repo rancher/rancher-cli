@@ -64,9 +64,11 @@ type in struct {
 	a []string
 }
 
-func (i in) String(k string) string { return i.s[k] }
-func (i in) Bool(string) bool       { return false }
-func (i in) Args() []string         { return i.a }
+func (i in) String(k string) string  { return i.s[k] }
+func (i in) Bool(string) bool        { return false }
+func (i in) Strings(string) []string { return nil }
+func (i in) IsSet(string) bool       { return false }
+func (i in) Args() []string          { return i.a }
 
 func planProject(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	t.Helper()
@@ -322,9 +324,11 @@ type memberIn struct {
 	a []string
 }
 
-func (i memberIn) String(k string) string { return i.s[k] }
-func (i memberIn) Bool(k string) bool     { return i.b[k] }
-func (i memberIn) Args() []string         { return i.a }
+func (i memberIn) String(k string) string  { return i.s[k] }
+func (i memberIn) Bool(k string) bool      { return i.b[k] }
+func (i memberIn) Strings(string) []string { return nil }
+func (i memberIn) IsSet(string) bool       { return false }
+func (i memberIn) Args() []string          { return i.a }
 
 func planMember(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	t.Helper()

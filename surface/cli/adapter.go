@@ -39,9 +39,11 @@ func GlobalFlags() []ucli.Flag {
 // cmdInput adapts a *cli.Command to runtime.Input.
 type cmdInput struct{ c *ucli.Command }
 
-func (i cmdInput) String(name string) string { return i.c.String(name) }
-func (i cmdInput) Bool(name string) bool     { return i.c.Bool(name) }
-func (i cmdInput) Args() []string            { return i.c.Args().Slice() }
+func (i cmdInput) String(name string) string    { return i.c.String(name) }
+func (i cmdInput) Bool(name string) bool        { return i.c.Bool(name) }
+func (i cmdInput) Strings(name string) []string { return i.c.StringSlice(name) }
+func (i cmdInput) IsSet(name string) bool       { return i.c.IsSet(name) }
+func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
 
 // leafName returns the last space-separated token of a command name
 // ("auth check" -> "check") for use as the urfave leaf/subcommand name.
@@ -72,9 +74,12 @@ func groupName(fullName string) string {
 func flagsFor(d runtime.Descriptor) []ucli.Flag {
 	var out []ucli.Flag
 	for _, f := range d.Flags {
-		if f.Type == "bool" {
+		switch f.Type {
+		case "bool":
 			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
-		} else {
+		case "stringSlice":
+			out = append(out, &ucli.StringSliceFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
+		default:
 			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
 		}
 	}
@@ -164,12 +169,17 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
 	cmd := &ucli.Command{
-		Name:         leafName(d.Name),
-		Aliases:      d.Aliases,
-		Usage:        d.Usage,
-		ArgsUsage:    argsUsage(d.Args),
-		Flags:        flagsFor(d),
-		OnUsageError: onUsageError,
+		Name:      leafName(d.Name),
+		Aliases:   d.Aliases,
+		Usage:     d.Usage,
+		ArgsUsage: argsUsage(d.Args),
+		Flags:     flagsFor(d),
+		// Slice flags receive one entry per occurrence: urfave's default
+		// comma-splitting would tear a value like `--set tags=a,b` into two
+		// entries (MC-6a). Only slice/map flags read this; single-value
+		// flags are untouched.
+		DisableSliceFlagSeparator: true,
+		OnUsageError:              onUsageError,
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b); ce != nil {
 				return exit(ce)

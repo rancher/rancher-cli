@@ -368,8 +368,10 @@ func boolPtr(b bool) *bool { return &b }
 // args/flags at all.
 type noArgsInput struct{}
 
-func (noArgsInput) String(string) string { return "" }
-func (noArgsInput) Bool(string) bool     { return false }
-func (noArgsInput) Args() []string       { return nil }
+func (noArgsInput) String(string) string    { return "" }
+func (noArgsInput) Bool(string) bool        { return false }
+func (noArgsInput) Strings(string) []string { return nil }
+func (noArgsInput) IsSet(string) bool       { return false }
+func (noArgsInput) Args() []string          { return nil }
 
 var _ runtime.Input = noArgsInput{}

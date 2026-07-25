@@ -90,9 +90,11 @@ type input struct {
 	b    map[string]bool
 }
 
-func (i input) String(k string) string { return i.s[k] }
-func (i input) Bool(k string) bool     { return i.b[k] }
-func (i input) Args() []string         { return i.args }
+func (i input) String(k string) string  { return i.s[k] }
+func (i input) Bool(k string) bool      { return i.b[k] }
+func (i input) Strings(string) []string { return nil }
+func (i input) IsSet(string) bool       { return false }
+func (i input) Args() []string          { return i.args }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{

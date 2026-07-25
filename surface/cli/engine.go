@@ -304,12 +304,17 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 	d := probe.Describe()
 	b := reg.Binding(d.Name)
 	cmd := &ucli.Command{
-		Name:         leafName(d.Name),
-		Aliases:      d.Aliases,
-		Usage:        d.Usage,
-		ArgsUsage:    argsUsage(d.Args),
-		Flags:        flagsFor(d),
-		OnUsageError: onUsageError,
+		Name:      leafName(d.Name),
+		Aliases:   d.Aliases,
+		Usage:     d.Usage,
+		ArgsUsage: argsUsage(d.Args),
+		Flags:     flagsFor(d),
+		// Slice flags receive one entry per occurrence: urfave's default
+		// comma-splitting would tear a value like `--set tags=a,b` into two
+		// entries (MC-6a). Only slice/map flags read this; single-value
+		// flags are untouched.
+		DisableSliceFlagSeparator: true,
+		OnUsageError:              onUsageError,
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			dir, store, err := resolveDeps(c)
 			if err != nil {

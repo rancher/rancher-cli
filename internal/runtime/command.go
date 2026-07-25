@@ -56,6 +56,13 @@ type Descriptor struct {
 type Input interface {
 	String(name string) string
 	Bool(name string) bool
+	// Strings returns every occurrence of a stringSlice flag, ordered, one
+	// entry per occurrence — never comma-split (MC-6a).
+	Strings(name string) []string
+	// IsSet reports whether the named flag was explicitly provided on the
+	// command line — the tri-state seam for boolean flags (MC-5a: an
+	// omitted bool is distinguishable from an explicit false).
+	IsSet(name string) bool
 	Args() []string
 }
 
