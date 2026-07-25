@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeScrubsAndDeletes(t *testing.T) {
@@ -60,4 +61,23 @@ func TestNormalizeMissingPathIsNoOp(t *testing.T) {
 	body := map[string]any{"kind": "Secret"}
 	Normalize(body, DefaultNormalizeRules())
 	assert.Equal(t, map[string]any{"kind": "Secret"}, body)
+}
+
+func TestNormalizeTerminalWildcardScrubsEveryKey(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{
+		"metadata": map[string]any{
+			"labels": map[string]any{
+				"cattle.io/user-id":               "u-abc",
+				"authn.management.cattle.io/kind": "",
+				"other":                           "keep-shape-only",
+			},
+		},
+	}
+	Normalize(body, []NormalizeRule{{Path: "metadata.labels.*", Replace: "<label>"}})
+	labels := body["metadata"].(map[string]any)["labels"].(map[string]any)
+	require.Len(t, labels, 3, "the wildcard replaces values, never keys")
+	for k, v := range labels {
+		assert.Equal(t, "<label>", v, "every label value is scrubbed, including the dotted key %q", k)
+	}
 }

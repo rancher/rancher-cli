@@ -119,13 +119,6 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 	defer cancel()
 
 	resp, err := attempt(octx, tgt, o, captured)
-	if err != nil && isConnReset(err) {
-		// One retry, transport-level resets only: a fresh request is built
-		// from the spec, and a status-code mismatch is signal, never
-		// retried. Bodyless and replayable-body requests alike get the
-		// retry because attempt rebuilds from the RequestSpec.
-		resp, err = attempt(octx, tgt, o, captured)
-	}
 	if err != nil {
 		return ObservationResult{}, nil, err
 	}
@@ -147,44 +140,84 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 	return res, decoded, nil
 }
 
-// attempt builds one fresh request from the spec and sends it.
+// attempt builds the observation's request from the spec and sends it through
+// doResilient, which supplies the connection-reset retry.
 func attempt(ctx context.Context, tgt Target, o Observation, captured map[string]string) (*http.Response, error) {
-	u := tgt.BaseURL() + substitute(o.Request.Path, captured)
-	if len(o.Request.Query) > 0 {
-		q := url.Values{}
-		for k, vs := range o.Request.Query {
-			for _, v := range vs {
-				q.Add(k, substitute(v, captured))
+	build := func() (*http.Request, error) {
+		u := tgt.BaseURL() + substitute(o.Request.Path, captured)
+		if len(o.Request.Query) > 0 {
+			q := url.Values{}
+			for k, vs := range o.Request.Query {
+				for _, v := range vs {
+					q.Add(k, substitute(v, captured))
+				}
 			}
+			u += "?" + q.Encode()
 		}
-		u += "?" + q.Encode()
+		var body io.Reader
+		if o.Request.Body != "" {
+			body = strings.NewReader(substitute(o.Request.Body, captured))
+		}
+		req, err := http.NewRequestWithContext(ctx, o.Request.Method, u, body)
+		if err != nil {
+			return nil, fmt.Errorf("building request: %w", err)
+		}
+		for k, v := range o.Request.Headers {
+			req.Header.Set(k, substitute(v, captured))
+		}
+		if o.Request.Body != "" && req.Header.Get("Content-Type") == "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		switch o.Request.Identity {
+		case IdentityNone:
+		case IdentityGarbage:
+			req.Header.Set("Authorization", "Bearer "+garbageBearer)
+		default:
+			tok, berr := tgt.Bearer(ctx, o.Request.Identity)
+			if berr != nil {
+				return nil, fmt.Errorf("resolving %s bearer: %w", o.Request.Identity, berr)
+			}
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		return req, nil
 	}
-	var body io.Reader
-	if o.Request.Body != "" {
-		body = strings.NewReader(substitute(o.Request.Body, captured))
-	}
-	req, err := http.NewRequestWithContext(ctx, o.Request.Method, u, body)
+	return doResilient(tgt.Client(), build)
+}
+
+// doResilient sends the request build produces and, on a transport-level
+// connection reset (errors.Is(err, syscall.ECONNRESET)), retries exactly once
+// — but only for idempotent methods (GET/PUT/DELETE/HEAD). A POST is never
+// retried: a reset that lands after the server has committed the mutation but
+// before its response reaches the client would, on retry, create a second
+// resource and orphan the first. build is invoked afresh per attempt so each
+// send gets an unconsumed body reader. It is the single send path shared by
+// the executor, the fixture steps, and the real-target client.
+func doResilient(client *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
+	req, err := build()
 	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
+		return nil, err
 	}
-	for k, v := range o.Request.Headers {
-		req.Header.Set(k, substitute(v, captured))
+	method := req.Method
+	resp, err := client.Do(req)
+	if err == nil || !isConnReset(err) || !isIdempotent(method) {
+		return resp, err
 	}
-	if o.Request.Body != "" && req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
+	retry, err := build()
+	if err != nil {
+		return nil, err
 	}
-	switch o.Request.Identity {
-	case IdentityNone:
-	case IdentityGarbage:
-		req.Header.Set("Authorization", "Bearer "+garbageBearer)
+	return client.Do(retry)
+}
+
+// isIdempotent reports whether an HTTP method is safe to replay after a
+// connection reset. POST is deliberately excluded.
+func isIdempotent(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodHead:
+		return true
 	default:
-		tok, berr := tgt.Bearer(ctx, o.Request.Identity)
-		if berr != nil {
-			return nil, fmt.Errorf("resolving %s bearer: %w", o.Request.Identity, berr)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
+		return false
 	}
-	return tgt.Client().Do(req)
 }
 
 // isConnReset classifies a transport error as a TCP connection reset via

@@ -1,7 +1,10 @@
 package fidelity
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +63,124 @@ func TestOracleOnlyProbesHaveNoFacadeGolden(t *testing.T) {
 		assert.True(t, os.IsNotExist(err),
 			"oracle-only probe %s must not have a façade golden at %s", p.Name, path)
 	}
+}
+
+func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
+	t.Parallel()
+	for _, p := range All() {
+		oraclePath := GoldenPath(filepath.Join("testdata", "oracle"), p.Name)
+		_, err := os.Stat(oraclePath)
+		assert.NoError(t, err, "probe %s must have an oracle golden at %s", p.Name, oraclePath)
+		if p.FacadeDivergence == "" {
+			continue
+		}
+		facadePath := GoldenPath(filepath.Join("testdata", "facade"), p.Name)
+		_, err = os.Stat(facadePath)
+		assert.NoError(t, err,
+			"divergence-pinned probe %s must have a façade golden at %s", p.Name, facadePath)
+	}
+}
+
+func TestAdminDoSendsBearerAndReturnsStatus(t *testing.T) {
+	t.Parallel()
+	var gotAuth, gotMethod, gotBody, gotCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotMethod, gotCT = r.Header.Get("Authorization"), r.Method, r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "admin-tok"}}
+
+	status, err := adminDo(context.Background(), tgt, http.MethodPost, "/x", `{"a":1}`)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, status)
+	assert.Equal(t, "Bearer admin-tok", gotAuth)
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, `{"a":1}`, gotBody)
+	assert.Equal(t, "application/json", gotCT, "a non-empty body sets the JSON content type")
+}
+
+func TestAdminDoSurfacesTransportError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+	srv.Close() // requests now fail at the transport
+
+	_, err := adminDo(context.Background(), tgt, http.MethodGet, "/x", "")
+	require.Error(t, err, "a transport failure is surfaced, never swallowed")
+}
+
+func TestDeleteFixtureStatusHandling(t *testing.T) {
+	t.Parallel()
+	var code int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		w.WriteHeader(code)
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+	ctx := context.Background()
+
+	code = http.StatusOK
+	require.NoError(t, deleteFixture("f", "/x/y").Do(ctx, tgt, map[string]string{}), "a 2xx delete is clean")
+	code = http.StatusNotFound
+	require.NoError(t, deleteFixture("f", "/x/y").Do(ctx, tgt, map[string]string{}), "an absent fixture (404) is clean")
+	code = http.StatusForbidden
+	require.Error(t, deleteFixture("f", "/x/y").Do(ctx, tgt, map[string]string{}), "a rejected delete is an error")
+}
+
+func TestDeleteFixtureUnresolvedTemplateNeverHitsServer(t *testing.T) {
+	t.Parallel()
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit = true }))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	err := deleteFixture("f", "/x/{tokname}").Do(context.Background(), tgt, map[string]string{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unresolved")
+	assert.False(t, hit, "an unresolved capture must never delete against a synthetic URL")
+}
+
+func TestCreateSecretFixtureDeletesBeforeCreate(t *testing.T) {
+	t.Parallel()
+	var order []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE "+localSecretsPath+"/e2e-fid-x", func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "delete")
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("POST "+localSecretsPath, func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "create")
+		w.WriteHeader(http.StatusCreated)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	require.NoError(t, createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(context.Background(), tgt, map[string]string{}))
+	assert.Equal(t, []string{"delete", "create"}, order,
+		"an interrupted prior run's leftover is removed before the create")
+}
+
+func TestCreateSecretFixtureNon201Errors(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE "+localSecretsPath+"/e2e-fid-x", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("POST "+localSecretsPath, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	err := createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(context.Background(), tgt, map[string]string{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status 500", "a non-201 create is surfaced with its status")
 }
 
 func TestTokenProbesUseTheProductionPathConstant(t *testing.T) {

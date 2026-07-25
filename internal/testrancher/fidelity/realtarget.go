@@ -229,25 +229,32 @@ func (t *RealTarget) plainJSON(ctx context.Context, method, path string, payload
 }
 
 func (t *RealTarget) doJSON(ctx context.Context, method, path string, payload map[string]any, bearer string, wantStatus int) (map[string]any, int, error) {
-	var body io.Reader
+	var marshaled []byte
 	if payload != nil {
-		raw, err := json.Marshal(payload)
+		var err error
+		marshaled, err = json.Marshal(payload)
 		if err != nil {
 			return nil, 0, fmt.Errorf("encoding %s %s: %w", method, path, err)
 		}
-		body = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, t.baseURL+path, body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("building %s %s: %w", method, path, err)
+	build := func() (*http.Request, error) {
+		var body io.Reader
+		if payload != nil {
+			body = bytes.NewReader(marshaled)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, t.baseURL+path, body)
+		if err != nil {
+			return nil, fmt.Errorf("building %s %s: %w", method, path, err)
+		}
+		if payload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		return req, nil
 	}
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
-	resp, err := t.client.Do(req)
+	resp, err := doResilient(t.client, build)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%s %s: %w", method, path, err)
 	}

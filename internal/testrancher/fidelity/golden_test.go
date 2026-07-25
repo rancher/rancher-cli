@@ -57,3 +57,35 @@ func TestDiffReportsFieldLevelMismatches(t *testing.T) {
 	require.Len(t, diffs, 1)
 	assert.Contains(t, diffs[0], "observation count")
 }
+
+func TestDiffReportsBodyNameAndContentTypeMismatches(t *testing.T) {
+	t.Parallel()
+	base := Golden{Observations: []ObservationResult{
+		{Name: "get", Status: 200, ContentType: "application/json", Body: map[string]any{"k": "v1"}},
+	}}
+
+	body := Golden{Observations: []ObservationResult{
+		{Name: "get", Status: 200, ContentType: "application/json", Body: map[string]any{"k": "v2"}},
+	}}
+	diffs := Diff(base, body)
+	require.Len(t, diffs, 1)
+	assert.Contains(t, diffs[0], "get body", "the body diff names the observation")
+	assert.Contains(t, diffs[0], `"v1"`, "the want body is shown")
+	assert.Contains(t, diffs[0], `"v2"`, "the got body is shown")
+
+	name := Golden{Observations: []ObservationResult{
+		{Name: "other", Status: 200, ContentType: "application/json", Body: map[string]any{"k": "v1"}},
+	}}
+	diffs = Diff(base, name)
+	require.Len(t, diffs, 1, "a name mismatch short-circuits the remaining field checks")
+	assert.Contains(t, diffs[0], "name")
+	assert.Contains(t, diffs[0], `"get"`)
+	assert.Contains(t, diffs[0], `"other"`)
+
+	ct := Golden{Observations: []ObservationResult{
+		{Name: "get", Status: 200, ContentType: "text/plain", Body: map[string]any{"k": "v1"}},
+	}}
+	diffs = Diff(base, ct)
+	require.Len(t, diffs, 1)
+	assert.Contains(t, diffs[0], "contentType")
+}

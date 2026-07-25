@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 func newTestRealTarget(srv *httptest.Server) *RealTarget {
@@ -133,4 +135,101 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the standard bearer is memoized")
 	assert.Len(t, order, 5, "memoization must not re-provision")
+}
+
+func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {
+	t.Parallel()
+	var deletedPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST "+token.MintTokensPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": map[string]any{"bearerToken": "ext/tok-rev:sec-rev"},
+		})
+	})
+	mux.HandleFunc("DELETE "+token.MintTokensPath+"/tok-rev", func(w http.ResponseWriter, r *http.Request) {
+		deletedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tgt := newTestRealTarget(srv)
+	bearer, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	require.NoError(t, err)
+	assert.Equal(t, "ext/tok-rev:sec-rev", bearer, "the revoked bearer is the minted (now-deleted) credential")
+	assert.Equal(t, token.MintTokensPath+"/tok-rev", deletedPath,
+		"the delete targets the name embedded in the ext bearer, not a metadata.name")
+
+	again, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	require.NoError(t, err)
+	assert.Equal(t, bearer, again, "the revoked bearer is memoized")
+}
+
+func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": map[string]any{"bearerToken": "plain-secret-xyz"},
+		})
+	}))
+	defer srv.Close()
+
+	tgt := newTestRealTarget(srv)
+	_, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not ext-shaped")
+	assert.NotContains(t, err.Error(), "plain-secret-xyz",
+		"a mint response bearer of the wrong shape is still a live secret; the error withholds it")
+}
+
+func TestLoginAcceptsNormanShape(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": "norman-tok"})
+	}))
+	defer srv.Close()
+
+	bearer, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+	require.NoError(t, err)
+	assert.Equal(t, "norman-tok", bearer, "the Norman {token} shape is accepted as a fallback")
+}
+
+func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-2xx", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "status 401")
+	})
+
+	t.Run("transport error", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		srv.Close()
+		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		require.Error(t, err)
+	})
+
+	t.Run("no token in response", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"foo": "bar"})
+		}))
+		defer srv.Close()
+		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no token in response")
+	})
 }

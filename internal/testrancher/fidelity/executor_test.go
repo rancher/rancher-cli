@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -268,6 +269,71 @@ func TestIsConnResetClassifiesWrappedErrno(t *testing.T) {
 	assert.True(t, isConnReset(fmt.Errorf("Get \"x\": %w", syscall.ECONNRESET)))
 	assert.False(t, isConnReset(fmt.Errorf("Get \"x\": %w", io.EOF)))
 	assert.False(t, isConnReset(nil))
+}
+
+// resetRoundTripper fails its first failFirst calls with a connection reset,
+// then succeeds, counting every call.
+type resetRoundTripper struct {
+	failFirst int
+	calls     int
+}
+
+func (rt *resetRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	rt.calls++
+	if rt.calls <= rt.failFirst {
+		return nil, syscall.ECONNRESET
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("ok")),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestDoResilientRetriesIdempotentButNeverPost(t *testing.T) {
+	t.Parallel()
+	build := func(method string) func() (*http.Request, error) {
+		return func() (*http.Request, error) {
+			return http.NewRequest(method, "https://example.test/x", strings.NewReader("body"))
+		}
+	}
+
+	t.Run("GET retries once and succeeds", func(t *testing.T) {
+		t.Parallel()
+		rt := &resetRoundTripper{failFirst: 1}
+		resp, err := doResilient(&http.Client{Transport: rt}, build(http.MethodGet))
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		assert.Equal(t, 2, rt.calls, "one reset then one successful retry")
+	})
+
+	t.Run("POST never retries", func(t *testing.T) {
+		t.Parallel()
+		rt := &resetRoundTripper{failFirst: 1}
+		_, err := doResilient(&http.Client{Transport: rt}, build(http.MethodPost))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, syscall.ECONNRESET)
+		assert.Equal(t, 1, rt.calls,
+			"a POST reset surfaces after exactly one attempt so a committed mutation is never double-fired")
+	})
+
+	t.Run("second reset on GET surfaces", func(t *testing.T) {
+		t.Parallel()
+		rt := &resetRoundTripper{failFirst: 2}
+		_, err := doResilient(&http.Client{Transport: rt}, build(http.MethodGet))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, syscall.ECONNRESET)
+		assert.Equal(t, 2, rt.calls, "the single retry is exhausted; the second reset is returned")
+	})
+}
+
+func TestIsIdempotent(t *testing.T) {
+	t.Parallel()
+	for _, m := range []string{http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodHead} {
+		assert.True(t, isIdempotent(m), m)
+	}
+	assert.False(t, isIdempotent(http.MethodPost))
+	assert.False(t, isIdempotent(http.MethodPatch))
 }
 
 func TestRunProbeTeardownRunsAfterSetupFailureWithCaptures(t *testing.T) {

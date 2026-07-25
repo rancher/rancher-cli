@@ -317,19 +317,22 @@ func adminDo(ctx context.Context, tgt Target, method, path, body string) (int, e
 	if err != nil {
 		return 0, fmt.Errorf("resolving admin bearer: %w", err)
 	}
-	var rdr io.Reader
-	if body != "" {
-		rdr = strings.NewReader(body)
+	build := func() (*http.Request, error) {
+		var rdr io.Reader
+		if body != "" {
+			rdr = strings.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, tgt.BaseURL()+path, rdr)
+		if err != nil {
+			return nil, err
+		}
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		return req, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, method, tgt.BaseURL()+path, rdr)
-	if err != nil {
-		return 0, err
-	}
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Authorization", "Bearer "+tok)
-	resp, err := tgt.Client().Do(req)
+	resp, err := doResilient(tgt.Client(), build)
 	if err != nil {
 		return 0, err
 	}
