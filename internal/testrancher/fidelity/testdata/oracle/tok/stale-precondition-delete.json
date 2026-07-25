@@ -12,8 +12,8 @@
           "creationTimestamp": "\u003cts\u003e",
           "generateName": "token-",
           "labels": {
-            "authn.management.cattle.io/kind": "",
-            "cattle.io/user-id": "user-n59lh"
+            "authn.management.cattle.io/kind": "\u003clabel\u003e",
+            "cattle.io/user-id": "\u003clabel\u003e"
           },
           "name": "\u003cname\u003e",
           "resourceVersion": "\u003crv\u003e",
@@ -23,12 +23,12 @@
           "enabled": true,
           "kind": "",
           "ttl": 7776000000,
-          "userID": "user-n59lh",
+          "userID": "\u003cuser-id\u003e",
           "userPrincipal": {
             "displayName": "Default Admin",
             "loginName": "admin",
             "me": true,
-            "name": "local://user-n59lh",
+            "name": "\u003cprincipal\u003e",
             "principalType": "user",
             "provider": "local"
           }
