@@ -207,6 +207,13 @@ func dispatchSite(
 		if cands := machineConfigPrefixCandidates(site, d); len(cands) > 0 {
 			return cands
 		}
+		// create machine-config's --set keys: compiled-in kind-table field
+		// metadata, kind-scoped from the typed tail. OWNERSHIP, not
+		// first-match: the site is fully static, so even an empty result
+		// terminates the dispatch here — no delegation, no live layer.
+		if cands, owned := machineConfigSetKeyCandidates(site, d, tail); owned {
+			return cands
+		}
 	}
 	if site.Kind == SitePositional {
 		// Ownership, not first-match: an enum-carrying positional is fully
@@ -694,6 +701,88 @@ func machineConfigNameCandidates(ctx context.Context, hc *http.Client, site Comp
 		out = append(out, tok)
 	}
 	return out
+}
+
+// machineConfigSetKeyCandidates serves kind-scoped `key=` continuation
+// tokens for create machine-config's --set flag (MC-16): the kind is read
+// from the typed tail's first positional, and the candidates are that
+// kind's Known driver fields MINUS the MC-8 credential set MINUS the
+// curated-flag fields — MC-7 rejects a curated key via --set
+// unconditionally and MC-8 rejects credential keys, so neither may ever
+// be suggested (suggestions valid verbatim). Uncurated kinds (empty
+// Known) get no candidates.
+//
+// OWNERSHIP: the returned bool is true for EVERY --set value site of
+// create machine-config — the site is fully static (no live source
+// exists), so the dispatcher must terminate with the result even when it
+// is empty: an unmatched partial, a missing/unknown kind, an uncurated
+// kind, or a value-in-progress (Partial carrying "=") all end the
+// dispatch with zero candidates and zero lower-layer activity.
+//
+// Compiled-in literals, not server data: like resolveStaticEnum the
+// shell-safe charset does not gate them (the trailing "=" must survive),
+// and no network gate applies. Curated-value completion is a ledgered
+// follow-up (MC-17).
+func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
+	if d.Name != "create machine-config" || site.FlagName != "set" {
+		return nil, false
+	}
+	if strings.Contains(site.Partial, "=") {
+		return nil, true
+	}
+	kindTok := firstPositionalToken(tail, d.Flags)
+	if kindTok == "" {
+		return nil, true
+	}
+	k, found := kinds.Lookup(kindTok)
+	if !found || k.GVR.Group != kinds.MachineConfigGroup {
+		return nil, true
+	}
+	meta, ok := kinds.MachineConfigFieldsFor(k.Name)
+	if !ok {
+		return nil, true
+	}
+	excluded := map[string]bool{}
+	for _, c := range meta.Credential {
+		excluded[c] = true
+	}
+	for _, c := range meta.Curated {
+		excluded[c] = true
+	}
+	var out []string
+	for _, key := range meta.Known {
+		if excluded[key] || !strings.HasPrefix(key, site.Partial) {
+			continue
+		}
+		tok := key + "="
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
+	sort.Strings(out)
+	return out, true
+}
+
+// firstPositionalToken returns the first non-flag token in the leaf tail,
+// consuming flag values by arity (leaf flags + globals), or "" when none.
+func firstPositionalToken(tail []string, leafFlags []runtime.ArgSpec) string {
+	all := append(append([]runtime.ArgSpec{}, leafFlags...), globalArgSpecs...)
+	for i := 0; i < len(tail); i++ {
+		arg := tail[i]
+		if strings.HasPrefix(arg, "-") {
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			canonical := resolveFlagCanonical(arg, all)
+			if flagTakesValue(canonical, all) {
+				i++
+			}
+			continue
+		}
+		return arg
+	}
+	return ""
 }
 
 // gvrPath returns the cluster-scoped K8s API path for a kind's GVR.
