@@ -83,8 +83,15 @@ func authProbes() []Probe {
 			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/secrets", Identity: IdentityStandard}},
 		},
 		// The Steve collection carries a top-level revision (its list
-		// resourceVersion) that advances between runs.
-		Normalize: []NormalizeRule{{Path: "revision", Replace: "<rev>"}},
+		// resourceVersion) that advances between runs, plus links.self and
+		// createTypes.secret which embed the harness bind address; every value
+		// under links/createTypes is a URL, so scrub them so a re-record
+		// against a different address does not gratuitously diverge.
+		Normalize: []NormalizeRule{
+			{Path: "revision", Replace: "<rev>"},
+			{Path: "links.*", Replace: "<url>"},
+			{Path: "createTypes.*", Replace: "<url>"},
+		},
 	}
 	forbiddenWrite := Probe{
 		Name:       "auth/forbidden-write",

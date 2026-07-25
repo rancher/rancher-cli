@@ -8,11 +8,11 @@
       "body": {
         "actions": {},
         "createTypes": {
-          "secret": "https://127.0.0.1:8443/v1/secrets"
+          "secret": "\u003curl\u003e"
         },
         "data": [],
         "links": {
-          "self": "https://127.0.0.1:8443/v1/secrets"
+          "self": "\u003curl\u003e"
         },
         "resourceType": "secret",
         "revision": "\u003crev\u003e",
