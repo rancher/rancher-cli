@@ -221,6 +221,8 @@ graph TD
     output --> clierr
 
     testrancher --> token
+
+    fidelity --> token
 ```
 
 ## Command pipeline

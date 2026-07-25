@@ -1,0 +1,236 @@
+package fidelity
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"sort"
+	"strings"
+	"syscall"
+	"time"
+)
+
+// garbageBearer is the malformed credential IdentityGarbage sends — the same
+// literal on every target so recordings are comparable.
+const garbageBearer = "not-a-real-token"
+
+// defaultStepTimeout bounds every observation and every fixture step. Tests
+// inject a shorter deadline through runProbe; production callers use the
+// exported RunProbe and never mutate shared state.
+const defaultStepTimeout = 30 * time.Second
+
+// RunProbe executes p's setup, observations, and teardown against tgt and
+// returns one normalized result per observation.
+func RunProbe(ctx context.Context, tgt Target, p Probe) ([]ObservationResult, error) {
+	return runProbe(ctx, tgt, p, defaultStepTimeout)
+}
+
+// runProbe is RunProbe with an injectable per-step deadline. Teardown is
+// installed BEFORE setup runs and always executes — after a partial setup
+// failure, an observation failure, a capture failure, or success — with the
+// captures resolved so far. Every teardown error is collected and joined
+// with the primary error; none is dropped.
+func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (results []ObservationResult, err error) {
+	if verr := p.Validate(); verr != nil {
+		return nil, verr
+	}
+	captured := map[string]string{}
+	runStep := func(s Step) error {
+		sctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return s.Do(sctx, tgt, captured)
+	}
+	defer func() {
+		errs := []error{err}
+		for _, s := range p.Teardown {
+			if terr := runStep(s); terr != nil {
+				errs = append(errs, fmt.Errorf("probe %s: teardown %s: %w", p.Name, s.Name, terr))
+			}
+		}
+		err = errors.Join(errs...)
+	}()
+	for _, s := range p.Setup {
+		if serr := runStep(s); serr != nil {
+			return nil, fmt.Errorf("probe %s: setup %s: %w", p.Name, s.Name, serr)
+		}
+	}
+
+	rules := append(DefaultNormalizeRules(), p.Normalize...)
+	for _, o := range p.Observations {
+		res, raw, oerr := runObservation(ctx, tgt, o, captured, timeout)
+		if oerr != nil {
+			return results, fmt.Errorf("probe %s: observation %s: %w", p.Name, o.Name, oerr)
+		}
+		// res.Body and raw alias the same decoded map, so captures MUST be
+		// resolved before normalization scrubs the very fields they read
+		// (metadata.resourceVersion -> "<rv>", status.bearerToken ->
+		// "<secret>").
+		var capErr error
+		capNames := make([]string, 0, len(o.Captures))
+		for name := range o.Captures {
+			capNames = append(capNames, name)
+		}
+		sort.Strings(capNames)
+		for _, name := range capNames {
+			v, cerr := resolveCapture(raw, o.Captures[name])
+			if cerr != nil {
+				// A declared capture that cannot be resolved is an execution
+				// error: dependent requests must never run against a
+				// synthetic URL, and no golden may be saved from this run.
+				capErr = fmt.Errorf("probe %s: observation %s: capture %q: %w", p.Name, o.Name, name, cerr)
+				break
+			}
+			captured[name] = v
+		}
+		// Normalize and retain the completed observation either way — on a
+		// capture failure it is returned for diagnostics.
+		Normalize(res.Body, rules)
+		results = append(results, res)
+		if capErr != nil {
+			return results, capErr
+		}
+	}
+	return results, nil
+}
+
+func resolveCapture(raw map[string]any, c Capture) (string, error) {
+	v, err := captureValue(raw, c.Path)
+	if err != nil {
+		return "", err
+	}
+	if c.ExtBearerName {
+		derived, ok := NameFromExtBearer(v)
+		if !ok {
+			// The captured value is a credential — its shape may be wrong,
+			// but it can still be a live secret. Never embed it in the error.
+			return "", fmt.Errorf("captured value is not ext-shaped (want ext/<name>:<secret>)")
+		}
+		return derived, nil
+	}
+	return v, nil
+}
+
+func runObservation(ctx context.Context, tgt Target, o Observation, captured map[string]string, timeout time.Duration) (ObservationResult, map[string]any, error) {
+	octx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resp, err := attempt(octx, tgt, o, captured)
+	if err != nil && isConnReset(err) {
+		// One retry, transport-level resets only: a fresh request is built
+		// from the spec, and a status-code mismatch is signal, never
+		// retried. Bodyless and replayable-body requests alike get the
+		// retry because attempt rebuilds from the RequestSpec.
+		resp, err = attempt(octx, tgt, o, captured)
+	}
+	if err != nil {
+		return ObservationResult{}, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ObservationResult{}, nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	res := ObservationResult{
+		Name:        o.Name,
+		Status:      resp.StatusCode,
+		ContentType: strings.Split(resp.Header.Get("Content-Type"), ";")[0],
+	}
+	var decoded map[string]any
+	if len(rawBody) > 0 && json.Unmarshal(rawBody, &decoded) == nil {
+		res.Body = decoded
+	}
+	return res, decoded, nil
+}
+
+// attempt builds one fresh request from the spec and sends it.
+func attempt(ctx context.Context, tgt Target, o Observation, captured map[string]string) (*http.Response, error) {
+	u := tgt.BaseURL() + substitute(o.Request.Path, captured)
+	if len(o.Request.Query) > 0 {
+		q := url.Values{}
+		for k, vs := range o.Request.Query {
+			for _, v := range vs {
+				q.Add(k, substitute(v, captured))
+			}
+		}
+		u += "?" + q.Encode()
+	}
+	var body io.Reader
+	if o.Request.Body != "" {
+		body = strings.NewReader(substitute(o.Request.Body, captured))
+	}
+	req, err := http.NewRequestWithContext(ctx, o.Request.Method, u, body)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	for k, v := range o.Request.Headers {
+		req.Header.Set(k, substitute(v, captured))
+	}
+	if o.Request.Body != "" && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	switch o.Request.Identity {
+	case IdentityNone:
+	case IdentityGarbage:
+		req.Header.Set("Authorization", "Bearer "+garbageBearer)
+	default:
+		tok, berr := tgt.Bearer(ctx, o.Request.Identity)
+		if berr != nil {
+			return nil, fmt.Errorf("resolving %s bearer: %w", o.Request.Identity, berr)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	return tgt.Client().Do(req)
+}
+
+// isConnReset classifies a transport error as a TCP connection reset via
+// wrapped-error inspection, never message text.
+func isConnReset(err error) bool {
+	return err != nil && errors.Is(err, syscall.ECONNRESET)
+}
+
+func substitute(s string, captured map[string]string) string {
+	for k, v := range captured {
+		s = strings.ReplaceAll(s, "{"+k+"}", v)
+	}
+	return s
+}
+
+func captureValue(body map[string]any, path string) (string, error) {
+	var node any = body
+	for _, seg := range strings.Split(path, ".") {
+		m, ok := node.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("capture %s: not an object at %q", path, seg)
+		}
+		node, ok = m[seg]
+		if !ok {
+			return "", fmt.Errorf("capture %s: missing %q", path, seg)
+		}
+	}
+	s, ok := node.(string)
+	if !ok {
+		return "", fmt.Errorf("capture %s: not a string", path)
+	}
+	return s, nil
+}
+
+// NameFromExtBearer extracts the token name from an ext-style bearer
+// ("ext/<name>:<secret>"). Both testrancher and real Rancher mint this shape,
+// which lets targets revoke a token without depending on the mint response
+// carrying metadata.name.
+func NameFromExtBearer(bearer string) (string, bool) {
+	rest, ok := strings.CutPrefix(bearer, "ext/")
+	if !ok {
+		return "", false
+	}
+	name, _, ok := strings.Cut(rest, ":")
+	if !ok || name == "" {
+		return "", false
+	}
+	return name, true
+}
