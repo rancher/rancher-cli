@@ -52,6 +52,72 @@ func (s *stubClient) Delete(context.Context, schema.GroupVersionResource, string
 	return nil
 }
 
+// obsClient serves a configurable dry-run response and records calls.
+type obsClient struct {
+	dryRunResult *unstructured.Unstructured
+	dryRuns      []bool
+}
+
+func (c *obsClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (c *obsClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
+	return nil, nil
+}
+func (c *obsClient) Create(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	c.dryRuns = append(c.dryRuns, dryRun)
+	if dryRun && c.dryRunResult != nil {
+		return c.dryRunResult, nil
+	}
+	return obj, nil
+}
+func (c *obsClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (c *obsClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	return nil
+}
+func (c *obsClient) Logs(context.Context, string, string, LogOptions) (string, error) {
+	return "", nil
+}
+
+// TestPlanCreateObservedExposesDryRunResult pins the MC-12 seam: the
+// caller receives the SERVER's dry-run object (not its own submission),
+// the Effect stays the diff-less create shape, and the executor still
+// performs the real write.
+func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
+	t.Parallel()
+	serverView := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "rke-machine-config.cattle.io/v1",
+		"kind":       "DigitaloceanConfig",
+		"metadata":   map[string]any{"name": "web-pool", "namespace": "fleet-default"},
+		"region":     "nyc3",
+	}}
+	client := &obsClient{dryRunResult: serverView}
+	gvr := schema.GroupVersionResource{Group: "rke-machine-config.cattle.io", Version: "v1", Resource: "digitaloceanconfigs"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "rke-machine-config.cattle.io/v1",
+		"kind":       "DigitaloceanConfig",
+		"metadata":   map[string]any{"name": "web-pool", "namespace": "fleet-default"},
+		"region":     "nyc3",
+		"regoin":     "typo",
+	}}
+
+	eff, dryRun, exec, err := PlanCreateObserved(context.Background(), client, gvr, "fleet-default", obj, LocalCluster, "DigitaloceanConfig", false)
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, []bool{true}, client.dryRuns)
+	assert.Same(t, serverView, dryRun)
+	assert.Equal(t, safety.ActionCreate, eff.Action)
+	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
+	assert.Empty(t, eff.Diff, "create previews are diff-less (MC-11)")
+	assert.False(t, eff.Destructive)
+
+	_, err = exec(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true, false}, client.dryRuns)
+}
+
 func TestPlanCreate(t *testing.T) {
 	client := &stubClient{}
 	obj := &unstructured.Unstructured{Object: map[string]any{

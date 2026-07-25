@@ -1,13 +1,20 @@
 package provisioning
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // mcInput is a full runtime.Input fake covering all five axes — create
@@ -32,6 +39,28 @@ func (i mcInput) IsSet(k string) bool { return i.is[k] }
 func (i mcInput) Args() []string      { return i.a }
 
 var _ runtime.Input = mcInput{}
+
+// mcRecClient records creates and can serve a configured dry-run result,
+// standing in for a server that prunes unknown CRD fields (MC-12).
+type mcRecClient struct {
+	ccRecClient
+	dryRunResult *unstructured.Unstructured
+	execErr      error
+}
+
+func (r *mcRecClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	out, err := r.ccRecClient.Create(ctx, gvr, ns, obj, dryRun)
+	if err != nil {
+		return nil, err
+	}
+	if dryRun && r.dryRunResult != nil {
+		return r.dryRunResult, nil
+	}
+	if !dryRun && r.execErr != nil {
+		return nil, r.execErr
+	}
+	return out, nil
+}
 
 func buildMachineConfig(t *testing.T, in runtime.Input) (*unstructured.Unstructured, error) {
 	t.Helper()
@@ -323,4 +352,185 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 		flagFields = append(flagFields, cf.field)
 	}
 	assert.ElementsMatch(t, meta.Curated, flagFields)
+}
+
+// TestCreateMachineConfigPlanDiffLessEffect pins MC-11: one server-side
+// dry-run, action=create, identity-only target, no diff, non-destructive,
+// cluster local.
+func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
+	t.Parallel()
+	client := &mcRecClient{}
+	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+
+	eff, exec, err := cmd.Plan(context.Background(), mcInput{
+		a:  []string{"digitaloceanconfig", "web-pool"},
+		s:  map[string]string{"region": "nyc3"},
+		is: map[string]bool{"region": true},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, []bool{true}, client.dryRuns)
+	assert.Equal(t, safety.ActionCreate, eff.Action)
+	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
+	assert.Equal(t, "local", eff.Cluster)
+	assert.Empty(t, eff.Diff)
+	assert.False(t, eff.Destructive)
+	assert.Empty(t, eff.Warnings, "no prune → no warning")
+	assert.Equal(t, "fleet-default", client.createdNS)
+}
+
+// TestCreateMachineConfigPrunedKeyWarning pins MC-12: a top-level key the
+// dry-run response dropped (minus the k8s envelope) is warned about BY
+// NAME; envelope keys never trigger it.
+func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
+	t.Parallel()
+	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "rke-machine-config.cattle.io/v1",
+		"kind":       "DigitaloceanConfig",
+		"metadata":   map[string]any{"name": "web-pool", "namespace": "fleet-default"},
+		"region":     "nyc3",
+		"status":     map[string]any{},
+	}}}
+	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+
+	eff, _, err := cmd.Plan(context.Background(), mcInput{
+		a:  []string{"digitaloceanconfig", "web-pool"},
+		s:  map[string]string{"region": "nyc3"},
+		is: map[string]bool{"region": true},
+		sl: []string{"regoin=typo"},
+	})
+	require.NoError(t, err)
+	require.Len(t, eff.Warnings, 1)
+	assert.Equal(t, "field(s) pruned by the server: regoin — unknown field?", eff.Warnings[0])
+}
+
+// TestCreateMachineConfigNullValuePruned pins the --set field=null edge:
+// the value parses to JSON null, so the SUBMITTED object carries the key
+// with a nil value — the key exists. When the server's dry-run response
+// drops that key, the pruned-key comparison (a presence check, not a
+// value check) must treat it like any other pruned key and warn BY NAME,
+// so a null-valued submission never vanishes silently.
+func TestCreateMachineConfigNullValuePruned(t *testing.T) {
+	t.Parallel()
+	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "rke-machine-config.cattle.io/v1",
+		"kind":       "Amazonec2Config",
+		"metadata":   map[string]any{"name": "web-pool", "namespace": "fleet-default"},
+		"region":     "us-east-1",
+	}}}
+	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+
+	eff, _, err := cmd.Plan(context.Background(), mcInput{
+		a:  []string{"amazonec2config", "web-pool"},
+		sl: []string{"region=us-east-1", "keypairName=null"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client.created)
+	v, submitted := client.created.Object["keypairName"]
+	assert.True(t, submitted, "null value still submits the key")
+	assert.Nil(t, v)
+	require.Len(t, eff.Warnings, 1)
+	assert.Equal(t, "field(s) pruned by the server: keypairName — unknown field?", eff.Warnings[0])
+}
+
+// TestCreateMachineConfigNullValueKept pins the other half of the null
+// edge: when the server's dry-run response KEEPS the submitted-nil key,
+// no warning fires — presence, not value, decides.
+func TestCreateMachineConfigNullValueKept(t *testing.T) {
+	t.Parallel()
+	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion":  "rke-machine-config.cattle.io/v1",
+		"kind":        "Amazonec2Config",
+		"metadata":    map[string]any{"name": "web-pool", "namespace": "fleet-default"},
+		"region":      "us-east-1",
+		"keypairName": nil,
+	}}}
+	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+
+	eff, _, err := cmd.Plan(context.Background(), mcInput{
+		a:  []string{"amazonec2config", "web-pool"},
+		sl: []string{"region=us-east-1", "keypairName=null"},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, eff.Warnings)
+}
+
+// TestCreateMachineConfigGateBehavior pins MC-1/MC-19 through the real
+// pipeline: bare → CONFIRMATION_REQUIRED (nothing executed), --dry-run
+// renders the Effect envelope (decoded, never string-matched) and stops,
+// --apply executes the real create. No --yes: the effect is
+// non-destructive.
+func TestCreateMachineConfigGateBehavior(t *testing.T) {
+	t.Parallel()
+	binding := safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta}
+	in := mcInput{
+		a:  []string{"digitaloceanconfig", "web-pool"},
+		s:  map[string]string{"region": "nyc3"},
+		is: map[string]bool{"region": true},
+	}
+
+	t.Run("bare → CONFIRMATION_REQUIRED", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client})
+		var out, errOut bytes.Buffer
+		ce := runtime.Run(context.Background(), cmd, in,
+			runtime.IO{Out: &out, Err: &errOut}, binding)
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeConfirmationRequired, ce.Code)
+		assert.NotContains(t, ce.Hint, "--yes", "non-destructive: --apply alone gates it")
+		assert.Equal(t, []bool{true}, client.dryRuns, "plan dry-ran; nothing executed")
+	})
+
+	t.Run("--dry-run renders the Effect and stops", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client})
+		var out, errOut bytes.Buffer
+		ce := runtime.Run(context.Background(), cmd, in,
+			runtime.IO{Out: &out, Err: &errOut, Format: "json", DryRun: true}, binding)
+		require.Nil(t, ce)
+		var env struct {
+			Data struct {
+				Action string `json:"action"`
+				Target string `json:"target"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+		assert.Equal(t, "create", env.Data.Action)
+		assert.Equal(t, "digitaloceanconfigs/web-pool", env.Data.Target)
+		assert.Equal(t, []bool{true}, client.dryRuns)
+	})
+
+	t.Run("--apply executes", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client})
+		var out, errOut bytes.Buffer
+		ce := runtime.Run(context.Background(), cmd, in,
+			runtime.IO{Out: &out, Err: &errOut, Format: "json", Apply: true}, binding)
+		require.Nil(t, ce)
+		assert.Equal(t, []bool{true, false}, client.dryRuns)
+	})
+}
+
+// TestCreateMachineConfigExecutePropagatesError pins MC-13's engine-side
+// contract: the executor surfaces the client error unchanged (the provider
+// maps a name collision to the structured CONFLICT; the e2e scenario pins
+// the mapped code end to end).
+func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
+	t.Parallel()
+	client := &mcRecClient{execErr: clierr.New(clierr.CodeConflict, "digitaloceanconfigs \"web-pool\" already exists")}
+	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+
+	_, exec, err := cmd.Plan(context.Background(), mcInput{
+		a:  []string{"digitaloceanconfig", "web-pool"},
+		s:  map[string]string{"region": "nyc3"},
+		is: map[string]bool{"region": true},
+	})
+	require.NoError(t, err)
+	_, err = exec(context.Background())
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }

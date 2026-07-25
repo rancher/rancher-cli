@@ -8,14 +8,17 @@
 package provisioning
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -208,6 +211,53 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	}
 	return obj, k, nil
 }
+
+func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	obj, k, err := c.build(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	eff, dryRun, exec, err := engine.PlanCreateObserved(ctx, client, k.GVR, k.DefaultNamespace, obj, engine.LocalCluster, k.K8sKind, false)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if w := prunedKeyWarning(obj.Object, dryRun.Object); w != "" {
+		eff.Warnings = append(eff.Warnings, w)
+	}
+	return eff, exec, nil
+}
+
+// prunedKeyWarning compares the submitted TOP-LEVEL driver keys (minus the
+// Kubernetes envelope: apiVersion, kind, metadata, status) against the
+// dry-run response's top-level keys and names every key the server
+// silently dropped — rke-machine-config CRDs may prune unknown fields, so
+// a typo surfaces at preview time rather than as a silently thinner CR
+// (MC-12). Presence, not value, decides: a key submitted with a null
+// value that vanishes server-side is pruned like any other. Returns ""
+// when nothing was pruned.
+func prunedKeyWarning(submitted, dryRun map[string]any) string {
+	envelope := map[string]bool{"apiVersion": true, "kind": true, "metadata": true, "status": true}
+	var pruned []string
+	for key := range submitted {
+		if envelope[key] {
+			continue
+		}
+		if _, ok := dryRun[key]; !ok {
+			pruned = append(pruned, key)
+		}
+	}
+	if len(pruned) == 0 {
+		return ""
+	}
+	sort.Strings(pruned)
+	return fmt.Sprintf("field(s) pruned by the server: %s — unknown field?", strings.Join(pruned, ", "))
+}
+
+var _ runtime.MutatingCommand = (*createMachineConfigCmd)(nil)
 
 // parseSetValue decodes a --set value against Rancher's node-driver
 // schema (FlagToField in rancher's

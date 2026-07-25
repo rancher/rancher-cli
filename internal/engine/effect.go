@@ -9,22 +9,20 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// PlanCreate previews a create via server-side dry-run and returns the Effect
-// plus the closure that performs the real create. Tier/Stability are stamped
-// by the pipeline, not set here. resultKind names the Result envelope kind.
+// PlanCreateObserved previews a create via server-side dry-run and returns
+// the Effect, the SERVER's dry-run response, and the closure that performs
+// the real create. The dry-run response is exposed so a caller can compare
+// its submission against what the server accepted (create machine-config's
+// pruned-key warning, MC-12); PlanCreate delegates here, so every existing
+// create keeps its Effect byte-for-byte. Tier/Stability are stamped by the
+// pipeline, not set here. resultKind names the Result envelope kind.
 // effectCluster is the cluster the mutation semantically targets — NOT the
-// proxy the client connects through. A Project is written via the management
-// proxy ("local") but lands in a downstream cluster; the Effect must show the
-// downstream cluster (PE-5), so routing and identity are separate parameters.
-// destructive is the caller's per-kind policy (a Sensitive kind's create is
-// destructive) — mirrors PlanUpdate's own destructive parameter, so a future
-// Sensitive-kind create cannot silently skip the gate by omitting an
-// after-the-fact eff.Destructive assignment the way every prior call site
-// had to remember to add.
-func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+// proxy the client connects through (see PlanCreate's original PE-5 note).
+// destructive is the caller's per-kind policy.
+func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
 	out, err := client.Create(ctx, gvr, ns, obj, true)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return safety.Effect{}, nil, nil, err
 	}
 	eff := safety.Effect{
 		Action:            safety.ActionCreate,
@@ -41,7 +39,16 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 		}
 		return runtime.Result{Kind: resultKind, Data: created.Object}, nil
 	}
-	return eff, exec, nil
+	return eff, out, exec, nil
+}
+
+// PlanCreate previews a create via server-side dry-run and returns the
+// Effect plus the closure that performs the real create — the observed
+// variant with the dry-run response discarded. See PlanCreateObserved for
+// the parameter contract.
+func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	eff, _, exec, err := PlanCreateObserved(ctx, client, gvr, ns, obj, effectCluster, resultKind, destructive)
+	return eff, exec, err
 }
 
 // PlanUpdate previews an update via server-side dry-run and returns the Effect
