@@ -3,8 +3,10 @@ package fidelity
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,9 +37,10 @@ type RealTarget struct {
 	client  *http.Client
 	admin   string
 
-	mu       sync.Mutex
-	standard string
-	revoked  string
+	mu               sync.Mutex
+	standard         string
+	standardPassword string
+	revoked          string
 }
 
 // NewRealTargetFromEnv builds the oracle client from E2E_REAL_URL,
@@ -79,10 +82,18 @@ func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 	}
 }
 
-const (
-	standardUsername = "e2e-fid-standard"
-	standardPassword = "e2e-fid-standard-pw-1"
-)
+const standardUsername = "e2e-fid-standard"
+
+// newStandardPassword mints a fresh random password for the throwaway standard
+// user. It is generated per RealTarget instance rather than hardcoded so no
+// usable credential for a provisioned user lives in this (public) source.
+func newStandardPassword() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generating standard-user password: %w", err)
+	}
+	return "e2e-fid-standard-pw-" + hex.EncodeToString(b[:]), nil
+}
 
 // standardBearer provisions the e2e-fid-standard local user (idempotently:
 // delete-before-create keeps kept-container reruns clean), binds the
@@ -98,6 +109,13 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 	if t.standard != "" {
 		return t.standard, nil
 	}
+	if t.standardPassword == "" {
+		pw, err := newStandardPassword()
+		if err != nil {
+			return "", err
+		}
+		t.standardPassword = pw
+	}
 	if err := t.deleteStandardUser(ctx); err != nil {
 		return "", err
 	}
@@ -106,7 +124,7 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 		"enabled":            true,
 		"mustChangePassword": false,
 		"username":           standardUsername,
-		"password":           standardPassword,
+		"password":           t.standardPassword,
 	}
 	created, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated)
 	if err != nil {
@@ -124,7 +142,7 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 	if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/globalrolebindings", grb, http.StatusCreated); err != nil {
 		return "", fmt.Errorf("binding baseline user role to standard user: %w", err)
 	}
-	bearer, err := t.login(ctx, standardUsername, standardPassword)
+	bearer, err := t.login(ctx, standardUsername, t.standardPassword)
 	if err != nil {
 		return "", err
 	}

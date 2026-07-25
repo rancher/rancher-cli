@@ -29,6 +29,7 @@ done
 docker info >/dev/null 2>&1 || { echo "error: docker daemon not reachable" >&2; exit 1; }
 
 mkdir -p "${STATE_ROOT}"
+chmod 700 "${STATE_ROOT}"
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
   holder="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
   if [ -n "${holder}" ] && kill -0 "${holder}" 2>/dev/null; then
@@ -121,30 +122,42 @@ else
   docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
   BOOTSTRAP_PW="$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
+  # Keep the bootstrap password out of argv (visible via `ps` and
+  # `docker inspect`): write it to a 0600 env file under the 0700 state dir,
+  # pass it with --env-file, and remove it as soon as docker run returns.
+  ENV_FILE="${STATE_ROOT}/bootstrap.env"
+  ( umask 177; printf 'CATTLE_BOOTSTRAP_PASSWORD=%s\n' "${BOOTSTRAP_PW}" >"${ENV_FILE}" )
   echo "==> booting ${ORACLE_IMAGE}"
-  # Loopback-only: the oracle serves known test credentials and must never
-  # be reachable from the surrounding network.
+  # --privileged is required: the image runs an embedded k3s (containerd, CNI,
+  # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
+  # here — the image is digest-pinned, the port is loopback-bound below, and
+  # the container is ephemeral (removed unless E2E_REAL_KEEP=1).
   docker run -d --name "${CONTAINER}" --privileged \
     -p "127.0.0.1:${HOST_PORT}:443" \
-    -e CATTLE_BOOTSTRAP_PASSWORD="${BOOTSTRAP_PW}" \
+    --env-file "${ENV_FILE}" \
     "${ORACLE_IMAGE}" >/dev/null
+  rm -f "${ENV_FILE}"
   wait_for_ping
   wait_for_webhook
   fetch_ca >"${CA_FILE}"
   [ -s "${CA_FILE}" ] || { echo "error: could not extract the server CA" >&2; exit 1; }
 
   echo "==> bootstrapping admin"
+  # The login body carries the bootstrap password; feed request bodies on
+  # stdin (curl -d @-) so no secret ever lands on the curl argv.
   LOGIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"admin\",\"password\":\"${BOOTSTRAP_PW}\"}" |
-    python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+    -H 'Content-Type: application/json' -d @- <<JSON | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
+{"username":"admin","password":"${BOOTSTRAP_PW}"}
+JSON
+)"
   curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" \
     -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
     -d "{\"value\":\"${BASE_URL}\"}"
   ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" \
-    -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
-    -d '{"description":"e2e-fid oracle"}' |
-    python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+    -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
+{"description":"e2e-fid oracle"}
+JSON
+)"
 
   if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
     cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
@@ -162,5 +175,7 @@ export E2E_REAL_CACERT
 export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
 
 echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
+# E2E_REAL_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
+# user-supplied, so the intentional word-splitting here is safe.
 # shellcheck disable=SC2086
 go test -tags e2e_real -count=1 ./e2e/real/ ${UPDATE_FLAG}
