@@ -100,6 +100,21 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 - Never chain `--apply --yes` onto a command you have not dry-run or whose
   effect the user has not asked for.
 
+Node-driver provisioning is two steps — author the machine config, then
+reference it from the cluster:
+
+```
+rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --dry-run -o json
+rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --apply
+rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential do-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --dry-run -o json
+rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential do-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+```
+
+The uncurated kinds (amazonec2config, azureconfig, harvesterconfig,
+vmwarevsphereconfig) take driver fields via repeatable `--set field=value`.
+Credential fields are rejected on a machine config — they belong on a
+cloud credential (`cc-*` secret), referenced via `--cloud-credential`.
+
 ### 5. Branch on structured errors, not text
 
 Errors land on stderr as an envelope with the error object under `data`:

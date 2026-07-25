@@ -436,30 +436,41 @@ func seedNamespaces() {
 	}
 }
 
-// seedCloudCredential creates ONE fixture cloud-credential Secret,
-// cc-e2etest, in cattle-global-data — global and one-time (Task 7, review
-// R2-2): `create cluster`'s node-driver e2e scenario resolves
-// --cloud-credential by display name ("e2e-cred"), and a per-script Setup
-// creating this same fixture would race AlreadyExists across every script
-// sharing this one envtest apiserver. The data key/value mirror
-// cloudcred.go's driver-detection contract (<driver>credentialConfig-<key>)
-// for the amazonec2 driver; "ZHVtbXk=" is the base64 encoding of "dummy" —
-// ResolveCloudCredential never reads a data VALUE (spec D-R2-1), so the
-// content is an arbitrary placeholder.
+// seedCloudCredential creates the fixture cloud-credential Secrets in
+// cattle-global-data — global and one-time (Task 7, review R2-2):
+// `create cluster`'s node-driver e2e scenarios resolve --cloud-credential
+// by display name, and a per-script Setup creating these same fixtures
+// would race AlreadyExists across every script sharing this one envtest
+// apiserver. cc-e2etest ("e2e-cred") carries the amazonec2 driver key;
+// cc-e2edo ("e2e-do-cred") the digitalocean one, so the machine-config
+// two-step flow pairs a DO config with a DO credential. The data
+// key/value mirror cloudcred.go's driver-detection contract
+// (<driver>credentialConfig-<key>); "ZHVtbXk=" is the base64 encoding of
+// "dummy" — ResolveCloudCredential never reads a data VALUE (spec
+// D-R2-1), so the content is an arbitrary placeholder.
 func seedCloudCredential() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
-	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "v1",
-		"kind":       "Secret",
-		"metadata": map[string]any{
-			"name":        "cc-e2etest",
-			"namespace":   "cattle-global-data",
-			"annotations": map[string]any{"field.cattle.io/name": "e2e-cred"},
-		},
-		"data": map[string]any{"amazonec2credentialConfig-accessKey": "ZHVtbXk="},
-	}}
-	if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
-		panic("seeding cloud credential secret cc-e2etest: " + err.Error())
+	for _, cred := range []struct {
+		name    string
+		display string
+		dataKey string
+	}{
+		{"cc-e2etest", "e2e-cred", "amazonec2credentialConfig-accessKey"},
+		{"cc-e2edo", "e2e-do-cred", "digitaloceancredentialConfig-accessToken"},
+	} {
+		obj := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "v1",
+			"kind":       "Secret",
+			"metadata": map[string]any{
+				"name":        cred.name,
+				"namespace":   "cattle-global-data",
+				"annotations": map[string]any{"field.cattle.io/name": cred.display},
+			},
+			"data": map[string]any{cred.dataKey: "ZHVtbXk="},
+		}}
+		if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+			panic("seeding cloud credential secret " + cred.name + ": " + err.Error())
+		}
 	}
 }
 

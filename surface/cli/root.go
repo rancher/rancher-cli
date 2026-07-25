@@ -63,6 +63,7 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateToken(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateKubeconfig(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateCluster(d.clients, d.roots) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},

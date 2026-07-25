@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -193,4 +194,65 @@ func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 	got := dispatchSite(ctx, site, d, nil, nil, []string{"digitaloceanconfig", "web-pool", "--set"})
 	assert.Empty(t, got)
 	assert.Zero(t, hits.Load(), "an owned static site must never reach the live layer")
+}
+
+// TestCreateMachineConfigSetFullCallback drives the real adaptEntry
+// callback through BuildRoot/root.Run under the v2 protocol (MC-16
+// "through the adapted command"): CaptureArgv, routing-prefix stripping,
+// ParseArgTail, the stringSlice flag adapter, and callback dispatch are
+// all on the path. The site is fully static, so the network gate stays
+// OFF throughout (the server URL is a closed port; any HTTP attempt
+// fails the run loudly via an empty result where a candidate is
+// asserted). NOT parallel: t.Setenv mutates env globals, setStoredConfig
+// mutates storedConfig.
+func TestCreateMachineConfigSetFullCallback(t *testing.T) {
+	setup := func(t *testing.T) {
+		t.Helper()
+		dir := t.TempDir()
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+			Servers:        map[string]config.Server{"srv": {URL: "http://127.0.0.1:1"}},
+			Completion:     config.CompletionConfig{Network: false},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		setStoredConfig(cfg, dir)
+		t.Setenv(config.EnvConfigDir, dir)
+		t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	}
+
+	run := func(t *testing.T, words []string, currentWord string) string {
+		t.Helper()
+		origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
+		t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
+		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
+		CaptureArgv(scriptArgs)
+		root, err := BuildRoot("test")
+		require.NoError(t, err)
+		var out bytes.Buffer
+		root.Writer = &out
+		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		return out.String()
+	}
+
+	t.Run("space form: --set ba → backups= continuation token", func(t *testing.T) {
+		setup(t)
+		got := run(t, []string{"create", "machine-config", "digitaloceanconfig", "cfg", "--set"}, "ba")
+		assert.Contains(t, got, "backups=\n")
+		assert.NotContains(t, got, "region=", "curated keys must not be suggested")
+	})
+
+	t.Run("equals form: --set=ba → full equals-form token", func(t *testing.T) {
+		setup(t)
+		got := run(t, []string{"create", "machine-config", "digitaloceanconfig", "cfg"}, "--set=ba")
+		assert.Contains(t, got, "--set=backups=\n")
+	})
+
+	t.Run("unmatched partial → empty, no fall-through", func(t *testing.T) {
+		setup(t)
+		got := run(t, []string{"create", "machine-config", "digitaloceanconfig", "cfg", "--set"}, "zzz")
+		assert.Equal(t, "", got)
+	})
 }

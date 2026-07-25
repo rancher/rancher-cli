@@ -510,6 +510,84 @@
     {
       "args": [
         {
+          "enum": [
+            "amazonec2config",
+            "azureconfig",
+            "digitaloceanconfig",
+            "harvesterconfig",
+            "vmwarevsphereconfig"
+          ],
+          "name": "kind",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "desc": "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; reference it afterwards with `create cluster --machine-config <kind>/<name>` (the two-step node-driver flow). Driver fields sit at the CR root — there is no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via --set key=value. Credential-carried fields are rejected: credentials belong on a cloud credential (cc-* secret), never on a machine config.",
+      "destructive": "false",
+      "examples": [
+        "rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --dry-run",
+        "rancher create machine-config amazonec2config web-pool --set region=us-east-1 --set instanceType=t3a.medium --apply"
+      ],
+      "flags": [
+        {
+          "desc": "digitaloceanconfig: droplet `region` slug (e.g. nyc3)",
+          "name": "region",
+          "type": "string"
+        },
+        {
+          "desc": "digitaloceanconfig: droplet `size` slug (e.g. s-2vcpu-4gb)",
+          "name": "size",
+          "type": "string"
+        },
+        {
+          "desc": "digitaloceanconfig: droplet `image` slug",
+          "name": "image",
+          "type": "string"
+        },
+        {
+          "desc": "digitaloceanconfig: enable monitoring (omit to keep the driver default)",
+          "name": "monitoring",
+          "type": "bool"
+        },
+        {
+          "desc": "digitaloceanconfig: enable IPv6 (omit to keep the driver default)",
+          "name": "ipv6",
+          "type": "bool"
+        },
+        {
+          "desc": "digitaloceanconfig: enable private networking (omit to keep the driver default)",
+          "name": "private-networking",
+          "type": "bool"
+        },
+        {
+          "desc": "digitaloceanconfig: comma-separated droplet `tags`",
+          "name": "tags",
+          "type": "string"
+        },
+        {
+          "desc": "driver `field=value`, repeatable; true and [\"a\"] parse as JSON, numbers and everything else submit as strings (Rancher publishes numeric driver fields as strings)",
+          "name": "set",
+          "type": "stringSlice"
+        }
+      ],
+      "group": "create",
+      "name": "create machine-config",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Create a machine config for a node-driver cluster pool"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "required": true,
           "type": "string"
@@ -7644,7 +7722,8 @@
         "create resource",
         "create token",
         "create kubeconfig",
-        "create cluster"
+        "create cluster",
+        "create machine-config"
       ],
       "name": "create"
     },

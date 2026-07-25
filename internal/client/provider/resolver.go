@@ -26,6 +26,7 @@ func NewResolver() *Resolver {
 		"create token":             {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create kubeconfig":        {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create cluster":           {Tier: safety.TierCRD, Stability: safety.Beta},
+		"create machine-config":    {Tier: safety.TierCRD, Stability: safety.Beta},
 
 		"inspect pod":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment":      {Tier: safety.TierCRD, Stability: safety.Beta},

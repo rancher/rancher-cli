@@ -156,6 +156,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — public tier; sensitive; dry-run/apply --yes |
 | `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — public tier; sensitive; dry-run/apply --yes |
 | `create cluster <name> (--import \| --custom \| --machine-config <kind>/<name> --cloud-credential <cc>) [--k8s-version --pool-name --etcd --controlplane --worker --quantity]` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool (multi-pool goes through `create resource -f`) — crd tier; dry-run/apply |
+| `create machine-config <kind> <name> [--region --size --image --monitoring --ipv6 --private-networking --tags] [--set field=value ...]` | Create a standalone machine config (driver fields at the CR root) for `create cluster --machine-config <kind>/<name>`; digitaloceanconfig has curated flags, the other kinds take `--set`; credential fields rejected — crd tier; dry-run/apply |
 | `get cloud-credential [name]` | List cloud credentials or show one — secret values never shown |
 | `get kubernetes-versions` | List available Kubernetes versions (rke2/k3s), merged with the server's default and supported-range settings |
 | `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — public tier; dry-run/apply |
@@ -189,7 +190,7 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 Generated per kind from the 47-kind table: `get <kind>` (47), `patch <kind>`
 (47), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
 kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
-122 generated commands, 160 total together with the fixed commands above. The authoritative, always-current list is
+122 generated commands, 161 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 

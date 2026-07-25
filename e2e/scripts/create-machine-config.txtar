@@ -1,0 +1,61 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# bare mutation → CONFIRMATION_REQUIRED (no --yes: non-destructive).
+! exec rancher create machine-config digitaloceanconfig web-pool --region nyc3
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+
+# dry-run: the diff-less create Effect.
+exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --set backups=true --dry-run -o json
+jsonquery stdout data.action create
+jsonquery stdout data.target digitaloceanconfigs/web-pool
+
+# a typo'd --set key is pruned by the (strict) DO CRD and warned about at
+# preview time, named exactly.
+exec rancher create machine-config digitaloceanconfig typo-cfg --set regoin=nyc3 --dry-run -o json
+cp stdout typo-eff.json
+jsonquery typo-eff.json warnings.0 'field(s) pruned by the server: regoin — unknown field?'
+
+# apply, then pin the ROOT-level driver fields on the CREATED config —
+# a spec-nested implementation fails here. sshPort is a STRING field on
+# the typed DO CRD (Rancher publishes IntFlag driver fields as strings):
+# a numeric --set value must submit as its literal string or the typed
+# schema rejects it; --set backups=true stays a real JSON boolean.
+exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --tags web,prod --set backups=true --set sshPort=22 --apply
+exec rancher get digitaloceanconfig web-pool -o json
+jsonquery stdout data.region nyc3
+jsonquery stdout data.size s-2vcpu-4gb
+jsonquery stdout data.monitoring true
+jsonquery stdout data.backups true
+jsonquery stdout data.sshPort 22
+jsonquery stdout data.tags web,prod
+jsonquery stdout data.spec ''
+
+# validation gates: credential field, curated flag on a foreign kind.
+! exec rancher create machine-config digitaloceanconfig bad --set accessToken=tok --dry-run
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher create machine-config azureconfig bad --region nyc3 --dry-run
+jsonquery stderr data.error.code VALIDATION
+
+# kind enum is enforced by the runtime layer.
+! exec rancher create machine-config pod bad --dry-run
+jsonquery stderr data.error.code VALIDATION
+
+# name collision → the structured CONFLICT from the engine error mapping.
+! exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --apply
+jsonquery stderr data.error.code CONFLICT
+
+# an uncurated kind via --set, root-level.
+exec rancher create machine-config amazonec2config aws-pool --set region=us-east-1 --set instanceType=t3a.medium --apply
+exec rancher get amazonec2config aws-pool -o json
+jsonquery stdout data.region us-east-1
+jsonquery stdout data.instanceType t3a.medium
+
+# the two-step flow: create cluster references the config by kind/name,
+# paired with the DIGITALOCEAN credential fixture — a DO machine config
+# with an EC2 credential would be incoherent on a real server.
+exec rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential e2e-do-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+exec rancher get provisioning-cluster do-1 -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.0.machineConfigRef.kind DigitaloceanConfig
+jsonquery stdout data.spec.rkeConfig.machinePools.0.machineConfigRef.name web-pool
