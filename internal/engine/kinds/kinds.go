@@ -412,6 +412,11 @@ var table = []Kind{
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
+		// K8sKind "DigitaloceanConfig" TD-1-confirmed 2026-07-24 against
+		// rancher's convert.Capitalize(driverName+"Config") rule
+		// (dynamicschema.go addConfigSchema) during the create
+		// machine-config field-curation pass; field vocabulary lives in
+		// machineconfigfields.go.
 		Key: "digitaloceanconfig", Name: "digitaloceanconfig", Aliases: []string{"digitaloceanconfigs"},
 		GVR:    schema.GroupVersionResource{Group: MachineConfigGroup, Version: "v1", Resource: "digitaloceanconfigs"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "DigitaloceanConfig", Scope: Management, Deletable: true,
