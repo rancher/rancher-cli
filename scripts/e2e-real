@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fidelity oracle harness: boots the pinned real Rancher in Docker, bootstraps
+# an admin token, and runs the e2e_real record/verify suite against it.
+# Spec: docs/design/2026-07-24-real-e2e-fidelity-oracle-spec.md.
+#
+# ORACLE_IMAGE is the single bump point: one literal tag+digest, changed only
+# through a reviewed golden-regeneration change (wave 4 sets the first value).
+ORACLE_IMAGE=""
+
+CONTAINER="rancher-cli-e2e-real"
+HOST_PORT="8443"
+BASE_URL="https://127.0.0.1:${HOST_PORT}"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
+LOCK_DIR="${STATE_ROOT}/lock"
+STATE_FILE="${STATE_ROOT}/state.json"
+CA_FILE="${STATE_ROOT}/ca.pem"
+UPDATE_FLAG="${E2E_REAL_UPDATE_FLAG:-}"
+
+if [ -z "${ORACLE_IMAGE}" ]; then
+  echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-real (wave 4)" >&2
+  exit 1
+fi
+
+for tool in docker curl openssl python3 go; do
+  command -v "${tool}" >/dev/null || { echo "error: ${tool} not found" >&2; exit 1; }
+done
+docker info >/dev/null 2>&1 || { echo "error: docker daemon not reachable" >&2; exit 1; }
+
+mkdir -p "${STATE_ROOT}"
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+  holder="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
+  if [ -n "${holder}" ] && kill -0 "${holder}" 2>/dev/null; then
+    echo "error: another e2e-real invocation (pid ${holder}) holds the lock; the oracle is a singleton" >&2
+    exit 1
+  fi
+  echo "==> reclaiming stale lock (holder pid ${holder:-unknown} is gone)"
+  rm -rf "${LOCK_DIR}"
+  mkdir "${LOCK_DIR}"
+fi
+echo $$ >"${LOCK_DIR}/pid"
+
+cleanup() {
+  status=$?
+  # Diagnostics fire on EVERY failure — kept runs (recording, reconciling)
+  # are exactly the ones that need them. Only removal is gated on keep mode.
+  if [ ${status} -ne 0 ]; then
+    echo "==> last 200 container log lines:"
+    docker logs --tail 200 "${CONTAINER}" 2>&1 | sed 's/^/[rancher] /' || true
+  fi
+  if [ "${E2E_REAL_KEEP:-}" != "1" ]; then
+    docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+    rm -f "${STATE_FILE}"
+  fi
+  rm -rf "${LOCK_DIR}"
+  exit ${status}
+}
+trap cleanup EXIT
+
+fetch_ca() {
+  openssl s_client -connect "127.0.0.1:${HOST_PORT}" -showcerts </dev/null 2>/dev/null |
+    awk '/-----BEGIN CERTIFICATE-----/{buf=""} {buf=buf $0 "\n"} /-----END CERTIFICATE-----/{last=buf} END{printf "%s", last}'
+}
+
+wait_for_ping() {
+  echo "==> waiting for ${BASE_URL}/ping"
+  for _ in $(seq 1 90); do
+    if curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "error: rancher did not answer /ping within ~7.5 minutes" >&2
+  return 1
+}
+
+wait_for_webhook() {
+  echo "==> waiting for rancher-webhook readiness"
+  for _ in $(seq 1 30); do
+    if docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher-webhook \
+      -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q '^1$'; then
+      return 0
+    fi
+    sleep 10
+  done
+  echo "error: rancher-webhook not ready within 5 minutes" >&2
+  return 1
+}
+
+reuse_state() {
+  [ -f "${STATE_FILE}" ] || return 1
+  cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || return 1
+  [ "${cid}" = "${running}" ] || return 1
+  curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong || return 1
+  ADMIN_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adminToken"])' "${STATE_FILE}")" || return 1
+  code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")" || return 1
+  [ "${code}" = "200" ]
+}
+
+if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
+  echo "==> reusing healthy kept container"
+else
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+  rm -f "${STATE_FILE}"
+  BOOTSTRAP_PW="$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
+  echo "==> booting ${ORACLE_IMAGE}"
+  docker run -d --name "${CONTAINER}" --privileged \
+    -p "${HOST_PORT}:443" \
+    -e CATTLE_BOOTSTRAP_PASSWORD="${BOOTSTRAP_PW}" \
+    "${ORACLE_IMAGE}" >/dev/null
+  wait_for_ping
+  wait_for_webhook
+  fetch_ca >"${CA_FILE}"
+  [ -s "${CA_FILE}" ] || { echo "error: could not extract the server CA" >&2; exit 1; }
+
+  echo "==> bootstrapping admin"
+  LOGIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\":\"admin\",\"password\":\"${BOOTSTRAP_PW}\"}" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+  curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" \
+    -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
+    -d "{\"value\":\"${BASE_URL}\"}"
+  ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" \
+    -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
+    -d '{"description":"e2e-fid oracle"}' |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+
+  if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
+    cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
+    umask 177
+    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2]},open(sys.argv[3],"w"))' \
+      "${cid}" "${ADMIN_TOKEN}" "${STATE_FILE}"
+    umask 022
+  fi
+fi
+
+export E2E_REAL_URL="${BASE_URL}"
+export E2E_REAL_ADMIN_TOKEN="${ADMIN_TOKEN}"
+E2E_REAL_CACERT="$(cat "${CA_FILE}")"
+export E2E_REAL_CACERT
+export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
+
+echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
+# shellcheck disable=SC2086
+go test -tags e2e_real -count=1 ./e2e/real/ ${UPDATE_FLAG}
