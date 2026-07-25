@@ -1,0 +1,56 @@
+{
+  "oracleImage": "",
+  "observations": [
+    {
+      "name": "mint",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "status": {
+          "bearerToken": "\u003csecret\u003e",
+          "expiresAt": "\u003cts\u003e"
+        }
+      }
+    },
+    {
+      "name": "dry-run-delete",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "name": "\u003cname\u003e",
+          "resourceVersion": "\u003crv\u003e"
+        },
+        "spec": {
+          "clusterName": ""
+        },
+        "status": {
+          "expiresAt": "\u003cts\u003e"
+        }
+      }
+    },
+    {
+      "name": "still-there",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "name": "\u003cname\u003e",
+          "resourceVersion": "\u003crv\u003e"
+        },
+        "spec": {
+          "clusterName": ""
+        },
+        "status": {
+          "expiresAt": "\u003cts\u003e"
+        }
+      }
+    }
+  ]
+}

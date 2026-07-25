@@ -42,9 +42,16 @@ func authProbes() []Probe {
 			},
 		}
 	}
+	// Same delta for all three bearer-rejection identities: the composite
+	// façade's bearer check rejects the read with a bodyless 401, where the
+	// real server answers 401 application/json with a Norman error envelope.
+	const bearer401Divergence = "façade bearer-check returns a bodyless 401 with an empty Content-Type; the oracle returns 401 application/json with a Norman error body {message,status,type}"
 	noToken := crtGet("auth/no-token", IdentityNone)
+	noToken.FacadeDivergence = bearer401Divergence
 	garbage := crtGet("auth/garbage-token", IdentityGarbage)
+	garbage.FacadeDivergence = bearer401Divergence
 	revoked := crtGet("auth/revoked-token", IdentityRevoked)
+	revoked.FacadeDivergence = bearer401Divergence
 
 	standardMint := Probe{
 		Name: "auth/standard-mint",
@@ -55,7 +62,17 @@ func authProbes() []Probe {
 				Captures: map[string]Capture{"tokname": {Path: "status.bearerToken", ExtBearerName: true}},
 			},
 		},
-		Teardown: []Step{deleteFixture("minted standard token", token.MintTokensPath+"/{tokname}")},
+		// The standard user is provisioned fresh each run, so its id (embedded
+		// in the token name, the user-id label, and the userPrincipal) and the
+		// token's own generated name vary; scrub them to the shape that matters.
+		Normalize: []NormalizeRule{
+			{Path: "metadata.name", Replace: "<name>"},
+			{Path: "metadata.labels.*", Replace: "<label>"},
+			{Path: "spec.userID", Replace: "<user-id>"},
+			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
+		},
+		FacadeDivergence: "façade mint returns a minimal Token {apiVersion,kind,status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
+		Teardown:         []Step{deleteFixture("minted standard token", token.MintTokensPath+"/{tokname}")},
 	}
 
 	forbiddenRead := Probe{
@@ -64,6 +81,9 @@ func authProbes() []Probe {
 		Observations: []Observation{
 			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/secrets", Identity: IdentityStandard}},
 		},
+		// The Steve collection carries a top-level revision (its list
+		// resourceVersion) that advances between runs.
+		Normalize: []NormalizeRule{{Path: "revision", Replace: "<rev>"}},
 	}
 	forbiddenWrite := Probe{
 		Name:       "auth/forbidden-write",
@@ -96,14 +116,21 @@ func tokProbes() []Probe {
 	namedPath := token.MintTokensPath + "/{tokname}"
 	revokeLeftover := deleteFixture("minted token", namedPath)
 
+	// The façade's ext-token store returns a minimal Token; every full-Token
+	// observation therefore diverges on shape (missing metadata labels/uid,
+	// spec.userPrincipal, and status.hash/current/expired/lastUpdateTime, plus
+	// an empty spec.clusterName the façade emits on GET).
+	const tokenShapeDivergence = "façade returns a minimal Token {apiVersion,kind,status:{bearerToken,expiresAt}} on mint and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
+
 	mintShape := Probe{
 		Name: "tok/mint-shape",
 		Observations: []Observation{
 			mint,
 			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize: []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
-		Teardown:  []Step{revokeLeftover},
+		Normalize:        []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
+		FacadeDivergence: tokenShapeDivergence,
+		Teardown:         []Step{revokeLeftover},
 	}
 
 	dryrunDelete := Probe{
@@ -116,8 +143,9 @@ func tokProbes() []Probe {
 			},
 			{Name: "still-there", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize: []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
-		Teardown:  []Step{revokeLeftover},
+		Normalize:        []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
+		FacadeDivergence: tokenShapeDivergence,
+		Teardown:         []Step{revokeLeftover},
 	}
 
 	stalePrecondition := Probe{
@@ -134,8 +162,15 @@ func tokProbes() []Probe {
 				},
 			},
 		},
-		Normalize: []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
-		Teardown:  []Step{revokeLeftover},
+		// The 500 Status embeds the generated token name and its live
+		// resourceVersion in the top-level message and in details.causes.
+		Normalize: []NormalizeRule{
+			{Path: "metadata.name", Replace: "<name>"},
+			{Path: "message", Replace: "<message>"},
+			{Path: "details.causes.message", Replace: "<message>"},
+		},
+		FacadeDivergence: "on a stale-resourceVersion token delete the façade returns 409 Conflict with no body (the correct precondition-failed shape); the oracle returns 500 InternalError with a k8s Status — a real-server bug (see report), not a façade gap. The mint observation also diverges on Token shape (minimal vs full).",
+		Teardown:         []Step{revokeLeftover},
 	}
 
 	revoke := Probe{
@@ -145,7 +180,14 @@ func tokProbes() []Probe {
 			{Name: "revoke", Request: RequestSpec{Method: http.MethodDelete, Path: namedPath, Identity: IdentityAdmin}},
 			{Name: "gone", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize: []NormalizeRule{{Path: "metadata.name", Replace: "<name>"}},
+		// The 404 "gone" Status names the deleted token in details.name and in
+		// the message; both carry the generated token name.
+		Normalize: []NormalizeRule{
+			{Path: "metadata.name", Replace: "<name>"},
+			{Path: "details.name", Replace: "<name>"},
+			{Path: "message", Replace: "<message>"},
+		},
+		FacadeDivergence: "façade mint and revoke return a minimal Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
 	}
 	return []Probe{mintShape, dryrunDelete, stalePrecondition, revoke}
 }
@@ -224,7 +266,10 @@ func mutProbes() []Probe {
 				Request: RequestSpec{Method: http.MethodDelete, Path: localSecretsPath + "/e2e-fid-del", Body: `{"preconditions":{"resourceVersion":"{rv1}"}}`, Identity: IdentityAdmin},
 			},
 		},
-		Teardown: []Step{deleteFixture("del fixture", localSecretsPath+"/e2e-fid-del")},
+		// The 409 Status message quotes both the precondition and the record
+		// resourceVersion, which advance between runs.
+		Normalize: []NormalizeRule{{Path: "message", Replace: "<message>"}},
+		Teardown:  []Step{deleteFixture("del fixture", localSecretsPath+"/e2e-fid-del")},
 	}
 
 	// The dry-run PUT and the real PUT send the byte-identical body — the

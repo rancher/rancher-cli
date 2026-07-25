@@ -1,0 +1,68 @@
+{
+  "oracleImage": "rancher/rancher:v2.14.3@sha256:5d0354e95d55f92da0f3c0fdcf59c07dacfe5bda886aac5273da4ca98c8c1376",
+  "observations": [
+    {
+      "name": "mint",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e",
+          "generateName": "token-",
+          "labels": {
+            "authn.management.cattle.io/kind": "",
+            "cattle.io/user-id": "user-n59lh"
+          },
+          "name": "\u003cname\u003e",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "enabled": true,
+          "kind": "",
+          "ttl": 7776000000,
+          "userID": "user-n59lh",
+          "userPrincipal": {
+            "displayName": "Default Admin",
+            "loginName": "admin",
+            "me": true,
+            "name": "local://user-n59lh",
+            "principalType": "user",
+            "provider": "local"
+          }
+        },
+        "status": {
+          "bearerToken": "\u003csecret\u003e",
+          "current": false,
+          "expired": false,
+          "expiresAt": "\u003cts\u003e",
+          "lastUpdateTime": "\u003cts\u003e",
+          "value": "\u003csecret\u003e"
+        }
+      }
+    },
+    {
+      "name": "stale-delete",
+      "status": 500,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 500,
+        "details": {
+          "causes": [
+            {
+              "message": "\u003cmessage\u003e"
+            }
+          ]
+        },
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "metadata": {},
+        "reason": "InternalError",
+        "status": "Failure"
+      }
+    }
+  ]
+}

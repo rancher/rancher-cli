@@ -1,0 +1,10 @@
+{
+  "oracleImage": "",
+  "observations": [
+    {
+      "name": "get",
+      "status": 401,
+      "contentType": ""
+    }
+  ]
+}

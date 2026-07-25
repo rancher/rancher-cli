@@ -1,0 +1,30 @@
+{
+  "oracleImage": "rancher/rancher:v2.14.3@sha256:5d0354e95d55f92da0f3c0fdcf59c07dacfe5bda886aac5273da4ca98c8c1376",
+  "observations": [
+    {
+      "name": "dry-run-invalid",
+      "status": 422,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 422,
+        "details": {
+          "causes": [
+            {
+              "field": "metadata.name",
+              "message": "Invalid value: \"e2e-fid-Bad_Name!\": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')",
+              "reason": "FieldValueInvalid"
+            }
+          ],
+          "kind": "Secret",
+          "name": "e2e-fid-Bad_Name!"
+        },
+        "kind": "Status",
+        "message": "Secret \"e2e-fid-Bad_Name!\" is invalid: metadata.name: Invalid value: \"e2e-fid-Bad_Name!\": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')",
+        "metadata": {},
+        "reason": "Invalid",
+        "status": "Failure"
+      }
+    }
+  ]
+}

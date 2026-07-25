@@ -1,0 +1,56 @@
+{
+  "oracleImage": "",
+  "observations": [
+    {
+      "name": "mint",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "status": {
+          "bearerToken": "\u003csecret\u003e",
+          "expiresAt": "\u003cts\u003e"
+        }
+      }
+    },
+    {
+      "name": "revoke",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "name": "\u003cname\u003e",
+          "resourceVersion": "\u003crv\u003e"
+        },
+        "spec": {
+          "clusterName": ""
+        },
+        "status": {
+          "expiresAt": "\u003cts\u003e"
+        }
+      }
+    },
+    {
+      "name": "gone",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "group": "ext.cattle.io",
+          "kind": "tokens",
+          "name": "\u003cname\u003e"
+        },
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    }
+  ]
+}

@@ -520,6 +520,13 @@ provider package's envtest contract tests. First run downloads the
 envtest kube-apiserver/etcd binaries (~80MB, cached after that). kubectl on
 PATH enables the kubectl-interop scenario; otherwise it skips.
 
+The e2e façade's fidelity is pinned by recorded goldens from a real Rancher:
+`make e2e-real` boots the pinned `rancher/rancher` image in Docker and
+verifies the recording, `make e2e-real-update` re-records it, and the
+ordinary `make e2e` gate replays the same probes against the test façade so
+divergence from real-server behavior fails the build (or is pinned as an
+explicit, machine-checked exception).
+
 **Layout**
 
     main.go                 entrypoint (signal-cancellable context)

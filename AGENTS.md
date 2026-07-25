@@ -18,6 +18,8 @@ Go 1.26+. Automation is `make`, dispatching to `scripts/`:
 | `make test` | `go test -race -cover ./...` |
 | `make validate` | gofmt, vet, lint, race — the commit gate |
 | `make e2e` | envtest provider suite + testscript scenarios |
+| `make e2e-real` | verify recorded fidelity goldens against a real Rancher in Docker (~5–7 min boot; never in CI) |
+| `make e2e-real-update` | re-record the fidelity oracle goldens (review the diff like the schema golden) |
 | `make dev` | run the binary hermetically (temp config dir, file credential store) |
 
 `make` with no target runs `ci` (the full pipeline).
@@ -29,6 +31,9 @@ Two gotchas:
 - **Never run `bin/rancher` bare.** Use `make dev`, or prefix
   `RANCHER_CLI_CONFIG_DIR=$(mktemp -d) RANCHER_CLI_CREDENTIAL_STORE=file`. A bare
   run writes to the real OS keychain and config directory.
+- **The fidelity oracle is manual.** `make e2e-real` needs Docker, boots the
+  pinned `rancher/rancher` image, and never runs in CI. The image pin lives in
+  `scripts/e2e-real`; bumping it is a reviewed golden-regeneration change.
 
 ## Invariants — do not break these
 
