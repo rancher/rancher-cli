@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,9 +37,8 @@ type compositeTarget struct {
 	srv    *httptest.Server
 	facade *testrancher.Facade
 
-	mu       sync.Mutex
-	standard string
-	revoked  string
+	standard fidelity.LazyBearer
+	revoked  fidelity.LazyBearer
 }
 
 func newCompositeTarget(t *testing.T) *compositeTarget {
@@ -65,20 +63,9 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 	case fidelity.IdentityAdmin:
 		return testToken, nil
 	case fidelity.IdentityStandard:
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.standard == "" {
-			bearer, err := c.mintBearer(ctx)
-			if err != nil {
-				return "", err
-			}
-			c.standard = bearer
-		}
-		return c.standard, nil
+		return c.standard.Get(func() (string, error) { return c.mintBearer(ctx) })
 	case fidelity.IdentityRevoked:
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.revoked == "" {
+		return c.revoked.Get(func() (string, error) {
 			bearer, err := c.mintBearer(ctx)
 			if err != nil {
 				return "", err
@@ -90,9 +77,8 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 			if err := c.deleteToken(ctx, name); err != nil {
 				return "", err
 			}
-			c.revoked = bearer
-		}
-		return c.revoked, nil
+			return bearer, nil
+		})
 	default:
 		return "", fmt.Errorf("identity %q is resolved by the executor, not the target", id)
 	}

@@ -29,6 +29,30 @@ func jsonMarshalNoEscape(v any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// LazyBearer memoizes a bearer provisioned on first use. It caches only on
+// success — a failed provision leaves the slot empty so the next Get retries —
+// and serializes concurrent callers so provisioning happens at most once.
+type LazyBearer struct {
+	mu  sync.Mutex
+	val string
+}
+
+// Get returns the memoized bearer, invoking provision under the lock the first
+// time (and again after any failure) until it succeeds.
+func (l *LazyBearer) Get(provision func() (string, error)) (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.val != "" {
+		return l.val, nil
+	}
+	v, err := provision()
+	if err != nil {
+		return "", err
+	}
+	l.val = v
+	return v, nil
+}
+
 // RealTarget is the recorded oracle: a real Rancher reached through the
 // E2E_REAL_* environment scripts/e2e-real exports. Standard and revoked
 // bearers are provisioned lazily against the live server and memoized.
@@ -37,10 +61,8 @@ type RealTarget struct {
 	client  *http.Client
 	admin   string
 
-	mu               sync.Mutex
-	standard         string
-	standardPassword string
-	revoked          string
+	standard LazyBearer
+	revoked  LazyBearer
 }
 
 // NewRealTargetFromEnv builds the oracle client from E2E_REAL_URL,
@@ -112,74 +134,59 @@ func newStandardPassword() (string, error) {
 // logs in as it. Cleanup relies on Rancher cascading a deleted user's global
 // role bindings.
 func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.standard != "" {
-		return t.standard, nil
-	}
-	if t.standardPassword == "" {
-		pw, err := newStandardPassword()
+	return t.standard.Get(func() (string, error) {
+		password, err := newStandardPassword()
 		if err != nil {
 			return "", err
 		}
-		t.standardPassword = pw
-	}
-	if err := t.deleteStandardUser(ctx); err != nil {
-		return "", err
-	}
-	create := map[string]any{
-		"type":               "user",
-		"enabled":            true,
-		"mustChangePassword": false,
-		"username":           standardUsername,
-		"password":           t.standardPassword,
-	}
-	created, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated)
-	if err != nil {
-		return "", fmt.Errorf("creating standard user: %w", err)
-	}
-	userID, _ := created["id"].(string)
-	if userID == "" {
-		return "", fmt.Errorf("creating standard user: create response has no id")
-	}
-	grb := map[string]any{
-		"type":         "globalRoleBinding",
-		"globalRoleId": "user",
-		"userId":       userID,
-	}
-	if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/globalrolebindings", grb, http.StatusCreated); err != nil {
-		return "", fmt.Errorf("binding baseline user role to standard user: %w", err)
-	}
-	bearer, err := t.login(ctx, standardUsername, t.standardPassword)
-	if err != nil {
-		return "", err
-	}
-	t.standard = bearer
-	return bearer, nil
+		if err := t.deleteStandardUser(ctx); err != nil {
+			return "", err
+		}
+		create := map[string]any{
+			"type":               "user",
+			"enabled":            true,
+			"mustChangePassword": false,
+			"username":           standardUsername,
+			"password":           password,
+		}
+		created, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated)
+		if err != nil {
+			return "", fmt.Errorf("creating standard user: %w", err)
+		}
+		userID, _ := created["id"].(string)
+		if userID == "" {
+			return "", fmt.Errorf("creating standard user: create response has no id")
+		}
+		grb := map[string]any{
+			"type":         "globalRoleBinding",
+			"globalRoleId": "user",
+			"userId":       userID,
+		}
+		if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/globalrolebindings", grb, http.StatusCreated); err != nil {
+			return "", fmt.Errorf("binding baseline user role to standard user: %w", err)
+		}
+		return t.login(ctx, standardUsername, password)
+	})
 }
 
 // revokedBearer mints a derived token as admin, then revokes it by the name
 // embedded in the ext bearer.
 func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.revoked != "" {
-		return t.revoked, nil
-	}
-	body, _, err := t.adminJSON(ctx, http.MethodPost, token.MintTokensPath, map[string]any{"spec": map[string]any{}}, http.StatusCreated)
-	if err != nil {
-		return "", fmt.Errorf("minting token to revoke: %w", err)
-	}
-	bearer := extBearerFrom(body)
-	name, ok := NameFromExtBearer(bearer)
-	if !ok {
-		return "", fmt.Errorf("mint response bearer is not ext-shaped (credential value withheld)")
-	}
-	if _, _, err := t.adminJSON(ctx, http.MethodDelete, token.MintTokensPath+"/"+name, nil, http.StatusOK); err != nil {
-		return "", fmt.Errorf("revoking token %s: %w", name, err)
-	}
-	t.revoked = bearer
-	return bearer, nil
+	return t.revoked.Get(func() (string, error) {
+		body, _, err := t.adminJSON(ctx, http.MethodPost, token.MintTokensPath, map[string]any{"spec": map[string]any{}}, http.StatusCreated)
+		if err != nil {
+			return "", fmt.Errorf("minting token to revoke: %w", err)
+		}
+		bearer := extBearerFrom(body)
+		name, ok := NameFromExtBearer(bearer)
+		if !ok {
+			return "", fmt.Errorf("mint response bearer is not ext-shaped (credential value withheld)")
+		}
+		if _, _, err := t.adminJSON(ctx, http.MethodDelete, token.MintTokensPath+"/"+name, nil, http.StatusOK); err != nil {
+			return "", fmt.Errorf("revoking token %s: %w", name, err)
+		}
+		return bearer, nil
+	})
 }
 
 // deleteStandardUser removes any prior e2e-fid-standard user by username

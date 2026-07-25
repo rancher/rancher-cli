@@ -3,6 +3,7 @@ package fidelity
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -135,6 +136,63 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the standard bearer is memoized")
 	assert.Len(t, order, 5, "memoization must not re-provision")
+}
+
+func TestNewRealTargetFromEnv(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+
+	t.Run("missing env vars error", func(t *testing.T) {
+		for _, missing := range []string{"E2E_REAL_URL", "E2E_REAL_ADMIN_TOKEN", "E2E_REAL_CACERT"} {
+			t.Setenv("E2E_REAL_URL", "https://rancher.test/")
+			t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
+			t.Setenv("E2E_REAL_CACERT", caPEM)
+			t.Setenv(missing, "")
+			_, err := NewRealTargetFromEnv()
+			require.Error(t, err, "missing %s must fail", missing)
+		}
+	})
+
+	t.Run("unparseable CA errors", func(t *testing.T) {
+		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
+		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_REAL_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
+		_, err := NewRealTargetFromEnv()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no certificates parsed")
+	})
+
+	t.Run("success wires the target", func(t *testing.T) {
+		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
+		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_REAL_CACERT", caPEM)
+		tgt, err := NewRealTargetFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, "https://rancher.test", tgt.BaseURL(), "the trailing slash is trimmed")
+		require.NotNil(t, tgt.Client())
+		bearer, err := tgt.Bearer(context.Background(), IdentityAdmin)
+		require.NoError(t, err)
+		assert.Equal(t, "admin-tok", bearer)
+	})
+}
+
+func TestRedactBodyScrubsAndSummarizes(t *testing.T) {
+	t.Parallel()
+	assert.Contains(t, redactBody([]byte("this is not json")), "non-JSON body",
+		"a non-JSON body is summarized, never echoed")
+
+	scrubbed := redactBody([]byte(`{"status":{"bearerToken":"ext/x:secret"},"metadata":{"resourceVersion":"9"}}`))
+	assert.Contains(t, scrubbed, "<secret>", "the bearer is scrubbed before it can enter an error message")
+	assert.NotContains(t, scrubbed, "ext/x", "the raw bearer never appears")
+	assert.Contains(t, scrubbed, "<rv>", "volatile fields are normalized too")
+}
+
+func TestJSONMarshalNoEscapeSurfacesEncodeError(t *testing.T) {
+	t.Parallel()
+	_, err := jsonMarshalNoEscape(map[string]any{"bad": make(chan int)})
+	require.Error(t, err,
+		"an unmarshalable value surfaces the encoder error behind redactBody's defensive unrenderable branch")
 }
 
 func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {

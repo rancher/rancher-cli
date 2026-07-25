@@ -24,7 +24,6 @@ func TestAllProbesAreValidAndUniquelyNamed(t *testing.T) {
 		assert.False(t, seen[p.Name], "duplicate probe name %s", p.Name)
 		seen[p.Name] = true
 	}
-	assert.Len(t, All(), 15)
 }
 
 func TestExpectedProbeSet(t *testing.T) {

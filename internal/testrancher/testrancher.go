@@ -30,12 +30,14 @@ const (
 
 	defaultMintTTL = 15 * time.Minute
 
-	// crtCollectionPath is the Steve /v1 collection route for
-	// clusterregistrationtokens (Task 5, spec D-4). Must match
-	// internal/engine/provisioning's own crtCollectionPath — duplicated here
-	// rather than imported, since testrancher is test-only fixture code, not
-	// a consumer of the production package's execution logic.
-	crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
+	// CRTCollectionPath is the Steve /v1 collection route for
+	// clusterregistrationtokens (Task 5, spec D-4). It must match
+	// internal/engine/provisioning's own crtCollectionPath — duplicated there
+	// rather than imported, since production code cannot import this test-only
+	// package. internal/testrancher/fidelity consumes THIS constant (it may
+	// import its parent), so the only remaining intentional duplicate is
+	// production's copy, not a third one on the test side.
+	CRTCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
 
 	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
 	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
@@ -154,10 +156,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleNamedGet(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
 		f.handleDelete(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
-	case r.Method == http.MethodGet && r.URL.Path == crtCollectionPath:
+	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
-	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, crtCollectionPath+"/"):
-		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, crtCollectionPath+"/"))
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
+		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, CRTCollectionPath+"/"))
 	case r.Method == http.MethodGet && r.URL.Path == rke2ReleasePath:
 		f.handleRelease(w, rke2ReleaseFixture)
 	case r.Method == http.MethodGet && r.URL.Path == k3sReleasePath:

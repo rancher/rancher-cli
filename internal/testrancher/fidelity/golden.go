@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 )
 
 // ObservationResult is one observation's normalized recorded response.
@@ -34,6 +35,12 @@ func GoldenPath(dir, probeName string) string {
 // errors.Is(err, os.ErrNotExist) so callers can distinguish not-yet-recorded
 // from corrupt.
 func LoadGolden(path string) (Golden, error) {
+	// Goldens live under a fixed testdata root addressed by probe name, so a
+	// cleaned path with a ".." element is a bug, never a valid golden — reject
+	// it rather than read through a traversal.
+	if strings.Contains(filepath.Clean(path), "..") {
+		return Golden{}, fmt.Errorf("loading golden: refusing path with traversal: %q", path)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Golden{}, fmt.Errorf("loading golden: %w", err)
@@ -45,7 +52,10 @@ func LoadGolden(path string) (Golden, error) {
 	return g, nil
 }
 
-// SaveGolden writes one golden, creating parent directories.
+// SaveGolden writes one golden, creating parent directories. The 0755/0644
+// permissions are deliberate: goldens are committed, non-secret repository
+// files (credentials are scrubbed by the normalizer before they are written),
+// so world-readable perms are correct, not a leak.
 func SaveGolden(path string, g Golden) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating golden dir: %w", err)

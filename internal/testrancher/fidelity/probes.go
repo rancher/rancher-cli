@@ -8,13 +8,14 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/token"
 )
 
-// crtCollectionPath is the façade-owned Steve collection the bearer-validation
-// auth probes read. It mirrors testrancher's own crtCollectionPath (itself
-// pinned to internal/engine/provisioning's constant).
-const crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
+// crtCollectionPath is the Steve collection the bearer-validation auth probes
+// read. It is testrancher's exported constant (fidelity imports its parent),
+// so there is one copy on the test side.
+const crtCollectionPath = testrancher.CRTCollectionPath
 
 // localSecretsPath is the kube-proxy path prefix for core/v1 Secrets in the
 // local cluster — the exact URL shape client-go's dynamic client produces for

@@ -43,6 +43,13 @@ func TestArchitectureDocMatchesImports(t *testing.T) {
 func TestNoProductionPackageImportsTestRancher(t *testing.T) {
 	t.Parallel()
 	for e := range realImportEdges(t) {
+		from, _, _ := strings.Cut(e, " -> ")
+		// Packages under internal/testrancher are themselves the test-only
+		// tree; the ban is on production importers, not on testrancher's own
+		// subpackages (the fidelity oracle consumes its shared CRT constant).
+		if from == "internal/testrancher" || strings.HasPrefix(from, "internal/testrancher/") {
+			continue
+		}
 		assert.False(t, strings.HasSuffix(e, "internal/testrancher"), "production package edge %s: internal/testrancher is test-only", e)
 	}
 }

@@ -224,6 +224,7 @@ graph TD
     testrancher --> token
 
     fidelity --> token
+    fidelity --> testrancher
 ```
 
 ## Command pipeline
