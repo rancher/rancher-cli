@@ -46,6 +46,7 @@ type Report struct {
 const (
 	stagingPrefix   = ".rancher-skill-staging-"
 	markerTmpPrefix = ".rancher-skill-marker-"
+	probePrefix     = ".rancher-skill-probe-"
 )
 
 // DefaultLockDir is the production lock domain: the OS-user cache dir —
@@ -191,8 +192,10 @@ func validateTarget(t Target, verb string, force bool) error {
 }
 
 // probeWritable proves the parent accepts writes while we hold its lock.
+// The temp file uses probePrefix so a later sweepStaging call can reclaim
+// it if os.Remove fails (e.g. a transient permission lock on Windows).
 func probeWritable(parent string) error {
-	f, err := os.CreateTemp(parent, ".rancher-skill-probe-*")
+	f, err := os.CreateTemp(parent, probePrefix+"*")
 	if err != nil {
 		return fmt.Errorf("parent dir not writable: %w", err)
 	}
@@ -294,6 +297,12 @@ func sweepStaging(parent string) (warnings []string, err error) {
 		if !e.IsDir() && strings.HasPrefix(e.Name(), markerTmpPrefix) && strings.HasSuffix(e.Name(), ".tmp") {
 			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
 				return nil, fmt.Errorf("removing marker temp residue %s: %w", e.Name(), rmErr)
+			}
+			continue
+		}
+		if !e.IsDir() && strings.HasPrefix(e.Name(), probePrefix) {
+			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
+				return nil, fmt.Errorf("removing probe residue %s: %w", e.Name(), rmErr)
 			}
 			continue
 		}

@@ -244,6 +244,11 @@ func TestStagingSweepBuckets(t *testing.T) {
 	strayTmp := filepath.Join(parent, ".rancher-skill-marker-beef.tmp")
 	require.NoError(t, os.WriteFile(strayTmp, []byte("skill-inst"), 0o644))
 
+	// crash shape: probe file stranded in the parent when os.Remove failed
+	// after probeWritable's CreateTemp (e.g. transient lock on Windows)
+	strayProbe := filepath.Join(parent, ".rancher-skill-probe-deadcafe")
+	require.NoError(t, os.WriteFile(strayProbe, []byte(""), 0o644))
+
 	leases, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.NoError(t, err)
 	warnings, err := leases[0].Install("v1.0.0", false)
@@ -258,6 +263,8 @@ func TestStagingSweepBuckets(t *testing.T) {
 	assert.NoError(t, statErr, "unmarked non-empty residue must remain")
 	_, statErr = os.Stat(strayTmp)
 	assert.True(t, os.IsNotExist(statErr), "stray marker temp file must be removed")
+	_, statErr = os.Stat(strayProbe)
+	assert.True(t, os.IsNotExist(statErr), "stray probe file must be removed")
 	require.Len(t, warnings, 1)
 	assert.Contains(t, warnings[0], ".rancher-skill-staging-cafe")
 }
