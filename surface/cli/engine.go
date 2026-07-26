@@ -284,6 +284,7 @@ type runDeps struct {
 	src     engine.FileSource
 	dir     string
 	store   config.CredStore
+	version string
 }
 
 // adaptEntry wires one declarative entry through the single run path: it
@@ -293,7 +294,7 @@ type runDeps struct {
 // constructor MUST NOT touch its deps in Describe() (Describe is
 // dir/store/client-independent); one that does would panic here rather than in
 // production.
-func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli.Command {
+func adaptEntry(reg *runtime.Registry, version string, make func(runDeps) runtime.Command) *ucli.Command {
 	// probe is the SAME zero-runDeps instance used for both Describe() and the
 	// ShellCompleter type-assert below — its dir field is permanently "". A
 	// completer wired here is later called with this exact probe at real
@@ -323,7 +324,7 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 			f := newClientFactory(dir, store)
 			io := buildIO(c)
 			io.ServerIdentity = f.Identity
-			cmd := make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store})
+			cmd := make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version})
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {
 				return exit(ce)

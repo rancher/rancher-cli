@@ -451,7 +451,7 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	bad := entry{group: "get", make: func(runDeps) runtime.Command {
 		return fakeEngineCmd{name: "get pod extra"}
 	}}
-	_, _, werr := wireEntry(reg, resolver, bad)
+	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
 	assert.Contains(t, werr.Error(), "token")
 }
@@ -596,7 +596,7 @@ func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	bad := entry{group: "get", make: func(runDeps) runtime.Command {
 		return fakeEngineCmd{name: "get gizmo"}
 	}}
-	_, _, werr := wireEntry(reg, resolver, bad)
+	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
 	assert.Contains(t, werr.Error(), "binding")
 }

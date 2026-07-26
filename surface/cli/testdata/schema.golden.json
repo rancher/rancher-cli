@@ -7367,6 +7367,7 @@
             "project",
             "revoke",
             "schema",
+            "skill",
             "support-bundle",
             "usage"
           ],
@@ -7402,6 +7403,127 @@
       "network": false,
       "toolset": "core",
       "usage": "Print the capability manifest, optionally filtered to one command"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher skill install",
+        "rancher skill install --agent claude --scope project"
+      ],
+      "flags": [
+        {
+          "desc": "target harness (or `all`)",
+          "enum": [
+            "claude",
+            "codex",
+            "copilot",
+            "agents",
+            "all"
+          ],
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "desc": "install `scope`",
+          "enum": [
+            "user",
+            "project"
+          ],
+          "name": "scope",
+          "type": "string"
+        },
+        {
+          "desc": "replace foreign content at the target",
+          "name": "force",
+          "type": "bool"
+        }
+      ],
+      "group": "skill",
+      "name": "skill install",
+      "network": false,
+      "toolset": "core",
+      "usage": "Install the rancher agents skill into coding-agent harnesses"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher skill status",
+        "rancher skill status --agent claude --require-installed"
+      ],
+      "flags": [
+        {
+          "desc": "target harness (or `all`)",
+          "enum": [
+            "claude",
+            "codex",
+            "copilot",
+            "agents",
+            "all"
+          ],
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "desc": "install `scope`",
+          "enum": [
+            "user",
+            "project"
+          ],
+          "name": "scope",
+          "type": "string"
+        },
+        {
+          "desc": "fail when a selected target is absent",
+          "name": "require-installed",
+          "type": "bool"
+        }
+      ],
+      "group": "skill",
+      "name": "skill status",
+      "network": false,
+      "successExitCodes": [
+        0,
+        7
+      ],
+      "toolset": "core",
+      "usage": "Report installed skill versions and integrity per harness"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher skill uninstall --agent claude"
+      ],
+      "flags": [
+        {
+          "desc": "target harness (or `all`)",
+          "enum": [
+            "claude",
+            "codex",
+            "copilot",
+            "agents",
+            "all"
+          ],
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "desc": "install `scope`",
+          "enum": [
+            "user",
+            "project"
+          ],
+          "name": "scope",
+          "type": "string"
+        }
+      ],
+      "group": "skill",
+      "name": "skill uninstall",
+      "network": false,
+      "toolset": "core",
+      "usage": "Remove rancher-installed agents skills"
     },
     {
       "auth": true,
@@ -7736,6 +7858,14 @@
         "config set-completion"
       ],
       "name": "config"
+    },
+    {
+      "commands": [
+        "skill install",
+        "skill uninstall",
+        "skill status"
+      ],
+      "name": "skill"
     },
     {
       "commands": [

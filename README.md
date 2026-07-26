@@ -174,6 +174,9 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 | `schema [command\|kind] [--kind] [--verb --destructive --tier --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` is the full manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
+| `skill install [--agent <claude\|codex\|copilot\|agents\|all>] [--scope <user\|project>] [--force]` | Install the rancher agents skill into coding-agent harnesses |
+| `skill uninstall [--agent AGENT] [--scope SCOPE]` | Remove rancher-installed agents skills (only exact owner-marked installations) |
+| `skill status [--agent AGENT] [--scope SCOPE] [--require-installed]` | Report installed skill versions and integrity; exits 7 when a selected target is out of state |
 <!-- /conformance:commands-table -->
 
 `config use-server` switches to a context that targets the named server
@@ -201,7 +204,7 @@ nodes join with:
 Generated per kind from the 47-kind table: `get <kind>` (47), `patch <kind>`
 (47), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
 kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
-122 generated commands, 162 total together with the fixed commands above. The authoritative, always-current list is
+122 generated commands, 165 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 

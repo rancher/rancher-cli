@@ -56,6 +56,9 @@ func buildEntries() []entry {
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigPath(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigEdit(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetCompletion(d.dir) }},
+		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillInstall(d.version) }},
+		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillUninstall(d.version) }},
+		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillStatus(d.version) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
@@ -243,7 +246,7 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 // group, requires every engine command — read or mutating (CommandType !=
 // Local) — to resolve to a binding, registers the probe, and wires it through
 // the single run adapter.
-func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli.Command, string, error) {
+func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string, e entry) (*ucli.Command, string, error) {
 	if e.make == nil {
 		return nil, "", fmt.Errorf("entry in group %q has no constructor", e.group)
 	}
@@ -267,7 +270,7 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, e entry) (*ucli
 	}
 
 	reg.Register(e.make(runDeps{}))
-	return adaptEntry(reg, e.make), d.Name, nil
+	return adaptEntry(reg, version, e.make), d.Name, nil
 }
 
 // groupUsages documents the known verb groups. A group discovered from the
@@ -282,6 +285,7 @@ var groupUsages = map[string]string{
 	"delete":  "Delete resources",
 	"inspect": "Inspect related resources together",
 	"project": "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
+	"skill":   "Agents-skill installation for coding-agent harnesses",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
@@ -503,7 +507,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	sectionCmds := map[string][]string{}
 	var order []string
 	for _, e := range entries {
-		leaf, name, err := wireEntry(reg, resolver, e)
+		leaf, name, err := wireEntry(reg, resolver, version, e)
 		if err != nil {
 			return nil, err
 		}
