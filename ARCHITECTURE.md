@@ -170,6 +170,7 @@ graph TD
 
     inspect --> engine
     inspect --> kinds
+    inspect --> output
     inspect --> projects
     inspect --> provisioning
     inspect --> resources

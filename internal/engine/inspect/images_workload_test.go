@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
 
@@ -278,4 +279,83 @@ func TestWorkloadImagesPerPodImageDedup(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 1, rows[0].Pods, "one pod, twice-referenced image, pods = 1 (IM-17)")
+}
+
+func TestWorkloadRowsTableDisambiguatesGenerations(t *testing.T) {
+	t.Parallel()
+	rows := imageWorkloadRows{
+		{Image: "app:1", Namespace: "web",
+			Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "app", UID: "aaaaaaaa-1111"}, Pods: 2},
+		{Image: "app:2", Namespace: "web",
+			Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "app", UID: "bbbbbbbb-2222"}, Pods: 3},
+		{Image: "other:1", Namespace: "web",
+			Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "solo", UID: "cccccccc-3333"}, Pods: 1},
+	}
+	got := rows.Rows()
+	require.Len(t, got, 3)
+	assert.Equal(t, "deployment.apps/app@aaaaaaaa", got[0][2],
+		"different-image generations still get the suffix (IM-11)")
+	assert.Equal(t, "deployment.apps/app@bbbbbbbb", got[1][2])
+	assert.Equal(t, "deployment.apps/solo", got[2][2], "single generation, no suffix")
+}
+
+func TestWorkloadRowsSuffixGrowsPastSharedPrefix(t *testing.T) {
+	t.Parallel()
+	rows := imageWorkloadRows{
+		{Image: "a", Namespace: "n",
+			Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "x", UID: "aaaaaaaa-one"}, Pods: 1},
+		{Image: "a", Namespace: "n",
+			Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "x", UID: "aaaaaaaa-two"}, Pods: 1},
+	}
+	got := rows.Rows()
+	assert.Equal(t, "deployment.apps/x@aaaaaaaa-o", got[0][2],
+		"shared 8-char prefix forces the shortest unique prefix (IM-11)")
+	assert.Equal(t, "deployment.apps/x@aaaaaaaa-t", got[1][2])
+}
+
+func TestClusterImageWorkloadsTable(t *testing.T) {
+	t.Parallel()
+	c := clusterImageWorkloads{
+		"c-b": {{Image: "i", Namespace: "n",
+			Workload: workloadIdentity{APIVersion: "v1", Kind: "pod", Name: "p", UID: "u"}, Pods: 1}},
+		"c-a": {{Image: "i", Namespace: "n",
+			Workload: workloadIdentity{APIVersion: "v1", Kind: "pod", Name: "p", UID: "u"}, Pods: 1}},
+	}
+	got := c.Rows()
+	require.Len(t, got, 2)
+	assert.Equal(t, "c-a", got[0][0], "cluster ids sorted")
+	assert.Equal(t, []string{"CLUSTER", "IMAGE", "NAMESPACE", "WORKLOAD", "PODS"}, c.Columns())
+}
+
+func TestAllClustersWorkloadWarningsPrefixedAndSorted(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+	clusterKind, _ := kinds.Lookup("cluster")
+	mgmtList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		{Object: map[string]any{"metadata": map[string]any{"name": "c-bbb"}}},
+		{Object: map[string]any{"metadata": map[string]any{"name": "c-aaa"}}},
+	}}
+	// c-aaa: owner walk fails -> per-cluster warning. c-bbb: whole-cluster failure.
+	aClient := newFakeClient().
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			ownedPod("p", "web", "app:1", "gone-rs", "rs-gone"),
+		}}).
+		withGetErr(rsGVR, "web", "gone-rs", fmt.Errorf("boom"))
+	mgmt := newFakeClient().withList(clusterKind.GVR, mgmtList)
+	factory := &fakeFactory{
+		client: mgmt,
+		perCluster: map[string]engine.ClusterClient{
+			"local": mgmt,
+			"c-aaa": aClient,
+		},
+		perClusterErr: map[string]error{"c-bbb": fmt.Errorf("unreachable")},
+	}
+
+	cmd := NewImages(factory).(*imagesCmd)
+	res, err := cmd.allClusters(context.Background(), byWorkload, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"cluster c-aaa: owner web/replicaset.apps/gone-rs unavailable: boom",
+		"cluster c-bbb: unreachable",
+	}, res.Warnings, "per-cluster warnings prefixed with cluster id, combined array sorted")
 }

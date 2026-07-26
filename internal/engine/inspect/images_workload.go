@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -134,4 +135,95 @@ func resolveWorkload(ctx context.Context, client engine.ClusterClient, ns string
 func stringAt(m map[string]any, k string) string {
 	s, _ := m[k].(string)
 	return s
+}
+
+func (r imageWorkloadRows) Columns() []string {
+	return []string{"IMAGE", "NAMESPACE", "WORKLOAD", "PODS"}
+}
+
+func (r imageWorkloadRows) Rows() [][]string {
+	suffix := generationSuffixes(r)
+	out := make([][]string, 0, len(r))
+	for _, row := range r {
+		cell := kindGroupName(row.Workload.APIVersion, row.Workload.Kind, row.Workload.Name)
+		if s, ok := suffix[row.Workload.UID]; ok {
+			cell += s
+		}
+		out = append(out, []string{row.Image, row.Namespace, cell, strconv.Itoa(row.Pods)})
+	}
+	return out
+}
+
+type generationKey struct{ ns, apiVersion, kind, name string }
+
+// generationSuffixes finds workload identities that collide when uid and
+// image are ignored (IM-11): every generation of such an identity gets an
+// @uid-prefix suffix, image-independent, so the old-image/new-image
+// rollover case stays readable.
+func generationSuffixes(rows imageWorkloadRows) map[string]string {
+	uidsByIdentity := map[generationKey]map[string]bool{}
+	for _, row := range rows {
+		k := generationKey{row.Namespace, row.Workload.APIVersion, row.Workload.Kind, row.Workload.Name}
+		if uidsByIdentity[k] == nil {
+			uidsByIdentity[k] = map[string]bool{}
+		}
+		uidsByIdentity[k][row.Workload.UID] = true
+	}
+	out := map[string]string{}
+	for _, uids := range uidsByIdentity {
+		if len(uids) < 2 {
+			continue
+		}
+		all := make([]string, 0, len(uids))
+		for u := range uids {
+			all = append(all, u)
+		}
+		for _, u := range all {
+			out[u] = "@" + uniquePrefix(u, all)
+		}
+	}
+	return out
+}
+
+// uniquePrefix is the shortest prefix of uid, minimum 8 characters, that
+// no other uid shares; the full uid when nothing shorter is unique.
+func uniquePrefix(uid string, all []string) string {
+	for n := 8; n < len(uid); n++ {
+		p := uid[:n]
+		unique := true
+		for _, o := range all {
+			if o != uid && strings.HasPrefix(o, p) {
+				unique = false
+				break
+			}
+		}
+		if unique {
+			return p
+		}
+	}
+	return uid
+}
+
+// clusterImageWorkloads is --all-clusters --by workload's payload.
+// Rendering is per cluster, so generation disambiguation scopes per
+// rendered cluster (IM-11).
+type clusterImageWorkloads map[string]imageWorkloadRows
+
+func (c clusterImageWorkloads) Columns() []string {
+	return []string{"CLUSTER", "IMAGE", "NAMESPACE", "WORKLOAD", "PODS"}
+}
+
+func (c clusterImageWorkloads) Rows() [][]string {
+	ids := make([]string, 0, len(c))
+	for id := range c {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var out [][]string
+	for _, id := range ids {
+		for _, r := range c[id].Rows() {
+			out = append(out, append([]string{id}, r...))
+		}
+	}
+	return out
 }

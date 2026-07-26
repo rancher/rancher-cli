@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -43,6 +44,33 @@ func matchesAny(ref string, needles []string) bool {
 // mutex/memoization make concurrent Cluster() calls safe, but an unbounded
 // fan-out over a large fleet would still open too many connections at once.
 const imagesFanOutLimit = 5
+
+const (
+	byImage    = "image"
+	byWorkload = "workload"
+)
+
+// imagesResult is the by-discriminated envelope (IM-7): one Result Kind,
+// agents branch on "by". Exactly one of RowData/Clusters is set.
+type imagesResult struct {
+	By       string         `json:"by"`
+	RowData  output.Tabular `json:"rows,omitempty"`
+	Clusters output.Tabular `json:"clusters,omitempty"`
+}
+
+func (r imagesResult) Columns() []string {
+	if r.Clusters != nil {
+		return r.Clusters.Columns()
+	}
+	return r.RowData.Columns()
+}
+
+func (r imagesResult) Rows() [][]string {
+	if r.Clusters != nil {
+		return r.Clusters.Rows()
+	}
+	return r.RowData.Rows()
+}
 
 type imagesCmd struct {
 	clients engine.ClusterClientFactory
@@ -92,7 +120,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 			WithHint("pass exactly one of --cluster or --all-clusters")
 	}
 	if allClusters {
-		return c.allClusters(ctx, needles)
+		return c.allClusters(ctx, byImage, needles)
 	}
 
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
@@ -107,10 +135,10 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	return runtime.Result{Kind: "ClusterImages", Data: imgs}, nil
+	return runtime.Result{Kind: "ClusterImages", Data: imagesResult{By: byImage, RowData: imgs}}, nil
 }
 
-func (c *imagesCmd) allClusters(ctx context.Context, needles []string) (runtime.Result, error) {
+func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string) (runtime.Result, error) {
 	mgmt, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err
@@ -128,30 +156,52 @@ func (c *imagesCmd) allClusters(ctx context.Context, needles []string) (runtime.
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(imagesFanOutLimit)
 	var mu sync.Mutex
-	perCluster := clusterImages{}
+	perImages := clusterImages{}
+	perWorkloads := clusterImageWorkloads{}
 	var warns []string
 	for _, id := range ids {
 		id := id
 		g.Go(func() error {
 			client, cerr := c.clients.Cluster(gctx, id)
-			if cerr == nil {
-				imgs, ierr := imagesFor(gctx, client, needles)
-				if ierr == nil {
-					mu.Lock()
-					perCluster[id] = imgs
-					mu.Unlock()
+			if cerr != nil {
+				mu.Lock()
+				warns = append(warns, fmt.Sprintf("cluster %s: %v", id, cerr))
+				mu.Unlock()
+				return nil // degrade, never abort the group
+			}
+			if by == byWorkload {
+				rows, ws, ierr := workloadImagesFor(gctx, client, needles)
+				mu.Lock()
+				defer mu.Unlock()
+				if ierr != nil {
+					warns = append(warns, fmt.Sprintf("cluster %s: %v", id, ierr))
 					return nil
 				}
-				cerr = ierr
+				perWorkloads[id] = rows
+				for _, w := range ws {
+					warns = append(warns, fmt.Sprintf("cluster %s: %s", id, w))
+				}
+				return nil
 			}
+			imgs, ierr := imagesFor(gctx, client, needles)
 			mu.Lock()
-			warns = append(warns, fmt.Sprintf("cluster %s: %v", id, cerr))
-			mu.Unlock()
-			return nil // degrade, never abort the group
+			defer mu.Unlock()
+			if ierr != nil {
+				warns = append(warns, fmt.Sprintf("cluster %s: %v", id, ierr))
+				return nil
+			}
+			perImages[id] = imgs
+			return nil
 		})
 	}
 	_ = g.Wait()
-	return runtime.Result{Kind: "ClusterImages", Data: perCluster, Warnings: warns}, nil
+	sort.Strings(warns)
+	if by == byWorkload {
+		return runtime.Result{Kind: "ClusterImages",
+			Data: imagesResult{By: byWorkload, Clusters: perWorkloads}, Warnings: warns}, nil
+	}
+	return runtime.Result{Kind: "ClusterImages",
+		Data: imagesResult{By: byImage, Clusters: perImages}, Warnings: warns}, nil
 }
 
 // podActive reports whether a pod counts toward the image inventory. Only
