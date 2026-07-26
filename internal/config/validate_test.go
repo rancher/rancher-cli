@@ -38,13 +38,13 @@ func TestValidate(t *testing.T) {
 			wantErr: `context "prod" references unknown server "gone"`,
 		},
 		{
-			name: "dangling current-context",
+			name: "dangling currentContext",
 			cfg: &Config{
 				CurrentContext: "ghost",
 				Servers:        map[string]Server{"acme": {URL: "https://acme.ex"}},
 				Contexts:       map[string]Context{"prod": {Server: "acme"}},
 			},
-			wantErr: `current-context "ghost" is not a defined context`,
+			wantErr: `currentContext "ghost" is not a defined context`,
 		},
 		{
 			name: "illegal credentialStore value",

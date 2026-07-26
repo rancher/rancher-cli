@@ -55,7 +55,7 @@ stderr 'TTY'
 stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 -- seed-config.yaml --
-current-context: acme
+currentContext: acme
 servers:
   acme:
     url: https://acme.example.com

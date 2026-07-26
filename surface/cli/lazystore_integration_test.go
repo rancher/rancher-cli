@@ -20,7 +20,7 @@ func seedDrainConfig(t *testing.T) string {
 	keyring.MockInit()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
-		"current-context: acme\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
+		"currentContext: acme\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
 	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "acme"}, "id:sec"))
 	t.Setenv(config.EnvConfigDir, dir)
 	return dir

@@ -20,7 +20,7 @@ const configEditSkeleton = `# No rancher CLI config file exists yet at this path
 # Save this file as-is (or empty) to leave nothing configured, or uncomment
 # and fill in a server/context to create one.
 #
-# current-context: my-context
+# currentContext: my-context
 # servers:
 #   my-server:
 #     url: https://rancher.example.com

@@ -30,7 +30,7 @@ func Validate(cfg *Config) error {
 
 	if cfg.CurrentContext != "" {
 		if _, ok := cfg.Contexts[cfg.CurrentContext]; !ok {
-			errs = append(errs, fmt.Sprintf("current-context %q is not a defined context", cfg.CurrentContext))
+			errs = append(errs, fmt.Sprintf("currentContext %q is not a defined context", cfg.CurrentContext))
 		}
 	}
 

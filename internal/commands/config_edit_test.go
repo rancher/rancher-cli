@@ -197,7 +197,7 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	assert.Equal(t, target, link)
 }
 
-const validConfigYAML = "current-context: prod\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  prod:\n    server: acme\n"
+const validConfigYAML = "currentContext: prod\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  prod:\n    server: acme\n"
 
 func seedConfigFile(t *testing.T, dir, content string) {
 	t.Helper()

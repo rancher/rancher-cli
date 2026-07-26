@@ -87,7 +87,7 @@ type Context struct {
 
 // Config is the on-disk CLI configuration (kubeconfig-shaped).
 type Config struct {
-	CurrentContext  string             `json:"current-context,omitempty"`
+	CurrentContext  string             `json:"currentContext,omitempty"`
 	Contexts        map[string]Context `json:"contexts,omitempty"`
 	Servers         map[string]Server  `json:"servers,omitempty"`
 	CredentialStore string             `json:"credentialStore,omitempty"`

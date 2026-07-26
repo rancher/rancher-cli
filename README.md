@@ -456,7 +456,7 @@ never depends on them.
 ## Configuration
 
 - **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`),
-  kubeconfig-shaped (`current-context`, `contexts`, `servers`). Secrets are NOT
+  kubeconfig-like in layout (`currentContext`, `contexts`, `servers`). Secrets are NOT
   stored here.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
