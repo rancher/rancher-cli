@@ -155,6 +155,21 @@ func TestProjectScopable(t *testing.T) {
 	}
 }
 
+// TestClusterRowsCarryWaitDefaultConditionReady is IC-10/IC-11's row-level
+// pin: BOTH cluster rows' bare---wait default is the LITERAL
+// "condition=Ready". A literal expectation on purpose — a silent row edit
+// must fail here, not round-trip.
+func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
+	t.Parallel()
+	mgmt, ok := Lookup("managementcluster")
+	require.True(t, ok)
+	assert.Equal(t, "condition=Ready", mgmt.WaitDefault)
+
+	prov, ok := Lookup("provisioningcluster")
+	require.True(t, ok)
+	assert.Equal(t, "condition=Ready", prov.WaitDefault)
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

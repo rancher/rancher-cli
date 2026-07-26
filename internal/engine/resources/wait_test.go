@@ -273,6 +273,35 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 	assert.Contains(t, err.Error(), "no state observed")
 }
 
+// TestGetClusterBareWaitAppliesRowDefault is IC-11's command-boundary pin:
+// a bare `get cluster <name> --wait` (no --for) applies the row's
+// WaitDefault end to end — the command resolves the expression from the
+// kind row, parses it, and polls until the Ready condition flips. The
+// polling fake satisfies the condition only on the THIRD Get, so a
+// non-polling shortcut or a wrong default expression fails loudly.
+func TestGetClusterBareWaitAppliesRowDefault(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	k := mustKind(t, "cluster")
+	require.Equal(t, "condition=Ready", k.WaitDefault, "the row default this test proves is applied")
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		conditionObj("Ready", "False"),
+		conditionObj("Ready", "False"),
+		conditionObj("Ready", "True"),
+	}}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(), input{
+		args: []string{"c-abc"},
+		b:    map[string]bool{"wait": true},
+	}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Cluster", res.Kind)
+	assert.Equal(t, 3, client.calls, "the wait must POLL to the flip, not read once")
+}
+
 func mustState(obj *unstructured.Unstructured) string {
 	s, _, _ := unstructured.NestedString(obj.Object, "status", "state")
 	return s
