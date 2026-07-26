@@ -21,8 +21,21 @@ import (
 )
 
 // requestTimeout bounds every non-streaming API operation. Watch/stream
-// calls (none yet) must exempt themselves at the call site.
-const requestTimeout = 30 * time.Second
+// calls (none yet) must exempt themselves at the call site. A package var
+// (rather than a constant) so tests can shrink it via
+// SetRequestTimeoutForTest — the keyringProbeTimeout test-shrinkable
+// pattern in internal/config/credstore.go.
+var requestTimeout = 30 * time.Second
+
+// SetRequestTimeoutForTest shrinks the per-request timeout and returns a
+// restore func. In non-test code so other packages' tests can reach it —
+// mirrors config.SetExecHelperTimeoutForTest. Callers must not run in
+// parallel with tests issuing real requests.
+func SetRequestTimeoutForTest(d time.Duration) (restore func()) {
+	old := requestTimeout
+	requestTimeout = d
+	return func() { requestTimeout = old }
+}
 
 func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, requestTimeout)
