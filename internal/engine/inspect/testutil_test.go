@@ -18,13 +18,14 @@ type input struct {
 	args []string
 	s    map[string]string
 	b    map[string]bool
+	ss   map[string][]string
 }
 
-func (i input) String(k string) string  { return i.s[k] }
-func (i input) Bool(k string) bool      { return i.b[k] }
-func (i input) Strings(string) []string { return nil }
-func (i input) IsSet(string) bool       { return false }
-func (i input) Args() []string          { return i.args }
+func (i input) String(k string) string    { return i.s[k] }
+func (i input) Bool(k string) bool        { return i.b[k] }
+func (i input) Strings(k string) []string { return i.ss[k] }
+func (i input) IsSet(string) bool         { return false }
+func (i input) Args() []string            { return i.args }
 
 type objKey struct {
 	gvr  schema.GroupVersionResource

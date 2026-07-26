@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -17,6 +18,26 @@ import (
 )
 
 const flagAllClusters = "all-clusters"
+
+const (
+	flagBy    = "by"
+	flagMatch = "match"
+)
+
+// matchesAny is IM-3: case-sensitive substring over the raw ref, values
+// OR, no needles matches everything. Precision comes from delimiters in
+// the needle (registry.old.corp/, /nginx:), not pattern syntax.
+func matchesAny(ref string, needles []string) bool {
+	if len(needles) == 0 {
+		return true
+	}
+	for _, n := range needles {
+		if strings.Contains(ref, n) {
+			return true
+		}
+	}
+	return false
+}
 
 // imagesFanOutLimit bounds --all-clusters concurrency: the factory's
 // mutex/memoization make concurrent Cluster() calls safe, but an unbounded
@@ -55,6 +76,14 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if err := rejectProject(c.clients, in, "images"); err != nil {
 		return runtime.Result{}, err
 	}
+	needles := in.Strings(flagMatch)
+	for _, n := range needles {
+		if n == "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"--match value must not be empty").
+				WithHint("pass a non-empty substring, e.g. --match registry.old.corp/")
+		}
+	}
 	clusterFlag := in.String(resources.FlagCluster)
 	allClusters := in.Bool(flagAllClusters)
 	if allClusters && clusterFlag != "" {
@@ -63,7 +92,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 			WithHint("pass exactly one of --cluster or --all-clusters")
 	}
 	if allClusters {
-		return c.allClusters(ctx)
+		return c.allClusters(ctx, needles)
 	}
 
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
@@ -74,14 +103,14 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	imgs, err := imagesFor(ctx, client)
+	imgs, err := imagesFor(ctx, client, needles)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "ClusterImages", Data: imgs}, nil
 }
 
-func (c *imagesCmd) allClusters(ctx context.Context) (runtime.Result, error) {
+func (c *imagesCmd) allClusters(ctx context.Context, needles []string) (runtime.Result, error) {
 	mgmt, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err
@@ -106,7 +135,7 @@ func (c *imagesCmd) allClusters(ctx context.Context) (runtime.Result, error) {
 		g.Go(func() error {
 			client, cerr := c.clients.Cluster(gctx, id)
 			if cerr == nil {
-				imgs, ierr := imagesFor(gctx, client)
+				imgs, ierr := imagesFor(gctx, client, needles)
 				if ierr == nil {
 					mu.Lock()
 					perCluster[id] = imgs
@@ -158,8 +187,8 @@ func podImageRefs(pod map[string]any) []string {
 
 // imagesFor lists a cluster's pods across all namespaces, skips inactive
 // pods, and dedupes every container image reference into a sorted, counted
-// slice.
-func imagesFor(ctx context.Context, client engine.ClusterClient) (imageRows, error) {
+// slice. needles filters by substring (IM-3); nil matches everything.
+func imagesFor(ctx context.Context, client engine.ClusterClient, needles []string) (imageRows, error) {
 	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, "", "")
 	if err != nil {
@@ -172,7 +201,9 @@ func imagesFor(ctx context.Context, client engine.ClusterClient) (imageRows, err
 			continue
 		}
 		for _, img := range podImageRefs(pod) {
-			counts[img]++
+			if matchesAny(img, needles) {
+				counts[img]++
+			}
 		}
 	}
 	out := make(imageRows, 0, len(counts))

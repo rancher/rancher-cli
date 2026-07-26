@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
@@ -155,7 +156,7 @@ func TestImagesSkipsInactivePods(t *testing.T) {
 	}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client)
+	rows, err := imagesFor(context.Background(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "img-a", rows[0].Image)
@@ -169,7 +170,7 @@ func TestImagesIncludesTerminatingRunningPod(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client)
+	rows, err := imagesFor(context.Background(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "a terminating pod stays included until it leaves the List (IM-14)")
 	assert.Equal(t, "img-t", rows[0].Image)
@@ -184,7 +185,7 @@ func TestImagesCountsEphemeralContainers(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client)
+	rows, err := imagesFor(context.Background(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "app-img", rows[0].Image)
@@ -200,8 +201,42 @@ func TestImagesCountIsPerReference(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client)
+	rows, err := imagesFor(context.Background(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 2, rows[0].Count, "same image in init and app container is two references (IM-18)")
+}
+
+func TestImagesMatchFiltersAndORs(t *testing.T) {
+	t.Parallel()
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		podWithPhase("a", "Running", "registry.corp/web/nginx:1.25"),
+		podWithPhase("b", "Running", "registry.old.corp/legacy/app:1"),
+		podWithPhase("c", "Running", "quay.io/tools/busybox:stable"),
+	}}
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, list)
+
+	rows, err := imagesFor(context.Background(), client, []string{"registry.old.corp/", "/nginx:"})
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "values OR: old-registry image plus the nginx repo")
+	assert.Equal(t, "registry.corp/web/nginx:1.25", rows[0].Image)
+	assert.Equal(t, "registry.old.corp/legacy/app:1", rows[1].Image)
+
+	rows, err = imagesFor(context.Background(), client, nil)
+	require.NoError(t, err)
+	assert.Len(t, rows, 3, "no needles matches everything")
+}
+
+func TestImagesEmptyMatchRejected(t *testing.T) {
+	t.Parallel()
+	cmd := NewImages(&fakeFactory{client: newFakeClient()})
+	_, err := execRead(t, cmd, input{
+		s:  map[string]string{},
+		ss: map[string][]string{"match": {""}},
+	})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
