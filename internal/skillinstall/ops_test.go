@@ -25,15 +25,6 @@ func testLockDir(tg Target) string {
 	return filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(tg.Dir))), ".test-locks")
 }
 
-func mustAcquire(t *testing.T, tg Target, verb string, force bool) *Lease {
-	t.Helper()
-	leases, err := Acquire(testLockDir(tg), []Target{tg}, verb, force)
-	require.NoError(t, err)
-	require.Len(t, leases, 1)
-	t.Cleanup(func() { ReleaseAll(leases) })
-	return leases[0]
-}
-
 func install(t *testing.T, tg Target, version string) {
 	t.Helper()
 	leases, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
@@ -183,16 +174,22 @@ func TestUninstall(t *testing.T) {
 	SetSource(testSource(t))
 	tg := targetIn(t)
 
-	l := mustAcquire(t, tg, "uninstall", false)
-	removed, err := l.Uninstall()
+	leases, err := Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
+	require.NoError(t, err)
+	removed, err := leases[0].Uninstall()
+	ReleaseAll(leases)
 	require.NoError(t, err) // absent = no-op success
 	assert.False(t, removed)
 
 	install(t, tg, "v1.0.0")
-	l = mustAcquire(t, tg, "uninstall", false)
-	removed, err = l.Uninstall()
+
+	leases, err = Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
+	require.NoError(t, err)
+	removed, err = leases[0].Uninstall()
+	ReleaseAll(leases)
 	require.NoError(t, err)
 	assert.True(t, removed)
+
 	v, _, _ := StatusTarget(tg, "v1.0.0")
 	assert.Equal(t, VerdictAbsent, v)
 }
@@ -333,7 +330,7 @@ func TestUninstallAbsentIsFilesystemNoOp(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, removed)
 	_, statErr := os.Stat(parent)
-	assert.True(t, os.IsNotExist(statErr), "absent uninstall must not create dirs or locks")
+	assert.True(t, os.IsNotExist(statErr), "absent uninstall must not create harness dirs")
 }
 
 // The absence race is closed by the shared lock domain, not rechecking: a

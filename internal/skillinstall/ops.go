@@ -450,7 +450,6 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 		}
 	}
 	err = os.Rename(staging, t.Dir)
-	_ = l.fl.Unlock()
 	return warnings, err
 }
 
@@ -464,13 +463,11 @@ func (l *Lease) Uninstall() (bool, error) {
 		return false, err
 	}
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
-		_ = l.fl.Unlock()
 		return false, nil
 	}
 	if err := os.RemoveAll(t.Dir); err != nil {
 		return false, err
 	}
-	_ = l.fl.Unlock()
 	return true, nil
 }
 
