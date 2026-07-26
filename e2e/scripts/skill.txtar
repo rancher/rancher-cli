@@ -1,0 +1,38 @@
+# Hermetic: skill verbs never touch the server. HOME is scenario-local, so
+# user-scope targets resolve inside the sandbox.
+env HOME=$WORK/home
+env USERPROFILE=$WORK/home
+env CODEX_HOME=
+env COPILOT_HOME=
+mkdir $WORK/home/.claude
+
+# Only claude is detected: install lands exactly one target.
+exec rancher skill install -o json
+jsonquery stdout data.0.action changed
+jsonquery stdout data.0.target.harness claude
+
+# In sync right after install.
+exec rancher skill status -o json
+jsonquery stdout data.0.verdict in-sync
+
+# Tamper with an extra file -> modified, nonzero exit, rows still rendered.
+cp extra.md $WORK/home/.claude/skills/rancher/extra.md
+! exec rancher skill status -o json
+jsonquery stdout data.0.verdict modified
+
+# Repair, then remove.
+exec rancher skill install -o json
+exec rancher skill uninstall -o json
+jsonquery stdout data.0.action changed
+exec rancher skill status -o json
+jsonquery stdout data.0.verdict absent
+
+# Fresh-machine shape: no harness homes -> empty report, exit 0, warning.
+env HOME=$WORK/empty
+env USERPROFILE=$WORK/empty
+mkdir $WORK/empty
+exec rancher skill status -o json
+jsonquery stdout warnings.0 'no coding-agent harness detected; nothing to report'
+
+-- extra.md --
+tampered content
