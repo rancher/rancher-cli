@@ -294,7 +294,11 @@ type runDeps struct {
 // constructor MUST NOT touch its deps in Describe() (Describe is
 // dir/store/client-independent); one that does would panic here rather than in
 // production.
-func adaptEntry(reg *runtime.Registry, version string, make func(runDeps) runtime.Command) *ucli.Command {
+//
+// When bare is true the action skips resolveDeps, newClientFactory, and
+// newFileSource entirely and constructs the command with only version set.
+// Schema, completion, and wireEntry validation are unaffected.
+func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runDeps) runtime.Command) *ucli.Command {
 	// probe is the SAME zero-runDeps instance used for both Describe() and the
 	// ShellCompleter type-assert below — its dir field is permanently "". A
 	// completer wired here is later called with this exact probe at real
@@ -317,14 +321,19 @@ func adaptEntry(reg *runtime.Registry, version string, make func(runDeps) runtim
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
 		Action: func(ctx context.Context, c *ucli.Command) error {
-			dir, store, err := resolveDeps(c)
-			if err != nil {
-				return exit(clierr.New(clierr.CodeGeneric, err.Error()))
-			}
-			f := newClientFactory(dir, store)
 			io := buildIO(c)
-			io.ServerIdentity = f.Identity
-			cmd := make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version})
+			var cmd runtime.Command
+			if bare {
+				cmd = make(runDeps{version: version})
+			} else {
+				dir, store, err := resolveDeps(c)
+				if err != nil {
+					return exit(clierr.New(clierr.CodeGeneric, err.Error()))
+				}
+				f := newClientFactory(dir, store)
+				io.ServerIdentity = f.Identity
+				cmd = make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version})
+			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {
 				return exit(ce)

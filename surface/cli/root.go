@@ -32,7 +32,13 @@ import (
 // with no per-shape adapter or wiring switch.
 type entry struct {
 	group string
-	make  func(runDeps) runtime.Command
+	// bare marks commands that need no Rancher config, credential store, or
+	// client factory — only runDeps.version. When true, adaptEntry skips
+	// resolveDeps/newClientFactory/newFileSource entirely and constructs the
+	// command with only version set. Schema, completion, and wireEntry
+	// validation are unaffected.
+	bare bool
+	make func(runDeps) runtime.Command
 }
 
 // buildEntries is the single source of command wiring: the bespoke config/token
@@ -56,9 +62,9 @@ func buildEntries() []entry {
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigPath(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigEdit(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetCompletion(d.dir) }},
-		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillInstall(d.version) }},
-		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillUninstall(d.version) }},
-		{group: "skill", make: func(d runDeps) runtime.Command { return commands.NewSkillStatus(d.version) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillInstall(d.version) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillUninstall(d.version) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillStatus(d.version) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
@@ -270,7 +276,7 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string,
 	}
 
 	reg.Register(e.make(runDeps{}))
-	return adaptEntry(reg, version, e.make), d.Name, nil
+	return adaptEntry(reg, version, e.bare, e.make), d.Name, nil
 }
 
 // groupUsages documents the known verb groups. A group discovered from the
