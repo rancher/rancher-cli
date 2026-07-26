@@ -50,8 +50,11 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Name:    "patch " + c.k.Name,
 		Aliases: c.k.Aliases,
 		// "Patch the <kind>" (a single named resource), matching delete's
-		// article choice; see the note in delete.go.
-		Usage:        "Patch the " + c.k.Name + " with an RFC 6902 JSON patch",
+		// article choice; see the note in delete.go. The patch format (RFC
+		// 6902) is documented once, on the --patch flag that carries the
+		// payload — repeating it in every leaf's usage made `patch -h` read
+		// like a stutter, and "patch" appeared twice per line.
+		Usage:        "Patch the " + c.k.Name,
 		CommandType:  runtime.Mutating,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:        patchFlags(c.k),

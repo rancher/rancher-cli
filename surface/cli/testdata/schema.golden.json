@@ -4507,7 +4507,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the amazonec2config with an RFC 6902 JSON patch"
+      "usage": "Patch the amazonec2config"
     },
     {
       "aliases": [
@@ -4564,7 +4564,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the azureconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the azureconfig"
     },
     {
       "aliases": [
@@ -4621,7 +4621,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the bundle with an RFC 6902 JSON patch"
+      "usage": "Patch the bundle"
     },
     {
       "aliases": [
@@ -4678,7 +4678,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the bundledeployment with an RFC 6902 JSON patch"
+      "usage": "Patch the bundledeployment"
     },
     {
       "aliases": [
@@ -4735,7 +4735,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the capi-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the capi-cluster"
     },
     {
       "aliases": [
@@ -4787,7 +4787,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the cluster"
     },
     {
       "aliases": [
@@ -4844,7 +4844,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the clustergroup with an RFC 6902 JSON patch"
+      "usage": "Patch the clustergroup"
     },
     {
       "aliases": [
@@ -4903,7 +4903,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the clusterregistrationtoken with an RFC 6902 JSON patch"
+      "usage": "Patch the clusterregistrationtoken"
     },
     {
       "aliases": [
@@ -4961,7 +4961,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the clusterroletemplatebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the clusterroletemplatebinding"
     },
     {
       "aliases": [
@@ -5026,7 +5026,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the configmap with an RFC 6902 JSON patch"
+      "usage": "Patch the configmap"
     },
     {
       "aliases": [
@@ -5090,7 +5090,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the cronjob with an RFC 6902 JSON patch"
+      "usage": "Patch the cronjob"
     },
     {
       "aliases": [
@@ -5155,7 +5155,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the daemonset with an RFC 6902 JSON patch"
+      "usage": "Patch the daemonset"
     },
     {
       "aliases": [
@@ -5220,7 +5220,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the deployment with an RFC 6902 JSON patch"
+      "usage": "Patch the deployment"
     },
     {
       "aliases": [
@@ -5277,7 +5277,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the digitaloceanconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the digitaloceanconfig"
     },
     {
       "aliases": [
@@ -5342,7 +5342,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the event with an RFC 6902 JSON patch"
+      "usage": "Patch the event"
     },
     {
       "aliases": [
@@ -5394,7 +5394,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the feature with an RFC 6902 JSON patch"
+      "usage": "Patch the feature"
     },
     {
       "aliases": [
@@ -5451,7 +5451,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the fleet-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the fleet-cluster"
     },
     {
       "aliases": [
@@ -5508,7 +5508,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the gitrepo with an RFC 6902 JSON patch"
+      "usage": "Patch the gitrepo"
     },
     {
       "aliases": [
@@ -5560,7 +5560,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the globalrole with an RFC 6902 JSON patch"
+      "usage": "Patch the globalrole"
     },
     {
       "aliases": [
@@ -5612,7 +5612,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the globalrolebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the globalrolebinding"
     },
     {
       "aliases": [
@@ -5669,7 +5669,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the harvesterconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the harvesterconfig"
     },
     {
       "aliases": [
@@ -5734,7 +5734,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the ingress with an RFC 6902 JSON patch"
+      "usage": "Patch the ingress"
     },
     {
       "aliases": [
@@ -5798,7 +5798,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the job with an RFC 6902 JSON patch"
+      "usage": "Patch the job"
     },
     {
       "aliases": [
@@ -5862,7 +5862,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the k3k-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the k3k-cluster"
     },
     {
       "aliases": [
@@ -5914,7 +5914,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch the kubeconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the kubeconfig"
     },
     {
       "aliases": [
@@ -5971,7 +5971,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the machine with an RFC 6902 JSON patch"
+      "usage": "Patch the machine"
     },
     {
       "aliases": [
@@ -6028,7 +6028,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the machinedeployment with an RFC 6902 JSON patch"
+      "usage": "Patch the machinedeployment"
     },
     {
       "aliases": [
@@ -6085,7 +6085,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the machineset with an RFC 6902 JSON patch"
+      "usage": "Patch the machineset"
     },
     {
       "aliases": [
@@ -6144,7 +6144,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the namespace with an RFC 6902 JSON patch"
+      "usage": "Patch the namespace"
     },
     {
       "aliases": [
@@ -6201,7 +6201,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the node with an RFC 6902 JSON patch"
+      "usage": "Patch the node"
     },
     {
       "aliases": [
@@ -6253,7 +6253,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the nodedriver with an RFC 6902 JSON patch"
+      "usage": "Patch the nodedriver"
     },
     {
       "aliases": [
@@ -6311,7 +6311,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the persistentvolume with an RFC 6902 JSON patch"
+      "usage": "Patch the persistentvolume"
     },
     {
       "aliases": [
@@ -6376,7 +6376,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the persistentvolumeclaim with an RFC 6902 JSON patch"
+      "usage": "Patch the persistentvolumeclaim"
     },
     {
       "aliases": [
@@ -6441,7 +6441,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the pod with an RFC 6902 JSON patch"
+      "usage": "Patch the pod"
     },
     {
       "aliases": [
@@ -6499,7 +6499,7 @@
       "stability": "stable",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch the project with an RFC 6902 JSON patch"
+      "usage": "Patch the project"
     },
     {
       "aliases": [
@@ -6557,7 +6557,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the projectroletemplatebinding with an RFC 6902 JSON patch"
+      "usage": "Patch the projectroletemplatebinding"
     },
     {
       "aliases": [
@@ -6614,7 +6614,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the provisioning-cluster with an RFC 6902 JSON patch"
+      "usage": "Patch the provisioning-cluster"
     },
     {
       "aliases": [
@@ -6679,7 +6679,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the replicaset with an RFC 6902 JSON patch"
+      "usage": "Patch the replicaset"
     },
     {
       "aliases": [
@@ -6731,7 +6731,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the roletemplate with an RFC 6902 JSON patch"
+      "usage": "Patch the roletemplate"
     },
     {
       "aliases": [
@@ -6795,7 +6795,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the secret with an RFC 6902 JSON patch"
+      "usage": "Patch the secret"
     },
     {
       "aliases": [
@@ -6860,7 +6860,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the service with an RFC 6902 JSON patch"
+      "usage": "Patch the service"
     },
     {
       "aliases": [
@@ -6925,7 +6925,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the serviceaccount with an RFC 6902 JSON patch"
+      "usage": "Patch the serviceaccount"
     },
     {
       "aliases": [
@@ -6977,7 +6977,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the setting with an RFC 6902 JSON patch"
+      "usage": "Patch the setting"
     },
     {
       "aliases": [
@@ -7042,7 +7042,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the statefulset with an RFC 6902 JSON patch"
+      "usage": "Patch the statefulset"
     },
     {
       "aliases": [
@@ -7094,7 +7094,7 @@
       "stability": "beta",
       "tier": "public",
       "toolset": "core",
-      "usage": "Patch the token with an RFC 6902 JSON patch"
+      "usage": "Patch the token"
     },
     {
       "aliases": [
@@ -7146,7 +7146,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the user with an RFC 6902 JSON patch"
+      "usage": "Patch the user"
     },
     {
       "aliases": [
@@ -7203,7 +7203,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "Patch the vmwarevsphereconfig with an RFC 6902 JSON patch"
+      "usage": "Patch the vmwarevsphereconfig"
     },
     {
       "args": [
