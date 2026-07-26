@@ -116,6 +116,11 @@ func AgentNames() []string {
 // Targets resolves the selected agent+scope to deduplicated final dirs.
 // User scope + "all" selects detected harnesses only. Project scope
 // collapses aliased rows (copilot → agents) so a shared dir appears once.
+// Deduplication uses canonicalTarget so two textual paths to the same
+// physical directory (e.g. CODEX_HOME set to a symlink of ~/.claude) produce
+// only one target. Table order determines the winner: the first row
+// (claude, codex, copilot, agents) that claims a canonical identity keeps
+// its harness name; later aliases are skipped.
 func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
 	rows := Harnesses()
 	if agent != "all" {
@@ -153,10 +158,10 @@ func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
 		default:
 			return nil, fmt.Errorf("unknown scope %q", scope)
 		}
-		if seen[dir] {
+		if seen[canonicalTarget(dir)] {
 			continue
 		}
-		seen[dir] = true
+		seen[canonicalTarget(dir)] = true
 		out = append(out, Target{Harness: name, Scope: scope, Dir: dir})
 	}
 	return out, nil

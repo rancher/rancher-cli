@@ -3,6 +3,7 @@ package skillinstall
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,4 +72,36 @@ func TestTargetsUnknownAgent(t *testing.T) {
 
 func TestAgentNames(t *testing.T) {
 	assert.Equal(t, []string{"claude", "codex", "copilot", "agents", "all"}, AgentNames())
+}
+
+// TestTargetsUserScopeSymlinkedCodexHomeDedupsToOne proves that when
+// CODEX_HOME is a symlink pointing at ~/.claude, Targets returns exactly one
+// target labeled "claude" (the first row in table order) and Acquire succeeds
+// on the deduplicated result without a self-conflict error.
+func TestTargetsUserScopeSymlinkedCodexHomeDedupsToOne(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks may require elevated privileges on windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("COPILOT_HOME", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".claude"), 0o755))
+
+	// CODEX_HOME is a symlink pointing at ~/.claude — same physical location,
+	// different textual path. Both rows pass Detect(); without canonical dedup
+	// Targets would return two entries that Acquire would then self-conflict.
+	codexLink := filepath.Join(home, "codex-alias")
+	require.NoError(t, os.Symlink(filepath.Join(home, ".claude"), codexLink))
+	t.Setenv("CODEX_HOME", codexLink)
+
+	targets, err := Targets("all", ScopeUser, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1, "symlinked CODEX_HOME must deduplicate to exactly one target")
+	assert.Equal(t, "claude", targets[0].Harness, "first row (claude) must win the canonical identity")
+
+	lockDir := t.TempDir()
+	leases, err := Acquire(lockDir, targets, "install", false)
+	require.NoError(t, err, "Acquire must succeed on the deduplicated single target")
+	ReleaseAll(leases)
 }
