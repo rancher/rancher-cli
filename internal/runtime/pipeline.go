@@ -49,27 +49,27 @@ type IO struct {
 // resolver binding for the command's op ({} for config/local commands); the
 // pipeline stamps Tier/Stability from it — Effect/Result values set by the
 // command are overwritten, never trusted.
-func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) *clierr.Error {
+func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	d := cmd.Describe()
 
 	if ce := validateFormat(streams.Format); ce != nil {
-		return renderErr(streams, ce)
+		return 0, renderErr(streams, ce)
 	}
 
 	if d.CommandType == Mutating && streams.ReadOnly {
-		return renderErr(streams, clierr.New(clierr.CodeValidation,
+		return 0, renderErr(streams, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("read-only mode: %s is a mutating command", d.Name)).
 			WithHint("enabled by "+strings.Join(streams.ReadOnlySources, ", ")))
 	}
 
 	if streams.DryRun && d.CommandType != Mutating {
-		return renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
+		return 0, renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
 			fmt.Sprintf("%s is a %s command", d.Name, d.CommandType)).
 			WithHint("re-run without --dry-run"))
 	}
 
 	if ce := validateInput(d, in); ce != nil {
-		return renderErr(streams, ce)
+		return 0, renderErr(streams, ce)
 	}
 
 	switch c := cmd.(type) {
@@ -78,48 +78,48 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	case ReadCommand:
 		return runRead(ctx, c, in, streams, b)
 	default:
-		return renderErr(streams, clierr.New(clierr.CodeGeneric,
+		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
 			"command implements neither ReadCommand nor MutatingCommand: "+d.Name))
 	}
 }
 
 // runMutating drives the Plan → invariant checks → tier/server stamping →
 // confirmation gate → Execute path for a mutating command.
-func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) *clierr.Error {
+func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	eff, exec, err := c.Plan(ctx, in)
 	if err != nil {
-		return renderErr(streams, toClierr(err).WithPhase("plan"))
+		return 0, renderErr(streams, toClierr(err).WithPhase("plan"))
 	}
 	if ce := checkPlan(eff, exec); ce != nil {
-		return renderErr(streams, ce)
+		return 0, renderErr(streams, ce)
 	}
 	eff.Tier, eff.Stability = b.Tier, b.Stability
 	if streams.ServerIdentity != nil {
 		server, err := streams.ServerIdentity()
 		if err != nil {
-			return renderErr(streams, toClierr(err).WithPhase("plan"))
+			return 0, renderErr(streams, toClierr(err).WithPhase("plan"))
 		}
 		eff.Server = server
 	}
 	if streams.DryRun {
-		return renderEffect(streams, eff)
+		return 0, renderEffect(streams, eff)
 	}
 	if missing := missingFlags(streams, eff); len(missing) > 0 {
-		return renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
+		return 0, renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
 			"confirmation required for this mutation").
 			WithHint("re-run with: "+strings.Join(missing, " ")).
 			WithTier(string(eff.Tier)))
 	}
 	res, err := exec(ctx)
 	if err != nil {
-		return renderErr(streams, toClierr(err).WithPhase("execute"))
+		return 0, renderErr(streams, toClierr(err).WithPhase("execute"))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
 	if b.Tier == safety.TierNorman && !eff.ConflictDetection {
 		res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
 	}
-	return renderResult(streams, res)
+	return finishResult(streams, c.Describe(), res)
 }
 
 // checkPlan enforces the command-bug invariants on a Plan result: a non-nil
@@ -141,14 +141,14 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 
 // runRead executes a read command and stamps the binding tier/stability onto
 // the result.
-func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) *clierr.Error {
+func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY)
 	res, err := c.Execute(ctx, in, p)
 	if err != nil {
-		return renderErr(streams, toClierr(err))
+		return 0, renderErr(streams, toClierr(err))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
-	return renderResult(streams, res)
+	return finishResult(streams, c.Describe(), res)
 }
 
 // validateFormat closes the -o/--output value set: the OutputFormats literals
@@ -360,6 +360,36 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 	_ = output.Render(streams.Err, "json", output.ErrorEnvelope(ce))
 	return ce
+}
+
+// finishResult enforces the SuccessExitCodes declaration, renders the
+// result, and surfaces the declared status. An undeclared status is an
+// internal error rendered through renderErr like every other pipeline
+// error; a render failure is returned unrendered (write-failure parity
+// with the previous renderResult contract).
+func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
+	if !allowedExitStatus(d.SuccessExitCodes, res.ExitStatus) {
+		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s returned undeclared exit status %d", d.Name, res.ExitStatus)))
+	}
+	if ce := renderResult(streams, res); ce != nil {
+		return 0, ce
+	}
+	return res.ExitStatus, nil
+}
+
+// allowedExitStatus reports whether a successful result may carry status.
+// An empty declaration means only 0.
+func allowedExitStatus(declared []int, status int) bool {
+	if status == 0 {
+		return true
+	}
+	for _, c := range declared {
+		if c == status {
+			return true
+		}
+	}
+	return false
 }
 
 // toClierr normalizes any error into a structured *clierr.Error, unwrapping

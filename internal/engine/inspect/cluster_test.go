@@ -876,7 +876,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 
 	var out, errBuf bytes.Buffer
-	ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
+	_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
 		runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 	require.Nil(t, ce)
 

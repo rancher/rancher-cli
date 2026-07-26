@@ -91,21 +91,22 @@ func EnvVars() []EnvVar {
 
 // SchemaCommand is one command entry in the manifest (Descriptor + tier).
 type SchemaCommand struct {
-	Name         string      `json:"name"`
-	Aliases      []string    `json:"aliases,omitempty"`
-	Usage        string      `json:"usage,omitempty"`
-	Desc         string      `json:"desc,omitempty"`
-	Args         []ArgSpec   `json:"args,omitempty"`
-	Flags        []ArgSpec   `json:"flags,omitempty"`
-	Examples     []string    `json:"examples,omitempty"`
-	CommandType  CommandType `json:"commandType"`
-	Destructive  string      `json:"destructive,omitempty"`
-	Toolset      string      `json:"toolset,omitempty"`
-	Network      bool        `json:"network"`
-	Auth         bool        `json:"auth"`
-	Tier         string      `json:"tier,omitempty"`
-	Stability    string      `json:"stability,omitempty"`
-	ProjectScope bool        `json:"projectScope,omitempty"`
+	Name             string      `json:"name"`
+	Aliases          []string    `json:"aliases,omitempty"`
+	Usage            string      `json:"usage,omitempty"`
+	Desc             string      `json:"desc,omitempty"`
+	Args             []ArgSpec   `json:"args,omitempty"`
+	Flags            []ArgSpec   `json:"flags,omitempty"`
+	Examples         []string    `json:"examples,omitempty"`
+	CommandType      CommandType `json:"commandType"`
+	Destructive      string      `json:"destructive,omitempty"`
+	Toolset          string      `json:"toolset,omitempty"`
+	Network          bool        `json:"network"`
+	Auth             bool        `json:"auth"`
+	Tier             string      `json:"tier,omitempty"`
+	Stability        string      `json:"stability,omitempty"`
+	ProjectScope     bool        `json:"projectScope,omitempty"`
+	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
 	// Group is the root section this command renders under (informational —
 	// Manifest.Groups carries the ordered sections; SE-18). "" for the two
 	// positional-root sections (fixed top-level and ungrouped entries).
@@ -294,6 +295,31 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
 			}
 		}
+		if codes := d.SuccessExitCodes; len(codes) > 0 {
+			errExits := map[int]bool{}
+			for _, e := range clierr.CodeExits() {
+				errExits[e] = true
+			}
+			zeros, seen := 0, map[int]bool{}
+			for _, c := range codes {
+				switch {
+				case c == 0:
+					zeros++
+				case c < 0:
+					return fmt.Errorf("command %q: successExitCodes value %d must be positive", d.Name, c)
+				case seen[c]:
+					return fmt.Errorf("command %q: duplicate successExitCodes value %d", d.Name, c)
+				case errExits[c]:
+					return fmt.Errorf("command %q: successExitCodes value %d collides with error exit", d.Name, c)
+				}
+				if c != 0 {
+					seen[c] = true
+				}
+			}
+			if zeros != 1 {
+				return fmt.Errorf("command %q: successExitCodes must contain 0 exactly once", d.Name)
+			}
+		}
 	}
 	return nil
 }
@@ -336,6 +362,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			Examples: d.Examples, CommandType: d.CommandType,
 			Destructive: d.Destructive, Toolset: d.Toolset, Network: d.Network, Auth: d.Auth,
 			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
+			SuccessExitCodes: d.SuccessExitCodes,
 		}
 		if b, ok := reg.resolver.Resolve(d.Name); ok {
 			sc.Tier = string(b.Tier)

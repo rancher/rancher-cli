@@ -56,7 +56,7 @@ func TestCompletionEmitsGoldenScriptPerShell(t *testing.T) {
 // own Execute no longer validates the shell argument at all.
 func TestCompletionUnknownShellIsValidation(t *testing.T) {
 	t.Parallel()
-	ce := runtime.Run(context.Background(), NewCompletion(), fakeInput{args: []string{"powershell-classic"}},
+	_, ce := runtime.Run(context.Background(), NewCompletion(), fakeInput{args: []string{"powershell-classic"}},
 		runtime.IO{Out: io.Discard, Err: io.Discard}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)

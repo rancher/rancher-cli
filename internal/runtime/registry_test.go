@@ -158,3 +158,48 @@ func TestSchemaPublishesStringSliceFlagType(t *testing.T) {
 	require.Len(t, m.Commands[0].Flags, 1)
 	assert.Equal(t, "stringSlice", m.Commands[0].Flags[0].Type)
 }
+
+type exitDeclCmd struct {
+	name  string
+	codes []int
+}
+
+func (c exitDeclCmd) Describe() Descriptor {
+	return Descriptor{Name: c.name, CommandType: Local, Toolset: "core", SuccessExitCodes: c.codes}
+}
+
+func (c exitDeclCmd) Execute(_ context.Context, _ Input, _ Prompter) (Result, error) {
+	return Result{Kind: "probe", Data: map[string]string{"probe": "ok"}}, nil
+}
+
+// TestValidateSuccessExitCodes pins the declaration invariant: zero exactly
+// once; additional values positive, unique, and disjoint from error exits.
+func TestValidateSuccessExitCodes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		codes   []int
+		wantErr string
+	}{
+		{"accepts zero plus seven", []int{0, 7}, ""},
+		{"rejects missing zero", []int{7}, "must contain 0"},
+		{"rejects duplicate zero", []int{0, 0, 7}, "must contain 0 exactly once"},
+		{"rejects negative", []int{0, -1}, "must be positive"},
+		{"rejects duplicate", []int{0, 7, 7}, "duplicate"},
+		{"rejects error exit collision", []int{0, 2}, "collides with error exit"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := NewRegistry(stubResolver{})
+			reg.Register(exitDeclCmd{name: "probe", codes: tc.codes})
+			err := reg.Validate()
+			if tc.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}

@@ -500,7 +500,7 @@ func TestGetListRendersRealObjectsThroughOutputRender(t *testing.T) {
 			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
 
 			var buf bytes.Buffer
-			ce := runtime.Run(context.Background(), cmd, input{}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			_, ce := runtime.Run(context.Background(), cmd, input{}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 
 			var env struct {
@@ -530,7 +530,7 @@ func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
 			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
 
 			var buf bytes.Buffer
-			ce := runtime.Run(context.Background(), cmd, input{args: []string{"prod"}}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"prod"}}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 
 			var env struct {

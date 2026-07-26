@@ -43,7 +43,7 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	for _, format := range []string{"", "table"} {
 		var out, errBuf bytes.Buffer
-		ce := Run(context.Background(), cmd, tin{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+		_, ce := Run(context.Background(), cmd, tin{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.True(t, strings.HasPrefix(out.String(), "rancher test — "),
 			"format %q renders the TOC Text, not the view's table", format)
@@ -93,7 +93,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 	run := func(t *testing.T, in tin, format string) string {
 		t.Helper()
 		var out, errBuf bytes.Buffer
-		ce := Run(context.Background(), cmd, in, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+		_, ce := Run(context.Background(), cmd, in, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce, "stderr: %s", errBuf.String())
 		return out.String()
 	}

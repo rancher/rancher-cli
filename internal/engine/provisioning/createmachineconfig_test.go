@@ -519,7 +519,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(context.Background(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut}, binding)
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeConfirmationRequired, ce.Code)
@@ -532,7 +532,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(context.Background(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut, Format: "json", DryRun: true}, binding)
 		require.Nil(t, ce)
 		var env struct {
@@ -552,7 +552,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(context.Background(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut, Format: "json", Apply: true}, binding)
 		require.Nil(t, ce)
 		assert.Equal(t, []bool{true, false}, client.dryRuns)

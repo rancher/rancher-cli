@@ -370,7 +370,7 @@ func TestSchemaKindStructured(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	var out, errBuf bytes.Buffer
-	ce := Run(context.Background(), cmd, tin{a: []string{"clusterregistrationtoken"}},
+	_, ce := Run(context.Background(), cmd, tin{a: []string{"clusterregistrationtoken"}},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 
@@ -439,7 +439,7 @@ func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	var out, errBuf bytes.Buffer
-	ce := Run(context.Background(), cmd,
+	_, ce := Run(context.Background(), cmd,
 		tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
@@ -557,7 +557,7 @@ func TestSchemaSelectionFormats(t *testing.T) {
 		t.Helper()
 		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
 		var out, errBuf bytes.Buffer
-		ce := Run(context.Background(), cmd, tin{a: []string{"get", "pod"}},
+		_, ce := Run(context.Background(), cmd, tin{a: []string{"get", "pod"}},
 			IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce)
 		return out.String(), errBuf.String()
@@ -753,7 +753,7 @@ func TestSchemaSearch(t *testing.T) {
 	t.Run("zero hits exit 0 with a message naming the filters", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		ce := Run(context.Background(), cmd, tin{strs: map[string]string{"search": "zzz"}},
+		_, ce := Run(context.Background(), cmd, tin{strs: map[string]string{"search": "zzz"}},
 			IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce, "zero hits are not an error")
 		assert.Equal(t, "no commands match --search \"zzz\"\n", out.String())

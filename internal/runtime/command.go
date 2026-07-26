@@ -50,6 +50,12 @@ type Descriptor struct {
 	// true for generated per-kind commands whose kind is
 	// kinds.ProjectScopable; false (the zero value) for every fixed command.
 	ProjectScope bool `json:"projectScope,omitempty"`
+	// SuccessExitCodes declares every exit status a SUCCESSFUL result may
+	// carry. Empty means {0}. When declared it must contain 0 exactly once;
+	// additional values must be positive, unique, and disjoint from the
+	// error exits in clierr.CodeExits() — Registry.Validate enforces the
+	// declaration and finishResult rejects an undeclared returned status.
+	SuccessExitCodes []int
 }
 
 // Input abstracts parsed flags/args so engine code never imports urfave/cli.
@@ -93,6 +99,10 @@ type Result struct {
 	Text      string
 	Tier      string
 	Stability string
+	// ExitStatus is the process exit status for this SUCCESSFUL result.
+	// Zero for every command that has not declared SuccessExitCodes. The
+	// pipeline renders the result fully BEFORE the status is honored.
+	ExitStatus int
 }
 
 // Command is the minimal self-describing contract. Concrete commands

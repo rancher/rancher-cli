@@ -324,8 +324,12 @@ func adaptEntry(reg *runtime.Registry, make func(runDeps) runtime.Command) *ucli
 			io := buildIO(c)
 			io.ServerIdentity = f.Identity
 			cmd := make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store})
-			if ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b); ce != nil {
+			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
+			if ce != nil {
 				return exit(ce)
+			}
+			if status != 0 {
+				return ucli.Exit("", status)
 			}
 			return nil
 		},

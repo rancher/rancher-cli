@@ -181,8 +181,12 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
 		Action: func(ctx context.Context, c *ucli.Command) error {
-			if ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b); ce != nil {
+			status, ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b)
+			if ce != nil {
 				return exit(ce)
+			}
+			if status != 0 {
+				return ucli.Exit("", status)
 			}
 			return nil
 		},
