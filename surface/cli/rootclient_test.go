@@ -2,16 +2,21 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/inspect"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -120,6 +125,157 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "boom", "generic error carries a body excerpt")
+}
+
+// argsInput is a minimal runtime.Input for driving a command's Execute
+// directly, outside the urfave adapter.
+type argsInput struct{ args []string }
+
+func (i argsInput) String(string) string    { return "" }
+func (i argsInput) Bool(string) bool        { return false }
+func (i argsInput) Strings(string) []string { return nil }
+func (i argsInput) IsSet(string) bool       { return false }
+func (i argsInput) Args() []string          { return i.args }
+
+// TestInspectClusterCancellationThroughProductionAdapters drives inspect
+// cluster's Execute through the REAL per-invocation clientFactory — the real
+// provider client for the management Get and provisioning LIST, and the real
+// rootClient for the registration fetch — against one httptest server. Both
+// production adapters rebuild their errors from strings (provider.mapErr;
+// rootClient.GetJSON's clierr formatting), so the context sentinel never
+// survives the chain: this pins that a canceled optional lookup still
+// propagates as the command's error, degrades nothing to a warning, and
+// issues no follow-on request (counted server-side).
+func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
+	const (
+		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local"
+		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
+		regPath      = "/v1/management.cattle.io.clusterregistrationtokens/local/default-token"
+	)
+	const mgmtBody = `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
+	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[]}`
+
+	t.Run("canceled provisioning LIST propagates and no registration request follows", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var regRequests atomic.Int32
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case mgmtGetPath:
+				_, _ = w.Write([]byte(mgmtBody))
+			case provListPath:
+				// Abort the caller mid-LIST; the client tears the request
+				// down, which unblocks the handler via its request context.
+				cancel()
+				<-r.Context().Done()
+			case regPath:
+				regRequests.Add(1)
+				http.NotFound(w, r)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer srv.Close()
+
+		f := seedRootConfig(t, srv)
+		cmd, ok := inspect.NewInspectCluster(f, f).(runtime.ReadCommand)
+		require.True(t, ok, "inspect cluster must be a ReadCommand")
+		res, err := cmd.Execute(ctx, argsInput{args: []string{"local"}}, nil)
+		require.Error(t, err, "a canceled provisioning LIST must propagate, not degrade")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce, "the structured error propagates")
+		assert.Empty(t, res.Warnings, "cancellation is the command's error, never a section warning")
+		assert.Zero(t, regRequests.Load(), "no registration request follows a canceled provisioning lookup")
+	})
+
+	t.Run("canceled registration fetch propagates through the root client", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case mgmtGetPath:
+				_, _ = w.Write([]byte(mgmtBody))
+			case provListPath:
+				_, _ = w.Write([]byte(provListBody))
+			case regPath:
+				cancel()
+				<-r.Context().Done()
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer srv.Close()
+
+		f := seedRootConfig(t, srv)
+		cmd, ok := inspect.NewInspectCluster(f, f).(runtime.ReadCommand)
+		require.True(t, ok, "inspect cluster must be a ReadCommand")
+		res, err := cmd.Execute(ctx, argsInput{args: []string{"local"}}, nil)
+		require.Error(t, err, "a canceled registration fetch must propagate, not degrade")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce, "the structured error propagates")
+		assert.Empty(t, res.Warnings, "cancellation is the command's error, never a section warning")
+	})
+}
+
+// TestInspectClusterRootTimeoutDegradesRegistration pins the OTHER side of
+// the cancellation boundary through the production root client: the root
+// http.Client's own request timeout (rootTimeout) expiring while the CALLER's
+// context is still active is an ordinary availability failure, not a
+// cancellation — the command succeeds, only the registration section is
+// omitted, and the warning carries the deadline wording (so agents can tell
+// timeout from RBAC). Not run with t.Parallel(): it mutates the shared
+// rootTimeout package var via setRootTimeoutForTest.
+func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
+	const (
+		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local"
+		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
+		regPath      = "/v1/management.cattle.io.clusterregistrationtokens/local/default-token"
+	)
+	const mgmtBody = `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
+	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[{"apiVersion":"provisioning.cattle.io/v1","kind":"Cluster","metadata":{"name":"local-prov","namespace":"fleet-default"},"spec":{},"status":{"clusterName":"local","ready":true}}]}`
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case mgmtGetPath:
+			_, _ = w.Write([]byte(mgmtBody))
+		case provListPath:
+			_, _ = w.Write([]byte(provListBody))
+		case regPath:
+			// Outlast the root client's (shrunk) timeout; the client aborts
+			// the request at the deadline, which unblocks the handler via
+			// the server-side request context.
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	f := seedRootConfig(t, srv)
+	restore := setRootTimeoutForTest(t, 200*time.Millisecond)
+	defer restore()
+
+	cmd, ok := inspect.NewInspectCluster(f, f).(runtime.ReadCommand)
+	require.True(t, ok, "inspect cluster must be a ReadCommand")
+	res, err := cmd.Execute(context.Background(), argsInput{args: []string{"local"}}, nil)
+	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
+
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "registration token unavailable")
+	assert.Contains(t, strings.ToLower(res.Warnings[0]), "deadline",
+		"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
+
+	b, merr := json.Marshal(res.Data)
+	require.NoError(t, merr)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(b, &doc))
+	_, hasReg := doc["registration"]
+	assert.False(t, hasReg, "registration must be ABSENT from the wire on the timed-out read")
+	_, hasStatus := doc["status"]
+	assert.True(t, hasStatus, "the provisioning section is independent of the registration timeout")
 }
 
 // setRootTimeoutForTest shrinks the rootClient HTTP timeout for the duration

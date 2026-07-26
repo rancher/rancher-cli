@@ -163,6 +163,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — public tier; dry-run/apply |
 | `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — public tier; dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
 | `revoke <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) [--role <r>] [--type user\|group]` | Revoke role binding(s) at project, cluster, or global scope — public tier; destructive; dry-run/apply --yes; omitting --role revokes every role at the scope; partial failures leave already-deleted bindings removed |
+| `inspect cluster <name-or-id>` | Composite cluster read: management identity + provisioning status/conditions, machine pools, and node-join/import registration commands; the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); only the provisioning and registration sections degrade to notes/warnings |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
@@ -186,11 +187,21 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Scope routing is enforced: addressing a namespaced kind by name needs
 `--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
 
+Provisioning a cluster is a create-wait-connect sequence — `--wait` on
+`get cluster` applies the kind's default readiness (`condition=Ready`),
+and `inspect cluster` carries the registration commands custom-cluster
+nodes join with:
+
+    rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
+    rancher inspect cluster web -o json     # registration.nodeCommand → run on each node
+    rancher get cluster web --wait --timeout 15m
+    rancher kubeconfig --cluster web > web.yaml
+
 <!-- conformance:surface-counts -->
 Generated per kind from the 47-kind table: `get <kind>` (47), `patch <kind>`
 (47), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
 kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
-122 generated commands, 161 total together with the fixed commands above. The authoritative, always-current list is
+122 generated commands, 162 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 
@@ -264,7 +275,7 @@ validates the target namespace's membership before touching the server.
 `get namespaces --project <p>` is the one special case — it lists namespaces
 by the membership label server-side rather than filtering client-side.
 Every other command family (cluster-scoped kinds, management-plane kinds,
-and the composites `inspect pod`/`inspect deployment`/`images`) rejects
+and the composites `inspect pod`/`inspect deployment`/`inspect cluster`/`images`) rejects
 a non-empty `--project` with `VALIDATION` rather than silently ignoring
 it. `usage` rejects `--project` only in combination with `--by node`
 (a node row mixing project-scoped requests with whole-node metrics would

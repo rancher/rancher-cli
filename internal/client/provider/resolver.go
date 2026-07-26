@@ -28,6 +28,7 @@ func NewResolver() *Resolver {
 		"create cluster":           {Tier: safety.TierCRD, Stability: safety.Beta},
 		"create machine-config":    {Tier: safety.TierCRD, Stability: safety.Beta},
 
+		"inspect cluster":         {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect pod":             {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect deployment":      {Tier: safety.TierCRD, Stability: safety.Beta},
 		"inspect project":         {Tier: safety.TierPublic, Stability: safety.Beta},

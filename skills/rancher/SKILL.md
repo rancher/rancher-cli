@@ -115,6 +115,25 @@ vmwarevsphereconfig) take driver fields via repeatable `--set field=value`.
 Credential fields are rejected on a machine config — they belong on a
 cloud credential (`cc-*` secret), referenced via `--cloud-credential`.
 
+Follow through to readiness and access — and read the registration
+(join) commands from `inspect cluster`, never from the UI:
+
+```
+rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
+rancher inspect cluster web -o json      # data.registration.nodeCommand: run on each node to join
+rancher get cluster web --wait --timeout 15m   # kind default: condition=Ready
+rancher kubeconfig --cluster web > kc.yaml
+```
+
+`inspect cluster <name-or-id>` is the one-call cluster triage: management
+identity and version, the provisioning CR's ready flag and conditions,
+machine pools, and both registration pairs (node join and import) plus
+`manifestUrl`. The management read is mandatory: an unknown or ambiguous
+cluster, or a failed management read, is a structured error with a
+non-zero exit. Only the provisioning and registration sections degrade —
+to `warnings`, or a `provisioningNote` for a confirmed missing
+provisioning CR. Check `data.status` presence before reading conditions.
+
 ### 5. Branch on structured errors, not text
 
 Errors land on stderr as an envelope with the error object under `data`:

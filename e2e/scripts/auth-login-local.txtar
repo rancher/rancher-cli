@@ -12,8 +12,10 @@ ttyin -stdin creds.txt
 exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
+# Membership, not count: scripts run concurrently against one shared
+# apiserver, and inspect-cluster.txtar seeds management clusters of its own.
 exec rancher get clusters -o json
-jsonquery stdout 'data.#' 1
+jsonquery stdout 'data.#(metadata.name=="c-test").metadata.name' c-test
 
 ttyin -stdin wrong.txt
 ! exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider --name bad -o json

@@ -1,0 +1,66 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed the management clusters whose ids pair with the facade's CRT
+# fixtures (c-fixture/c-other serve default-token with a real spliced
+# token; see internal/testrancher crtFixtures).
+exec rancher create resource -f mgmt-c-fixture.yaml --apply
+exec rancher create resource -f mgmt-c-other.yaml --apply
+
+# Custom cluster: create the provisioning CR, then stand in for the
+# provisioning controller by writing its status subresource.
+exec rancher create cluster insp-custom --custom --k8s-version v1.30.5+rke2r1 --apply
+flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-custom {"clusterName":"c-fixture","ready":true,"conditions":[{"type":"Ready","status":"True"}]}
+
+# IC-17 custom-cluster shape: status present, join commands present
+# (real spliced token, never the placeholder), pools EMPTY (present-[]).
+exec rancher inspect cluster c-fixture -o json
+jsonquery stdout data.cluster.id c-fixture
+jsonquery stdout data.cluster.kubernetesVersion v1.30.5+rke2r1
+jsonquery stdout data.status.ready true
+jsonquery stdout data.status.conditions.0.type Ready
+jsonquery stdout data.machinePools '[]'
+stdout e2e-crt-real-token-c-fixture
+! stdout '\{token\}'
+
+# Node-driver cluster: pools carry the machineConfigRef from the create
+# cluster flow.
+exec rancher create cluster insp-node --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-node '{"clusterName":"c-other","ready":false,"conditions":[{"type":"Ready","status":"False","reason":"Provisioning","message":"waiting for nodes"}]}'
+
+exec rancher inspect cluster c-other -o json
+jsonquery stdout data.status.ready false
+jsonquery stdout data.status.conditions.0.reason Provisioning
+jsonquery stdout data.machinePools.0.name pool1
+jsonquery stdout data.machinePools.0.machineConfigKind Amazonec2Config
+jsonquery stdout data.machinePools.0.machineConfigName mycfg
+jsonquery stdout data.machinePools.0.roles.0 controlplane
+jsonquery stdout data.machinePools.0.roles.1 etcd
+jsonquery stdout data.machinePools.0.roles.2 worker
+stdout e2e-crt-real-token-c-other
+
+# Confirmed absence (IC-7) by display name: the harness's c-test has no
+# provisioning CR and no facade token fixture — the reserved note plus a
+# registration warning, sections absent, exit 0.
+exec rancher inspect cluster testcluster -o json
+jsonquery stdout data.cluster.id c-test
+jsonquery stdout data.provisioningNote 'no provisioning.cattle.io Cluster for this cluster in fleet-default'
+jsonquery stdout data.status ''
+jsonquery stdout data.machinePools ''
+jsonquery stdout data.registration ''
+jsonquery stdout 'warnings.#' 1
+
+-- mgmt-c-fixture.yaml --
+apiVersion: management.cattle.io/v3
+kind: Cluster
+metadata:
+  name: c-fixture
+spec:
+  displayName: insp-fixture
+-- mgmt-c-other.yaml --
+apiVersion: management.cattle.io/v3
+kind: Cluster
+metadata:
+  name: c-other
+spec:
+  displayName: insp-other

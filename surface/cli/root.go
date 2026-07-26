@@ -66,6 +66,7 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
+		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients) }},

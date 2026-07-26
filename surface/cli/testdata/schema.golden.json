@@ -4257,6 +4257,29 @@
     },
     {
       "aliases": [
+        "clusters"
+      ],
+      "args": [
+        {
+          "desc": "cluster `id|name`",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), the provisioning.cattle.io Cluster's ready flag and conditions, its machine pools (name, machineConfigRef, quantity, roles), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+      "group": "inspect",
+      "name": "inspect cluster",
+      "network": true,
+      "stability": "beta",
+      "tier": "crd",
+      "toolset": "core",
+      "usage": "Inspect a cluster: status, machine pools, and registration"
+    },
+    {
+      "aliases": [
         "deployments",
         "deploy"
       ],
@@ -7736,6 +7759,7 @@
     },
     {
       "commands": [
+        "inspect cluster",
         "inspect pod",
         "inspect deployment",
         "inspect project"
