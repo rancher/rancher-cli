@@ -40,9 +40,10 @@ func skillHome(t *testing.T, harnessDirs ...string) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache")) // linux: os.UserCacheDir precedence over HOME
+	t.Setenv("LocalAppData", home)                            // windows: sandbox os.UserCacheDir too
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("COPILOT_HOME", "")
-	t.Setenv("LocalAppData", home) // windows: sandbox os.UserCacheDir too
 	for _, d := range harnessDirs {
 		require.NoError(t, os.MkdirAll(filepath.Join(home, d), 0o755))
 	}

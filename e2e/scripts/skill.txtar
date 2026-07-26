@@ -2,6 +2,8 @@
 # user-scope targets resolve inside the sandbox.
 env HOME=$WORK/home
 env USERPROFILE=$WORK/home
+env XDG_CACHE_HOME=$WORK/home/.cache
+env LocalAppData=$WORK/home
 env CODEX_HOME=
 env COPILOT_HOME=
 mkdir $WORK/home/.claude
@@ -30,6 +32,8 @@ jsonquery stdout data.0.verdict absent
 # Fresh-machine shape: no harness homes -> empty report, exit 0, warning.
 env HOME=$WORK/empty
 env USERPROFILE=$WORK/empty
+env XDG_CACHE_HOME=$WORK/empty/.cache
+env LocalAppData=$WORK/empty
 mkdir $WORK/empty
 exec rancher skill status -o json
 jsonquery stdout warnings.0 'no coding-agent harness detected; nothing to report'
