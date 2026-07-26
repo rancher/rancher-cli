@@ -582,9 +582,10 @@ func livePositionalCandidates(
 		return fetchUsers(ctx, hc, cap)
 	}
 
-	// Round-2 finding 7: gate on AC-10 verbs (get/patch/delete only).
-	// inspect leaves get NO live positional completion.
-	if !isAC10Verb(d.Name) {
+	// Round-2 finding 7: gate on AC-10 verbs (get/patch/delete only), with
+	// IC-3's one named exception — inspect cluster. Every other inspect
+	// leaf retains the deny.
+	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException {
 		return nil
 	}
 	k, ok := kindForDescriptor(d)
@@ -806,9 +807,18 @@ func gvrNamespacedPath(k kinds.Kind) string {
 	return fmt.Sprintf("/apis/%s/%s/namespaces/{namespace}/%s", k.GVR.Group, k.GVR.Version, k.GVR.Resource)
 }
 
+// inspectClusterCompletionException is IC-3's narrow carve-out from the
+// AC-10 verb gate: exactly this leaf, never the inspect group. inspect
+// cluster's positional IS a management cluster name-or-id, so it completes
+// via the same fetchClusters path get cluster's positional uses; inspect
+// pod/deployment/project remain excluded (AC-15a is aliases only).
+const inspectClusterCompletionException = "inspect cluster"
+
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
-// (get, patch, delete). inspect leaves must NOT get live positional completion
-// (round-2 finding 7; AC-15a adds inspect aliases, not live-name completion).
+// (get, patch, delete). inspect leaves do NOT get live positional
+// completion through this predicate — the one narrow exception is
+// inspectClusterCompletionException, checked by name at the gate (IC-3);
+// AC-15a adds inspect aliases, not live-name completion.
 func isAC10Verb(descriptorName string) bool {
 	parts := strings.Fields(descriptorName)
 	if len(parts) == 0 {
