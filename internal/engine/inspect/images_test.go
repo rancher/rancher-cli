@@ -1,10 +1,12 @@
 package inspect
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -25,6 +27,17 @@ func podWithImages(ns, name string, containers, initContainers []string) *unstru
 	return &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": name, "namespace": ns},
 		"spec":     spec,
+		"status":   map[string]any{"phase": "Running"},
+	}}
+}
+
+func podWithPhase(name, phase string, image string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name, "namespace": "default"},
+		"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "app", "image": image}},
+		},
+		"status": map[string]any{"phase": phase},
 	}}
 }
 
@@ -130,4 +143,65 @@ func TestImagesClusterAndAllClustersConflict(t *testing.T) {
 	cmd := NewImages(&fakeFactory{client: newFakeClient()})
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}, b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
+}
+
+func TestImagesSkipsInactivePods(t *testing.T) {
+	t.Parallel()
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		podWithPhase("running-pod", "Running", "img-a"),
+		podWithPhase("pending-pod", "Pending", "img-b"),
+		podWithPhase("done-pod", "Succeeded", "img-gone"),
+		podWithPhase("failed-pod", "Failed", "img-gone"),
+	}}
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, list)
+	rows, err := imagesFor(context.Background(), client)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "img-a", rows[0].Image)
+	assert.Equal(t, "img-b", rows[1].Image)
+}
+
+func TestImagesIncludesTerminatingRunningPod(t *testing.T) {
+	t.Parallel()
+	pod := podWithPhase("terminating", "Running", "img-t")
+	require.NoError(t, unstructured.SetNestedField(pod.Object, "2026-07-26T00:00:00Z", "metadata", "deletionTimestamp"))
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, list)
+	rows, err := imagesFor(context.Background(), client)
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "a terminating pod stays included until it leaves the List (IM-14)")
+	assert.Equal(t, "img-t", rows[0].Image)
+}
+
+func TestImagesCountsEphemeralContainers(t *testing.T) {
+	t.Parallel()
+	pod := podWithPhase("p", "Running", "app-img")
+	require.NoError(t, unstructured.SetNestedSlice(pod.Object, []any{
+		map[string]any{"name": "debug", "image": "debug-img"},
+	}, "spec", "ephemeralContainers"))
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, list)
+	rows, err := imagesFor(context.Background(), client)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "app-img", rows[0].Image)
+	assert.Equal(t, "debug-img", rows[1].Image)
+}
+
+func TestImagesCountIsPerReference(t *testing.T) {
+	t.Parallel()
+	pod := podWithPhase("p", "Running", "shared-img")
+	require.NoError(t, unstructured.SetNestedSlice(pod.Object, []any{
+		map[string]any{"name": "init", "image": "shared-img"},
+	}, "spec", "initContainers"))
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, list)
+	rows, err := imagesFor(context.Background(), client)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 2, rows[0].Count, "same image in init and app container is two references (IM-18)")
 }

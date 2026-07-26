@@ -125,8 +125,40 @@ func (c *imagesCmd) allClusters(ctx context.Context) (runtime.Result, error) {
 	return runtime.Result{Kind: "ClusterImages", Data: perCluster, Warnings: warns}, nil
 }
 
-// imagesFor lists a cluster's pods across all namespaces and dedupes every
-// container and init-container image into a sorted, counted slice.
+// podActive reports whether a pod counts toward the image inventory. Only
+// Running and Pending pods are active (IM-14): completed-job images are not
+// blast radius; a Pending rollout pod's images are. Terminating pods retain
+// their phase until they leave the List, so they stay included.
+func podActive(pod map[string]any) bool {
+	phase, _, _ := unstructured.NestedString(pod, "status", "phase")
+	return phase == "Running" || phase == "Pending"
+}
+
+var podImageFields = []string{"containers", "initContainers", "ephemeralContainers"}
+
+// podImageRefs returns every image reference in the pod spec, in field
+// order, duplicates preserved: --by image counts references (IM-18) while
+// --by workload dedupes per pod (IM-17).
+func podImageRefs(pod map[string]any) []string {
+	var out []string
+	for _, field := range podImageFields {
+		items, _, _ := unstructured.NestedSlice(pod, "spec", field)
+		for _, item := range items {
+			cm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if img, _ := cm["image"].(string); img != "" {
+				out = append(out, img)
+			}
+		}
+	}
+	return out
+}
+
+// imagesFor lists a cluster's pods across all namespaces, skips inactive
+// pods, and dedupes every container image reference into a sorted, counted
+// slice.
 func imagesFor(ctx context.Context, client engine.ClusterClient) (imageRows, error) {
 	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, "", "")
@@ -135,8 +167,13 @@ func imagesFor(ctx context.Context, client engine.ClusterClient) (imageRows, err
 	}
 	counts := map[string]int{}
 	for i := range list.Items {
-		countImages(counts, list.Items[i].Object, "containers")
-		countImages(counts, list.Items[i].Object, "initContainers")
+		pod := list.Items[i].Object
+		if !podActive(pod) {
+			continue
+		}
+		for _, img := range podImageRefs(pod) {
+			counts[img]++
+		}
 	}
 	out := make(imageRows, 0, len(counts))
 	for img, n := range counts {
@@ -144,19 +181,6 @@ func imagesFor(ctx context.Context, client engine.ClusterClient) (imageRows, err
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Image < out[j].Image })
 	return out, nil
-}
-
-func countImages(counts map[string]int, pod map[string]any, field string) {
-	items, _, _ := unstructured.NestedSlice(pod, "spec", field)
-	for _, item := range items {
-		cm, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if img, _ := cm["image"].(string); img != "" {
-			counts[img]++
-		}
-	}
 }
 
 type imageCount struct {
