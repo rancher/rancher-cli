@@ -64,6 +64,7 @@ what drifted the previous revision of this doc).
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
+| `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, and presence detection. Pure domain layer; depends only on stdlib. |
 | `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative mint/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
 | `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-real`) and replayed against the composite façade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Test-only. |
 
@@ -100,6 +101,7 @@ graph TD
     output["internal/output"]
     clierr["internal/clierr"]
     ui["internal/ui"]
+    skillinstall["internal/skillinstall"]
     testrancher["internal/testrancher"]
     fidelity["internal/testrancher/fidelity"]
 
