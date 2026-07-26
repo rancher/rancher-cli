@@ -57,6 +57,7 @@ func TestInstallIdempotentAndUpgradeClearsSkew(t *testing.T) {
 }
 
 func TestStatusModifiedOnBodyEditMissingExtraAndSymlink(t *testing.T) {
+	skipIfNoSymlinks(t)
 	SetSource(testSource(t))
 	tg := targetIn(t)
 
@@ -115,6 +116,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 // the link were followed the verdict would be in-sync; foreign proves the
 // outside bytes were never read.
 func TestSymlinkedSkillMDIsForeignAndNeverFollowed(t *testing.T) {
+	skipIfNoSymlinks(t)
 	SetSource(testSource(t))
 	real := targetIn(t)
 	install(t, real, "v1.0.0")
@@ -150,6 +152,7 @@ func TestOwnershipNearMissIsForeign(t *testing.T) {
 }
 
 func TestSymlinkTargetRefused(t *testing.T) {
+	skipIfNoSymlinks(t)
 	SetSource(testSource(t))
 	real := targetIn(t)
 	install(t, real, "v1.0.0")
@@ -367,6 +370,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 // structural: the production domain is DefaultLockDir — os.UserCacheDir —
 // which RANCHER_CLI_CONFIG_DIR never influences.)
 func TestLockKeyCanonicalAcrossSymlinkedParents(t *testing.T) {
+	skipIfNoSymlinks(t)
 	SetSource(testSource(t))
 	base := t.TempDir()
 	physical := filepath.Join(base, "real", ".claude", "skills", "rancher")

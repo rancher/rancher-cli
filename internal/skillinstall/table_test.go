@@ -80,9 +80,7 @@ func TestAgentNames(t *testing.T) {
 // target labeled "claude" (the first row in table order) and Acquire succeeds
 // on the deduplicated result without a self-conflict error.
 func TestTargetsUserScopeSymlinkedCodexHomeDedupsToOne(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlinks may require elevated privileges on windows")
-	}
+	skipIfNoSymlinks(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

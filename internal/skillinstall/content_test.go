@@ -111,6 +111,7 @@ func TestReadProvenanceForeign(t *testing.T) {
 // ReadTree rejects anything that is not a regular file — an internal file
 // symlink must never be followed (it could read outside the installation).
 func TestReadTreeRejectsNonRegularEntries(t *testing.T) {
+	skipIfNoSymlinks(t)
 	t.Parallel()
 	outside := filepath.Join(t.TempDir(), "outside.md")
 	require.NoError(t, os.WriteFile(outside, []byte("outside\n"), 0o644))
