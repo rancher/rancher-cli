@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 )
 
@@ -57,14 +58,14 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 
 	res, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(context.Background(), in, nil)
 	require.NoError(t, err)
-	outs := res.Data.([]skillinstall.Outcome)
+	outs := res.Data.(skillOutcomes)
 	require.Len(t, outs, 1)
 	assert.Equal(t, "changed", outs[0].Action)
 
 	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
-	rows := res.Data.([]skillinstall.Outcome)
+	rows := res.Data.(skillOutcomes)
 	require.Len(t, rows, 1)
 	assert.Equal(t, skillinstall.VerdictInSync, rows[0].Verdict)
 
@@ -76,7 +77,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 
 	res, err = NewSkillUninstall("v1.0.0").(skillUninstallCmd).Execute(context.Background(), in, nil)
 	require.NoError(t, err)
-	outs = res.Data.([]skillinstall.Outcome)
+	outs = res.Data.(skillOutcomes)
 	assert.Equal(t, "changed", outs[0].Action)
 
 	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
@@ -103,7 +104,7 @@ func TestSkillStatusFreshMachineEmptyReport(t *testing.T) {
 	res, err := NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
-	assert.Empty(t, res.Data.([]skillinstall.Outcome))
+	assert.Empty(t, res.Data.(skillOutcomes))
 	assert.NotEmpty(t, res.Warnings)
 }
 
@@ -182,4 +183,38 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	}
 	assert.Equal(t, 1, changed)
 	assert.Equal(t, 1, failed)
+}
+
+// TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements
+// output.Tabular and that its column headers and row cells are correct.
+// This pins the default (-o table) rendering path, which the existing tests
+// exercise only via -o json.
+func TestSkillOutcomesImplementsTabular(t *testing.T) {
+	t.Parallel()
+	var _ output.Tabular = skillOutcomes(nil)
+
+	s := skillOutcomes{
+		{
+			Target:     skillinstall.Target{Harness: "claude", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.claude/skills/rancher"},
+			Action:     "changed",
+			CLIVersion: "v1.2.3",
+		},
+		{
+			Target: skillinstall.Target{Harness: "agents", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.agents/skills/rancher"},
+			Action: "skipped",
+			Reason: "not installed",
+		},
+	}
+	assert.Equal(t, []string{"HARNESS", "SCOPE", "ACTION", "VERDICT", "VERSION", "DETAIL"}, s.Columns())
+	rows := s.Rows()
+	require.Len(t, rows, 2)
+	assert.Equal(t, "claude", rows[0][0])
+	assert.Equal(t, "user", rows[0][1])
+	assert.Equal(t, "changed", rows[0][2])
+	assert.Equal(t, "", rows[0][3]) // no verdict for install
+	assert.Equal(t, "v1.2.3", rows[0][4])
+	assert.Equal(t, "/home/bob/.claude/skills/rancher", rows[0][5]) // dir when no reason
+	assert.Equal(t, "agents", rows[1][0])
+	assert.Equal(t, "skipped", rows[1][2])
+	assert.Equal(t, "not installed", rows[1][5]) // reason when set
 }

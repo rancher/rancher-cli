@@ -10,6 +10,34 @@ import (
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 )
 
+// skillOutcomes is the table-renderable payload for skill install/uninstall/status.
+// It implements output.Tabular so the default (-o table) format produces aligned
+// columns rather than falling back to indented JSON.
+type skillOutcomes []skillinstall.Outcome
+
+func (skillOutcomes) Columns() []string {
+	return []string{"HARNESS", "SCOPE", "ACTION", "VERDICT", "VERSION", "DETAIL"}
+}
+
+func (s skillOutcomes) Rows() [][]string {
+	rows := make([][]string, 0, len(s))
+	for _, o := range s {
+		detail := o.Reason
+		if detail == "" {
+			detail = o.Target.Dir
+		}
+		rows = append(rows, []string{
+			o.Target.Harness,
+			string(o.Target.Scope),
+			o.Action,
+			string(o.Verdict),
+			o.CLIVersion,
+			detail,
+		})
+	}
+	return rows
+}
+
 func skillFlags() []runtime.ArgSpec {
 	return []runtime.ArgSpec{
 		{Name: "agent", Type: "string", Enum: skillinstall.AgentNames(), Desc: "target harness (or `all`)"},
@@ -107,7 +135,7 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 			"skill install changed only part of the selected targets").
 			WithDetails(skillinstall.Report{Outcomes: outcomes, Warnings: warnings})
 	}
-	return runtime.Result{Kind: "skillOutcomes", Data: outcomes, Warnings: warnings}, nil
+	return runtime.Result{Kind: "skillOutcomes", Data: skillOutcomes(outcomes), Warnings: warnings}, nil
 }
 
 type skillUninstallCmd struct{ version string }
@@ -165,7 +193,7 @@ func (c skillUninstallCmd) Execute(_ context.Context, in runtime.Input, _ runtim
 			"skill uninstall changed only part of the selected targets").
 			WithDetails(skillinstall.Report{Outcomes: outcomes})
 	}
-	return runtime.Result{Kind: "skillOutcomes", Data: outcomes}, nil
+	return runtime.Result{Kind: "skillOutcomes", Data: skillOutcomes(outcomes)}, nil
 }
 
 type skillStatusCmd struct{ version string }
@@ -198,11 +226,11 @@ func (c skillStatusCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	}
 	res := runtime.Result{Kind: "skillStatus"}
 	if len(targets) == 0 {
-		res.Data = []skillinstall.Outcome{}
+		res.Data = skillOutcomes{}
 		res.Warnings = []string{"no coding-agent harness detected; nothing to report"}
 		return res, nil
 	}
-	rows := make([]skillinstall.Outcome, 0, len(targets))
+	rows := make(skillOutcomes, 0, len(targets))
 	exit := 0
 	for _, t := range targets {
 		v, installed, err := skillinstall.StatusTarget(t, c.version)
