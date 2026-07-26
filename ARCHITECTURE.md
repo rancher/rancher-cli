@@ -139,6 +139,7 @@ graph TD
     commands --> kube
     commands --> httpx
     commands --> clierr
+    commands --> skillinstall
 
     token --> runtime
     token --> config
