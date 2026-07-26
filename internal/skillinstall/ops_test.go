@@ -399,6 +399,17 @@ func TestAcquireBusySecondTargetChangesNothing(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "first target must be untouched")
 }
 
+// TestLockFilePathCaseFold pins the case-folding contract: on case-insensitive
+// platforms (windows, darwin) two paths that differ only in case must produce
+// the same lock file path so they serialize on the same lock.
+func TestLockFilePathCaseFold(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
+		t.Skip("case folding only on windows/darwin")
+	}
+	lockDir := t.TempDir()
+	assert.Equal(t, lockFilePath(lockDir, "/A/B/C"), lockFilePath(lockDir, "/a/b/c"))
+}
+
 func TestAcquireUnwritableParentChangesNothing(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission-bit semantics differ on windows")

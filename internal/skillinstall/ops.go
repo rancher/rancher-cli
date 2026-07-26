@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -63,20 +64,32 @@ func DefaultLockDir() (string, error) {
 // ancestor is resolved through symlinks and the nonexistent remainder is
 // appended textually — two paths addressing the same physical target key
 // the same lock even when reached through symlinked parents.
+//
+// On Windows (NTFS) and macOS (APFS) the result is further lowercased: both
+// filesystems are case-insensitive by default, so a case-only alias of the
+// same directory must produce the same key. A case-sensitive volume on those
+// platforms degrades only to two lock files for two genuinely distinct
+// directories — the safe direction.
 func canonicalTarget(dir string) string {
+	fold := func(s string) string {
+		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+			return strings.ToLower(s)
+		}
+		return s
+	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return filepath.Clean(dir)
+		return fold(filepath.Clean(dir))
 	}
 	prefix, rest := abs, ""
 	for {
 		if resolved, err := filepath.EvalSymlinks(prefix); err == nil {
-			return filepath.Clean(filepath.Join(resolved, rest))
+			return fold(filepath.Clean(filepath.Join(resolved, rest)))
 		}
 		rest = filepath.Join(filepath.Base(prefix), rest)
 		parent := filepath.Dir(prefix)
 		if parent == prefix {
-			return abs
+			return fold(abs)
 		}
 		prefix = parent
 	}

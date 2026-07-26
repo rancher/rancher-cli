@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,4 +105,32 @@ func TestTargetsUserScopeSymlinkedCodexHomeDedupsToOne(t *testing.T) {
 	leases, err := Acquire(lockDir, targets, "install", false)
 	require.NoError(t, err, "Acquire must succeed on the deduplicated single target")
 	ReleaseAll(leases)
+}
+
+// TestTargetsUserScopeCaseAliasDedupsToOne proves that on case-insensitive
+// filesystems (Darwin/APFS by default) a CODEX_HOME path that is a case
+// variant of ~/.claude is deduplicated to a single target labeled "claude".
+// Linux is case-sensitive so the alias does not exist there; Windows is
+// excluded because symlink privilege detection is already covered by the
+// sibling test above and TempDir returns a fixed case path.
+func TestTargetsUserScopeCaseAliasDedupsToOne(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("case-alias dedup requires a case-insensitive filesystem (darwin)")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("COPILOT_HOME", "")
+	claudeDir := filepath.Join(home, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o755))
+
+	// Upper-case variant of the same path — physically the same directory on
+	// APFS but a different string. canonicalTarget must fold both to the same
+	// canonical key so Targets deduplicates them.
+	t.Setenv("CODEX_HOME", strings.ToUpper(claudeDir))
+
+	targets, err := Targets("all", ScopeUser, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1, "case-aliased CODEX_HOME must deduplicate to exactly one target")
+	assert.Equal(t, "claude", targets[0].Harness, "first row (claude) must win the canonical identity")
 }
