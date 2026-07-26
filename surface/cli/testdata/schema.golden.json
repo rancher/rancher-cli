@@ -7413,7 +7413,7 @@
       ],
       "flags": [
         {
-          "desc": "target harness (or `all`)",
+          "desc": "target harness (or `all`; default all)",
           "enum": [
             "claude",
             "codex",
@@ -7425,7 +7425,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope`",
+          "desc": "install `scope` (default user)",
           "enum": [
             "user",
             "project"
@@ -7454,7 +7454,7 @@
       ],
       "flags": [
         {
-          "desc": "target harness (or `all`)",
+          "desc": "target harness (or `all`; default all)",
           "enum": [
             "claude",
             "codex",
@@ -7466,7 +7466,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope`",
+          "desc": "install `scope` (default user)",
           "enum": [
             "user",
             "project"
@@ -7498,7 +7498,7 @@
       ],
       "flags": [
         {
-          "desc": "target harness (or `all`)",
+          "desc": "target harness (or `all`; default all)",
           "enum": [
             "claude",
             "codex",
@@ -7510,7 +7510,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope`",
+          "desc": "install `scope` (default user)",
           "enum": [
             "user",
             "project"

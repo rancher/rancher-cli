@@ -328,8 +328,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
   `apiVersion`, the error-code enum with exit codes, the global flags, the
   kind vocabulary (aliases, GVR, scope, per-kind verb availability), and
-  every command with its args, flags, `commandType`, and (for server ops)
-  `tier`/`stability`, as one document. `rancher schema <command|kind>`
+  every command with its args, flags, `commandType`, `successExitCodes`, and
+  (for server ops) `tier`/`stability`, as one document. `rancher schema <command|kind>`
   narrows to one command (e.g. `rancher schema get pod`) or one kind (e.g.
   `rancher schema clusterregistrationtoken`) — a name that is both
   (`kubeconfig`) resolves as the command; `--kind` forces the kind reading.

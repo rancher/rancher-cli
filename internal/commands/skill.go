@@ -40,8 +40,8 @@ func (s skillOutcomes) Rows() [][]string {
 
 func skillFlags() []runtime.ArgSpec {
 	return []runtime.ArgSpec{
-		{Name: "agent", Type: "string", Enum: skillinstall.AgentNames(), Desc: "target harness (or `all`)"},
-		{Name: "scope", Type: "string", Enum: []string{"user", "project"}, Desc: "install `scope`"},
+		{Name: "agent", Type: "string", Enum: skillinstall.AgentNames(), Desc: "target harness (or `all`; default all)"},
+		{Name: "scope", Type: "string", Enum: []string{"user", "project"}, Desc: "install `scope` (default user)"},
 	}
 }
 
