@@ -58,24 +58,34 @@ func (t table) Rows() [][]string {
 		row := make([]string, 0, len(t.k.Columns)+1)
 		row = append(row, t.items[i].GetName())
 		for _, c := range t.k.Columns {
-			v, ok, _ := unstructured.NestedString(o, c.Path...)
-			if !ok {
-				// Bool leaves render "true"/"false" (nodedriver's ACTIVE/
-				// BUILTIN are bools in the served v3 NodeDriver). An ABSENT
-				// field in a Bool-marked column renders "false": an omitempty
-				// bool (NodeDriverSpec's builtin) drops false from the wire,
-				// so blank would misread as unknown. Other non-string leaves
-				// (int64, array) still render blank — rows keep omitting such
-				// columns deliberately (token, kubeconfig).
-				if b, bok, _ := unstructured.NestedBool(o, c.Path...); bok {
-					v = strconv.FormatBool(b)
-				} else if c.Bool {
-					v = "false"
-				}
-			}
-			row = append(row, v)
+			row = append(row, columnString(o, c))
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// columnString projects one column from one object: Path first, then each
+// AltPaths entry, first non-empty string wins. The Bool absent→"false"
+// fallback applies to Path only, preserving the single-path semantics
+// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN).
+func columnString(o map[string]any, c kinds.Column) string {
+	v, ok, _ := unstructured.NestedString(o, c.Path...)
+	if ok && v != "" {
+		return v
+	}
+	for _, alt := range c.AltPaths {
+		if av, aok, _ := unstructured.NestedString(o, alt...); aok && av != "" {
+			return av
+		}
+	}
+	if !ok {
+		if b, bok, _ := unstructured.NestedBool(o, c.Path...); bok {
+			return strconv.FormatBool(b)
+		}
+		if c.Bool {
+			return "false"
+		}
+	}
+	return v
 }

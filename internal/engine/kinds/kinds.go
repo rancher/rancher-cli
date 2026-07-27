@@ -22,6 +22,12 @@ const (
 type Column struct {
 	Header string
 	Path   []string // unstructured.NestedString path; empty = metadata.name
+	// AltPaths are fallback NestedString paths tried in order when Path
+	// (and earlier alternates) yield no non-empty string — the first
+	// non-empty value renders. Lets one column project a field that lives
+	// under different keys per object (crtb/prtb MEMBER: userName |
+	// groupPrincipalName | userPrincipalName).
+	AltPaths [][]string
 	// Bool marks the leaf boolean-typed: an absent field renders "false"
 	// instead of blank, because an omitempty bool (e.g. NodeDriverSpec's
 	// builtin) drops its false value from the wire entirely. Unmarked
