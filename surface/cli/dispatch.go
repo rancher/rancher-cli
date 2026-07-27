@@ -583,9 +583,10 @@ func livePositionalCandidates(
 	}
 
 	// Round-2 finding 7: gate on AC-10 verbs (get/patch/delete only), with
-	// IC-3's one named exception — inspect cluster. Every other inspect
-	// leaf retains the deny.
-	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException {
+	// two named exceptions — inspect cluster and inspect project. Every other
+	// inspect leaf retains the deny.
+	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException &&
+		d.Name != inspectProjectCompletionException {
 		return nil
 	}
 	k, ok := kindForDescriptor(d)
@@ -811,8 +812,14 @@ func gvrNamespacedPath(k kinds.Kind) string {
 // AC-10 verb gate: exactly this leaf, never the inspect group. inspect
 // cluster's positional IS a management cluster name-or-id, so it completes
 // via the same fetchClusters path get cluster's positional uses; inspect
-// pod/deployment/project remain excluded (AC-15a is aliases only).
-const inspectClusterCompletionException = "inspect cluster"
+// pod/deployment remain excluded (AC-15a is aliases only).
+// inspectProjectCompletionException is the second exception (members-ergonomics
+// slice 4): inspect project's positional completes project names via the
+// resolved cluster.
+const (
+	inspectClusterCompletionException = "inspect cluster"
+	inspectProjectCompletionException = "inspect project"
+)
 
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
 // (get, patch, delete). inspect leaves do NOT get live positional
