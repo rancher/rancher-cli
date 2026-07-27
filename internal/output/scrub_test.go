@@ -35,7 +35,7 @@ func TestScrubManagedFieldsDeletesOnlyUnderMetadata(t *testing.T) {
 func TestScrubbedEnvelopeTreeFastPath(t *testing.T) {
 	t.Parallel()
 	env := NewEnvelope("X", map[string]any{"metadata": map[string]any{"name": "clean"}})
-	tree, hit, err := scrubbedEnvelopeTree(env)
+	tree, hit, err := scrubbedTree(env)
 	require.NoError(t, err)
 	assert.False(t, hit, "no managedFields literal means no tree (MF-2 fast path)")
 	assert.Nil(t, tree)
@@ -50,7 +50,7 @@ func TestScrubbedEnvelopeTreeSlowPath(t *testing.T) {
 			"generation":    int64(9007199254740993),
 		},
 	})
-	tree, hit, err := scrubbedEnvelopeTree(env)
+	tree, hit, err := scrubbedTree(env)
 	require.NoError(t, err)
 	require.True(t, hit)
 	data := tree.(map[string]any)["data"].(map[string]any)

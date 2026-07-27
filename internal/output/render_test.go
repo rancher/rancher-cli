@@ -258,6 +258,67 @@ func TestRenderTemplateRootAndStrip(t *testing.T) {
 	assert.Equal(t, "root-field\n", buf.String(), "fast path root unchanged")
 }
 
+func TestRenderTableFallbackStripsManagedFields(t *testing.T) {
+	t.Parallel()
+	payload := map[string]any{
+		"observed": map[string]any{
+			"metadata": map[string]any{
+				"name":          "x",
+				"managedFields": []any{map[string]any{"manager": "k3s"}},
+			},
+		},
+	}
+	for _, format := range []string{"", "table"} {
+		format := format
+		name := format
+		if name == "" {
+			name = "empty"
+		}
+		t.Run("format="+name, func(t *testing.T) {
+			t.Parallel()
+			env := NewEnvelope("Effect", payload)
+			var buf bytes.Buffer
+			require.NoError(t, Render(&buf, format, env))
+			out := buf.String()
+			assert.NotContains(t, out, "managedFields", "table fallback must strip managedFields")
+			assert.Contains(t, out, `"name": "x"`, "neighboring metadata must survive")
+		})
+	}
+}
+
+func TestRenderTableFallbackFastPathByteIdentical(t *testing.T) {
+	t.Parallel()
+	payload := map[string]any{"metadata": map[string]any{"name": "clean"}}
+	env := NewEnvelope("X", payload)
+	var got bytes.Buffer
+	require.NoError(t, Render(&got, "table", env))
+	var want bytes.Buffer
+	require.NoError(t, EncodeJSON(&want, env.Data))
+	assert.Equal(t, want.String(), got.String(),
+		"no managedFields: table fallback is byte-identical to EncodeJSON(env.Data) (MF-2 fast path)")
+}
+
+// TestRenderTableFallbackShapeOverType pins spec MF-6: a payload whose Data
+// contains a map shaped like {"metadata": {"managedFields": "user-data"}} is
+// stripped — the scrubber operates on shape, not type. This is the documented
+// tradeoff: use the raw API for server-side-apply forensics.
+func TestRenderTableFallbackShapeOverType(t *testing.T) {
+	t.Parallel()
+	payload := map[string]any{
+		"metadata": map[string]any{
+			"name":          "obj",
+			"managedFields": "user-data", // not a k8s object, but same shape
+		},
+	}
+	env := NewEnvelope("X", payload)
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "table", env))
+	// Spec MF-6 recorded tradeoff: the key is stripped regardless of value type.
+	assert.NotContains(t, buf.String(), "managedFields",
+		"MF-6: shape-over-type tradeoff — managedFields under metadata is always stripped")
+	assert.Contains(t, buf.String(), `"name": "obj"`, "neighboring key survives")
+}
+
 type marshalBomb struct{}
 
 func (marshalBomb) Columns() []string { return []string{"NAME"} }

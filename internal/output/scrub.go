@@ -7,14 +7,14 @@ import (
 
 const managedFieldsKey = "managedFields"
 
-// scrubbedEnvelopeTree marshals env compactly for DETECTION ONLY — the
-// bytes are never written to output. When the literal managedFields key is
-// absent it reports hit=false: callers fall through to today's encoders on
-// env itself, so unaffected commands change in no way at all (MF-2). When
-// present, it returns the decoded tree (UseNumber, so large ints re-encode
-// verbatim) with managedFields removed from every metadata map.
-func scrubbedEnvelopeTree(env *Envelope) (any, bool, error) {
-	b, err := json.Marshal(env)
+// scrubbedTree marshals v (envelope or bare value) compactly for DETECTION
+// ONLY — the bytes are never written to output. When the literal managedFields
+// key is absent it reports hit=false: callers fall through to today's encoders,
+// so unaffected commands change in no way at all (MF-2). When present, it
+// returns the decoded tree (UseNumber, so large ints re-encode verbatim) with
+// managedFields removed from every metadata map.
+func scrubbedTree(v any) (any, bool, error) {
+	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, false, err
 	}

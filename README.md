@@ -311,6 +311,9 @@ Every command emits one JSON document per invocation under `-o json` — an
   render a plain-text default under `table`/default format instead, with
   warnings on stderr as `# warning: <w>` lines;
   `-o json`/`yaml`/`template=`/`name` still see the normal envelope over `data`.
+  Structured output (json, yaml, template, and the table fallback) omits
+  `metadata.managedFields` (kubectl-parity; no opt-out flag — read the raw API
+  for server-side-apply forensics).
 - **Errors** are structured, on stderr, always the JSON envelope regardless of
   `-o`, with the error object under `data`. A plain-text notice (the
   credential-store pin warning) may precede it on stderr — the

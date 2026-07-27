@@ -23,6 +23,19 @@ type Tabular interface {
 // pipeline's format validation and Render both key off it.
 const TemplatePrefix = "template="
 
+// renderSource picks what the structured encoders serialize: the original
+// envelope on the fast path, the scrubbed tree otherwise (MF-2).
+func renderSource(env *Envelope) (any, error) {
+	tree, hit, err := scrubbedTree(env)
+	if err != nil {
+		return nil, err
+	}
+	if !hit {
+		return env, nil
+	}
+	return tree, nil
+}
+
 // Render writes env to w in the requested format.
 // format: "" or "table" (user-facing), "json", "yaml", "name" (ids), or
 // "template=<go-template>". Anything else is an error; the pipeline validates
@@ -32,22 +45,15 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	case "", "table":
 		return renderTable(w, env)
 	case "json":
-		tree, hit, err := scrubbedEnvelopeTree(env)
+		src, err := renderSource(env)
 		if err != nil {
 			return err
 		}
-		if !hit {
-			return EncodeJSON(w, env)
-		}
-		return EncodeJSON(w, tree)
+		return EncodeJSON(w, src)
 	case "yaml":
-		tree, hit, err := scrubbedEnvelopeTree(env)
+		src, err := renderSource(env)
 		if err != nil {
 			return err
-		}
-		src := any(env)
-		if hit {
-			src = tree
 		}
 		b, err := yaml.Marshal(src)
 		if err != nil {
@@ -68,33 +74,43 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		if src == "" {
 			return fmt.Errorf("empty template source")
 		}
-		tmpl, err := template.New("out").Parse(src)
-		if err != nil {
-			return fmt.Errorf("invalid template: %w", err)
-		}
-		// Execute the template over the JSON view of data, so templates address
-		// the same shape agents see under -o json (and json.Marshaler-only
-		// payloads like get's table are reachable at all) — CW-4. Decode with
-		// UseNumber so a large int64 (byte counts, unix-nano timestamps) prints
-		// verbatim as json.Number instead of round-tripping through float64 and
-		// rendering as scientific notation.
-		b, err := json.Marshal(env.Data)
-		if err != nil {
-			return err
-		}
-		var view any
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.UseNumber()
-		if err := dec.Decode(&view); err != nil {
-			return err
-		}
-		scrubManagedFields(view)
-		if err := tmpl.Execute(w, view); err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(w)
+		return renderTemplate(w, src, env)
+	}
+}
+
+// renderTemplate executes a Go template over the JSON view of env.Data with
+// managedFields scrubbed. Templates address the same shape agents see under
+// -o json — CW-4. UseNumber preserves large int64 values verbatim.
+func renderTemplate(w io.Writer, src string, env *Envelope) error {
+	tmpl, err := template.New("out").Parse(src)
+	if err != nil {
+		return fmt.Errorf("invalid template: %w", err)
+	}
+	// Execute the template over the JSON view of data, so templates address
+	// the same shape agents see under -o json (and json.Marshaler-only
+	// payloads like get's table are reachable at all) — CW-4. Decode with
+	// UseNumber so a large int64 (byte counts, unix-nano timestamps) prints
+	// verbatim as json.Number instead of round-tripping through float64 and
+	// rendering as scientific notation.
+	b, err := json.Marshal(env.Data)
+	if err != nil {
 		return err
 	}
+	var view any
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&view); err != nil {
+		return err
+	}
+	// No detection fast path here: the branch must decode the view
+	// regardless, and a detection marshal to skip an already-decoded
+	// tree walk would cost more than the walk itself.
+	scrubManagedFields(view)
+	if err := tmpl.Execute(w, view); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w)
+	return err
 }
 
 // EncodeJSON writes v to w as indented JSON with HTML escaping disabled. This
@@ -111,7 +127,14 @@ func renderTable(w io.Writer, env *Envelope) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
 		// Fallback: pretty JSON so table mode never loses data.
-		return EncodeJSON(w, env.Data)
+		tree, hit, err := scrubbedTree(env.Data)
+		if err != nil {
+			return err
+		}
+		if !hit {
+			return EncodeJSON(w, env.Data)
+		}
+		return EncodeJSON(w, tree)
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	cols := t.Columns()
