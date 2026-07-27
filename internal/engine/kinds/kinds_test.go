@@ -116,13 +116,16 @@ func TestLookupByNameAliasAndKey(t *testing.T) {
 		}
 	}
 	for q, wantKey := range map[string]string{
-		"sts":           "statefulset",
-		"pv":            "persistentvolume",
-		"ing":           "ingress",
-		"crtb":          "clusterroletemplatebinding",
-		"machine":       "capimachine",
-		"fleet-cluster": "fleetcluster",
-		"nodedrivers":   "nodedriver",
+		"sts":                         "statefulset",
+		"pv":                          "persistentvolume",
+		"ing":                         "ingress",
+		"crtb":                        "clusterroletemplatebinding",
+		"clusterroletemplatebindings": "clusterroletemplatebinding",
+		"prtb":                        "projectroletemplatebinding",
+		"projectroletemplatebindings": "projectroletemplatebinding",
+		"machine":                     "capimachine",
+		"fleet-cluster":               "fleetcluster",
+		"nodedrivers":                 "nodedriver",
 	} {
 		k, ok := Lookup(q)
 		require.True(t, ok, q)

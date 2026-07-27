@@ -879,6 +879,7 @@
     },
     {
       "aliases": [
+        "clusterroletemplatebindings",
         "crtb"
       ],
       "args": [
@@ -1690,6 +1691,7 @@
     },
     {
       "aliases": [
+        "projectroletemplatebindings",
         "prtb"
       ],
       "args": [
@@ -2470,6 +2472,7 @@
     },
     {
       "aliases": [
+        "clusterroletemplatebindings",
         "crtb"
       ],
       "args": [
@@ -3661,6 +3664,7 @@
     },
     {
       "aliases": [
+        "projectroletemplatebindings",
         "prtb"
       ],
       "args": [
@@ -4925,6 +4929,7 @@
     },
     {
       "aliases": [
+        "clusterroletemplatebindings",
         "crtb"
       ],
       "args": [
@@ -6521,6 +6526,7 @@
     },
     {
       "aliases": [
+        "projectroletemplatebindings",
         "prtb"
       ],
       "args": [
@@ -8956,6 +8962,7 @@
     },
     {
       "aliases": [
+        "clusterroletemplatebindings",
         "crtb"
       ],
       "group": "management.cattle.io",
@@ -8986,6 +8993,7 @@
     },
     {
       "aliases": [
+        "projectroletemplatebindings",
         "prtb"
       ],
       "group": "management.cattle.io",

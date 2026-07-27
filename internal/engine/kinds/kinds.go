@@ -301,7 +301,7 @@ var table = []Kind{
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
 	},
 	{
-		Key: "clusterroletemplatebinding", Name: "clusterroletemplatebinding", Aliases: []string{"crtb"},
+		Key: "clusterroletemplatebinding", Name: "clusterroletemplatebinding", Aliases: []string{"clusterroletemplatebindings", "crtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterroletemplatebindings"},
 		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
@@ -309,7 +309,7 @@ var table = []Kind{
 	{
 		// The one Management + NSPlain kind: --namespace is a project id, not a
 		// cluster id — reflected in the generated flag help.
-		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"prtb"},
+		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"projectroletemplatebindings", "prtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
 		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
