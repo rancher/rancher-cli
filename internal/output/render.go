@@ -32,9 +32,24 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	case "", "table":
 		return renderTable(w, env)
 	case "json":
-		return EncodeJSON(w, env)
+		tree, hit, err := scrubbedEnvelopeTree(env)
+		if err != nil {
+			return err
+		}
+		if !hit {
+			return EncodeJSON(w, env)
+		}
+		return EncodeJSON(w, tree)
 	case "yaml":
-		b, err := yaml.Marshal(env)
+		tree, hit, err := scrubbedEnvelopeTree(env)
+		if err != nil {
+			return err
+		}
+		src := any(env)
+		if hit {
+			src = tree
+		}
+		b, err := yaml.Marshal(src)
 		if err != nil {
 			return err
 		}
@@ -73,6 +88,7 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		if err := dec.Decode(&view); err != nil {
 			return err
 		}
+		scrubManagedFields(view)
 		if err := tmpl.Execute(w, view); err != nil {
 			return err
 		}

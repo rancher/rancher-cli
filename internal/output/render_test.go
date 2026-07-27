@@ -3,6 +3,8 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -174,4 +176,100 @@ func TestRenderTableFallbackKeepsAngleAndAmpLiteral(t *testing.T) {
 			assertNotHTMLEscaped(t, buf.String())
 		})
 	}
+}
+
+func TestRenderJSONStripsManagedFields(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("X", map[string]any{
+		"metadata": map[string]any{
+			"name":          "cm<&>",
+			"managedFields": []any{map[string]any{"manager": "k3s"}},
+		},
+	})
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "json", env))
+	out := buf.String()
+	assert.NotContains(t, out, "managedFields")
+	assert.Contains(t, out, "\n  \"data\"", "indentation preserved on the slow path (MF-2)")
+	assert.Contains(t, out, "cm<&>", "HTML escaping stays disabled on the slow path")
+	assert.True(t, strings.HasSuffix(out, "\n"), "trailing newline preserved")
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	meta := got["data"].(map[string]any)["metadata"].(map[string]any)
+	assert.Equal(t, "cm<&>", meta["name"], "neighboring metadata survives")
+}
+
+func TestRenderYAMLStripsManagedFields(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("X", map[string]any{
+		"metadata": map[string]any{
+			"name":          "cm",
+			"managedFields": []any{map[string]any{"manager": "k3s"}},
+		},
+	})
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "yaml", env))
+	assert.NotContains(t, buf.String(), "managedFields")
+	assert.Contains(t, buf.String(), "name: cm")
+}
+
+func TestRenderFastPathByteIdentical(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("X", map[string]any{
+		"metadata": map[string]any{"name": "clean<&>"},
+	})
+	var got bytes.Buffer
+	require.NoError(t, Render(&got, "json", env))
+	var want bytes.Buffer
+	require.NoError(t, EncodeJSON(&want, env))
+	assert.Equal(t, want.String(), got.String(),
+		"no managedFields: output is byte-identical to today's encoder (MF-2 fast path)")
+}
+
+func TestRenderTemplateRootAndStrip(t *testing.T) {
+	t.Parallel()
+	envDirty := NewEnvelope("X", map[string]any{
+		"name": "root-field",
+		"obj": map[string]any{
+			"metadata": map[string]any{"managedFields": "x", "uid": "u1"},
+		},
+	})
+	// The template interrogates the managedFields key itself: this MUST
+	// render "absent" only once the template branch scrubs its view, so
+	// the test is red before Step 7 (MF-7).
+	const probe = "template={{.name}}/{{.obj.metadata.uid}}/" +
+		"{{if index .obj.metadata \"managedFields\"}}present{{else}}absent{{end}}"
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, probe, envDirty))
+	assert.Equal(t, "root-field/u1/absent\n", buf.String(),
+		"root stays env.Data AND managedFields is gone from the template view (MF-2)")
+
+	envClean := NewEnvelope("X", map[string]any{"name": "root-field"})
+	buf.Reset()
+	require.NoError(t, Render(&buf, "template={{.name}}", envClean))
+	assert.Equal(t, "root-field\n", buf.String(), "fast path root unchanged")
+}
+
+type marshalBomb struct{}
+
+func (marshalBomb) Columns() []string { return []string{"NAME"} }
+func (marshalBomb) Rows() [][]string  { return [][]string{{"a"}} }
+func (marshalBomb) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("must never be marshaled by table/name")
+}
+
+func TestRenderTableAndNameNeverMarshal(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("X", marshalBomb{})
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "table", env), "table renders via Tabular alone (MF-2 step 0)")
+	assert.Contains(t, buf.String(), "NAME")
+	buf.Reset()
+	require.NoError(t, Render(&buf, "name", env))
+	assert.Equal(t, "a\n", buf.String())
+	buf.Reset()
+	err := Render(&buf, "bogus-format", env)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported output format",
+		"format error precedes any marshal")
 }
