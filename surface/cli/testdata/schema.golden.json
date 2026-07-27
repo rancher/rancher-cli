@@ -4236,6 +4236,10 @@
     {
       "auth": true,
       "commandType": "readOnly",
+      "desc": "Lists container images referenced by active pods (status.phase Running or Pending; Succeeded and Failed pods are excluded, terminating pods remain until removed), reading spec.containers, spec.initContainers, and spec.ephemeralContainers. --match filters by case-sensitive substring over the image reference exactly as written in the pod spec: repeatable, values OR, no OCI normalization (a bare nginx:1.25 does not match docker.io); anchor with delimiters, e.g. --match registry.old.corp/ for a registry. --match never inspects image contents. --by workload resolves each pod's controller owner chain and reports one row per image and owning workload object (apiVersion, kind, name, uid) with the count of pods controlled by exactly that object; owner-resolution failures degrade to the first-level reference plus a warning.",
+      "examples": [
+        "images --all-clusters --match library/elasticsearch: --by workload"
+      ],
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -4246,6 +4250,20 @@
           "desc": "scan all downstream clusters",
           "name": "all-clusters",
           "type": "bool"
+        },
+        {
+          "desc": "Group by unique image or by owning workload",
+          "enum": [
+            "image",
+            "workload"
+          ],
+          "name": "by",
+          "type": "string"
+        },
+        {
+          "desc": "Show only images whose reference contains `SUBSTR` (repeatable, OR)",
+          "name": "match",
+          "type": "stringSlice"
         }
       ],
       "name": "images",
@@ -4253,7 +4271,7 @@
       "stability": "beta",
       "tier": "crd",
       "toolset": "core",
-      "usage": "List container images in use, deduplicated and counted"
+      "usage": "List container images in use, grouped by image or owning workload"
     },
     {
       "aliases": [

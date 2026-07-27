@@ -399,3 +399,21 @@ func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
 	// Must not spill into kind names.
 	assert.NotContains(t, tokens, "pod", "get --output <TAB> must not include kind names")
 }
+
+// TestImagesByFlagValueCompletion: `images --by <TAB>` must offer exactly
+// the enum values image and workload (IM-22); --match must offer nothing.
+func TestImagesByFlagValueCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"images", "--by"}, "")
+	tokens := extractTokens(got)
+	assert.Contains(t, tokens, "image", "images --by <TAB> must include image")
+	assert.Contains(t, tokens, "workload", "images --by <TAB> must include workload")
+	assert.NotContains(t, tokens, "namespace", "images --by <TAB> must not leak usage's enum")
+
+	got = runNameLikeCompletion(t, []string{"images", "--match"}, "")
+	assert.Empty(t, extractTokens(got), "images --match <TAB> is free text, no suggestions (IM-23)")
+}

@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -8,6 +9,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -247,5 +250,57 @@ func TestImagesEmptyMatchRejected(t *testing.T) {
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestImagesByWorkloadDispatch(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			ownedPod("p1", "web", "nginx:1.25", "rs", "rs-1"),
+		}}).
+		withObject(rsGVR, "web", "rs", replicaSet("web", "rs", "rs-1", "web", "dep-1"))
+	factory := &fakeFactory{client: client, ctxCluster: "c-test"}
+
+	cmd := NewImages(factory)
+	res, err := execRead(t, cmd, input{
+		s: map[string]string{"by": "workload"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "ClusterImages", res.Kind)
+	env, ok := res.Data.(imagesResult)
+	require.True(t, ok)
+	assert.Equal(t, "workload", env.By)
+	rows, ok := env.RowData.(imageWorkloadRows)
+	require.True(t, ok)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "dep-1", rows[0].Workload.UID)
+}
+
+func TestImagesDescriptorDeclaresByEnumAndMatchSlice(t *testing.T) {
+	t.Parallel()
+	d := NewImages(&fakeFactory{}).Describe()
+	flags := map[string]runtime.ArgSpec{}
+	for _, f := range d.Flags {
+		flags[f.Name] = f
+	}
+	require.Contains(t, flags, "by")
+	assert.Equal(t, []string{"image", "workload"}, flags["by"].Enum,
+		"pipeline Enum validation and static completion both hang off this (IM-2/IM-22)")
+	require.Contains(t, flags, "match")
+	assert.Equal(t, "stringSlice", flags["match"].Type,
+		"a plain string flag would keep one occurrence (IM-3)")
+	assert.NotEmpty(t, d.Desc, "long-form semantics live on the schema-only Descriptor.Desc (IM-20)")
+	assert.NotEmpty(t, d.Examples, "blast-radius recipe ships in the schema (IM-20)")
+}
+
+func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
+	t.Parallel()
+	var out, errBuf bytes.Buffer
+	ce := runtime.Run(context.Background(), NewImages(&fakeFactory{client: newFakeClient()}),
+		input{s: map[string]string{"by": "bogus"}},
+		runtime.IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce, "the pipeline must reject a non-enum --by before Execute")
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }

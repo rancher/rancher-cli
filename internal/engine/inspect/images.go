@@ -87,16 +87,32 @@ func NewImages(clients engine.ClusterClientFactory) runtime.Command {
 
 func (c *imagesCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "images",
-		Usage:       "List container images in use, deduplicated and counted",
+		Name:  "images",
+		Usage: "List container images in use, grouped by image or owning workload",
+		Desc: "Lists container images referenced by active pods (status.phase Running or Pending; " +
+			"Succeeded and Failed pods are excluded, terminating pods remain until removed), " +
+			"reading spec.containers, spec.initContainers, and spec.ephemeralContainers. " +
+			"--match filters by case-sensitive substring over the image reference exactly as " +
+			"written in the pod spec: repeatable, values OR, no OCI normalization (a bare " +
+			"nginx:1.25 does not match docker.io); anchor with delimiters, e.g. " +
+			"--match registry.old.corp/ for a registry. --match never inspects image contents. " +
+			"--by workload resolves each pod's controller owner chain and reports one row per " +
+			"image and owning workload object (apiVersion, kind, name, uid) with the count of " +
+			"pods controlled by exactly that object; owner-resolution failures degrade to the " +
+			"first-level reference plus a warning.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
 			{Name: flagAllClusters, Type: "bool", Desc: "scan all downstream clusters"},
+			{Name: flagBy, Type: "string", Enum: []string{byImage, byWorkload},
+				Desc: "Group by unique image or by owning workload"},
+			{Name: flagMatch, Type: "stringSlice",
+				Desc: "Show only images whose reference contains `SUBSTR` (repeatable, OR)"},
 		},
-		Toolset: "core",
-		Network: true,
-		Auth:    true,
+		Examples: []string{"images --all-clusters --match library/elasticsearch: --by workload"},
+		Toolset:  "core",
+		Network:  true,
+		Auth:     true,
 	}
 }
 
@@ -112,6 +128,10 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 				WithHint("pass a non-empty substring, e.g. --match registry.old.corp/")
 		}
 	}
+	by := in.String(flagBy)
+	if by == "" {
+		by = byImage
+	}
 	clusterFlag := in.String(resources.FlagCluster)
 	allClusters := in.Bool(flagAllClusters)
 	if allClusters && clusterFlag != "" {
@@ -120,7 +140,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 			WithHint("pass exactly one of --cluster or --all-clusters")
 	}
 	if allClusters {
-		return c.allClusters(ctx, byImage, needles)
+		return c.allClusters(ctx, by, needles)
 	}
 
 	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
@@ -130,6 +150,15 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	client, err := c.clients.Cluster(ctx, clusterID)
 	if err != nil {
 		return runtime.Result{}, err
+	}
+	if by == byWorkload {
+		rows, warns, werr := workloadImagesFor(ctx, client, needles)
+		if werr != nil {
+			return runtime.Result{}, werr
+		}
+		sort.Strings(warns)
+		return runtime.Result{Kind: "ClusterImages",
+			Data: imagesResult{By: byWorkload, RowData: rows}, Warnings: warns}, nil
 	}
 	imgs, err := imagesFor(ctx, client, needles)
 	if err != nil {
