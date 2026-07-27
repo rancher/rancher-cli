@@ -311,6 +311,11 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterroletemplatebindings"},
 		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "MEMBER", Path: []string{"userName"}, AltPaths: [][]string{{"groupPrincipalName"}, {"userPrincipalName"}}},
+			{Header: "ROLE", Path: []string{"roleTemplateName"}},
+			{Header: "CLUSTER", Path: []string{"clusterName"}},
+		},
 	},
 	{
 		// The one Management + NSPlain kind: --namespace is a project id, not a
@@ -319,6 +324,11 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
 		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "MEMBER", Path: []string{"userName"}, AltPaths: [][]string{{"groupPrincipalName"}, {"userPrincipalName"}}},
+			{Header: "ROLE", Path: []string{"roleTemplateName"}},
+			{Header: "PROJECT", Path: []string{"projectName"}},
+		},
 	},
 
 	{

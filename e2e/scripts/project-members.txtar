@@ -33,6 +33,24 @@ jsonquery stdout data.0.userPrincipalName local://u-alice
 jsonquery stdout data.0.roleTemplateName project-member
 jsonquery stdout data.0.projectName c-test:members-proj
 
+# the default table now carries MEMBER/ROLE/PROJECT (members ergonomics).
+exec rancher get prtb --namespace members-proj
+stdout 'MEMBER'
+stdout 'ROLE'
+stdout 'PROJECT'
+stdout 'u-alice'
+stdout 'project-member'
+
+# crtb table: MEMBER/ROLE/CLUSTER through the cluster-scope grant path.
+exec rancher grant alice --role cluster-member --cluster testcluster --apply --yes
+exec rancher get crtb --cluster testcluster
+stdout 'MEMBER'
+stdout 'ROLE'
+stdout 'CLUSTER'
+stdout 'u-alice'
+stdout 'cluster-member'
+stdout 'c-test'
+
 # revoke is destructive: --apply alone is refused.
 ! exec rancher revoke alice --project members-proj --cluster testcluster --apply
 jsonquery stderr data.error.code CONFIRMATION_REQUIRED

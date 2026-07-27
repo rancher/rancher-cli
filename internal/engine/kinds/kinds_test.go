@@ -173,6 +173,28 @@ func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
 	assert.Equal(t, "condition=Ready", prov.WaitDefault)
 }
 
+// TestBindingRowsCarryMemberColumns pins the crtb/prtb table projection:
+// one MEMBER column with the userName → groupPrincipalName →
+// userPrincipalName fallback, ROLE, and the row's scope column.
+func TestBindingRowsCarryMemberColumns(t *testing.T) {
+	t.Parallel()
+	memberFallback := [][]string{{"groupPrincipalName"}, {"userPrincipalName"}}
+
+	crtb, ok := Lookup("clusterroletemplatebinding")
+	require.True(t, ok)
+	require.Len(t, crtb.Columns, 3)
+	assert.Equal(t, Column{Header: "MEMBER", Path: []string{"userName"}, AltPaths: memberFallback}, crtb.Columns[0])
+	assert.Equal(t, Column{Header: "ROLE", Path: []string{"roleTemplateName"}}, crtb.Columns[1])
+	assert.Equal(t, Column{Header: "CLUSTER", Path: []string{"clusterName"}}, crtb.Columns[2])
+
+	prtb, ok := Lookup("projectroletemplatebinding")
+	require.True(t, ok)
+	require.Len(t, prtb.Columns, 3)
+	assert.Equal(t, Column{Header: "MEMBER", Path: []string{"userName"}, AltPaths: memberFallback}, prtb.Columns[0])
+	assert.Equal(t, Column{Header: "ROLE", Path: []string{"roleTemplateName"}}, prtb.Columns[1])
+	assert.Equal(t, Column{Header: "PROJECT", Path: []string{"projectName"}}, prtb.Columns[2])
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
