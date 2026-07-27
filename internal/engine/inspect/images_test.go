@@ -343,7 +343,7 @@ func TestImagesResultZeroValueNilSafe(t *testing.T) {
 func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
-	ce := runtime.Run(context.Background(), NewImages(&fakeFactory{client: newFakeClient()}),
+	_, ce := runtime.Run(context.Background(), NewImages(&fakeFactory{client: newFakeClient()}),
 		input{s: map[string]string{"by": "bogus"}},
 		runtime.IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "the pipeline must reject a non-enum --by before Execute")
