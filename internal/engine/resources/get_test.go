@@ -590,3 +590,90 @@ func TestIsVowel(t *testing.T) {
 		assert.False(t, isVowel(b), "want non-vowel: %c", b)
 	}
 }
+
+// newGetFixture builds a named-get command + input for a single ConfigMap.
+// ConfigMap is NSPlain+Downstream, so a named get requires --namespace and
+// resolves --cluster from the context cluster ("local").
+func newGetFixture(t *testing.T, obj *unstructured.Unstructured) (runtime.Command, runtime.Input) {
+	t.Helper()
+	client := &memClient{items: []unstructured.Unstructured{*obj}}
+	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client, ctxCluster: "local"})
+	in := input{args: []string{"mf-cm"}, s: map[string]string{"namespace": "default"}}
+	return cmd, in
+}
+
+// newGetListFixture builds a list-get command + input for ConfigMaps.
+func newGetListFixture(t *testing.T, obj *unstructured.Unstructured) (runtime.Command, runtime.Input) {
+	t.Helper()
+	client := &memClient{items: []unstructured.Unstructured{*obj}}
+	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client, ctxCluster: "local"})
+	return cmd, input{}
+}
+
+// decodeEnvelopeDyn decodes a rendered envelope into a map[string]any so
+// tests can traverse the live object graph without a concrete struct target.
+func decodeEnvelopeDyn(t *testing.T, b []byte, format string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if format == "yaml" {
+		require.NoError(t, yaml.Unmarshal(b, &doc))
+	} else {
+		require.NoError(t, json.Unmarshal(b, &doc))
+	}
+	return doc
+}
+
+// TestGetOutputOmitsManagedFields drives named-get and list-get through the
+// full runtime.Run → output.Render pipeline with a fixture that carries
+// managedFields, and asserts the field is absent from both json and yaml
+// output while neighboring metadata survives (MF-3, MF-7a).
+func TestGetOutputOmitsManagedFields(t *testing.T) {
+	t.Parallel()
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": map[string]any{
+			"name":      "mf-cm",
+			"namespace": "default",
+			"uid":       "cm-uid-1",
+			"managedFields": []any{
+				map[string]any{"manager": "k3s", "operation": "Update"},
+			},
+			"ownerReferences": []any{map[string]any{"apiVersion": "apps/v1", "kind": "ReplicaSet", "name": "own", "uid": "own-1", "controller": true}},
+		},
+		"data": map[string]any{"foo": "bar"},
+	}}
+	for _, format := range []string{"json", "yaml"} {
+		format := format
+		t.Run("named-"+format, func(t *testing.T) {
+			t.Parallel()
+			cmd, in := newGetFixture(t, obj)
+			var buf bytes.Buffer
+			_, ce := runtime.Run(context.Background(), cmd, in,
+				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			doc := decodeEnvelopeDyn(t, buf.Bytes(), format)
+			meta := doc["data"].(map[string]any)["metadata"].(map[string]any)
+			assert.NotContains(t, meta, "managedFields")
+			assert.Equal(t, "mf-cm", meta["name"])
+			assert.Equal(t, "cm-uid-1", meta["uid"], "neighboring metadata survives (MF-7a)")
+			ownerRefs := meta["ownerReferences"].([]any)
+			require.Len(t, ownerRefs, 1)
+			assert.Equal(t, "own-1", ownerRefs[0].(map[string]any)["uid"])
+		})
+		t.Run("list-"+format, func(t *testing.T) {
+			t.Parallel()
+			cmd, in := newGetListFixture(t, obj)
+			var buf bytes.Buffer
+			_, ce := runtime.Run(context.Background(), cmd, in,
+				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			doc := decodeEnvelopeDyn(t, buf.Bytes(), format)
+			items := doc["data"].([]any)
+			require.Len(t, items, 1)
+			meta := items[0].(map[string]any)["metadata"].(map[string]any)
+			assert.NotContains(t, meta, "managedFields")
+			assert.Equal(t, "cm-uid-1", meta["uid"])
+		})
+	}
+}

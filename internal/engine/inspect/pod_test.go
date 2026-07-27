@@ -1,15 +1,19 @@
 package inspect
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 )
 
 func mustKind(t *testing.T, name string) kinds.Kind {
@@ -192,4 +196,71 @@ func TestInspectPodTailFlagValidation(t *testing.T) {
 		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1", "tail": "garbage"},
 	})
 	require.Error(t, err)
+}
+
+// TestInspectPodOutputOmitsManagedFields drives the full runtime.Run →
+// output.Render pipeline for `inspect pod` with a pod fixture that carries
+// managedFields in its metadata, and asserts the field is absent from both
+// json and yaml output while the pod's name survives (MF-3, MF-7a).
+func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	rsKind := mustKind(t, "replicaset")
+
+	pod := podObj("ns1", "web-1", map[string]any{
+		"apiVersion": "apps/v1", "kind": "ReplicaSet",
+		"name": "web-1-abc", "uid": "rs-uid-1", "controller": true,
+	})
+	pod.Object["metadata"].(map[string]any)["managedFields"] = []any{
+		map[string]any{"manager": "k3s"},
+	}
+
+	rs := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{
+			"name": "web-1-abc", "namespace": "ns1", "uid": "rs-uid-1",
+			"ownerReferences": []any{
+				ownerRefMap("apps/v1", "Deployment", "web-1"),
+			},
+		},
+	}}
+	metrics := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web-1", "namespace": "ns1"},
+		"usage":    map[string]any{"cpu": "5m", "memory": "10Mi"},
+	}}
+
+	client := newFakeClient().
+		withObject(podKind.GVR, "ns1", "web-1", pod).
+		withObject(rsKind.GVR, "ns1", "web-1-abc", rs).
+		withObject(podMetricsGVR, "ns1", "web-1", metrics).
+		withLog("app", "log line 1\nlog line 2\n")
+
+	cmd := NewPod(&fakeFactory{client: client})
+	in := input{
+		args: []string{"web-1"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	}
+
+	for _, format := range []string{"json", "yaml"} {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			_, ce := runtime.Run(context.Background(), cmd, in,
+				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.NotContains(t, buf.String(), "managedFields",
+				"the pod nested inside the composite document is scrubbed (MF-3)")
+			raw := buf.Bytes()
+			if format == "yaml" {
+				var err error
+				raw, err = yaml.YAMLToJSON(raw)
+				require.NoError(t, err)
+			}
+			var doc map[string]any
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			podMap := doc["data"].(map[string]any)["pod"].(map[string]any)
+			assert.Equal(t, "web-1", podMap["metadata"].(map[string]any)["name"],
+				"the rest of the pod survives")
+		})
+	}
 }

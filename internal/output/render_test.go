@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestRenderJSONSingleDocument(t *testing.T) {
@@ -224,6 +225,13 @@ func TestRenderFastPathByteIdentical(t *testing.T) {
 	require.NoError(t, EncodeJSON(&want, env))
 	assert.Equal(t, want.String(), got.String(),
 		"no managedFields: output is byte-identical to today's encoder (MF-2 fast path)")
+
+	var gotYAML bytes.Buffer
+	require.NoError(t, Render(&gotYAML, "yaml", env))
+	wantYAML, err := yaml.Marshal(env)
+	require.NoError(t, err)
+	assert.Equal(t, string(wantYAML), gotYAML.String(),
+		"no managedFields: yaml output is byte-identical to yaml.Marshal (MF-2 fast path)")
 }
 
 func TestRenderTemplateRootAndStrip(t *testing.T) {
