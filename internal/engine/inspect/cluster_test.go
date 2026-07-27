@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -514,6 +515,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	const (
 		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
+		crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterroletemplatebindings"
 	)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -525,6 +527,10 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 			// aborts the request at the deadline, which unblocks the handler
 			// via the server-side request context.
 			<-r.Context().Done()
+		case crtbListPath:
+			// Return an empty crtb list so members lookup succeeds silently
+			// and does not add a second warning to the timeout-degrade case.
+			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"ClusterRoleTemplateBindingList","items":[]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -860,6 +866,65 @@ func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 		assert.Contains(t, res.Text, "machine pools: unavailable")
 		assert.NotContains(t, res.Text, "forbidden", "the detailed cause lives ONLY in Warnings")
 	})
+}
+
+func TestClusterMembersTriState(t *testing.T) {
+	t.Parallel()
+	// nil pointer → field omitted.
+	b, err := json.Marshal(clusterResult{Cluster: clusterIdentity{ID: "c"}})
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"members"`)
+	// non-nil empty → "members":[].
+	empty := []clusterMember{}
+	b, err = json.Marshal(clusterResult{Cluster: clusterIdentity{ID: "c"}, Members: &empty})
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"members":[]`)
+}
+
+func TestRenderClusterTextMembersSection(t *testing.T) {
+	t.Parallel()
+	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
+	assert.Contains(t, renderClusterText(r), "MEMBERS\n  members: unavailable\n")
+
+	empty := []clusterMember{}
+	r.Members = &empty
+	assert.Contains(t, renderClusterText(r), "MEMBERS\n  none\n")
+
+	members := []clusterMember{
+		{Principal: "github_org://8341", DisplayName: "DevOps Team", Role: "cluster-member"},
+		{Principal: "okta_user://never", Role: "cluster-member"},
+	}
+	r.Members = &members
+	text := renderClusterText(r)
+	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  cluster-member\n  okta_user://never  cluster-member\n")
+}
+
+// TestClusterMembersLookupTriState pins the LOOKUP → tri-state mapping —
+// not just the serialization of hand-built pointers: failed LIST → nil +
+// warning; successful empty LIST → non-nil empty; canceled → error.
+func TestClusterMembersLookupTriState(t *testing.T) {
+	t.Parallel()
+	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
+
+	failed := newFakeClient().withListErr(crtbKind.GVR, errors.New("forbidden"))
+	members, warns, err := clusterMembers(context.Background(), failed, "c-x")
+	require.NoError(t, err)
+	assert.Nil(t, members, "failed LIST → nil pointer (JSON field omitted)")
+	require.Len(t, warns, 1)
+	assert.Contains(t, warns[0], "clusterroletemplatebindings unavailable")
+
+	empty := newFakeClient().withListNS(crtbKind.GVR, "c-x", &unstructured.UnstructuredList{})
+	members, warns, err = clusterMembers(context.Background(), empty, "c-x")
+	require.NoError(t, err)
+	require.NotNil(t, members, "verified empty LIST → non-nil pointer")
+	assert.Empty(t, *members)
+	assert.Empty(t, warns)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	canceled := newFakeClient().withListErr(crtbKind.GVR, context.Canceled)
+	_, _, err = clusterMembers(ctx, canceled, "c-x")
+	require.Error(t, err, "caller cancellation aborts the command")
 }
 
 // TestInspectClusterStdoutStderrSplit drives the REAL pipeline

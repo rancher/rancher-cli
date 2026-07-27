@@ -98,6 +98,16 @@ jsonquery stdout data.members.0.user local://u-alice
 jsonquery stdout data.members.0.roleTemplate project-member
 jsonquery stdout data.members.0.displayName alice
 
+# inspect cluster MEMBERS section + additive JSON member shape.
+exec rancher inspect cluster testcluster
+stdout 'MEMBERS'
+stdout 'alice \(local://u-alice\)  cluster-member'
+
+exec rancher inspect cluster testcluster -o json
+jsonquery stdout data.members.0.principal local://u-alice
+jsonquery stdout data.members.0.displayName alice
+jsonquery stdout data.members.0.role cluster-member
+
 -- user.yaml --
 apiVersion: management.cattle.io/v3
 kind: User

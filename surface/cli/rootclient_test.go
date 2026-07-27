@@ -232,6 +232,7 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 		regPath      = "/v1/management.cattle.io.clusterregistrationtokens/local/default-token"
+		crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/local/clusterroletemplatebindings"
 	)
 	const mgmtBody = `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
 	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[{"apiVersion":"provisioning.cattle.io/v1","kind":"Cluster","metadata":{"name":"local-prov","namespace":"fleet-default"},"spec":{},"status":{"clusterName":"local","ready":true}}]}`
@@ -248,6 +249,10 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 			// the request at the deadline, which unblocks the handler via
 			// the server-side request context.
 			<-r.Context().Done()
+		case crtbListPath:
+			// Return an empty crtb list so members lookup succeeds silently
+			// and does not add a second warning to the registration-timeout case.
+			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"ClusterRoleTemplateBindingList","items":[]}`))
 		default:
 			http.NotFound(w, r)
 		}

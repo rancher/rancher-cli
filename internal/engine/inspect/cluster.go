@@ -40,8 +40,8 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
-		Usage:       "Inspect a cluster: status, machine pools, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), the provisioning.cattle.io Cluster's ready flag and conditions, its machine pools (name, machineConfigRef, quantity, roles), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Usage:       "Inspect a cluster: status, machine pools, members, and registration",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), the provisioning.cattle.io Cluster's ready flag and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Toolset:     "core",
@@ -107,6 +107,13 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 	warnings = append(warnings, rwarn...)
 	res.Registration = reg
+
+	members, mwarn, merr := clusterMembers(ctx, mgmt, clusterID)
+	if merr != nil {
+		return runtime.Result{}, merr
+	}
+	warnings = append(warnings, mwarn...)
+	res.Members = members
 
 	return runtime.Result{
 		Kind:     "ClusterInspection",
@@ -299,6 +306,29 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, clusterID string) (*
 	return reg, warnings, nil
 }
 
+// clusterMembers lists the cluster's crtbs (namespace = cluster id) and
+// enriches them via resolveMembers. nil = binding LIST failed (field
+// omitted, text renders unavailable); non-nil empty = verified no members.
+func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (*[]clusterMember, []string, error) {
+	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
+	list, err := mgmt.List(ctx, crtbKind.GVR, clusterID, "")
+	if err != nil {
+		if lookupCanceled(ctx, err) {
+			return nil, nil, err
+		}
+		return nil, []string{"clusterroletemplatebindings unavailable: " + err.Error()}, nil
+	}
+	resolved, warnings, err := resolveMembers(ctx, mgmt, list.Items)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows := make([]clusterMember, 0, len(resolved))
+	for _, m := range resolved {
+		rows = append(rows, clusterMember{Principal: m.Principal, DisplayName: m.DisplayName, Role: m.Role}) //nolint:staticcheck // explicit field copy: clusterMember and memberRow evolve independently
+	}
+	return &rows, warnings, nil
+}
+
 // clusterResult is `inspect cluster`'s payload — the JSON shape IS the
 // agent contract (IC-5). Pointer semantics carry the tri-state: nil =
 // section absent (never null/{}), a nil *[]machinePool = absent while a
@@ -307,11 +337,18 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, clusterID string) (*
 // distinguish them). ProvisioningNote is RESERVED for confirmed absence,
 // at the root.
 type clusterResult struct {
-	Cluster          clusterIdentity `json:"cluster"`
-	ProvisioningNote string          `json:"provisioningNote,omitempty"`
-	Status           *clusterStatus  `json:"status,omitempty"`
-	MachinePools     *[]machinePool  `json:"machinePools,omitempty"`
-	Registration     *registration   `json:"registration,omitempty"`
+	Cluster          clusterIdentity  `json:"cluster"`
+	ProvisioningNote string           `json:"provisioningNote,omitempty"`
+	Status           *clusterStatus   `json:"status,omitempty"`
+	MachinePools     *[]machinePool   `json:"machinePools,omitempty"`
+	Members          *[]clusterMember `json:"members,omitempty"`
+	Registration     *registration    `json:"registration,omitempty"`
+}
+
+type clusterMember struct {
+	Principal   string `json:"principal"`
+	DisplayName string `json:"displayName,omitempty"`
+	Role        string `json:"role"`
 }
 
 type clusterIdentity struct {
@@ -411,6 +448,22 @@ func renderClusterText(r clusterResult) string {
 		for _, p := range *r.MachinePools {
 			fmt.Fprintf(&b, "  %s: %s/%s quantity=%d roles=%s\n",
 				p.Name, p.MachineConfigKind, p.MachineConfigName, p.Quantity, strings.Join(p.Roles, ","))
+		}
+	}
+
+	b.WriteString("\nMEMBERS\n")
+	switch {
+	case r.Members == nil:
+		b.WriteString("  members: unavailable\n")
+	case len(*r.Members) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, m := range *r.Members {
+			if m.DisplayName != "" {
+				fmt.Fprintf(&b, "  %s (%s)  %s\n", m.DisplayName, m.Principal, m.Role)
+			} else {
+				fmt.Fprintf(&b, "  %s  %s\n", m.Principal, m.Role)
+			}
 		}
 	}
 
