@@ -180,7 +180,10 @@ One call each, with graceful degradation (missing metrics/logs become
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
 - `rancher inspect project <name-or-id>` — member namespaces, workload counts, members, quota, usage
 - `rancher usage` — capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`
-- `rancher images` — running images inventory
+- `rancher images` — active-pod images inventory; `--match SUBSTR` filters
+  (substring, repeatable, OR); `--by workload` maps each image to its
+  owning workload. Blast radius of a reference identified by a scanner or
+  advisory: `rancher images --all-clusters --match <affected-repo>: --by workload`.
 
 ### 8. kubectl interop
 

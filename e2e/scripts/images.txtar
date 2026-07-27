@@ -1,0 +1,46 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create resource -f pod.yaml --cluster testcluster --apply
+
+# envtest has no scheduler or kubelet, so nothing sets the pod's phase.
+# IM-14 includes only Running|Pending: set the phase through the harness's
+# status lever ("core" is the sentinel for the empty API group).
+flipstatus testcluster core/v1/pods default images-pod '{"phase":"Pending"}'
+
+# Use --match images-e2e to isolate from other scenarios sharing the same
+# envtest cluster (parallel scenarios may have busybox pods that are also
+# active in k8s 1.34.0).
+exec rancher images --cluster testcluster --match images-e2e -o json
+jsonquery stdout data.by image
+jsonquery stdout data.rows.0.image busybox:images-e2e
+jsonquery stdout data.rows.0.count 2
+
+exec rancher images --cluster testcluster --by workload --match images-e2e -o json
+jsonquery stdout data.by workload
+jsonquery stdout data.rows.0.workload.kind pod
+jsonquery stdout data.rows.0.workload.apiVersion v1
+jsonquery stdout data.rows.0.workload.name images-pod
+jsonquery stdout data.rows.0.pods 1
+
+exec rancher images --cluster testcluster --match images-e2e -o json
+jsonquery stdout 'data.rows.#' 1
+exec rancher images --cluster testcluster --match no-such-ref -o json
+jsonquery stdout 'data.rows.#' 0
+
+! exec rancher images --cluster testcluster --by bogus
+! exec rancher images --cluster testcluster --match ''
+
+-- pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: images-pod
+  namespace: default
+spec:
+  initContainers:
+    - name: init
+      image: busybox:images-e2e
+  containers:
+    - name: app
+      image: busybox:images-e2e
