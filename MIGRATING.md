@@ -48,7 +48,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `projects add-member-role` | → `rancher grant <subject> --role <r> --project <p> --cluster <c> --apply --yes` |
 | `projects delete-member-role` | → `rancher revoke <subject> [--role <r>] --project <p> --cluster <c> --apply --yes` |
 | `projects list-roles` | → `rancher get roletemplates` — filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
-| `projects list-members` | → `rancher inspect project <name-or-id>` (members section), or `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
+| `projects list-members` | → `rancher inspect project <name-or-id>` (MEMBERS section, display names resolved); raw objects: `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
 | `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |
 | `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
 | `kubectl …` | → one-time `rancher kubeconfig --cluster <id>` + native `kubectl` (merge recipe below); `auth get-token` handles credentials transparently |

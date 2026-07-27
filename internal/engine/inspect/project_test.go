@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -156,4 +157,68 @@ func TestInspectProjectDegradesForbiddenMemberListToWarning(t *testing.T) {
 	require.Len(t, data.Namespaces, 2)
 	require.NotNil(t, data.ResourceQuota)
 	require.NotNil(t, data.Usage)
+}
+
+func TestRenderProjectTextSections(t *testing.T) {
+	t.Parallel()
+	r := projectResult{
+		ID: "p-cvrp4", DisplayName: "Default", Cluster: "c-phmj7",
+		Namespaces: []projectNamespace{{Name: "default", Workloads: projectWorkloads{Pods: 3, Deployments: 1}}},
+		Members: []projectMember{
+			{User: "github_org://8341", RoleTemplate: "project-member", DisplayName: "DevOps Team"},
+			{User: "local://u-alice", RoleTemplate: "project-owner", DisplayName: "Alice Ann"},
+		},
+		ResourceQuota: map[string]any{"limit": map[string]any{"pods": "10", "configMaps": "5"}},
+		Usage:         &resourceTotals{CPURequest: "500m", CPULimit: "1", CPUUsage: "250m", MemoryRequest: "1Gi", MemoryLimit: "2Gi"},
+	}
+	text := renderProjectText(r)
+	assert.Contains(t, text, "PROJECT\n  id: p-cvrp4\n  display: Default\n  cluster: c-phmj7\n")
+	assert.Contains(t, text, "NAMESPACES\n  default (pods: 3, deployments: 1)\n")
+	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  project-member\n  Alice Ann (local://u-alice)  project-owner\n")
+	// quota keys render recursively sorted: configMaps before pods.
+	assert.Contains(t, text, "QUOTA\n  limit:\n    configMaps: 5\n    pods: 10\n")
+	// measured usage renders when present; absent measurements stay off the line.
+	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1 usage=250m\n  memory: request=1Gi limit=2Gi\n")
+}
+
+func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
+	t.Parallel()
+	r := projectResult{ID: "p-x", DisplayName: "X", Cluster: "c-x", Members: nil}
+	text := renderProjectText(r)
+	assert.Contains(t, text, "NAMESPACES\n  none\n")
+	assert.Contains(t, text, "MEMBERS\n  members: unavailable\n")
+	assert.Contains(t, text, "QUOTA\n  none\n")
+	// zero namespaces → verified-empty usage, NOT unavailable.
+	assert.Contains(t, text, "USAGE\n  none (no namespaces)\n")
+
+	r.Members = []projectMember{}
+	assert.Contains(t, renderProjectText(r), "MEMBERS\n  none\n")
+
+	// namespaces present but totals missing → genuinely unavailable.
+	r.Namespaces = []projectNamespace{{Name: "ns1"}}
+	assert.Contains(t, renderProjectText(r), "USAGE\n  usage: unavailable\n")
+}
+
+func TestProjectMemberJSONContract(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(projectMember{User: "local://u-a", RoleTemplate: "project-owner", DisplayName: "A"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user":"local://u-a","roleTemplate":"project-owner","displayName":"A"}`, string(b))
+	b, err = json.Marshal(projectMember{User: "local://u-a", RoleTemplate: "project-owner"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user":"local://u-a","roleTemplate":"project-owner"}`, string(b))
+}
+
+// TestProjectMembersNullVsEmptyContract pins the WHOLE-payload encoding —
+// the pre-existing non-omitempty field: nil slice → "members":null
+// (unavailable), empty slice → "members":[] (verified empty).
+func TestProjectMembersNullVsEmptyContract(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(projectResult{ID: "p", Members: nil})
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"members":null`)
+
+	b, err = json.Marshal(projectResult{ID: "p", Members: []projectMember{}})
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"members":[]`)
 }

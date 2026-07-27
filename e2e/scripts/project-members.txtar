@@ -81,6 +81,23 @@ exec rancher revoke okta_user://unknown-user-xyz --project members-proj --cluste
 exec rancher get prtb --namespace members-proj -o json
 jsonquery stdout 'data.#' 0
 
+# inspect project default card: sections + a display-name-resolved member,
+# and the JSON member contract (user/roleTemplate kept, displayName added).
+exec rancher grant alice --role project-member --project members-proj --cluster testcluster --apply --yes
+exec rancher inspect project members-proj --cluster testcluster
+stdout 'PROJECT'
+stdout 'NAMESPACES'
+stdout 'MEMBERS'
+stdout 'QUOTA'
+stdout 'USAGE'
+stdout 'alice \(local://u-alice\)  project-member'
+
+exec rancher inspect project members-proj --cluster testcluster -o json
+jsonquery stdout 'data.members.#' 1
+jsonquery stdout data.members.0.user local://u-alice
+jsonquery stdout data.members.0.roleTemplate project-member
+jsonquery stdout data.members.0.displayName alice
+
 -- user.yaml --
 apiVersion: management.cattle.io/v3
 kind: User

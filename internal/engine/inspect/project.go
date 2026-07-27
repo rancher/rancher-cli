@@ -2,8 +2,9 @@ package inspect
 
 import (
 	"context"
+	"fmt"
 	"sort"
-	"strconv"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -116,7 +117,10 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	sort.Slice(nsRows, func(i, j int) bool { return nsRows[i].Name < nsRows[j].Name })
 
 	var warnings []string
-	memberRows, mwarn := projectMembers(ctx, mgmtClient, project)
+	memberRows, mwarn, merr := projectMembers(ctx, mgmtClient, project)
+	if merr != nil {
+		return runtime.Result{}, merr
+	}
 	warnings = append(warnings, mwarn...)
 
 	quota, _, _ := unstructured.NestedMap(project.Object, "spec", "resourceQuota")
@@ -135,25 +139,29 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		}
 	}
 
+	result := projectResult{
+		ID:            projectID,
+		DisplayName:   displayName,
+		Cluster:       clusterID,
+		Namespaces:    nsRows,
+		Members:       memberRows,
+		ResourceQuota: quota,
+		Usage:         usage,
+	}
 	return runtime.Result{
-		Kind: "ProjectInspection",
-		Data: projectResult{
-			ID:            projectID,
-			DisplayName:   displayName,
-			Cluster:       clusterID,
-			Namespaces:    nsRows,
-			Members:       memberRows,
-			ResourceQuota: quota,
-			Usage:         usage,
-		},
+		Kind:     "ProjectInspection",
+		Data:     result,
+		Text:     renderProjectText(result),
 		Warnings: warnings,
 	}, nil
 }
 
 // projectMembers lists the project's prtbs from status.backingNamespace
-// (falling back to the project id namespace when absent) and degrades a
-// listing failure (typically RBAC) to a warning plus an empty member list.
-func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured) ([]projectMember, []string) {
+// (falling back to the project id namespace when absent), resolves display
+// names via resolveMembers, and degrades a listing failure (typically RBAC)
+// to a warning plus a nil member slice (serializes "members":null — the
+// pre-existing non-omitempty contract; [] means verified empty).
+func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured) ([]projectMember, []string, error) {
 	backingNS, found, _ := unstructured.NestedString(project.Object, "status", "backingNamespace")
 	if !found || backingNS == "" {
 		backingNS = project.GetName()
@@ -161,15 +169,22 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 	prtbKind, _ := kinds.Lookup("projectroletemplatebinding")
 	list, err := mgmtClient.List(ctx, prtbKind.GVR, backingNS, "")
 	if err != nil {
-		return nil, []string{"projectroletemplatebindings unavailable: " + err.Error()}
+		if lookupCanceled(ctx, err) {
+			return nil, nil, err
+		}
+		// nil (not empty) on unavailability: serializes "members":null — the
+		// pre-existing non-omitempty contract; [] means verified empty.
+		return nil, []string{"projectroletemplatebindings unavailable: " + err.Error()}, nil
 	}
-	rows := make([]projectMember, 0, len(list.Items))
-	for i := range list.Items {
-		user, _, _ := unstructured.NestedString(list.Items[i].Object, "userPrincipalName")
-		roleTemplate, _, _ := unstructured.NestedString(list.Items[i].Object, "roleTemplateName")
-		rows = append(rows, projectMember{User: user, RoleTemplate: roleTemplate})
+	resolved, warnings, err := resolveMembers(ctx, mgmtClient, list.Items)
+	if err != nil {
+		return nil, nil, err
 	}
-	return rows, nil
+	rows := make([]projectMember, 0, len(resolved))
+	for _, m := range resolved {
+		rows = append(rows, projectMember{User: m.Principal, RoleTemplate: m.Role, DisplayName: m.DisplayName})
+	}
+	return rows, warnings, nil
 }
 
 type projectWorkloads struct {
@@ -185,10 +200,11 @@ type projectNamespace struct {
 type projectMember struct {
 	User         string `json:"user"`
 	RoleTemplate string `json:"roleTemplate"`
+	DisplayName  string `json:"displayName,omitempty"`
 }
 
-// projectResult is `inspect project`'s payload; it implements
-// output.Tabular so `-o table` renders one summary row.
+// projectResult is `inspect project`'s payload; the default rendering is the
+// sectioned text card produced by renderProjectText.
 type projectResult struct {
 	ID            string             `json:"id"`
 	DisplayName   string             `json:"displayName"`
@@ -199,8 +215,82 @@ type projectResult struct {
 	Usage         *resourceTotals    `json:"usage"`
 }
 
-func (p projectResult) Columns() []string { return []string{"ID", "DISPLAY", "NAMESPACES", "MEMBERS"} }
+// renderProjectText is the default rendering: the same multi-section card
+// pattern as renderClusterText. Omitted sections render a concise
+// availability marker; detailed causes live in Result.Warnings (stderr).
+func renderProjectText(r projectResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  display: %s\n  cluster: %s\n", r.ID, r.DisplayName, r.Cluster)
 
-func (p projectResult) Rows() [][]string {
-	return [][]string{{p.ID, p.DisplayName, strconv.Itoa(len(p.Namespaces)), strconv.Itoa(len(p.Members))}}
+	b.WriteString("\nNAMESPACES\n")
+	if len(r.Namespaces) == 0 {
+		b.WriteString("  none\n")
+	}
+	for _, ns := range r.Namespaces {
+		fmt.Fprintf(&b, "  %s (pods: %d, deployments: %d)\n", ns.Name, ns.Workloads.Pods, ns.Workloads.Deployments)
+	}
+
+	b.WriteString("\nMEMBERS\n")
+	switch {
+	case r.Members == nil:
+		b.WriteString("  members: unavailable\n")
+	case len(r.Members) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, m := range r.Members {
+			if m.DisplayName != "" {
+				fmt.Fprintf(&b, "  %s (%s)  %s\n", m.DisplayName, m.User, m.RoleTemplate)
+			} else {
+				fmt.Fprintf(&b, "  %s  %s\n", m.User, m.RoleTemplate)
+			}
+		}
+	}
+
+	b.WriteString("\nQUOTA\n")
+	if len(r.ResourceQuota) == 0 {
+		b.WriteString("  none\n")
+	} else {
+		writeSortedMap(&b, r.ResourceQuota, 1)
+	}
+
+	b.WriteString("\nUSAGE\n")
+	switch {
+	case r.Usage != nil:
+		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", r.Usage.CPURequest, r.Usage.CPULimit)
+		if r.Usage.CPUUsage != "" {
+			cpu += " usage=" + r.Usage.CPUUsage
+		}
+		b.WriteString(cpu + "\n")
+		mem := fmt.Sprintf("  memory: request=%s limit=%s", r.Usage.MemoryRequest, r.Usage.MemoryLimit)
+		if r.Usage.MemoryUsage != "" {
+			mem += " usage=" + r.Usage.MemoryUsage
+		}
+		b.WriteString(mem + "\n")
+	case len(r.Namespaces) == 0:
+		// A project with zero namespaces has nothing to measure — a
+		// verified-empty state, not an unavailable one.
+		b.WriteString("  none (no namespaces)\n")
+	default:
+		b.WriteString("  usage: unavailable\n")
+	}
+	return b.String()
+}
+
+// writeSortedMap renders a nested map with recursively sorted keys —
+// canonical order, never Go map iteration order.
+func writeSortedMap(b *strings.Builder, m map[string]any, depth int) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	indent := strings.Repeat("  ", depth)
+	for _, k := range keys {
+		if child, ok := m[k].(map[string]any); ok {
+			fmt.Fprintf(b, "%s%s:\n", indent, k)
+			writeSortedMap(b, child, depth+1)
+			continue
+		}
+		fmt.Fprintf(b, "%s%s: %v\n", indent, k, m[k])
+	}
 }
