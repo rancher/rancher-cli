@@ -327,6 +327,46 @@ func TestClusterImageWorkloadsTable(t *testing.T) {
 	assert.Equal(t, []string{"CLUSTER", "IMAGE", "NAMESPACE", "WORKLOAD", "PODS"}, c.Columns())
 }
 
+func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+
+	running := ownedPod("running-pod", "default", "img-a", "phase-rs", "rs-1")
+
+	pending := ownedPod("pending-pod", "default", "img-b", "phase-rs", "rs-1")
+	require.NoError(t, unstructured.SetNestedField(pending.Object, "Pending", "status", "phase"))
+
+	succeeded := ownedPod("done-pod", "default", "img-gone", "phase-rs", "rs-1")
+	require.NoError(t, unstructured.SetNestedField(succeeded.Object, "Succeeded", "status", "phase"))
+
+	failed := ownedPod("failed-pod", "default", "img-gone", "phase-rs", "rs-1")
+	require.NoError(t, unstructured.SetNestedField(failed.Object, "Failed", "status", "phase"))
+
+	// Terminating: phase stays Running until the pod leaves the List (IM-14).
+	terminating := ownedPod("terminating-pod", "default", "img-c", "phase-rs", "rs-1")
+	require.NoError(t, unstructured.SetNestedField(terminating.Object, "2026-07-26T00:00:00Z", "metadata", "deletionTimestamp"))
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		running, pending, succeeded, failed, terminating,
+	}}
+	client := newFakeClient().
+		withList(podKind.GVR, list).
+		withObject(rsGVR, "default", "phase-rs", replicaSet("default", "phase-rs", "rs-1", "phase-dep", "dep-1"))
+
+	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	require.NoError(t, err)
+	assert.Empty(t, warns)
+	require.Len(t, rows, 3, "Succeeded and Failed pods must not contribute rows (IM-24)")
+
+	var images []string
+	for _, r := range rows {
+		images = append(images, r.Image)
+	}
+	assert.ElementsMatch(t, []string{"img-a", "img-b", "img-c"}, images,
+		"Running, Pending, and terminating pods all contribute; Succeeded/Failed do not")
+	assert.NotContains(t, images, "img-gone", "completed-job images must not appear in the inventory")
+}
+
 func TestAllClustersWorkloadWarningsPrefixedAndSorted(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
