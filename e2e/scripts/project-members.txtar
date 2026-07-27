@@ -40,6 +40,7 @@ stdout 'ROLE'
 stdout 'PROJECT'
 stdout 'u-alice'
 stdout 'project-member'
+stdout 'c-test:members-proj'
 
 # crtb table: MEMBER/ROLE/CLUSTER through the cluster-scope grant path.
 exec rancher grant alice --role cluster-member --cluster testcluster --apply --yes

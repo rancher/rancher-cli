@@ -823,9 +823,9 @@ const (
 
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
 // (get, patch, delete). inspect leaves do NOT get live positional
-// completion through this predicate — the one narrow exception is
-// inspectClusterCompletionException, checked by name at the gate (IC-3);
-// AC-15a adds inspect aliases, not live-name completion.
+// completion through this predicate — the two narrow exceptions are
+// inspectClusterCompletionException (IC-3) and inspectProjectCompletionException,
+// both checked by name at the gate; AC-15a adds inspect aliases, not live-name completion.
 func isAC10Verb(descriptorName string) bool {
 	parts := strings.Fields(descriptorName)
 	if len(parts) == 0 {
