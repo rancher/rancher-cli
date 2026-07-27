@@ -6,15 +6,20 @@
 package e2e
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rogpeppe/go-internal/testscript"
 	"github.com/tidwall/gjson"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
 )
 
@@ -69,6 +74,37 @@ func cmdFlipStatus(ts *testscript.TestScript, neg bool, args []string) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		ts.Fatalf("flipstatus: shim returned %s", resp.Status)
+	}
+}
+
+// cmdRawGet writes an object's raw API JSON to a file so a scenario can
+// assert a precondition on the served object (e.g. managedFields IS
+// present) before checking what the CLI renders:
+// rawget <group>/<version>/<resource> <ns> <name> <file>. "core" is the
+// empty-group sentinel, as in flipstatus.
+func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 4 {
+		ts.Fatalf("usage: rawget <group>/<version>/<resource> <ns> <name> <file>")
+	}
+	parts := strings.SplitN(args[0], "/", 3)
+	if len(parts) != 3 {
+		ts.Fatalf("rawget: malformed gvr %q, want group/version/resource", args[0])
+	}
+	group, version, resource := parts[0], parts[1], parts[2]
+	if group == "core" {
+		group = ""
+	}
+	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+	obj, err := dynCli.Resource(gvr).Namespace(args[1]).Get(context.Background(), args[2], metav1.GetOptions{})
+	if err != nil {
+		ts.Fatalf("rawget %s %s/%s: %v", args[0], args[1], args[2], err)
+	}
+	b, err := json.Marshal(obj.Object)
+	if err != nil {
+		ts.Fatalf("rawget: marshal: %v", err)
+	}
+	if err := os.WriteFile(ts.MkAbs(args[3]), b, 0o644); err != nil {
+		ts.Fatalf("rawget: write %s: %v", args[3], err)
 	}
 }
 

@@ -393,6 +393,7 @@ func TestScenarios(t *testing.T) {
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 			"jsonquery":     cmdJSONQuery,
 			"flipstatus":    cmdFlipStatus,
+			"rawget":        cmdRawGet,
 			"seedexeccache": cmdSeedExecCache,
 		},
 	})

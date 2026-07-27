@@ -16,6 +16,18 @@ jsonquery -yaml cm.out.yaml data.metadata.name basics-cm
 exec rancher get cm basics-cm --cluster testcluster --namespace default -o json
 jsonquery stdout data.metadata.name basics-cm
 
+# MF-8: the served object really carries managedFields (positive
+# precondition — without it the absence assertions below are vacuous) ...
+rawget core/v1/configmaps default basics-cm cm.raw.json
+! jsonquery cm.raw.json metadata.managedFields ''
+
+# ... and the CLI's structured output omits it (-yaml: the file is YAML;
+# without the flag gjson silently returns empty on YAML input and the
+# assertion is vacuous).
+jsonquery -yaml cm.out.yaml data.metadata.managedFields ''
+exec rancher get cm basics-cm --cluster testcluster --namespace default -o json
+jsonquery stdout data.metadata.managedFields ''
+
 -- cm.yaml --
 apiVersion: v1
 kind: ConfigMap
