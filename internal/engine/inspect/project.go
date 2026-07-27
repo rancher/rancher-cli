@@ -239,9 +239,9 @@ func renderProjectText(r projectResult) string {
 	default:
 		for _, m := range r.Members {
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s\n", m.DisplayName, m.User, m.RoleTemplate)
+				fmt.Fprintf(&b, "  %s (%s)  %s\n", printable(m.DisplayName), printable(m.User), printable(m.RoleTemplate))
 			} else {
-				fmt.Fprintf(&b, "  %s  %s\n", m.User, m.RoleTemplate)
+				fmt.Fprintf(&b, "  %s  %s\n", printable(m.User), printable(m.RoleTemplate))
 			}
 		}
 	}

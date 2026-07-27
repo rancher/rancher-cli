@@ -311,6 +311,11 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterroletemplatebindings"},
 		Policy: NSCluster, K8sKind: "ClusterRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		// MEMBER column prefers userName → groupPrincipalName → userPrincipalName:
+		// the plain bare userName is most useful for operators scanning the table.
+		// inspect cluster/project cards deliberately invert this priority
+		// (userPrincipalName first) because display-name resolution joins on
+		// principalIds. See internal/engine/inspect/members.go collectPrincipalRefs.
 		Columns: []Column{
 			{Header: "MEMBER", Path: []string{"userName"}, AltPaths: [][]string{{"groupPrincipalName"}, {"userPrincipalName"}}},
 			{Header: "ROLE", Path: []string{"roleTemplateName"}},
@@ -324,6 +329,8 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
 		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		// MEMBER column prefers userName → groupPrincipalName → userPrincipalName:
+		// same deliberate divergence as crtb above; see that entry for rationale.
 		Columns: []Column{
 			{Header: "MEMBER", Path: []string{"userName"}, AltPaths: [][]string{{"groupPrincipalName"}, {"userPrincipalName"}}},
 			{Header: "ROLE", Path: []string{"roleTemplateName"}},

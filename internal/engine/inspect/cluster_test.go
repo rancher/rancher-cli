@@ -870,15 +870,45 @@ func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 
 func TestClusterMembersTriState(t *testing.T) {
 	t.Parallel()
-	// nil pointer → field omitted.
+	// nil pointer → field omitted entirely (key absent).
 	b, err := json.Marshal(clusterResult{Cluster: clusterIdentity{ID: "c"}})
 	require.NoError(t, err)
-	assert.NotContains(t, string(b), `"members"`)
-	// non-nil empty → "members":[].
+	var nilDoc map[string]any
+	require.NoError(t, json.Unmarshal(b, &nilDoc))
+	_, hasMembers := nilDoc["members"]
+	assert.False(t, hasMembers, "nil members pointer: key must be absent from the wire")
+
+	// non-nil empty → key present, empty array.
 	empty := []clusterMember{}
 	b, err = json.Marshal(clusterResult{Cluster: clusterIdentity{ID: "c"}, Members: &empty})
 	require.NoError(t, err)
-	assert.Contains(t, string(b), `"members":[]`)
+	var emptyDoc map[string]any
+	require.NoError(t, json.Unmarshal(b, &emptyDoc))
+	raw, hasMembers := emptyDoc["members"]
+	require.True(t, hasMembers, "non-nil empty members: key must be present")
+	slice, ok := raw.([]any)
+	require.True(t, ok, "members value must be an array")
+	assert.Empty(t, slice, "non-nil empty members: array must be empty")
+}
+
+func TestRenderClusterTextEscapeStripping(t *testing.T) {
+	t.Parallel()
+	members := []clusterMember{
+		{Principal: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", Role: "cluster-member"},
+	}
+	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}, Members: &members}
+	text := renderClusterText(r)
+	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
+	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
+
+	bidi := []clusterMember{
+		{Principal: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", Role: "cluster-member"},
+	}
+	r.Members = &bidi
+	text = renderClusterText(r)
+	assert.NotContains(t, text, "\u202e", "bidi-override format characters must be stripped")
+	assert.NotContains(t, text, "\u200b", "zero-width format characters must be stripped")
+	assert.Contains(t, text, "abcdefghi", "visible runes around format characters are preserved")
 }
 
 func TestRenderClusterTextMembersSection(t *testing.T) {

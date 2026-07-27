@@ -460,9 +460,9 @@ func renderClusterText(r clusterResult) string {
 	default:
 		for _, m := range *r.Members {
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s\n", m.DisplayName, m.Principal, m.Role)
+				fmt.Fprintf(&b, "  %s (%s)  %s\n", printable(m.DisplayName), printable(m.Principal), printable(m.Role))
 			} else {
-				fmt.Fprintf(&b, "  %s  %s\n", m.Principal, m.Role)
+				fmt.Fprintf(&b, "  %s  %s\n", printable(m.Principal), printable(m.Role))
 			}
 		}
 	}

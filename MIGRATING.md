@@ -34,7 +34,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `clusters add-member-role` | → `rancher grant <subject> --role <r> --cluster <c> --apply --yes` |
 | `clusters delete-member-role` | → `rancher revoke <subject> [--role <r>] --cluster <c> --apply --yes` |
 | `clusters list-roles` | → `rancher get roletemplates` — filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
-| `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id>` (MEMBER/ROLE table; add `-o json` for full objects) |
+| `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id>` (MEMBER/ROLE/CLUSTER table; add `-o json` for full objects) |
 | `machines ls` | → `rancher get machines` |
 | `namespaces ls` | → `rancher get namespaces` (`--project <p>` lists a project's member namespaces) |
 | `namespaces create` | → `rancher create namespace <name> [--project <p>]` |

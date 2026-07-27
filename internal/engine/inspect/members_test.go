@@ -224,6 +224,27 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 	assert.Contains(t, warns2[1], "okta_user://zeta")
 }
 
+func TestResolveMembersSamePrincipalTwoRoles(t *testing.T) {
+	t.Parallel()
+	// Two CRTBs granting different roles to the same principal → two rows,
+	// display name resolved on both, sorted by (principal, role), no warnings.
+	fc := newFakeClient().
+		withList(userGVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			userObj("u-alice", "Alice Ann", "local://u-alice"),
+		}})
+
+	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-owner"}),
+		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-member"}),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, warns)
+	assert.Equal(t, []memberRow{
+		{Principal: "local://u-alice", DisplayName: "Alice Ann", Role: "cluster-member"},
+		{Principal: "local://u-alice", DisplayName: "Alice Ann", Role: "cluster-owner"},
+	}, rows)
+}
+
 func TestResolveMembersCancellationAborts(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -43,40 +45,11 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		return []memberRow{}, nil, nil
 	}
 
-	rows := make([]memberRow, 0, len(bindings))
-	// Only principals the input bindings actually reference are indexed:
-	// directory corruption on unrelated principals must never attach a
-	// warning to (or influence) this card.
-	userRefs := map[string]bool{}  // referenced user subjects: principal ids AND bare userNames
-	groupRefs := map[string]bool{} // referenced group principal ids
-	for i := range bindings {
-		o := bindings[i].Object
-		userName, _, _ := unstructured.NestedString(o, "userName")
-		userPrincipal, _, _ := unstructured.NestedString(o, "userPrincipalName")
-		groupPrincipal, _, _ := unstructured.NestedString(o, "groupPrincipalName")
-		role, _, _ := unstructured.NestedString(o, "roleTemplateName")
+	rows, userRefs, groupRefs := collectPrincipalRefs(bindings)
 
-		principal := userPrincipal
-		if groupPrincipal != "" {
-			principal = groupPrincipal
-			groupRefs[groupPrincipal] = true
-		} else if userName != "" || userPrincipal != "" {
-			if principal == "" {
-				principal = userName
-			}
-			if userPrincipal != "" {
-				userRefs[userPrincipal] = true
-			}
-			if userName != "" {
-				userRefs[userName] = true
-			}
-		}
-		rows = append(rows, memberRow{Principal: principal, Role: role})
-	}
-
+	display := map[string]string{}
+	collided := map[string]bool{}
 	var warnings []string
-	display := map[string]string{} // referenced id → display name
-	collided := map[string]bool{}  // referenced id → ambiguous, stays unresolved
 
 	if len(userRefs) > 0 {
 		// Pre-flight, not just post-error: a prior call may have canceled
@@ -85,49 +58,18 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		userKind, _ := kinds.Lookup("user")
-		list, err := mgmt.List(ctx, userKind.GVR, "", "")
-		switch {
-		case err != nil && lookupCanceled(ctx, err):
+		d, c, w, err := resolveUserDisplayNames(ctx, mgmt, userRefs)
+		if err != nil {
 			return nil, nil, err
-		case err != nil:
-			warnings = append(warnings, "users unavailable: "+err.Error())
-		default:
-			owners := map[string]int{} // referenced principal id → count of Users advertising it
-			for i := range list.Items {
-				u := list.Items[i].Object
-				d, _, _ := unstructured.NestedString(u, "displayName")
-				// User object names are unique — no ownership ambiguity for a
-				// bare userName reference.
-				if name := list.Items[i].GetName(); userRefs[name] {
-					display[name] = d
-				}
-				principals, _, _ := unstructured.NestedStringSlice(u, "principalIds")
-				// Ambiguity means multiple USERS advertising the id — a
-				// malformed principalIds slice repeating the id inside ONE
-				// User is a single owner, so de-duplicate per User first.
-				seenInUser := map[string]bool{}
-				for _, p := range principals {
-					if !userRefs[p] || seenInUser[p] {
-						continue
-					}
-					seenInUser[p] = true
-					owners[p]++
-					if owners[p] == 1 {
-						display[p] = d
-					}
-				}
-			}
-			// ANY duplicate User ownership is ambiguous — even with equal
-			// display names (mirrors the RBAC resolver's duplicate-owner
-			// refusal). The display-disagreement rule below is for cached
-			// GROUP principals only.
-			for p, n := range owners {
-				if n > 1 {
-					collided[p] = true
-					delete(display, p)
-				}
-			}
+		}
+		if w != "" {
+			warnings = append(warnings, w)
+		}
+		for k, v := range d {
+			display[k] = v
+		}
+		for k, v := range c {
+			collided[k] = v
 		}
 	}
 
@@ -135,44 +77,18 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		list, err := mgmt.List(ctx, userAttrGVR, "", "")
-		switch {
-		case err != nil && lookupCanceled(ctx, err):
+		d, c, w, err := resolveGroupDisplayNames(ctx, mgmt, groupRefs)
+		if err != nil {
 			return nil, nil, err
-		case err != nil:
-			warnings = append(warnings, "userattributes unavailable: "+err.Error())
-		default:
-			for i := range list.Items {
-				// Wire shape: UserAttribute's top-level fields carry no json
-				// tags — GroupPrincipals.<provider>.Items[].metadata.name /
-				// .displayName (Principal's own fields ARE tagged).
-				groups, ok, _ := unstructured.NestedMap(list.Items[i].Object, "GroupPrincipals")
-				if !ok {
-					continue
-				}
-				for _, v := range groups {
-					wrap, ok := v.(map[string]any)
-					if !ok {
-						continue
-					}
-					items, ok := wrap["Items"].([]any)
-					if !ok {
-						continue
-					}
-					for _, item := range items {
-						p, ok := item.(map[string]any)
-						if !ok {
-							continue
-						}
-						id, _, _ := unstructured.NestedString(p, "metadata", "name")
-						d, _, _ := unstructured.NestedString(p, "displayName")
-						if id == "" || d == "" || !groupRefs[id] {
-							continue
-						}
-						setGroupResolved(display, collided, id, d)
-					}
-				}
-			}
+		}
+		if w != "" {
+			warnings = append(warnings, w)
+		}
+		for k, v := range d {
+			display[k] = v
+		}
+		for k, v := range c {
+			collided[k] = v
 		}
 	}
 
@@ -203,6 +119,155 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 	return rows, warnings, nil
 }
 
+// collectPrincipalRefs extracts an initial row per binding and indexes the
+// user and group principals it references. Only referenced principals are
+// indexed — directory corruption on unrelated principals must never attach
+// a warning to (or influence) this card.
+//
+// Priority order here (userPrincipalName → groupPrincipalName → userName)
+// differs deliberately from the thin get-crtb/prtb table columns
+// (userName → groupPrincipalName → userPrincipalName defined in
+// internal/engine/kinds/kinds.go). The get table prefers the plain bare
+// userName for operator convenience; inspect cards key on the full principal
+// id because display-name resolution uses principalIds as the join key.
+// See kinds.go for the reciprocal comment.
+func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []memberRow, userRefs map[string]bool, groupRefs map[string]bool) {
+	rows = make([]memberRow, 0, len(bindings))
+	userRefs = map[string]bool{}
+	groupRefs = map[string]bool{}
+
+	for i := range bindings {
+		o := bindings[i].Object
+		userName, _, _ := unstructured.NestedString(o, "userName")
+		userPrincipal, _, _ := unstructured.NestedString(o, "userPrincipalName")
+		groupPrincipal, _, _ := unstructured.NestedString(o, "groupPrincipalName")
+		role, _, _ := unstructured.NestedString(o, "roleTemplateName")
+
+		principal := userPrincipal
+		if groupPrincipal != "" {
+			principal = groupPrincipal
+			groupRefs[groupPrincipal] = true
+		} else if userName != "" || userPrincipal != "" {
+			if principal == "" {
+				principal = userName
+			}
+			if userPrincipal != "" {
+				userRefs[userPrincipal] = true
+			}
+			if userName != "" {
+				userRefs[userName] = true
+			}
+		}
+		rows = append(rows, memberRow{Principal: principal, Role: role})
+	}
+	return rows, userRefs, groupRefs
+}
+
+// resolveUserDisplayNames LISTs management-plane Users and resolves display
+// names for the given user principals. Returns the display map, collision
+// set, a non-empty warning string on a degraded (non-cancellation) LIST
+// failure, and a non-nil error only on cancellation.
+func resolveUserDisplayNames(ctx context.Context, mgmt engine.ClusterClient, userRefs map[string]bool) (display map[string]string, collided map[string]bool, warning string, err error) {
+	display = map[string]string{}
+	collided = map[string]bool{}
+
+	userKind, _ := kinds.Lookup("user")
+	list, listErr := mgmt.List(ctx, userKind.GVR, "", "")
+	switch {
+	case listErr != nil && lookupCanceled(ctx, listErr):
+		return nil, nil, "", listErr
+	case listErr != nil:
+		return display, collided, "users unavailable: " + listErr.Error(), nil
+	}
+
+	owners := map[string]int{} // referenced principal id → count of Users advertising it
+	for i := range list.Items {
+		u := list.Items[i].Object
+		d, _, _ := unstructured.NestedString(u, "displayName")
+		// User object names are unique — no ownership ambiguity for a
+		// bare userName reference.
+		if name := list.Items[i].GetName(); userRefs[name] {
+			display[name] = d
+		}
+		principals, _, _ := unstructured.NestedStringSlice(u, "principalIds")
+		// Ambiguity means multiple USERS advertising the id — a
+		// malformed principalIds slice repeating the id inside ONE
+		// User is a single owner, so de-duplicate per User first.
+		seenInUser := map[string]bool{}
+		for _, p := range principals {
+			if !userRefs[p] || seenInUser[p] {
+				continue
+			}
+			seenInUser[p] = true
+			owners[p]++
+			if owners[p] == 1 {
+				display[p] = d
+			}
+		}
+	}
+	// ANY duplicate User ownership is ambiguous — even with equal
+	// display names (mirrors the RBAC resolver's duplicate-owner
+	// refusal). The display-disagreement rule for cached GROUP
+	// principals is handled separately in resolveGroupDisplayNames.
+	for p, n := range owners {
+		if n > 1 {
+			collided[p] = true
+			delete(display, p)
+		}
+	}
+	return display, collided, "", nil
+}
+
+// resolveGroupDisplayNames LISTs management-plane UserAttributes and
+// resolves display names for the given group principals. Returns the
+// display map, collision set, a non-empty warning string on a degraded
+// (non-cancellation) LIST failure, and a non-nil error only on cancellation.
+func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, groupRefs map[string]bool) (display map[string]string, collided map[string]bool, warning string, err error) {
+	display = map[string]string{}
+	collided = map[string]bool{}
+
+	list, listErr := mgmt.List(ctx, userAttrGVR, "", "")
+	switch {
+	case listErr != nil && lookupCanceled(ctx, listErr):
+		return nil, nil, "", listErr
+	case listErr != nil:
+		return display, collided, "userattributes unavailable: " + listErr.Error(), nil
+	}
+
+	for i := range list.Items {
+		// Wire shape: UserAttribute's top-level fields carry no json
+		// tags — GroupPrincipals.<provider>.Items[].metadata.name /
+		// .displayName (Principal's own fields ARE tagged).
+		groups, ok, _ := unstructured.NestedMap(list.Items[i].Object, "GroupPrincipals")
+		if !ok {
+			continue
+		}
+		for _, v := range groups {
+			wrap, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			items, ok := wrap["Items"].([]any)
+			if !ok {
+				continue
+			}
+			for _, item := range items {
+				p, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				id, _, _ := unstructured.NestedString(p, "metadata", "name")
+				d, _, _ := unstructured.NestedString(p, "displayName")
+				if id == "" || d == "" || !groupRefs[id] {
+					continue
+				}
+				setGroupResolved(display, collided, id, d)
+			}
+		}
+	}
+	return display, collided, "", nil
+}
+
 // setGroupResolved records a cached GROUP principal's display name,
 // detecting disagreement: a cache entry with a DIFFERENT name marks the id
 // collided (unresolved). The same name cached by many users' attributes is
@@ -218,4 +283,18 @@ func setGroupResolved(display map[string]string, collided map[string]bool, id, d
 		return
 	}
 	display[id] = d
+}
+
+// printable strips control characters (including ANSI escape introducers)
+// and Unicode format characters (category Cf: bidi overrides, zero-width
+// marks) from a server-sourced string before it enters the text card —
+// display names originate from IdP claims and must neither drive the
+// terminal nor reorder/hide what it shows.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
 }

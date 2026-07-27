@@ -94,9 +94,10 @@ After installing the script, enable live resource-name completion:
 
     rancher config set-completion --network=true
 
-This completes cluster names, project names, namespaces, pods, deployments,
-and nodes from the Rancher API. A credential-store capability note is printed
-to indicate which completions are available given your current auth setup.
+This completes cluster names (including `inspect cluster` and `inspect project`
+positional names), project names, namespaces, pods, deployments, and nodes from
+the Rancher API. A credential-store capability note is printed to indicate which
+completions are available given your current auth setup.
 
 The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 
@@ -166,7 +167,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `inspect cluster <name-or-id>` | Composite cluster read: management identity + provisioning status/conditions, machine pools, members (ClusterRoleTemplateBindings with display names resolved), and node-join/import registration commands; the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); provisioning, members, and registration sections degrade independently to notes/warnings |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
-| `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
+| `inspect project <name-or-id> [--cluster]` | Composite project read: sectioned text card (PROJECT, NAMESPACES, MEMBERS, QUOTA, USAGE); members are ProjectRoleTemplateBindings with display names resolved from Users/UserAttributes; members section degrades independently to a warning |
 | `images [--cluster C \| --all-clusters] [--by image\|workload] [--match substr]...` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage [--cluster] [--by namespace\|project\|node\|pod] [--namespace NS] [--project P] [--node N]` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |

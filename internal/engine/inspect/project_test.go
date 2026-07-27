@@ -214,11 +214,44 @@ func TestProjectMemberJSONContract(t *testing.T) {
 // (unavailable), empty slice → "members":[] (verified empty).
 func TestProjectMembersNullVsEmptyContract(t *testing.T) {
 	t.Parallel()
+	// nil slice → key present, value null.
 	b, err := json.Marshal(projectResult{ID: "p", Members: nil})
 	require.NoError(t, err)
-	assert.Contains(t, string(b), `"members":null`)
+	var nilDoc map[string]any
+	require.NoError(t, json.Unmarshal(b, &nilDoc))
+	raw, hasMembers := nilDoc["members"]
+	require.True(t, hasMembers, "nil members: key must be present (non-omitempty)")
+	assert.Nil(t, raw, "nil members: value must be null")
 
+	// empty slice → key present, empty array.
 	b, err = json.Marshal(projectResult{ID: "p", Members: []projectMember{}})
 	require.NoError(t, err)
-	assert.Contains(t, string(b), `"members":[]`)
+	var emptyDoc map[string]any
+	require.NoError(t, json.Unmarshal(b, &emptyDoc))
+	raw, hasMembers = emptyDoc["members"]
+	require.True(t, hasMembers, "empty members: key must be present")
+	slice, ok := raw.([]any)
+	require.True(t, ok, "members value must be an array")
+	assert.Empty(t, slice, "empty members: array must be empty")
+}
+
+func TestRenderProjectTextEscapeStripping(t *testing.T) {
+	t.Parallel()
+	r := projectResult{
+		ID: "p-x", DisplayName: "X", Cluster: "c-x",
+		Members: []projectMember{
+			{User: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", RoleTemplate: "project-member"},
+		},
+	}
+	text := renderProjectText(r)
+	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
+	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
+
+	r.Members = []projectMember{
+		{User: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", RoleTemplate: "project-member"},
+	}
+	text = renderProjectText(r)
+	assert.NotContains(t, text, "\u202e", "bidi-override format characters must be stripped")
+	assert.NotContains(t, text, "\u200b", "zero-width format characters must be stripped")
+	assert.Contains(t, text, "abcdefghi", "visible runes around format characters are preserved")
 }
