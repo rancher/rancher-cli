@@ -167,7 +167,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: namespaces, members, quota, usage |
-| `images [--cluster --all-clusters] [--by image\|workload] [--match SUBSTR]` | Active-pod container images, grouped by image or owning workload, fleet-wide |
+| `images [--cluster C \| --all-clusters] [--by image\|workload] [--match substr]...` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage [--cluster] [--by namespace\|project\|node\|pod] [--namespace NS] [--project P] [--node N]` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |

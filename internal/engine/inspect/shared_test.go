@@ -111,6 +111,28 @@ func TestOwnerChainWarningIncludesNamespaceAndGroup(t *testing.T) {
 	assert.Equal(t, "owner ns-a/replicaset.apps/same-name unavailable: boom", warnA[0])
 }
 
+func TestOwnerChainNoUIDStopsWalk(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient() // no objects registered; Get must never be called
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{
+			"name": "p", "namespace": "ns",
+			"ownerReferences": []any{map[string]any{
+				"apiVersion": "apps/v1", "kind": "ReplicaSet",
+				"name": "web-rs", "uid": "", "controller": true,
+			}},
+		},
+	}}
+	owners, warnings := ownerChain(context.Background(), client, "ns", pod)
+	require.Len(t, owners, 1, "walk must append the ref then stop on empty uid")
+	assert.Equal(t, "ReplicaSet", owners[0]["kind"])
+	assert.Empty(t, client.getCalls, "Get must not be called when the owner reference has no uid")
+	require.Len(t, warnings, 1)
+	assert.Equal(t,
+		"owner ns/replicaset.apps/web-rs unavailable: owner reference has no uid",
+		warnings[0])
+}
+
 func TestKindGroupName(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "deployment.apps/frontend", kindGroupName("apps/v1", "Deployment", "frontend"))

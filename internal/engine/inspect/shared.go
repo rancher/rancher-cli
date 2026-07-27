@@ -86,6 +86,10 @@ func ownerChain(ctx context.Context, client engine.ClusterClient, ns string, obj
 		if !found {
 			break
 		}
+		if ref.uid == "" {
+			warnings = append(warnings, fmt.Sprintf("owner %s unavailable: owner reference has no uid", ownerID(ns, ref)))
+			break
+		}
 		next, err := client.Get(ctx, k.GVR, ns, ref.name)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("owner %s unavailable: %v", ownerID(ns, ref), err))

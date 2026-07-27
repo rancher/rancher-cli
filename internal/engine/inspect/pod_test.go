@@ -59,11 +59,17 @@ func TestInspectPodAssemblesDocument(t *testing.T) {
 	rsKind := mustKind(t, "replicaset")
 	depKind := mustKind(t, "deployment")
 
-	pod := podObj("ns1", "web", ownerRefMap("apps/v1", "ReplicaSet", "web-abc"))
+	pod := podObj("ns1", "web", map[string]any{
+		"apiVersion": "apps/v1", "kind": "ReplicaSet",
+		"name": "web-abc", "uid": "rs-uid-1", "controller": true,
+	})
 	rs := &unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": "web-abc", "namespace": "ns1", "ownerReferences": []any{
-			ownerRefMap("apps/v1", "Deployment", "web"),
-		}},
+		"metadata": map[string]any{
+			"name": "web-abc", "namespace": "ns1", "uid": "rs-uid-1",
+			"ownerReferences": []any{
+				ownerRefMap("apps/v1", "Deployment", "web"),
+			},
+		},
 	}}
 	metrics := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "web", "namespace": "ns1"},

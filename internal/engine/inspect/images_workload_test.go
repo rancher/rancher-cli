@@ -46,6 +46,42 @@ func replicaSet(ns, name, uid, depName, depUID string) *unstructured.Unstructure
 	}}
 }
 
+func TestWorkloadImagesEmptyPodListYieldsNonNilEmpty(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{})
+	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	require.NoError(t, err)
+	require.NotNil(t, rows, "non-nil even for an empty pod list")
+	assert.Len(t, rows, 0)
+	assert.Empty(t, warns)
+}
+
+func TestWorkloadImagesMalformedOwnerRefsFallsBackToPod(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+	pod := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "bare", "namespace": "ns", "uid": "pod-uid-1"},
+		"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "app", "image": "img:1"}},
+		},
+		"status": map[string]any{"phase": "Running"},
+	}}
+	// ownerReferences: one non-map entry, one map missing both kind and name.
+	require.NoError(t, unstructured.SetNestedSlice(pod.Object, []any{
+		"not-a-map",
+		map[string]any{"apiVersion": "apps/v1"},
+	}, "metadata", "ownerReferences"))
+	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}})
+
+	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	require.NoError(t, err)
+	assert.Empty(t, warns)
+	assert.Empty(t, client.getCalls, "no Get calls for unresolvable owner references")
+	require.Len(t, rows, 1)
+	assert.Equal(t, workloadIdentity{APIVersion: "v1", Kind: "pod", Name: "bare", UID: "pod-uid-1"}, rows[0].Workload)
+}
+
 func TestWorkloadImagesResolvesAndMemoizes(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")

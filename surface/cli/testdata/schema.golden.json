@@ -4252,7 +4252,7 @@
           "type": "bool"
         },
         {
-          "desc": "Group by unique image or by owning workload",
+          "desc": "Group by unique image or by owning workload (default: image)",
           "enum": [
             "image",
             "workload"
@@ -4261,7 +4261,7 @@
           "type": "string"
         },
         {
-          "desc": "Show only images whose reference contains `SUBSTR` (repeatable, OR)",
+          "desc": "Show only images whose reference contains `substr` (repeatable, OR)",
           "name": "match",
           "type": "stringSlice"
         }
