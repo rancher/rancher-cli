@@ -333,6 +333,13 @@ func TestImagesEphemeralSharingAppImageCountsTwo(t *testing.T) {
 	assert.Equal(t, 2, rows[0].Count, "ephemeral container sharing the app image is a second reference (IM-18)")
 }
 
+func TestImagesResultZeroValueNilSafe(t *testing.T) {
+	t.Parallel()
+	var r imagesResult
+	assert.Nil(t, r.Columns(), "zero-value Columns() must return nil without panicking")
+	assert.Nil(t, r.Rows(), "zero-value Rows() must return nil without panicking")
+}
+
 func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer

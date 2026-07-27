@@ -62,12 +62,18 @@ func (r imagesResult) Columns() []string {
 	if r.Clusters != nil {
 		return r.Clusters.Columns()
 	}
+	if r.RowData == nil {
+		return nil
+	}
 	return r.RowData.Columns()
 }
 
 func (r imagesResult) Rows() [][]string {
 	if r.Clusters != nil {
 		return r.Clusters.Rows()
+	}
+	if r.RowData == nil {
+		return nil
 	}
 	return r.RowData.Rows()
 }

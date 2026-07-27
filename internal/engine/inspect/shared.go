@@ -95,7 +95,7 @@ func ownerChain(ctx context.Context, client engine.ClusterClient, ns string, obj
 			warnings = append(warnings, fmt.Sprintf("owner %s unavailable: %v", ownerID(ns, ref), err))
 			break
 		}
-		if ref.uid != "" && string(next.GetUID()) != ref.uid {
+		if string(next.GetUID()) != ref.uid {
 			warnings = append(warnings, fmt.Sprintf(
 				"owner %s unavailable: uid mismatch (stale owner reference)", ownerID(ns, ref)))
 			break
