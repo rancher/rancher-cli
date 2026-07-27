@@ -58,6 +58,47 @@ _rancher
 	return splitLines(strings.TrimRight(string(data), "\n"))
 }
 
+// TestZshStderrNotLeakedToTerminal verifies the zsh script suppresses the
+// binary's stderr the way fish.sh, bash.sh, and pwsh.ps1 already do — a
+// binary that rejects the request (e.g. a stale install that predates the
+// v2 protocol) must degrade to "no candidates", not splat errors onto the
+// command line being edited.
+func TestZshStderrNotLeakedToTerminal(t *testing.T) {
+	t.Parallel()
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh not found on PATH; skipping zsh stderr test")
+	}
+
+	scriptPath := filepath.Join(t.TempDir(), "zsh.sh")
+	if err := os.WriteFile(scriptPath, zshScript, 0o644); err != nil {
+		t.Fatalf("writing zsh.sh: %v", err)
+	}
+	binDir := t.TempDir()
+	fake := "#!/bin/sh\necho 'boom: stale binary rejects completion flags' >&2\necho pod\n"
+	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
+		t.Fatalf("writing fake rancher: %v", err)
+	}
+
+	driver := fmt.Sprintf(`
+export PATH=%q:"$PATH"
+_describe() { : }
+_files() { : }
+autoload -Uz compinit 2>/dev/null || true
+source %q
+words=('rancher' 'get' '')
+_rancher
+`, binDir, scriptPath)
+
+	out, err := exec.Command(zsh, "-c", driver).CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh driver: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "boom") {
+		t.Errorf("binary stderr leaked through the completion function:\n%s", out)
+	}
+}
+
 // TestZshProtoV2RequestShape verifies the v2 zsh script request shape.
 func TestZshProtoV2RequestShape(t *testing.T) {
 	t.Parallel()

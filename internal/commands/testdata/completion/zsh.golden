@@ -16,7 +16,7 @@ _rancher() {
 	current=${words[-1]}
 	# Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
 	# "--rancher-completion-cur=${current}" is quoted so it is one token even when current is "".
-	opts=("${(@f)$(${words[1]} --rancher-completion-proto=2 ${words[2,-2]} "--rancher-completion-cur=${current}" --generate-shell-completion)}")
+	opts=("${(@f)$(${words[1]} --rancher-completion-proto=2 ${words[2,-2]} "--rancher-completion-cur=${current}" --generate-shell-completion 2> /dev/null)}")
 
 	if [[ "${opts[1]}" != "" ]]; then
 		# A candidate whose token ends in a continuation character is a
