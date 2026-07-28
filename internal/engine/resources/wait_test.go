@@ -90,6 +90,17 @@ func conditionObj(t, status string) *unstructured.Unstructured {
 	}}
 }
 
+func conditionObjMsg(condType, status, message string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "x"},
+		"status": map[string]any{
+			"conditions": []any{
+				map[string]any{"type": condType, "status": status, "message": message},
+			},
+		},
+	}}
+}
+
 func TestParseWaitCondition(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -383,4 +394,39 @@ func TestGetWaitStatefulSetExplicitForProceeds(t *testing.T) {
 		"cluster": "prod", "namespace": "ns", "for": "state=active",
 	}, b: map[string]bool{"wait": true}}, nil)
 	require.NoError(t, err)
+}
+
+// TestWaitTimeoutConditionWithMessageParenthesized asserts that when the
+// awaited condition carries a non-empty message, the timeout error shows it
+// parenthesized: Ready=Unknown (waiting for probes: calico, kube-apiserver).
+func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		conditionObjMsg("Ready", "Unknown", "waiting for probes: calico, kube-apiserver"),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Ready=Unknown (waiting for probes: calico, kube-apiserver)")
+}
+
+// TestWaitTimeoutConditionWithoutMessageUnchanged asserts that when the
+// awaited condition has no message, the timeout error keeps the current shape.
+func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		conditionObj("Ready", "Unknown"),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Ready=Unknown")
+	assert.NotContains(t, err.Error(), "Ready=Unknown (",
+		"an empty condition message must not open a parenthesized suffix")
 }

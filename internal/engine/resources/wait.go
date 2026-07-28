@@ -145,29 +145,30 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 		}
 		return strings.EqualFold(state, cond.name)
 	case "condition":
-		status, ok := conditionStatus(obj, cond.name)
+		status, _, ok := conditionStatus(obj, cond.name)
 		return ok && status == cond.status
 	default:
 		return false
 	}
 }
 
-// conditionStatus returns the status of the first status.conditions[] entry
-// whose type matches name, and whether one was found — the scan shared by
-// waitSatisfied and summarizeState.
-func conditionStatus(obj *unstructured.Unstructured, name string) (string, bool) {
+// conditionStatus returns the status and message of the first
+// status.conditions[] entry whose type matches name, and whether one was
+// found — the scan shared by waitSatisfied and summarizeState.
+func conditionStatus(obj *unstructured.Unstructured, name string) (status, message string, ok bool) {
 	conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
 	for _, c := range conds {
-		cm, ok := c.(map[string]any)
-		if !ok {
+		cm, okMap := c.(map[string]any)
+		if !okMap {
 			continue
 		}
 		if t, _, _ := unstructured.NestedString(cm, "type"); t == name {
 			s, _, _ := unstructured.NestedString(cm, "status")
-			return s, true
+			msg, _, _ := unstructured.NestedString(cm, "message")
+			return s, msg, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // summarizeState renders the last-observed signal for the timeout error,
@@ -182,7 +183,10 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 		}
 		return s
 	case "condition":
-		if status, ok := conditionStatus(obj, cond.name); ok {
+		if status, message, ok := conditionStatus(obj, cond.name); ok {
+			if message != "" {
+				return fmt.Sprintf("%s=%s (%s)", cond.name, status, message)
+			}
 			return fmt.Sprintf("%s=%s", cond.name, status)
 		}
 		return fmt.Sprintf("%s not present", cond.name)
