@@ -956,13 +956,13 @@ const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 
 // resolveMintClusterID resolves clusterID (an id, a display name, "", or
 // "local") to its Cluster id before minting, using the stored login
-// credential as bearer. It shares projects.MatchByIDOrDisplay — the same
-// collision algorithm get/patch's ResolveCluster uses — rather than
-// carrying a third divergent copy: an id match never short-circuits ahead
-// of checking every cluster's spec.displayName too, since a string that
-// happens to equal one cluster's id AND a different cluster's display name
-// must be ambiguous, not a silent id-wins mint scoped to the wrong
-// cluster. One list call serves both checks.
+// credential as bearer. It shares projects.MatchOneOrError — the same
+// collision-and-narrowing helper get/patch's ResolveCluster and the
+// cloud-credential resolver use — so an id match never short-circuits
+// ahead of checking every cluster's spec.displayName (id/display
+// collisions are ambiguous, never a silent id-wins mint), and ambiguous
+// errors list only the colliding candidates. One list call serves both
+// checks.
 func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
 	if clusterID == "" || clusterID == "local" {
 		return clusterID, nil
@@ -992,38 +992,15 @@ func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearer
 		candidates = append(candidates, clierr.Candidate{ID: id, Name: display})
 	}
 
-	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(clusterID, ids, func(id string) string { return displayByID[id] })
-	switch len(matched) {
-	case 1:
-		return matched[0], nil
-	case 0:
-		return "", clierr.New(clierr.CodeNotFound, fmt.Sprintf("cluster not found: %q", clusterID)).
-			WithCandidates(candidates)
-	default:
-		msg := fmt.Sprintf("%d clusters have display name %q", displayMatchCount, clusterID)
-		if idFound {
-			msg = fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", clusterID)
-		}
-		// This inline narrowing (matchedSet/matchedCandidates below)
-		// predates the projects.MatchOneOrError extraction. The shared
-		// helper now narrows AMBIGUOUS_SELECTION candidates to the
-		// colliding entries too, so the contracts match and this call
-		// site is migratable onto the helper — deferred to the planned
-		// get-token modernization slice rather than churning the legacy
-		// path here. See MatchOneOrError's doc comment in
-		// internal/engine/projects/resolve.go.
-		matchedSet := make(map[string]bool, len(matched))
-		for _, id := range matched {
-			matchedSet[id] = true
-		}
-		var matchedCandidates []clierr.Candidate
-		for _, c := range candidates {
-			if matchedSet[c.ID] {
-				matchedCandidates = append(matchedCandidates, c)
+	return projects.MatchOneOrError(clusterID, ids,
+		func(id string) string { return displayByID[id] }, candidates,
+		fmt.Sprintf("cluster not found: %q", clusterID), "",
+		func(idFound bool, displayMatchCount int) string {
+			if idFound {
+				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", clusterID)
 			}
-		}
-		return "", clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(matchedCandidates)
-	}
+			return fmt.Sprintf("%d clusters have display name %q", displayMatchCount, clusterID)
+		}, "")
 }
 
 // legacyMintTTL is the bounded staleness a legacy (pre-ext.cattle.io)

@@ -25,9 +25,9 @@ const projectLabel = "field.cattle.io/projectId"
 // a value matching one item's id AND a different item's displayName is
 // ambiguous, not a silent id match. Callers own the entity-specific error
 // message; this returns the matched id set (0, 1, or 2+) plus idFound and
-// the display-match count for wording it. Exported so
-// internal/token.resolveMintClusterID can share this exact algorithm
-// instead of carrying its own copy.
+// the display-match count for wording it. Most callers want
+// MatchOneOrError below, which wraps this and owns the error/candidate
+// shaping; the token mint path resolves through that wrapper too.
 func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string) string) (matched []string, idFound bool, displayMatchCount int) {
 	set := map[string]bool{}
 	for _, id := range ids {
@@ -59,9 +59,6 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 // On NOT_FOUND, cands is returned as-is (discovery hints). On ambiguity,
 // cands is narrowed to only the entries whose ID is in the matched set and
 // sorted by ID for deterministic output — never the full list.
-//
-// internal/token/token.go's resolveMintClusterID carries its own inline
-// switch and does not call this helper; its comment explains the history.
 func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) string, cands []clierr.Candidate, notFoundMsg, notFoundHint string, ambiguousMsg func(idFound bool, displayMatchCount int) string, ambiguousHint string) (string, error) {
 	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, displayOf)
 	switch len(matched) {
