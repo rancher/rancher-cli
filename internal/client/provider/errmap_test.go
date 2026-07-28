@@ -44,6 +44,33 @@ func TestMapErr(t *testing.T) {
 	}
 }
 
+// TestMapErrServiceUnavailable covers the Rancher proxy 503: a cluster whose
+// agent is not yet registered returns a 503 ServiceUnavailable that should be
+// classified as retryable so callers know to wait and retry, not give up.
+func TestMapErrServiceUnavailable(t *testing.T) {
+	const wantHint = "the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active"
+
+	t.Run("503 maps to GENERIC+retryable+hint", func(t *testing.T) {
+		err := apierrors.NewServiceUnavailable("ClusterUnavailable 503: ClusterUnavailable 503")
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable, "503 must be retryable")
+		assert.Equal(t, wantHint, ce.Hint)
+	})
+
+	t.Run("403 still maps to RBAC (no regression)", func(t *testing.T) {
+		gr := schema.GroupResource{Group: "management.cattle.io", Resource: "nodes"}
+		err := apierrors.NewForbidden(gr, "local", errors.New("denied"))
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code)
+		assert.False(t, ce.Retryable, "403 must not be retryable")
+	})
+}
+
 // TestMapErrDeniedFallback covers exercise bug 5: Rancher's proxy paths
 // reject an invalid/insufficient token with an empty-body 403, which
 // apierrors passes through as an empty Error() string. mapErr must never

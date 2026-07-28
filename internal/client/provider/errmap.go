@@ -39,6 +39,10 @@ func mapErr(err error) error {
 		return clierr.New(clierr.CodeConflict, err.Error())
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())
+	case apierrors.IsServiceUnavailable(err):
+		return clierr.New(clierr.CodeGeneric, err.Error()).
+			WithRetryable(true).
+			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
 	default:
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
