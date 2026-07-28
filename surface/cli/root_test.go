@@ -708,6 +708,45 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	assert.NotContains(t, env2.Data.Error.Hint, "--version")
 }
 
+// "delete cluster" must hint at provisioning-cluster, not the generic schema
+// hint, because management clusters are not deletable via the delete group.
+// Only the literal tokens "cluster" / "clusters" under "delete" get the
+// targeted hint; other unknown tokens under delete keep the generic hint.
+func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
+	origExiter := ucli.OsExiter
+	ucli.OsExiter = func(int) {}
+	defer func() { ucli.OsExiter = origExiter }()
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	// "cluster" under delete → must hint at provisioning-cluster.
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "cluster", "my-cluster"}))
+	var env errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Hint, "provisioning-cluster")
+
+	// "clusters" under delete → same targeted hint.
+	errOut.Reset()
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "clusters", "my-cluster"}))
+	var env2 errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
+	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
+	assert.Contains(t, env2.Data.Error.Hint, "provisioning-cluster")
+
+	// unknown token under delete → generic hint, not the cluster-specific one.
+	errOut.Reset()
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "bogus-kind-xyz"}))
+	var env3 errEnvelope
+	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env3))
+	assert.Equal(t, "VALIDATION", env3.Data.Error.Code)
+	assert.NotContains(t, env3.Data.Error.Hint, "provisioning-cluster")
+}
+
 // exercise bug 2 repro: an unknown flag on a real command must surface the
 // standard VALIDATION envelope at exit 2, not urfave's own unhinted
 // "Incorrect Usage" text.

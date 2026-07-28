@@ -252,6 +252,9 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 		// version` has no such flag to point at, so it keeps the generic hint.
 		hint = "there is no `version` command; use --version"
 	}
+	if c.Name == "delete" && (name == "cluster" || name == "clusters") {
+		hint = "cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"
+	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
 		WithHint(hint)
 	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
