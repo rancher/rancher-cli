@@ -115,6 +115,14 @@ The uncurated kinds (amazonec2config, azureconfig, harvesterconfig,
 vmwarevsphereconfig) take driver fields via repeatable `--set field=value`.
 Credential fields are rejected on a machine config — they belong on a
 cloud credential (`cc-*` secret), referenced via `--cloud-credential`.
+Completion on `--set` returns only statically-known driver fields for curated
+kinds; uncurated kinds return no completion candidates by design, not by
+failure.
+
+Unset curated machine-config fields inherit the node-driver's declared defaults,
+which may be stale (a retired image slug will loop provisioning forever). The
+`create machine-config` dry-run preview lists the unset value fields in its
+`warnings`; set them explicitly rather than trusting the driver's defaults.
 
 A `creatorId not stamped` warning on `create cluster` means the identity
 probe (an ext.cattle.io SelfUser create) failed before the server-side
@@ -242,7 +250,8 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or
   `--global`) is on the line, `--role <TAB>` completes live (requires the
-  network-completion opt-in).
+  network-completion opt-in). Positional completion may return the full
+  candidate list and rely on the shell's client-side prefix filtering.
 - `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` —
   an ordinary namespaced secret without hand-rolling base64.
 - `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` —
