@@ -504,6 +504,29 @@ func TestFetchVersionsNewestReleaseNumberTieBreaker(t *testing.T) {
 	assert.True(t, byVersion["v1.30.5+rke2r2"].Newest, "r2 is the newest release for the same semver core")
 }
 
+// TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable verifies that
+// when every version string in a distro fails to parse (e.g. garbage data
+// from the channel server), no row is marked Newest — the guard must never
+// fabricate a Newest entry for an unparseable version string.
+func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"not-a-version", "also-not"},
+		k3sReleasePath:  {},
+	}))
+	defer srv.Close()
+
+	factory := fakeFactory{c: settingsClient(nil)}
+
+	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "rows still returned even when versions are unparseable")
+
+	for _, r := range rows {
+		assert.False(t, r.Newest, "no row must be marked Newest when all version strings are unparseable")
+	}
+}
+
 func boolPtr(b bool) *bool { return &b }
 
 // noArgsInput is a minimal runtime.Input fake for commands that read no

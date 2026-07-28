@@ -608,7 +608,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		assert.Equal(t,
 			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
 				"image, region, size, tags"+
-				" — set them explicitly (live exercise: the driver's image default was retired by the provider)",
+				" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 
@@ -626,7 +626,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		assert.Equal(t,
 			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
 				"size, tags"+
-				" — set them explicitly (live exercise: the driver's image default was retired by the provider)",
+				" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 

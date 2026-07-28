@@ -20,6 +20,7 @@ jsonquery stdout data.cluster.kubernetesVersion v1.30.5+rke2r1
 jsonquery stdout data.status.ready true
 jsonquery stdout data.status.conditions.0.type Ready
 jsonquery stdout data.machinePools '[]'
+jsonquery stdout data.machines '[]'
 stdout e2e-crt-real-token-c-fixture
 ! stdout '\{token\}'
 

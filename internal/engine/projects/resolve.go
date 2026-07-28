@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -46,22 +47,21 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 }
 
 // MatchOneOrError is the shared List-derived-candidates -> MatchByIDOrDisplay
-// -> switch assembly ResolveProject and provisioning.resolveCredentialObj
-// both need: given the ids/displayOf/candidates already built from a List
-// call, it runs MatchByIDOrDisplay and turns the result into either the
-// single matched id, or a clierr NOT_FOUND / AMBIGUOUS_SELECTION error.
-// Message wording stays entirely the caller's: notFoundMsg/notFoundHint are
-// used verbatim, and ambiguousMsg is called with MatchByIDOrDisplay's own
-// idFound/displayMatchCount so each caller keeps its own id-collision vs.
-// N-way-display-collision wording. This eliminates the duplicated switch
-// without changing either caller's user-visible text.
+// -> switch assembly ResolveProject, provisioning.resolveCredentialObj, and
+// clientFactory.ResolveCluster all use: given the ids/displayOf/candidates
+// already built from a List call, it runs MatchByIDOrDisplay and turns the
+// result into either the single matched id, or a clierr NOT_FOUND /
+// AMBIGUOUS_SELECTION error. Message wording stays entirely the caller's:
+// notFoundMsg/notFoundHint are used verbatim, and ambiguousMsg is called
+// with MatchByIDOrDisplay's own idFound/displayMatchCount so each caller
+// keeps its own id-collision vs. N-way-display-collision wording.
 //
-// internal/token.go's resolveMintClusterID deliberately does NOT call this:
-// on ambiguity it narrows WithCandidates to only the colliding cluster ids,
-// while this helper always returns the caller's full candidate list. Do not
-// "helpfully" migrate that call site onto MatchOneOrError without reading
-// the divergence comment at its switch statement first — doing so would
-// silently widen its AMBIGUOUS_SELECTION candidate list.
+// On NOT_FOUND, cands is returned as-is (discovery hints). On ambiguity,
+// cands is narrowed to only the entries whose ID is in the matched set and
+// sorted by ID for deterministic output — never the full list.
+//
+// internal/token/token.go's resolveMintClusterID carries its own inline
+// switch and does not call this helper; its comment explains the history.
 func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) string, cands []clierr.Candidate, notFoundMsg, notFoundHint string, ambiguousMsg func(idFound bool, displayMatchCount int) string, ambiguousHint string) (string, error) {
 	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, displayOf)
 	switch len(matched) {
@@ -72,8 +72,19 @@ func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) st
 			WithCandidates(cands).
 			WithHint(notFoundHint)
 	default:
+		matchedSet := make(map[string]bool, len(matched))
+		for _, id := range matched {
+			matchedSet[id] = true
+		}
+		narrowed := make([]clierr.Candidate, 0, len(matched))
+		for _, c := range cands {
+			if matchedSet[c.ID] {
+				narrowed = append(narrowed, c)
+			}
+		}
+		sort.Slice(narrowed, func(i, j int) bool { return narrowed[i].ID < narrowed[j].ID })
 		return "", clierr.New(clierr.CodeAmbiguousSelection, ambiguousMsg(idFound, displayMatchCount)).
-			WithCandidates(cands).
+			WithCandidates(narrowed).
 			WithHint(ambiguousHint)
 	}
 }

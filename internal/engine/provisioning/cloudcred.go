@@ -103,32 +103,20 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	matched, idFound, displayMatchCount := projects.MatchByIDOrDisplay(name, ids, func(id string) string { return displayByID[id] })
-	switch len(matched) {
-	case 1:
-		return objByID[matched[0]], nil
-	case 0:
-		return nil, clierr.New(clierr.CodeNotFound, "cloud credential not found: "+nameOrID).
-			WithCandidates(cands).
-			WithHint("run: rancher get cloud-credential")
-	default:
-		// Narrow candidates to only the credentials sharing the queried name,
-		// not every credential in the namespace (run-1 over-inclusion finding).
-		colliding := make([]clierr.Candidate, 0, len(matched))
-		for _, id := range matched {
-			colliding = append(colliding, clierr.Candidate{ID: id, Name: displayByID[id]})
-		}
-		sort.Slice(colliding, func(i, j int) bool { return colliding[i].ID < colliding[j].ID })
-		var msg string
-		if idFound {
-			msg = fmt.Sprintf("%q matches both a cloud credential id and a different credential's display name", nameOrID)
-		} else {
-			msg = fmt.Sprintf("%d cloud credentials have display name %q", displayMatchCount, nameOrID)
-		}
-		return nil, clierr.New(clierr.CodeAmbiguousSelection, msg).
-			WithCandidates(colliding).
-			WithHint("pass the credential id (cattle-global-data:cc-xxxxx)")
+	id, err := projects.MatchOneOrError(name, ids, func(id string) string { return displayByID[id] }, cands,
+		"cloud credential not found: "+nameOrID,
+		"run: rancher get cloud-credential",
+		func(idFound bool, displayMatchCount int) string {
+			if idFound {
+				return fmt.Sprintf("%q matches both a cloud credential id and a different credential's display name", nameOrID)
+			}
+			return fmt.Sprintf("%d cloud credentials have display name %q", displayMatchCount, nameOrID)
+		},
+		"pass the credential id (cattle-global-data:cc-xxxxx)")
+	if err != nil {
+		return nil, err
 	}
+	return objByID[id], nil
 }
 
 // credentialObjects filters list to credential-shaped secrets: named cc-*,

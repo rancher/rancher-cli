@@ -972,7 +972,7 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 	require.Len(t, warns, 1)
 	assert.Contains(t, warns[0], "machines unavailable")
 
-	empty := newFakeClient().withListNS(machineKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+	empty := newFakeClient().withListNS(machineKind.GVR, machineKind.DefaultNamespace, &unstructured.UnstructuredList{})
 	machines, warns, err = clusterMachines(context.Background(), empty, "my-cluster")
 	require.NoError(t, err)
 	require.NotNil(t, machines, "verified empty LIST → non-nil pointer")
@@ -981,6 +981,8 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 	require.Len(t, empty.listSelectors, 1)
 	assert.Equal(t, capiClusterNameLabel+"=my-cluster", empty.listSelectors[0],
 		"machines LIST must use the cluster-name label selector")
+	assert.Equal(t, machineKind.DefaultNamespace, empty.listNamespaces[0],
+		"machines LIST must be scoped to machineKind.DefaultNamespace, never a hardcoded string")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

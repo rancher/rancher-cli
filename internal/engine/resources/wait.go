@@ -185,7 +185,7 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 	case "condition":
 		if status, message, ok := conditionStatus(obj, cond.name); ok {
 			if message != "" {
-				return fmt.Sprintf("%s=%s (%s)", cond.name, status, message)
+				return fmt.Sprintf("%s=%s (%s)", cond.name, status, engine.Printable(message))
 			}
 			return fmt.Sprintf("%s=%s", cond.name, status)
 		}

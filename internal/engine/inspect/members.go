@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
-	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -283,18 +281,4 @@ func setGroupResolved(display map[string]string, collided map[string]bool, id, d
 		return
 	}
 	display[id] = d
-}
-
-// printable strips control characters (including ANSI escape introducers)
-// and Unicode format characters (category Cf: bidi overrides, zero-width
-// marks) from a server-sourced string before it enters the text card —
-// display names originate from IdP claims and must neither drive the
-// terminal nor reorder/hide what it shows.
-func printable(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
-			return -1
-		}
-		return r
-	}, s)
 }

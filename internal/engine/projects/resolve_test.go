@@ -135,6 +135,27 @@ func TestMatchOneOrError(t *testing.T) {
 		assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
 		assert.Equal(t, "display-collision:2", cerr.Message)
 	})
+
+	t.Run("ambiguity narrows candidates to the colliders only", func(t *testing.T) {
+		t.Parallel()
+		// Three items, two colliding on the display name: the error's
+		// candidates must exclude the non-collider — pinned at the helper
+		// so every caller inherits the narrowing.
+		threeIDs := []string{"a-1", "a-2", "a-3"}
+		threeDisplay := map[string]string{"a-1": "Shared", "a-2": "Shared", "a-3": "Solo"}
+		threeCands := []clierr.Candidate{
+			{ID: "a-1", Name: "Shared"}, {ID: "a-2", Name: "Shared"}, {ID: "a-3", Name: "Solo"},
+		}
+		_, err := MatchOneOrError("Shared", threeIDs, func(id string) string { return threeDisplay[id] }, threeCands,
+			"not found", "hint-nf", ambiguousMsg, "hint-amb")
+		require.Error(t, err)
+		cerr, ok := err.(*clierr.Error)
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
+		assert.Equal(t, []clierr.Candidate{
+			{ID: "a-1", Name: "Shared"}, {ID: "a-2", Name: "Shared"},
+		}, cerr.Candidates, "the non-colliding candidate must be excluded")
+	})
 }
 
 func TestResolveProjectByExactID(t *testing.T) {

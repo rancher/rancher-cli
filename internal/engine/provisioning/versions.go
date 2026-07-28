@@ -114,12 +114,12 @@ func parseVersionKey(raw string) (major, minor, patch, releaseNum int, ok bool) 
 		return 0, 0, 0, 0, false
 	}
 	maj, errMaj := strconv.Atoi(parts[0])
-	min, errMin := strconv.Atoi(parts[1])
+	mnr, errMin := strconv.Atoi(parts[1])
 	pat, errPat := strconv.Atoi(parts[2])
 	if errMaj != nil || errMin != nil || errPat != nil {
 		return 0, 0, 0, 0, false
 	}
-	return maj, min, pat, rel, true
+	return maj, mnr, pat, rel, true
 }
 
 // compareVersionStrings returns -1, 0, or 1 comparing two raw version strings
@@ -335,6 +335,25 @@ type distroResult struct {
 	defaultVersion string
 }
 
+// newestVersionIndex returns the 0-based index of the highest semver-ordered
+// version string in vs, or -1 if vs is empty or the winner's version key is
+// unparseable. Pure: operates only on the given slice, no side effects.
+func newestVersionIndex(vs []string) int {
+	if len(vs) == 0 {
+		return -1
+	}
+	best := 0
+	for i := 1; i < len(vs); i++ {
+		if compareVersionStrings(vs[i], vs[best]) > 0 {
+			best = i
+		}
+	}
+	if _, _, _, _, ok := parseVersionKey(vs[best]); !ok {
+		return -1
+	}
+	return best
+}
+
 // fetchVersionsDetailed is FetchVersions' full implementation, additionally
 // returning the raw supported-range setting (for the command envelope's
 // transparency field) and any degraded-fetch warnings. FetchVersions itself
@@ -441,14 +460,8 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 		for _, v := range vs {
 			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == results[i].defaultVersion, Supported: versionSupported(rangeRaw, v)})
 		}
-		if len(vs) > 0 {
-			newestIdx := start
-			for j := start + 1; j < len(rows); j++ {
-				if compareVersionStrings(rows[j].Version, rows[newestIdx].Version) > 0 {
-					newestIdx = j
-				}
-			}
-			rows[newestIdx].Newest = true
+		if idx := newestVersionIndex(vs); idx >= 0 {
+			rows[start+idx].Newest = true
 		}
 	}
 	return rows, rangeRaw, warnings, nil
@@ -523,7 +536,7 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "get kubernetes-versions",
 		Usage:       "List available Kubernetes versions (rke2/k3s)",
-		Desc:        "Merged with the server's default and supported-range settings.",
+		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
 		CommandType: runtime.ReadOnly,
 		Toolset:     "core",
 		Network:     true,

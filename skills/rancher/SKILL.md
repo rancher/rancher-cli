@@ -62,7 +62,9 @@ One JSON document for the whole surface, or extract client-side for bulk work.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Kind names have kubectl-style aliases (e.g. `get pods`,
-`get cm`).
+`get cm`). `get kubernetes-versions` always marks the newest release per
+distro (`newest`); when the server declares no default version, that marker
+is the only pick-this signal and a warning says so.
 
 ### 3. Always parse, never scrape
 

@@ -344,7 +344,8 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 	}
 	rows := make([]clusterMember, 0, len(resolved))
 	for _, m := range resolved {
-		rows = append(rows, clusterMember{Principal: m.Principal, DisplayName: m.DisplayName, Role: m.Role}) //nolint:staticcheck // explicit field copy: clusterMember and memberRow evolve independently
+		//lint:ignore S1016 explicit field copy: clusterMember and memberRow evolve independently
+		rows = append(rows, clusterMember{Principal: m.Principal, DisplayName: m.DisplayName, Role: m.Role}) //nolint:staticcheck
 	}
 	return &rows, warnings, nil
 }
@@ -357,7 +358,7 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, provName string) (*[]clusterMachine, []string, error) {
 	machineKind, _ := kinds.Lookup("capimachine")
 	sel := capiClusterNameLabel + "=" + provName
-	list, err := mgmt.List(ctx, machineKind.GVR, "fleet-default", sel)
+	list, err := mgmt.List(ctx, machineKind.GVR, machineKind.DefaultNamespace, sel)
 	if err != nil {
 		if lookupCanceled(ctx, err) {
 			return nil, nil, err
@@ -501,77 +502,10 @@ func renderClusterText(r clusterResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "CLUSTER\n  id: %s\n  name: %s\n  kubernetesVersion: %s\n  state: %s\n",
 		r.Cluster.ID, r.Cluster.Name, r.Cluster.KubernetesVersion, r.Cluster.State)
-
-	b.WriteString("\nCONDITIONS\n")
-	switch {
-	case r.Status == nil && r.ProvisioningNote != "":
-		b.WriteString("  " + r.ProvisioningNote + "\n")
-	case r.Status == nil:
-		b.WriteString("  status: unavailable\n")
-	default:
-		fmt.Fprintf(&b, "  ready: %t\n", r.Status.Ready)
-		for _, c := range orderedConditions(r.Status.Conditions) {
-			line := fmt.Sprintf("  %s=%s", c.Type, c.Status)
-			if c.Reason != "" {
-				line += " reason=" + c.Reason
-			}
-			if c.Message != "" {
-				line += " " + truncateRunes(c.Message, conditionMessageLimit)
-			}
-			b.WriteString(line + "\n")
-		}
-	}
-
-	b.WriteString("\nMACHINE POOLS\n")
-	switch {
-	case r.MachinePools == nil && r.ProvisioningNote != "":
-		b.WriteString("  " + r.ProvisioningNote + "\n")
-	case r.MachinePools == nil:
-		b.WriteString("  machine pools: unavailable\n")
-	case len(*r.MachinePools) == 0:
-		b.WriteString("  none (imported or custom cluster)\n")
-	default:
-		for _, p := range *r.MachinePools {
-			fmt.Fprintf(&b, "  %s: %s/%s quantity=%d roles=%s\n",
-				p.Name, p.MachineConfigKind, p.MachineConfigName, p.Quantity, strings.Join(p.Roles, ","))
-		}
-	}
-
-	b.WriteString("\nMEMBERS\n")
-	switch {
-	case r.Members == nil:
-		b.WriteString("  members: unavailable\n")
-	case len(*r.Members) == 0:
-		b.WriteString("  none\n")
-	default:
-		for _, m := range *r.Members {
-			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s\n", printable(m.DisplayName), printable(m.Principal), printable(m.Role))
-			} else {
-				fmt.Fprintf(&b, "  %s  %s\n", printable(m.Principal), printable(m.Role))
-			}
-		}
-	}
-
-	b.WriteString("\nMACHINES\n")
-	switch {
-	case r.Machines == nil && r.ProvisioningNote != "":
-		b.WriteString("  " + r.ProvisioningNote + "\n")
-	case r.Machines == nil:
-		b.WriteString("  machines: unavailable\n")
-	case len(*r.Machines) == 0:
-		b.WriteString("  none\n")
-	default:
-		for _, m := range *r.Machines {
-			// Name and phase are server-sourced strings too — same
-			// sanitizer as the error message and the members section.
-			fmt.Fprintf(&b, "  %s  %s\n", printable(m.Name), printable(m.Phase))
-			if m.Error != "" {
-				fmt.Fprintf(&b, "    %s\n", printable(m.Error))
-			}
-		}
-	}
-
+	renderConditionsSection(&b, r)
+	renderMachinePoolsSection(&b, r)
+	renderMembersSection(&b, r)
+	renderMachinesSection(&b, r)
 	// Registration values render FULL-WIDTH and are never truncated: they
 	// are meant to be copy-pasted (IC-1a).
 	b.WriteString("\nREGISTRATION\n")
@@ -585,6 +519,84 @@ func renderClusterText(r clusterResult) string {
 		writeRegistrationField(&b, "manifestUrl", r.Registration.ManifestURL)
 	}
 	return b.String()
+}
+
+func renderConditionsSection(b *strings.Builder, r clusterResult) {
+	b.WriteString("\nCONDITIONS\n")
+	switch {
+	case r.Status == nil && r.ProvisioningNote != "":
+		b.WriteString("  " + r.ProvisioningNote + "\n")
+	case r.Status == nil:
+		b.WriteString("  status: unavailable\n")
+	default:
+		fmt.Fprintf(b, "  ready: %t\n", r.Status.Ready)
+		for _, c := range orderedConditions(r.Status.Conditions) {
+			line := fmt.Sprintf("  %s=%s", c.Type, c.Status)
+			if c.Reason != "" {
+				line += " reason=" + c.Reason
+			}
+			if c.Message != "" {
+				line += " " + truncateRunes(c.Message, conditionMessageLimit)
+			}
+			b.WriteString(line + "\n")
+		}
+	}
+}
+
+func renderMachinePoolsSection(b *strings.Builder, r clusterResult) {
+	b.WriteString("\nMACHINE POOLS\n")
+	switch {
+	case r.MachinePools == nil && r.ProvisioningNote != "":
+		b.WriteString("  " + r.ProvisioningNote + "\n")
+	case r.MachinePools == nil:
+		b.WriteString("  machine pools: unavailable\n")
+	case len(*r.MachinePools) == 0:
+		b.WriteString("  none (imported or custom cluster)\n")
+	default:
+		for _, p := range *r.MachinePools {
+			fmt.Fprintf(b, "  %s: %s/%s quantity=%d roles=%s\n",
+				p.Name, p.MachineConfigKind, p.MachineConfigName, p.Quantity, strings.Join(p.Roles, ","))
+		}
+	}
+}
+
+func renderMembersSection(b *strings.Builder, r clusterResult) {
+	b.WriteString("\nMEMBERS\n")
+	switch {
+	case r.Members == nil:
+		b.WriteString("  members: unavailable\n")
+	case len(*r.Members) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, m := range *r.Members {
+			if m.DisplayName != "" {
+				fmt.Fprintf(b, "  %s (%s)  %s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role))
+			} else {
+				fmt.Fprintf(b, "  %s  %s\n", engine.Printable(m.Principal), engine.Printable(m.Role))
+			}
+		}
+	}
+}
+
+func renderMachinesSection(b *strings.Builder, r clusterResult) {
+	b.WriteString("\nMACHINES\n")
+	switch {
+	case r.Machines == nil && r.ProvisioningNote != "":
+		b.WriteString("  " + r.ProvisioningNote + "\n")
+	case r.Machines == nil:
+		b.WriteString("  machines: unavailable\n")
+	case len(*r.Machines) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, m := range *r.Machines {
+			// Name and phase are server-sourced strings too — same
+			// sanitizer as the error message and the members section.
+			fmt.Fprintf(b, "  %s  %s\n", engine.Printable(m.Name), engine.Printable(m.Phase))
+			if m.Error != "" {
+				fmt.Fprintf(b, "    %s\n", engine.Printable(m.Error))
+			}
+		}
+	}
 }
 
 func writeRegistrationField(b *strings.Builder, label, value string) {

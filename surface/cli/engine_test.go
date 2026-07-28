@@ -189,14 +189,21 @@ func TestResolveClusterUnknownIsNotFound(t *testing.T) {
 
 func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 	t.Parallel()
+	// The non-colliding third cluster pins the shared match helper's
+	// candidate narrowing THROUGH this call site: the error's candidates
+	// must list only the two colliders.
 	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
 		mgmtClusterObj("c-abc", "dup"),
 		mgmtClusterObj("c-def", "dup"),
+		mgmtClusterObj("c-solo", "unique"),
 	}})
 	_, err := f.ResolveCluster(context.Background(), "dup")
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	require.Len(t, ce.Candidates, 2, "candidates must narrow to the colliders")
+	ids := []string{ce.Candidates[0].ID, ce.Candidates[1].ID}
+	assert.ElementsMatch(t, []string{"c-abc", "c-def"}, ids)
 }
 
 func TestResolveClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {

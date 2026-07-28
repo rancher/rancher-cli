@@ -297,7 +297,17 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 		if fieldIsBool[field] {
 			continue
 		}
-		if !in.IsSet(fieldToFlag[field]) {
+		// Skip curated fields that have no entry in the doCuratedFlags map —
+		// a future kind with its own Curated set but no doCuratedFlags entries
+		// would produce an empty-string flag name, making IsSet meaningless and
+		// every such field appear spuriously unset. Presence in the flag map is
+		// the gate; TestDoCuratedFlagsMatchKindsCurated pins that doCuratedFlags
+		// and MachineConfigFields.Curated stay in sync for the DO kind.
+		flag, known := fieldToFlag[field]
+		if !known {
+			continue
+		}
+		if !in.IsSet(flag) {
 			unset = append(unset, field)
 		}
 	}
@@ -307,7 +317,7 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 	sort.Strings(unset)
 	return "unset field(s) inherit the node driver's declared defaults, which may be stale: " +
 		strings.Join(unset, ", ") +
-		" — set them explicitly (live exercise: the driver's image default was retired by the provider)"
+		" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)"
 }
 
 // articleFor returns "an" when s starts with a vowel, "a" otherwise.

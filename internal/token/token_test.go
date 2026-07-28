@@ -591,10 +591,12 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 			atomic.AddInt32(&listHits, 1)
 			w.Header().Set("Content-Type", "application/json")
 			// "c-1" is both a real cluster's id AND a different cluster's
-			// display name.
+			// display name. "c-xyz" is a non-collider (distinct id AND
+			// display name): it must not appear in the narrowed candidates.
 			_, _ = w.Write([]byte(`{"items":[
 				{"metadata":{"name":"c-1"},"spec":{"displayName":"prod"}},
-				{"metadata":{"name":"c-2"},"spec":{"displayName":"c-1"}}
+				{"metadata":{"name":"c-2"},"spec":{"displayName":"c-1"}},
+				{"metadata":{"name":"c-xyz"},"spec":{"displayName":"staging"}}
 			]}`))
 		case MintTokensPath:
 			atomic.AddInt32(&mintHits, 1)
@@ -620,6 +622,8 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 	assert.ElementsMatch(t, []string{"c-1", "c-2"}, candidateIDsToken(ce.Candidates))
+	assert.NotContains(t, candidateIDsToken(ce.Candidates), "c-xyz",
+		"non-collider must be excluded from narrowed candidates")
 	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits), "no list scan beyond the collision check")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an ambiguous cluster must never reach the mint call")
 }

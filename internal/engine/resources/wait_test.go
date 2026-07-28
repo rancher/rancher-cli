@@ -413,6 +413,30 @@ func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
 	assert.Contains(t, err.Error(), "Ready=Unknown (waiting for probes: calico, kube-apiserver)")
 }
 
+// TestWaitTimeoutConditionMessageSanitized pins defense-in-depth: a condition
+// message bearing control characters (e.g. an ANSI escape or a Unicode bidi
+// override) is stripped before it enters the timeout error. The sink is the
+// JSON error envelope (which escapes control chars anyway), so this is
+// consistency with the text-rendering sanitizer, not an exploitable hole.
+func TestWaitTimeoutConditionMessageSanitized(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	// \x1b[2J is an ANSI clear-screen sequence: only the ESC byte (0x1b) is a
+	// C0 control character and is stripped; the printable "[2J" suffix remains.
+	// \u202e (U+202E) is a Unicode bidi override (Cf category) and is stripped.
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		conditionObjMsg("Ready", "Unknown", "bad\x1b[2Jmsg with \u202ebidi"),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
+	assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
+	assert.NotContains(t, err.Error(), "\u202e", "bidi override must be stripped")
+}
+
 // TestWaitTimeoutConditionWithoutMessageUnchanged asserts that when the
 // awaited condition has no message, the timeout error keeps the current shape.
 func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
