@@ -47,7 +47,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
 		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions exist and each field only when its own condition does; a disconnected agent adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions exist and each field only when its own condition does; a disconnected agent adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Toolset:     "core",
@@ -98,9 +98,15 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, perr
 	}
 	warnings = append(warnings, pwarn...)
+	var imported bool
 	switch lookup {
 	case provFound:
 		res.Status = statusFrom(prov)
+		// Imported clusters omit spec.rkeConfig entirely — the same signal
+		// the create path pins. Custom clusters carry rkeConfig (poolless),
+		// and BOTH registration pairs apply to them.
+		rkeCfg, hasRKE, _ := unstructured.NestedFieldNoCopy(prov.Object, "spec", "rkeConfig")
+		imported = !hasRKE || rkeCfg == nil
 		pools := machinePoolsFrom(prov)
 		res.MachinePools = &pools
 		machs, machWarn, machErr := clusterMachines(ctx, mgmt, prov.GetName())
@@ -126,6 +132,9 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, rerr
 	}
 	warnings = append(warnings, rwarn...)
+	if imported && reg != nil {
+		reg.markNodeCommandsInapplicable()
+	}
 	res.Registration = reg
 
 	members, mwarn, merr := clusterMembers(ctx, mgmt, clusterID)
@@ -365,7 +374,9 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, clusterID string) (*
 	if !dropped["manifestUrl"] {
 		reg.ManifestURL = obj.ManifestURL
 	}
-	if *reg == (registration{}) {
+	// NotApplicable is set only by Execute after this returns; the emptiness
+	// decision considers only the surfaced string fields.
+	if reg.NodeCommand == "" && reg.InsecureNodeCommand == "" && reg.Command == "" && reg.InsecureCommand == "" && reg.ManifestURL == "" {
 		return nil, warnings, nil
 	}
 	return reg, warnings, nil
@@ -550,6 +561,34 @@ type registration struct {
 	Command             string `json:"command,omitempty"`
 	InsecureCommand     string `json:"insecureCommand,omitempty"`
 	ManifestURL         string `json:"manifestUrl,omitempty"`
+	// NotApplicable names registration fields that are present but do not
+	// apply to this cluster's creation mode: an imported cluster
+	// (provisioning spec.rkeConfig absent) has no node-join workflow, so
+	// nodeCommand/insecureNodeCommand are annotated rather than dropped —
+	// the JSON contract is additive and consumers may pin field presence.
+	// Never names a field the payload does not carry.
+	NotApplicable []string `json:"notApplicable,omitempty"`
+}
+
+// markNodeCommandsInapplicable annotates the node-join pair as not
+// applicable (imported cluster). A placeholder-dropped or server-empty
+// command stays unannotated — the list never names an absent field.
+func (r *registration) markNodeCommandsInapplicable() {
+	if r.NodeCommand != "" {
+		r.NotApplicable = append(r.NotApplicable, "nodeCommand")
+	}
+	if r.InsecureNodeCommand != "" {
+		r.NotApplicable = append(r.NotApplicable, "insecureNodeCommand")
+	}
+}
+
+// regLabel suffixes a registration field label that is present but does
+// not apply to this cluster's creation mode.
+func regLabel(label string, notApplicable bool) string {
+	if notApplicable {
+		return label + " [not applicable: imported cluster]"
+	}
+	return label
 }
 
 // renderClusterText is the IC-1a default rendering: a deliberate
@@ -572,8 +611,12 @@ func renderClusterText(r clusterResult) string {
 	if r.Registration == nil {
 		b.WriteString("  registration: not available\n")
 	} else {
-		writeRegistrationField(&b, "node join", r.Registration.NodeCommand)
-		writeRegistrationField(&b, "node join (insecure)", r.Registration.InsecureNodeCommand)
+		na := map[string]bool{}
+		for _, f := range r.Registration.NotApplicable {
+			na[f] = true
+		}
+		writeRegistrationField(&b, regLabel("node join", na["nodeCommand"]), r.Registration.NodeCommand)
+		writeRegistrationField(&b, regLabel("node join (insecure)", na["insecureNodeCommand"]), r.Registration.InsecureNodeCommand)
 		writeRegistrationField(&b, "import", r.Registration.Command)
 		writeRegistrationField(&b, "import (insecure)", r.Registration.InsecureCommand)
 		writeRegistrationField(&b, "manifestUrl", r.Registration.ManifestURL)

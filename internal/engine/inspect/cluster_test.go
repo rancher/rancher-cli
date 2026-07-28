@@ -1195,6 +1195,85 @@ func TestAgentFrom(t *testing.T) {
 	assert.Equal(t, "waiting", ag.Message)
 }
 
+func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
+	t.Parallel()
+
+	// importedFixture rebuilds the shared fixture with an import-shaped
+	// provisioning CR: spec.rkeConfig omitted entirely (nil, not {}).
+	importedFixture := func(t *testing.T) (*fakeClient, *fakeRoot) {
+		t.Helper()
+		mgmtKind := mustKind(t, "cluster")
+		provKind := mustKind(t, "provisioning-cluster")
+		prov := provClusterFixture("my-import", "c-abc")
+		// provClusterFixture includes rkeConfig:{} by default; remove it to
+		// match the imported-cluster shape (rkeConfig absent, not empty).
+		unstructured.RemoveNestedField(prov.Object, "spec", "rkeConfig")
+		_ = unstructured.SetNestedField(prov.Object, true, "status", "ready")
+		client := newFakeClient().
+			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "imp", "active", "v1.30.4+k3s1")).
+			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
+		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		return client, root
+	}
+
+	t.Run("imported cluster annotates the node-join pair", func(t *testing.T) {
+		t.Parallel()
+		client, root := importedFixture(t)
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		reg, ok := doc["registration"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{"nodeCommand", "insecureNodeCommand"}, reg["notApplicable"])
+		for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
+			assert.Contains(t, reg, field, "no field is dropped — additive contract")
+		}
+
+		assert.Contains(t, res.Text, "node join [not applicable: imported cluster]:")
+		assert.Contains(t, res.Text, "node join (insecure) [not applicable: imported cluster]:")
+		assert.NotContains(t, res.Text, "import [not applicable")
+	})
+
+	t.Run("custom/node-driver cluster stays unannotated", func(t *testing.T) {
+		t.Parallel()
+		client, root := inspectClusterFixture(t) // fixture has spec.rkeConfig.machinePools
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		reg, ok := doc["registration"].(map[string]any)
+		require.True(t, ok)
+		_, has := reg["notApplicable"]
+		assert.False(t, has)
+		assert.NotContains(t, res.Text, "not applicable")
+	})
+
+	t.Run("empty rkeConfig object stays unannotated", func(t *testing.T) {
+		t.Parallel()
+		mgmtKind := mustKind(t, "cluster")
+		provKind := mustKind(t, "provisioning-cluster")
+		prov := provClusterFixture("my-cluster", "c-abc")
+		_ = unstructured.SetNestedField(prov.Object, true, "status", "ready")
+		client := newFakeClient().
+			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
+			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
+		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		reg, ok := doc["registration"].(map[string]any)
+		require.True(t, ok)
+		_, has := reg["notApplicable"]
+		assert.False(t, has, "empty rkeConfig object is not imported")
+		assert.NotContains(t, res.Text, "not applicable")
+	})
+}
+
 func TestInspectClusterAgentConnectivity(t *testing.T) {
 	t.Parallel()
 
