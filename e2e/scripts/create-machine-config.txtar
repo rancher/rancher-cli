@@ -16,6 +16,11 @@ exec rancher create machine-config digitaloceanconfig typo-cfg --set regoin=nyc3
 cp stdout typo-eff.json
 jsonquery typo-eff.json warnings.0 'field(s) pruned by the server: regoin — unknown field?'
 
+# no curated flags → fallthrough warning listing all unset fields.
+# (jsonquery exact-match can't encode the apostrophes; stdout pattern suffices)
+exec rancher create machine-config digitaloceanconfig min-cfg --dry-run -o json
+stdout 'stale: image, region, size, tags'
+
 # apply, then pin the ROOT-level driver fields on the CREATED config —
 # a spec-nested implementation fails here. sshPort is a STRING field on
 # the typed DO CRD (Rancher publishes IntFlag driver fields as strings):

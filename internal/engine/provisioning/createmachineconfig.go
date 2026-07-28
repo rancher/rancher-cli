@@ -188,7 +188,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		if k.Name != doKind {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--%s applies to %s, not %s", cf.flag, doKind, k.Name)).
-				WithHint(fmt.Sprintf("pass --set %s=<value> to set a %s driver field", cf.field, k.Name))
+				WithHint(fmt.Sprintf("pass --set %s=<value> to set %s %s driver field", cf.field, articleFor(k.Name), k.Name))
 		}
 		if cf.isBool {
 			fields[cf.field] = in.Bool(cf.flag)
@@ -243,6 +243,9 @@ func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (saf
 	if w := prunedKeyWarning(obj.Object, dryRun.Object); w != "" {
 		eff.Warnings = append(eff.Warnings, w)
 	}
+	if w := fallthroughWarning(k.Name, in); w != "" {
+		eff.Warnings = append(eff.Warnings, w)
+	}
 	return eff, exec, nil
 }
 
@@ -270,6 +273,49 @@ func prunedKeyWarning(submitted, dryRun map[string]any) string {
 	}
 	sort.Strings(pruned)
 	return fmt.Sprintf("field(s) pruned by the server: %s — unknown field?", strings.Join(pruned, ", "))
+}
+
+// fallthroughWarning returns a warning when the kind has curated VALUE fields
+// (non-bool) that were left unset. Bool fields (monitoring, ipv6,
+// privateNetworking) carry tri-state semantics and can't go stale like
+// value defaults — they are excluded. Returns "" when all value fields are
+// set or the kind has none. The unset field names are sorted for a stable
+// message.
+func fallthroughWarning(kindName string, in runtime.Input) string {
+	meta, ok := kinds.MachineConfigFieldsFor(kindName)
+	if !ok || len(meta.Curated) == 0 {
+		return ""
+	}
+	fieldToFlag := make(map[string]string, len(doCuratedFlags))
+	fieldIsBool := make(map[string]bool, len(doCuratedFlags))
+	for _, cf := range doCuratedFlags {
+		fieldToFlag[cf.field] = cf.flag
+		fieldIsBool[cf.field] = cf.isBool
+	}
+	var unset []string
+	for _, field := range meta.Curated {
+		if fieldIsBool[field] {
+			continue
+		}
+		if !in.IsSet(fieldToFlag[field]) {
+			unset = append(unset, field)
+		}
+	}
+	if len(unset) == 0 {
+		return ""
+	}
+	sort.Strings(unset)
+	return "unset field(s) inherit the node driver's declared defaults, which may be stale: " +
+		strings.Join(unset, ", ") +
+		" — set them explicitly (live exercise: the driver's image default was retired by the provider)"
+}
+
+// articleFor returns "an" when s starts with a vowel, "a" otherwise.
+func articleFor(s string) string {
+	if len(s) > 0 && strings.ContainsRune("aeiouAEIOU", rune(s[0])) {
+		return "an"
+	}
+	return "a"
 }
 
 var _ runtime.MutatingCommand = (*createMachineConfigCmd)(nil)

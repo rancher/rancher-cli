@@ -229,6 +229,31 @@ func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	assert.Contains(t, cerr.Hint, "cc-", "hint must name the exact-ID form")
 }
 
+// TestResolveCloudCredentialAmbiguousCandidatesNarrowed pins run-1 finding:
+// when the display name collides, candidates must contain ONLY the
+// credentials sharing that display name, not every credential of the query.
+func TestResolveCloudCredentialAmbiguousCandidatesNarrowed(t *testing.T) {
+	t.Parallel()
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*secretObj("cc-aaa11", map[string]string{displayNameAnnotation: "Shared"}, nil),
+		*secretObj("cc-bbb22", map[string]string{displayNameAnnotation: "Shared"}, nil),
+		*secretObj("cc-ccc33", map[string]string{displayNameAnnotation: "Other"}, nil),
+	}}
+	client := &fakeClient{list: list}
+	factory := fakeFactory{c: client}
+
+	_, err := ResolveCloudCredential(context.Background(), factory, "Shared")
+	require.Error(t, err)
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
+	require.Len(t, cerr.Candidates, 2, "candidates must be the two colliding credentials, not the unrelated one")
+	ids := []string{cerr.Candidates[0].ID, cerr.Candidates[1].ID}
+	assert.Contains(t, ids, "cc-aaa11")
+	assert.Contains(t, ids, "cc-bbb22")
+	assert.NotContains(t, ids, "cc-ccc33")
+}
+
 func TestResolveCloudCredentialDriverFromDataKeyPrefix(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

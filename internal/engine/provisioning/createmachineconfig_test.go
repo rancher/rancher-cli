@@ -401,7 +401,8 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 
 // TestCreateMachineConfigPlanDiffLessEffect pins MC-11: one server-side
 // dry-run, action=create, identity-only target, no diff, non-destructive,
-// cluster local.
+// cluster local. All curated VALUE fields are set so the fallthrough warning
+// does not fire; bool fields are not set (they can't go stale).
 func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{}
@@ -409,8 +410,8 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 
 	eff, exec, err := cmd.Plan(context.Background(), mcInput{
 		a:  []string{"digitaloceanconfig", "web-pool"},
-		s:  map[string]string{"region": "nyc3"},
-		is: map[string]bool{"region": true},
+		s:  map[string]string{"region": "nyc3", "size": "s-2vcpu-4gb", "image": "ubuntu-24-10-x64", "tags": "web"},
+		is: map[string]bool{"region": true, "size": true, "image": true, "tags": true},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, exec)
@@ -420,29 +421,28 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	assert.Equal(t, "local", eff.Cluster)
 	assert.Empty(t, eff.Diff)
 	assert.False(t, eff.Destructive)
-	assert.Empty(t, eff.Warnings, "no prune → no warning")
+	assert.Empty(t, eff.Warnings, "no prune, all curated set → no warning")
 	assert.Equal(t, "fleet-default", client.createdNS)
 }
 
 // TestCreateMachineConfigPrunedKeyWarning pins MC-12: a top-level key the
 // dry-run response dropped (minus the k8s envelope) is warned about BY
-// NAME; envelope keys never trigger it.
+// NAME; envelope keys never trigger it. Uses amazonec2config (no curated
+// fields) so only the prune warning fires.
 func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "rke-machine-config.cattle.io/v1",
-		"kind":       "DigitaloceanConfig",
+		"kind":       "Amazonec2Config",
 		"metadata":   map[string]any{"name": "web-pool", "namespace": "fleet-default"},
-		"region":     "nyc3",
+		"region":     "us-east-1",
 		"status":     map[string]any{},
 	}}}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
 	eff, _, err := cmd.Plan(context.Background(), mcInput{
-		a:  []string{"digitaloceanconfig", "web-pool"},
-		s:  map[string]string{"region": "nyc3"},
-		is: map[string]bool{"region": true},
-		sl: []string{"regoin=typo"},
+		a:  []string{"amazonec2config", "web-pool"},
+		sl: []string{"region=us-east-1", "regoin=typo"},
 	})
 	require.NoError(t, err)
 	require.Len(t, eff.Warnings, 1)
@@ -578,4 +578,103 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
+}
+
+// TestCreateMachineConfigFallthroughWarning pins the driver-default
+// fallthrough warning: Plan appends a warning when any curated VALUE field
+// is left unset, listing only those unset fields sorted. Bool fields
+// (monitoring, ipv6, privateNetworking) are excluded — they can't go stale
+// like value defaults. No warning when all value fields are set (bools may
+// still be unset); no warning for non-curated kinds.
+func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
+	t.Parallel()
+
+	// allValueFieldsInput sets the four value fields but leaves bools unset.
+	allValueFieldsInput := mcInput{
+		a:  []string{"digitaloceanconfig", "web-pool"},
+		s:  map[string]string{"region": "nyc3", "size": "s-2vcpu-4gb", "image": "ubuntu-24-10-x64", "tags": "web"},
+		is: map[string]bool{"region": true, "size": true, "image": true, "tags": true},
+	}
+
+	t.Run("all-unset emits warning listing only value fields", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+		eff, _, err := cmd.Plan(context.Background(), mcInput{
+			a: []string{"digitaloceanconfig", "web-pool"},
+		})
+		require.NoError(t, err)
+		require.Len(t, eff.Warnings, 1)
+		assert.Equal(t,
+			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
+				"image, region, size, tags"+
+				" — set them explicitly (live exercise: the driver's image default was retired by the provider)",
+			eff.Warnings[0])
+	})
+
+	t.Run("some-set warning lists only the unset value fields", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+		eff, _, err := cmd.Plan(context.Background(), mcInput{
+			a:  []string{"digitaloceanconfig", "web-pool"},
+			s:  map[string]string{"image": "ubuntu-24-10-x64", "region": "nyc3"},
+			is: map[string]bool{"image": true, "region": true},
+		})
+		require.NoError(t, err)
+		require.Len(t, eff.Warnings, 1)
+		assert.Equal(t,
+			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
+				"size, tags"+
+				" — set them explicitly (live exercise: the driver's image default was retired by the provider)",
+			eff.Warnings[0])
+	})
+
+	t.Run("all-value-fields-set bools unset no warning", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+		eff, _, err := cmd.Plan(context.Background(), allValueFieldsInput)
+		require.NoError(t, err)
+		assert.Empty(t, eff.Warnings, "bool fields unset must not trigger the warning")
+	})
+
+	t.Run("non-curated kind no warning", func(t *testing.T) {
+		t.Parallel()
+		client := &mcRecClient{}
+		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
+		eff, _, err := cmd.Plan(context.Background(), mcInput{
+			a: []string{"amazonec2config", "aws-pool"},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, eff.Warnings)
+	})
+}
+
+// TestCreateMachineConfigSetForeignKindHintArticle pins the article-aware
+// hint: "an" before a vowel-initial kind name (azureconfig, amazonec2config),
+// "a" before a consonant-initial kind name (harvesterconfig).
+func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		kind    string
+		article string
+	}{
+		{"azureconfig", "an"},
+		{"amazonec2config", "an"},
+		{"harvesterconfig", "a"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.kind, func(t *testing.T) {
+			t.Parallel()
+			_, err := buildMachineConfig(t, mcInput{
+				a:  []string{tc.kind, "x"},
+				s:  map[string]string{"region": "nyc3"},
+				is: map[string]bool{"region": true},
+			})
+			ce := requireValidation(t, err)
+			assert.Contains(t, ce.Hint, tc.article+" "+tc.kind, "hint article must match kind's initial vowel/consonant")
+		})
+	}
 }
