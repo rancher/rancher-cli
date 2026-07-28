@@ -61,6 +61,8 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	outs := res.Data.(skillOutcomes)
 	require.Len(t, outs, 1)
 	assert.Equal(t, "changed", outs[0].Action)
+	assert.Equal(t, "v1.0.0", outs[0].CLIVersion,
+		"a changed target reports the version that was just installed")
 
 	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
 	require.NoError(t, err)
