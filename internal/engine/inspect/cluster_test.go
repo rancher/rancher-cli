@@ -957,6 +957,154 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
+// TestClusterMachinesLookupTriState pins the LOOKUP → tri-state mapping —
+// not just the serialization of hand-built pointers: failed LIST → nil +
+// warning; successful empty LIST → non-nil empty; canceled → error.
+// Mirrors TestClusterMembersLookupTriState.
+func TestClusterMachinesLookupTriState(t *testing.T) {
+	t.Parallel()
+	machineKind, _ := kinds.Lookup("capimachine")
+
+	failed := newFakeClient().withListErr(machineKind.GVR, errors.New("forbidden"))
+	machines, warns, err := clusterMachines(context.Background(), failed, "my-cluster")
+	require.NoError(t, err)
+	assert.Nil(t, machines, "failed LIST → nil pointer (JSON field omitted)")
+	require.Len(t, warns, 1)
+	assert.Contains(t, warns[0], "machines unavailable")
+
+	empty := newFakeClient().withListNS(machineKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+	machines, warns, err = clusterMachines(context.Background(), empty, "my-cluster")
+	require.NoError(t, err)
+	require.NotNil(t, machines, "verified empty LIST → non-nil pointer")
+	assert.Empty(t, *machines)
+	assert.Empty(t, warns)
+	require.Len(t, empty.listSelectors, 1)
+	assert.Equal(t, capiClusterNameLabel+"=my-cluster", empty.listSelectors[0],
+		"machines LIST must use the cluster-name label selector")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	canceled := newFakeClient().withListErr(machineKind.GVR, context.Canceled)
+	_, _, err = clusterMachines(ctx, canceled, "my-cluster")
+	require.Error(t, err, "caller cancellation aborts the command")
+}
+
+// TestClusterMachinesWithCreateError is the live-exercise scenario: a CAPI
+// Machine carrying a CreateError condition surfaces the message in both text
+// and JSON — the DO 422 that was otherwise invisible to every rancher command.
+func TestClusterMachinesWithCreateError(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	machineKind, _ := kinds.Lookup("capimachine")
+
+	prov := provClusterFixture("my-cluster", "c-abc")
+	machine := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "my-cluster-pool1-abc", "namespace": "fleet-default"},
+		"status": map[string]any{
+			"phase": "Failed",
+			"conditions": []any{
+				map[string]any{
+					"type": "Ready", "status": "False", "reason": "CreateError",
+					"message": "POST https://api.digitalocean.com/v2/droplets: 422 invalid image",
+				},
+			},
+		},
+	}}
+	machineList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*machine}}
+
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}}).
+		withListNS(machineKind.GVR, "fleet-default", machineList)
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+	assert.Empty(t, res.Warnings)
+
+	doc, _ := marshaledDoc(t, res.Data)
+	machinesRaw, ok := doc["machines"].([]any)
+	require.True(t, ok, "machines key must be present and an array")
+	require.Len(t, machinesRaw, 1)
+	m, ok := machinesRaw[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "my-cluster-pool1-abc", m["name"])
+	assert.Equal(t, "Failed", m["phase"])
+	assert.Equal(t, "POST https://api.digitalocean.com/v2/droplets: 422 invalid image", m["error"],
+		"CreateError condition message must surface in the JSON envelope")
+
+	assert.Contains(t, res.Text, "my-cluster-pool1-abc  Failed")
+	assert.Contains(t, res.Text, "POST https://api.digitalocean.com/v2/droplets: 422 invalid image",
+		"CreateError message must appear in the text card")
+}
+
+// TestRenderClusterTextMachinesSection pins the MACHINES section text
+// rendering: unavailable marker, none, and machines with error messages.
+// Mirrors TestRenderClusterTextMembersSection.
+func TestRenderClusterTextMachinesSection(t *testing.T) {
+	t.Parallel()
+	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
+	assert.Contains(t, renderClusterText(r), "MACHINES\n  machines: unavailable\n")
+
+	empty := []clusterMachine{}
+	r.Machines = &empty
+	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n")
+
+	machines := []clusterMachine{
+		{Name: "pool1-abc", Phase: "Running"},
+		{Name: "pool1-def", Phase: "Failed", Error: "CreateError: invalid image"},
+	}
+	r.Machines = &machines
+	text := renderClusterText(r)
+	assert.Contains(t, text,
+		"MACHINES\n  pool1-abc  Running\n  pool1-def  Failed\n    CreateError: invalid image\n")
+}
+
+// TestReadyConditionOverridesStatusReady pins the live-exercise fix: when
+// the Ready condition is present, its status drives the ready field rather
+// than status.ready, which was observed flipping true ~90s before the
+// condition left Unknown.
+func TestReadyConditionOverridesStatusReady(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+
+	prov := provClusterFixture("my-cluster", "c-abc")
+	// status.ready has already flipped true but the Ready condition is False.
+	_ = unstructured.SetNestedField(prov.Object, true, "status", "ready")
+	_ = unstructured.SetNestedSlice(prov.Object, []any{
+		map[string]any{"type": "Ready", "status": "False", "reason": "Waiting", "message": "waiting for nodes"},
+	}, "status", "conditions")
+
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	doc, _ := marshaledDoc(t, res.Data)
+	status, ok := doc["status"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, status["ready"],
+		"Ready condition (False) must override status.ready (true)")
+	assert.Contains(t, res.Text, "ready: false")
+}
+
+// TestMachineConditionMessageSanitized pins the printable sanitizer on
+// machine error messages: escape sequences in provider-sourced condition
+// text must be stripped before they reach the text card.
+func TestMachineConditionMessageSanitized(t *testing.T) {
+	t.Parallel()
+	machines := []clusterMachine{
+		{Name: "pool1-abc", Phase: "Failed", Error: "Error\x1b[2J from provider"},
+	}
+	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}, Machines: &machines}
+	text := renderClusterText(r)
+	assert.NotContains(t, text, "\x1b", "ANSI escape sequences in machine error messages must be stripped")
+	assert.Contains(t, text, "Error[2J from provider", "printable chars around the escape are preserved")
+}
+
 // TestInspectClusterStdoutStderrSplit drives the REAL pipeline
 // (runtime.Run's Text branch) and pins stdout and stderr separately
 // (IC-1a): sections + markers on stdout, "# warning: ..." detail on

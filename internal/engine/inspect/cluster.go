@@ -18,6 +18,12 @@ import (
 // the full message. Join commands are exempt — they are copy-pasted.
 const conditionMessageLimit = 120
 
+// capiClusterNameLabel is the CAPI label key used to filter Machine objects
+// by their owning provisioning cluster (metadata.name of the provisioning
+// cluster CR). Defined as a package const so tests can assert the exact
+// selector without duplicating the string.
+const capiClusterNameLabel = "cluster.x-k8s.io/cluster-name"
+
 type clusterCmd struct {
 	clients engine.ClusterClientFactory
 	roots   engine.RootClientFactory
@@ -40,8 +46,8 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
-		Usage:       "Inspect a cluster: status, machine pools, members, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), the provisioning.cattle.io Cluster's ready flag and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Usage:       "Inspect a cluster: status, machine pools, members, machines, and registration",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Toolset:     "core",
@@ -89,6 +95,12 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		res.Status = statusFrom(prov)
 		pools := machinePoolsFrom(prov)
 		res.MachinePools = &pools
+		machs, machWarn, machErr := clusterMachines(ctx, mgmt, prov.GetName())
+		if machErr != nil {
+			return runtime.Result{}, machErr
+		}
+		warnings = append(warnings, machWarn...)
+		res.Machines = machs
 		if res.Cluster.KubernetesVersion == "" {
 			// IC-4b: pending clusters carry only the DESIRED version on the
 			// provisioning spec; "" stays "" — never a fabricated value.
@@ -195,6 +207,11 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 // are ALWAYS a non-nil slice so the marshaled envelope carries
 // "conditions":[] (IC-5); no phase/transitioning/error fields — they
 // belong to other API representations and never appear on this CR.
+//
+// The Ready field is derived from the Ready condition when present:
+// status.ready can flip true ~90s before the Ready condition leaves Unknown
+// (live exercise observed this), so the condition is authoritative and
+// status.ready is the fallback only when the condition is absent.
 func statusFrom(prov *unstructured.Unstructured) *clusterStatus {
 	ready, _, _ := unstructured.NestedBool(prov.Object, "status", "ready")
 	st := &clusterStatus{Ready: ready, Conditions: []clusterCondition{}}
@@ -209,6 +226,9 @@ func statusFrom(prov *unstructured.Unstructured) *clusterStatus {
 		reason, _, _ := unstructured.NestedString(cm, "reason")
 		message, _, _ := unstructured.NestedString(cm, "message")
 		st.Conditions = append(st.Conditions, clusterCondition{Type: typ, Status: status, Reason: reason, Message: message})
+		if typ == "Ready" {
+			st.Ready = status == "True"
+		}
 	}
 	return st
 }
@@ -329,6 +349,62 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 	return &rows, warnings, nil
 }
 
+// clusterMachines lists the provisioning cluster's CAPI Machines in
+// fleet-default filtered by the cluster.x-k8s.io/cluster-name label. nil =
+// LIST failed (field omitted from JSON, text renders unavailable); non-nil
+// empty = verified no machines. Runs only when the provisioning cluster was
+// found (the caller is responsible for the provFound guard).
+func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, provName string) (*[]clusterMachine, []string, error) {
+	machineKind, _ := kinds.Lookup("capimachine")
+	sel := capiClusterNameLabel + "=" + provName
+	list, err := mgmt.List(ctx, machineKind.GVR, "fleet-default", sel)
+	if err != nil {
+		if lookupCanceled(ctx, err) {
+			return nil, nil, err
+		}
+		return nil, []string{"machines unavailable: " + err.Error()}, nil
+	}
+	rows := make([]clusterMachine, 0, len(list.Items))
+	for i := range list.Items {
+		name := list.Items[i].GetName()
+		phase, _, _ := unstructured.NestedString(list.Items[i].Object, "status", "phase")
+		errMsg := machineErrorMessage(list.Items[i].Object)
+		rows = append(rows, clusterMachine{Name: name, Phase: phase, Error: errMsg})
+	}
+	return &rows, nil, nil
+}
+
+// machineErrorMessage extracts the most relevant failing condition message
+// from a CAPI Machine object. Conditions whose reason contains "Error" (e.g.
+// CreateError from the DigitalOcean 422 live exercise) are preferred; any
+// other non-True condition with a non-empty message is the fallback.
+func machineErrorMessage(obj map[string]any) string {
+	conds, _, _ := unstructured.NestedSlice(obj, "status", "conditions")
+	var errCond, anyCond string
+	for _, c := range conds {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		status, _, _ := unstructured.NestedString(cm, "status")
+		reason, _, _ := unstructured.NestedString(cm, "reason")
+		message, _, _ := unstructured.NestedString(cm, "message")
+		if status == "True" || message == "" {
+			continue
+		}
+		if anyCond == "" {
+			anyCond = message
+		}
+		if strings.Contains(reason, "Error") && errCond == "" {
+			errCond = message
+		}
+	}
+	if errCond != "" {
+		return errCond
+	}
+	return anyCond
+}
+
 // clusterResult is `inspect cluster`'s payload — the JSON shape IS the
 // agent contract (IC-5). Pointer semantics carry the tri-state: nil =
 // section absent (never null/{}), a nil *[]machinePool = absent while a
@@ -337,12 +413,22 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 // distinguish them). ProvisioningNote is RESERVED for confirmed absence,
 // at the root.
 type clusterResult struct {
-	Cluster          clusterIdentity  `json:"cluster"`
-	ProvisioningNote string           `json:"provisioningNote,omitempty"`
-	Status           *clusterStatus   `json:"status,omitempty"`
-	MachinePools     *[]machinePool   `json:"machinePools,omitempty"`
-	Members          *[]clusterMember `json:"members,omitempty"`
-	Registration     *registration    `json:"registration,omitempty"`
+	Cluster          clusterIdentity   `json:"cluster"`
+	ProvisioningNote string            `json:"provisioningNote,omitempty"`
+	Status           *clusterStatus    `json:"status,omitempty"`
+	MachinePools     *[]machinePool    `json:"machinePools,omitempty"`
+	Members          *[]clusterMember  `json:"members,omitempty"`
+	Machines         *[]clusterMachine `json:"machines,omitempty"`
+	Registration     *registration     `json:"registration,omitempty"`
+}
+
+type clusterMachine struct {
+	Name  string `json:"name"`
+	Phase string `json:"phase"`
+	// Error is the first failing condition message (preferring conditions
+	// whose reason contains "Error"); omitted when no failing condition
+	// carries a message.
+	Error string `json:"error,omitempty"`
 }
 
 type clusterMember struct {
@@ -463,6 +549,25 @@ func renderClusterText(r clusterResult) string {
 				fmt.Fprintf(&b, "  %s (%s)  %s\n", printable(m.DisplayName), printable(m.Principal), printable(m.Role))
 			} else {
 				fmt.Fprintf(&b, "  %s  %s\n", printable(m.Principal), printable(m.Role))
+			}
+		}
+	}
+
+	b.WriteString("\nMACHINES\n")
+	switch {
+	case r.Machines == nil && r.ProvisioningNote != "":
+		b.WriteString("  " + r.ProvisioningNote + "\n")
+	case r.Machines == nil:
+		b.WriteString("  machines: unavailable\n")
+	case len(*r.Machines) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, m := range *r.Machines {
+			// Name and phase are server-sourced strings too — same
+			// sanitizer as the error message and the members section.
+			fmt.Fprintf(&b, "  %s  %s\n", printable(m.Name), printable(m.Phase))
+			if m.Error != "" {
+				fmt.Fprintf(&b, "    %s\n", printable(m.Error))
 			}
 		}
 	}
