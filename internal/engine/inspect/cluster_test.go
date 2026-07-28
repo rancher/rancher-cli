@@ -1133,3 +1133,120 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 	assert.Contains(t, stderr, "# warning: registration token unavailable")
 	assert.Contains(t, stderr, "default-token vanished")
 }
+
+func TestAgentFrom(t *testing.T) {
+	t.Parallel()
+
+	obj := mgmtClusterFixture("c-1", "one", "active", "")
+	assert.Nil(t, agentFrom(obj), "no conditions → no agent section")
+
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Provisioned", "status": "True"},
+	}, "status", "conditions")
+	assert.Nil(t, agentFrom(obj), "unrelated conditions → no agent section")
+
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Connected", "status": "True"},
+		map[string]any{"type": "Ready", "status": "True"},
+	}, "status", "conditions")
+	ag := agentFrom(obj)
+	require.NotNil(t, ag)
+	require.NotNil(t, ag.Connected)
+	require.NotNil(t, ag.Ready)
+	assert.True(t, *ag.Connected)
+	assert.True(t, *ag.Ready)
+	assert.Empty(t, ag.Message)
+
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Ready", "status": "False", "reason": "Disconnected", "message": "not ready"},
+		map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "Cluster agent is not connected"},
+	}, "status", "conditions")
+	ag = agentFrom(obj)
+	require.NotNil(t, ag)
+	assert.False(t, *ag.Connected)
+	assert.False(t, *ag.Ready)
+	assert.Equal(t, "Cluster agent is not connected", ag.Message, "Connected's message wins over Ready's")
+
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Ready", "status": "False", "message": "waiting"},
+	}, "status", "conditions")
+	ag = agentFrom(obj)
+	require.NotNil(t, ag)
+	assert.Nil(t, ag.Connected, "absent Connected condition stays nil, never fabricated")
+	require.NotNil(t, ag.Ready)
+	assert.False(t, *ag.Ready)
+	assert.Equal(t, "waiting", ag.Message)
+}
+
+func TestInspectClusterAgentConnectivity(t *testing.T) {
+	t.Parallel()
+
+	withMgmtConditions := func(t *testing.T, conds []any) (*fakeClient, *fakeRoot) {
+		t.Helper()
+		client, root := inspectClusterFixture(t)
+		mgmtKind := mustKind(t, "cluster")
+		mgmt := mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")
+		_ = unstructured.SetNestedSlice(mgmt.Object, conds, "status", "conditions")
+		client.withObject(mgmtKind.GVR, "", "c-abc", mgmt)
+		return client, root
+	}
+
+	t.Run("disconnected agent surfaces in envelope, text, and warnings", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "Cluster agent is not connected"},
+			map[string]any{"type": "Ready", "status": "False", "reason": "Disconnected", "message": "Cluster agent is not connected"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		agent, ok := doc["agent"].(map[string]any)
+		require.True(t, ok, "agent section present when conditions exist")
+		assert.Equal(t, false, agent["connected"])
+		assert.Equal(t, false, agent["ready"])
+		assert.Equal(t, "Cluster agent is not connected", agent["message"])
+
+		assert.Contains(t, res.Text, "agent: disconnected — Cluster agent is not connected")
+		require.NotEmpty(t, res.Warnings)
+		assert.Equal(t, "cluster agent is not connected: Cluster agent is not connected", res.Warnings[0])
+	})
+
+	t.Run("connected agent renders healthy with no warning", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Connected", "status": "True"},
+			map[string]any{"type": "Ready", "status": "True"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		agent, ok := doc["agent"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, true, agent["connected"])
+		assert.Equal(t, true, agent["ready"])
+		_, hasMsg := agent["message"]
+		assert.False(t, hasMsg, "no message when healthy")
+
+		assert.Contains(t, res.Text, "agent: connected\n")
+		for _, w := range res.Warnings {
+			assert.NotContains(t, w, "agent")
+		}
+	})
+
+	t.Run("no conditions omits the section entirely", func(t *testing.T) {
+		t.Parallel()
+		client, root := inspectClusterFixture(t)
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		_, ok := doc["agent"]
+		assert.False(t, ok, "agent key absent, never null/{}")
+		assert.NotContains(t, res.Text, "agent:")
+	})
+}

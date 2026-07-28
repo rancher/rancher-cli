@@ -153,6 +153,9 @@ cluster, or a failed management read, is a structured error with a
 non-zero exit. Only the provisioning and registration sections degrade —
 to `warnings`, or a `provisioningNote` for a confirmed missing
 provisioning CR. Check `data.status` presence before reading conditions.
+`data.agent` carries the management Cluster's agent connectivity
+(`connected`/`ready` + failing message) — a disconnected agent also lands
+in `warnings`, so check it before trusting `data.status.ready`.
 
 ### 5. Branch on structured errors, not text
 
