@@ -663,6 +663,11 @@ func renderMachinesSection(b *strings.Builder, r clusterResult) {
 		b.WriteString("  " + r.ProvisioningNote + "\n")
 	case r.Machines == nil:
 		b.WriteString("  machines: unavailable\n")
+	case len(*r.Machines) == 0 && r.MachinePools != nil && len(*r.MachinePools) == 0:
+		// Same signal as the MACHINE POOLS empty state: a poolless
+		// provisioning CR means imported or custom — no CAPI Machines is
+		// the expected shape, not a gap.
+		b.WriteString("  none (imported or custom cluster)\n")
 	case len(*r.Machines) == 0:
 		b.WriteString("  none\n")
 	default:

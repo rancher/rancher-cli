@@ -1060,6 +1060,23 @@ func TestRenderClusterTextMachinesSection(t *testing.T) {
 	text := renderClusterText(r)
 	assert.Contains(t, text,
 		"MACHINES\n  pool1-abc  Running\n  pool1-def  Failed\n    CreateError: invalid image\n")
+
+	emptyMachines := []clusterMachine{}
+	emptyPools := []machinePool{}
+	r.Machines = &emptyMachines
+	r.MachinePools = &emptyPools
+	assert.Contains(t, renderClusterText(r), "MACHINES\n  none (imported or custom cluster)\n",
+		"verified-empty machines + verified-empty pools reads as expected for imported/custom")
+
+	pools := []machinePool{{Name: "pool1", Quantity: 1}}
+	r.MachinePools = &pools
+	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n",
+		"empty machines with real pools stays a plain none")
+
+	r.MachinePools = nil
+	r.ProvisioningNote = ""
+	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n",
+		"empty machines with pools unavailable stays a plain none")
 }
 
 // TestReadyConditionOverridesStatusReady pins the live-exercise fix: when
