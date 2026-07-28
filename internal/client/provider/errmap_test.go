@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -128,5 +129,55 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, "bad token", ce.Message)
 		assert.Empty(t, ce.Hint)
+	})
+}
+
+// TestMapErrAgentDisconnected covers the Rancher proxy's post-registration
+// agent drop: the proxy answers with a plain-text 5xx body ("error trying
+// to reach service: cluster agent disconnected") that client-go wraps as a
+// generic InternalError StatusError with an UnexpectedServerResponse cause.
+// Same underlying condition as the pre-registration 503 — classified
+// retryable with a matching hint. A genuine k8s-Status InternalError (e.g.
+// Rancher's stale-precondition delete, fidelity/probes.go) must NOT match.
+func TestMapErrAgentDisconnected(t *testing.T) {
+	gr := schema.GroupResource{Group: "", Resource: "nodes"}
+	const wantHint = "the cluster agent is disconnected — retry once the cluster reconnects"
+
+	t.Run("post-registration disconnect maps to GENERIC+retryable+hint", func(t *testing.T) {
+		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
+			"error trying to reach service: cluster agent disconnected", 0, true)
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable, "disconnected agent must be retryable")
+		assert.Equal(t, wantHint, ce.Hint)
+	})
+
+	t.Run("genuine k8s InternalError stays non-retryable", func(t *testing.T) {
+		got := mapErr(apierrors.NewInternalError(errors.New("etcdserver: request timed out")))
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.False(t, ce.Retryable)
+		assert.Empty(t, ce.Hint)
+	})
+
+	t.Run("unexpected 500 without the disconnect text stays non-retryable", func(t *testing.T) {
+		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
+			"upstream connect error", 0, true)
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.False(t, ce.Retryable)
+		assert.Empty(t, ce.Hint)
+	})
+
+	t.Run("503 keeps its registration-window classification (no regression)", func(t *testing.T) {
+		got := mapErr(apierrors.NewServiceUnavailable("ClusterUnavailable 503"))
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.True(t, ce.Retryable)
+		assert.Contains(t, ce.Hint, "may not be registered yet")
 	})
 }

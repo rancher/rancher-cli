@@ -1,12 +1,14 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // deniedFallbackMessage substitutes for a Forbidden/Unauthorized error
@@ -43,6 +45,10 @@ func mapErr(err error) error {
 		return clierr.New(clierr.CodeGeneric, err.Error()).
 			WithRetryable(true).
 			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
+	case isAgentDisconnected(err):
+		return clierr.New(clierr.CodeGeneric, err.Error()).
+			WithRetryable(true).
+			WithHint("the cluster agent is disconnected — retry once the cluster reconnects")
 	default:
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
@@ -57,4 +63,34 @@ func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 	}
 	ce.Message = deniedFallbackMessage(status)
 	return ce.WithHint("rancher auth check")
+}
+
+// isAgentDisconnected reports the Rancher proxy's post-registration
+// agent-disconnect failure. The proxy answers a request to a downstream
+// cluster whose agent has dropped with a plain-text 5xx body ("error
+// trying to reach service: cluster agent disconnected"); client-go wraps
+// any such non-Status 5xx as a generic InternalError StatusError with an
+// UnexpectedServerResponse cause. There is no typed discriminator for the
+// disconnect itself, so after the typed narrowing (InternalError reason +
+// UnexpectedServerResponse cause — a genuine k8s Status 500, e.g.
+// Rancher's stale-precondition delete in fidelity/probes.go, carries
+// neither) the message substring is the last-resort test.
+func isAgentDisconnected(err error) bool {
+	if !apierrors.IsInternalError(err) {
+		return false
+	}
+	var se *apierrors.StatusError
+	if !errors.As(err, &se) {
+		return false
+	}
+	unexpected := false
+	if d := se.ErrStatus.Details; d != nil {
+		for _, c := range d.Causes {
+			if c.Type == metav1.CauseTypeUnexpectedServerResponse {
+				unexpected = true
+				break
+			}
+		}
+	}
+	return unexpected && strings.Contains(se.ErrStatus.Message, "cluster agent disconnected")
 }
