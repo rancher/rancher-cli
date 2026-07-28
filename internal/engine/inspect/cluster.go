@@ -88,7 +88,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if ag := res.Agent; ag != nil && ag.Connected != nil && !*ag.Connected {
 		w := "cluster agent is not connected"
 		if ag.Message != "" {
-			w += ": " + ag.Message
+			w += ": " + engine.Printable(ag.Message)
 		}
 		warnings = append(warnings, w)
 	}
