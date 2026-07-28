@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -184,13 +185,15 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 			name:        "k3s missing",
 			routes:      map[string][]string{rke2ReleasePath: {"v1.30.5+rke2r1"}},
 			wantDistros: []string{"rke2"},
-			wantWarns:   1,
+			// k3s 404-degrade warn + rke2 missing-default warn (no settings in this fixture).
+			wantWarns: 2,
 		},
 		{
 			name:        "rke2 missing",
 			routes:      map[string][]string{k3sReleasePath: {"v1.30.5+k3s1"}},
 			wantDistros: []string{"k3s"},
-			wantWarns:   1,
+			// rke2 404-degrade warn + k3s missing-default warn (no settings in this fixture).
+			wantWarns: 2,
 		},
 		{
 			name:        "both missing",
@@ -341,14 +344,15 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 		Rows() [][]string
 	})
 	require.True(t, ok, "Result.Data must implement output.Tabular")
-	assert.Equal(t, []string{"DISTRO", "VERSION", "DEFAULT", "SUPPORTED"}, tab.Columns())
+	assert.Equal(t, []string{"DISTRO", "VERSION", "DEFAULT", "NEWEST", "SUPPORTED"}, tab.Columns())
 
 	rowsByVersion := map[string][]string{}
 	for _, row := range tab.Rows() {
 		rowsByVersion[row[1]] = row
 	}
-	assert.Equal(t, []string{"rke2", "v1.12.0+rke2r1", "yes", "yes"}, rowsByVersion["v1.12.0+rke2r1"])
-	assert.Equal(t, []string{"rke2", "v1.20.0+rke2r1", "no", "no"}, rowsByVersion["v1.20.0+rke2r1"])
+	// v1.12.0 is the default and v1.20.0 is the newest (highest semver).
+	assert.Equal(t, []string{"rke2", "v1.12.0+rke2r1", "yes", "no", "yes"}, rowsByVersion["v1.12.0+rke2r1"])
+	assert.Equal(t, []string{"rke2", "v1.20.0+rke2r1", "no", "yes", "no"}, rowsByVersion["v1.20.0+rke2r1"])
 
 	// The JSON envelope must also carry the raw range for transparency.
 	// Encoded with SetEscapeHTML(false), matching render.go's own convention
@@ -360,6 +364,144 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 	require.NoError(t, enc.Encode(res.Data))
 	assert.Contains(t, buf.String(), "supportedRange")
 	assert.Contains(t, buf.String(), ">=1.11.0 <=1.14.x")
+}
+
+// TestFetchVersionsNewestMarkedWhenSettingsPresent verifies that the highest
+// semver-ordered version per distro has Newest=true, that Default is marked
+// honestly from the setting, and that no "no default" warning is emitted when
+// both distro settings resolve to a non-empty value.
+func TestFetchVersionsNewestMarkedWhenSettingsPresent(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"v1.30.5+rke2r1", "v1.30.6+rke2r1"},
+		k3sReleasePath:  {"v1.30.5+k3s1", "v1.30.6+k3s1"},
+	}))
+	defer srv.Close()
+
+	client := settingsClient(map[string]*unstructured.Unstructured{
+		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.6+rke2r1"),
+		k3sDefaultVersionSetting:  settingObj(k3sDefaultVersionSetting, "v1.30.5+k3s1"),
+	})
+	factory := fakeFactory{c: client}
+
+	rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+
+	byKey := map[string]Version{}
+	for _, r := range rows {
+		byKey[r.Distro+"/"+r.Version] = r
+	}
+
+	assert.True(t, byKey["rke2/v1.30.6+rke2r1"].Default, "rke2 default setting names v1.30.6+rke2r1")
+	assert.True(t, byKey["rke2/v1.30.6+rke2r1"].Newest, "rke2 newest must be v1.30.6")
+	assert.False(t, byKey["rke2/v1.30.5+rke2r1"].Default)
+	assert.False(t, byKey["rke2/v1.30.5+rke2r1"].Newest)
+	assert.True(t, byKey["k3s/v1.30.5+k3s1"].Default, "k3s default setting names v1.30.5+k3s1")
+	assert.False(t, byKey["k3s/v1.30.5+k3s1"].Newest)
+	assert.True(t, byKey["k3s/v1.30.6+k3s1"].Newest, "k3s newest must be v1.30.6")
+	assert.False(t, byKey["k3s/v1.30.6+k3s1"].Default)
+
+	for _, w := range warnings {
+		assert.NotContains(t, w, "no default", "no missing-default warning expected when settings are present")
+	}
+}
+
+// TestFetchVersionsNewestMarkedWhenSettingsAbsent verifies that when the
+// default-version settings are absent (getSettingValue degrades to ""),
+// Default is false everywhere, a per-distro warning is emitted, and Newest
+// is still correctly marked.
+func TestFetchVersionsNewestMarkedWhenSettingsAbsent(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"v1.30.5+rke2r1", "v1.30.6+rke2r1"},
+		k3sReleasePath:  {"v1.30.5+k3s1", "v1.30.6+k3s1"},
+	}))
+	defer srv.Close()
+
+	factory := fakeFactory{c: settingsClient(nil)}
+
+	rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+
+	for _, r := range rows {
+		assert.False(t, r.Default, "Default must be false for all rows when no setting is present")
+	}
+
+	byKey := map[string]Version{}
+	for _, r := range rows {
+		byKey[r.Distro+"/"+r.Version] = r
+	}
+	assert.True(t, byKey["rke2/v1.30.6+rke2r1"].Newest, "rke2 newest still marked when settings absent")
+	assert.True(t, byKey["k3s/v1.30.6+k3s1"].Newest, "k3s newest still marked when settings absent")
+
+	var foundRKE2Warn, foundK3SWarn bool
+	for _, w := range warnings {
+		if strings.Contains(w, rke2DefaultVersionSetting) {
+			foundRKE2Warn = true
+		}
+		if strings.Contains(w, k3sDefaultVersionSetting) {
+			foundK3SWarn = true
+		}
+	}
+	assert.True(t, foundRKE2Warn, "expected warning about missing %s setting", rke2DefaultVersionSetting)
+	assert.True(t, foundK3SWarn, "expected warning about missing %s setting", k3sDefaultVersionSetting)
+}
+
+// TestFetchVersionsNewestPicksSemverMaxNotLexicographic verifies that Newest
+// is assigned by true semver ordering, not lexicographic string comparison.
+// v1.9.x < v1.10.x semantically, but "v1.9" > "v1.10" lexicographically
+// because the digit "9" is greater than "1" at the minor-version position.
+func TestFetchVersionsNewestPicksSemverMaxNotLexicographic(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"v1.9.2+rke2r1", "v1.10.1+rke2r1"},
+		// Empty k3s route serves a clean empty list; with no default-version
+		// settings in this fixture, missing-default warnings are generated
+		// and deliberately ignored — this test asserts Newest only.
+		k3sReleasePath: {},
+	}))
+	defer srv.Close()
+
+	factory := fakeFactory{c: settingsClient(nil)}
+
+	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	byVersion := map[string]Version{}
+	for _, r := range rows {
+		byVersion[r.Version] = r
+	}
+	assert.False(t, byVersion["v1.9.2+rke2r1"].Newest, "v1.9.2 is not the semver max")
+	assert.True(t, byVersion["v1.10.1+rke2r1"].Newest, "v1.10.1 is the semver max even though '9' > '1' lexicographically")
+}
+
+// TestFetchVersionsNewestReleaseNumberTieBreaker verifies that when the semver
+// core is equal across two versions, the higher rN release number wins.
+func TestFetchVersionsNewestReleaseNumberTieBreaker(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"v1.30.5+rke2r1", "v1.30.5+rke2r2"},
+		// See the fixture note in the semver-max test above: warnings are
+		// deliberately ignored, only Newest is under test.
+		k3sReleasePath: {},
+	}))
+	defer srv.Close()
+
+	factory := fakeFactory{c: settingsClient(nil)}
+
+	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	byVersion := map[string]Version{}
+	for _, r := range rows {
+		byVersion[r.Version] = r
+	}
+	assert.False(t, byVersion["v1.30.5+rke2r1"].Newest, "r1 is not the newest when r2 is present")
+	assert.True(t, byVersion["v1.30.5+rke2r2"].Newest, "r2 is the newest release for the same semver core")
 }
 
 func boolPtr(b bool) *bool { return &b }

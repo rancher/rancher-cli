@@ -66,6 +66,9 @@ type Version struct {
 	Distro  string `json:"distro"` // "rke2" | "k3s"
 	Version string `json:"version"`
 	Default bool   `json:"default"`
+	// Newest is true for the highest semver-ordered version in its distro
+	// (semver core then rN suffix). Absent from JSON when false (omitempty).
+	Newest bool `json:"newest,omitempty"`
 	// Supported reports whether Version falls inside the server's
 	// ui-k8s-supported-versions-range setting (spec D-7's
 	// in-supported-range?, review R1-5). nil = range setting absent or
@@ -83,6 +86,67 @@ func normalizeVersion(raw string) string {
 		v = v[:i]
 	}
 	return v
+}
+
+// parseVersionKey extracts the comparable parts of a raw channel-server
+// version string (e.g. "v1.34.1+rke2r1" or "v1.30.5+k3s1") into
+// (major, minor, patch, releaseNum). ok is false when the semver core cannot
+// be parsed as MAJOR.MINOR.PATCH. The release number is the trailing decimal
+// integer in the build-metadata suffix ("rke2r1" → 1, "k3s1" → 1,
+// "rke2r2" → 2); it is 0 when no such suffix exists.
+func parseVersionKey(raw string) (major, minor, patch, releaseNum int, ok bool) {
+	v := strings.TrimPrefix(raw, "v")
+	semCore := v
+	rel := 0
+	if i := strings.Index(v, "+"); i >= 0 {
+		semCore = v[:i]
+		suffix := v[i+1:]
+		j := len(suffix)
+		for j > 0 && suffix[j-1] >= '0' && suffix[j-1] <= '9' {
+			j--
+		}
+		if j < len(suffix) {
+			rel, _ = strconv.Atoi(suffix[j:])
+		}
+	}
+	parts := strings.SplitN(semCore, ".", 3)
+	if len(parts) != 3 {
+		return 0, 0, 0, 0, false
+	}
+	maj, errMaj := strconv.Atoi(parts[0])
+	min, errMin := strconv.Atoi(parts[1])
+	pat, errPat := strconv.Atoi(parts[2])
+	if errMaj != nil || errMin != nil || errPat != nil {
+		return 0, 0, 0, 0, false
+	}
+	return maj, min, pat, rel, true
+}
+
+// compareVersionStrings returns -1, 0, or 1 comparing two raw version strings
+// by semver core (MAJOR.MINOR.PATCH) then by release number (the trailing rN
+// integer in the build-metadata suffix). An unparseable string sorts below any
+// parseable one.
+func compareVersionStrings(a, b string) int {
+	aMaj, aMin, aPat, aRel, aOk := parseVersionKey(a)
+	bMaj, bMin, bPat, bRel, bOk := parseVersionKey(b)
+	switch {
+	case !aOk && !bOk:
+		return 0
+	case !aOk:
+		return -1
+	case !bOk:
+		return 1
+	}
+	if c := compareTriple(aMaj, aMin, aPat, bMaj, bMin, bPat, false); c != 0 {
+		return c
+	}
+	if aRel < bRel {
+		return -1
+	}
+	if aRel > bRel {
+		return 1
+	}
+	return 0
 }
 
 // rangeClause is one comparator+operand pair from a parsed
@@ -369,8 +433,22 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	}
 	rows := make([]Version, 0, total)
 	for i, d := range distroSpecs {
-		for _, v := range results[i].versions {
+		vs := results[i].versions
+		if len(vs) > 0 && results[i].defaultVersion == "" {
+			warnings = append(warnings, fmt.Sprintf("no %s setting on the server; no default marked", d.defaultSetting))
+		}
+		start := len(rows)
+		for _, v := range vs {
 			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == results[i].defaultVersion, Supported: versionSupported(rangeRaw, v)})
+		}
+		if len(vs) > 0 {
+			newestIdx := start
+			for j := start + 1; j < len(rows); j++ {
+				if compareVersionStrings(rows[j].Version, rows[newestIdx].Version) > 0 {
+					newestIdx = j
+				}
+			}
+			rows[newestIdx].Newest = true
 		}
 	}
 	return rows, rangeRaw, warnings, nil
@@ -401,7 +479,7 @@ type versionsResult struct {
 }
 
 func (r versionsResult) Columns() []string {
-	return []string{"DISTRO", "VERSION", "DEFAULT", "SUPPORTED"}
+	return []string{"DISTRO", "VERSION", "DEFAULT", "NEWEST", "SUPPORTED"}
 }
 
 func (r versionsResult) Rows() [][]string {
@@ -411,6 +489,10 @@ func (r versionsResult) Rows() [][]string {
 		if v.Default {
 			def = "yes"
 		}
+		newest := "no"
+		if v.Newest {
+			newest = "yes"
+		}
 		sup := ""
 		if v.Supported != nil {
 			sup = "no"
@@ -418,7 +500,7 @@ func (r versionsResult) Rows() [][]string {
 				sup = "yes"
 			}
 		}
-		out = append(out, []string{v.Distro, v.Version, def, sup})
+		out = append(out, []string{v.Distro, v.Version, def, newest, sup})
 	}
 	return out
 }
