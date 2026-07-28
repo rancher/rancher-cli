@@ -58,6 +58,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
+| `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe — used by the auth check identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
@@ -95,6 +96,7 @@ graph TD
     config["internal/config"]
     fakehelper["internal/config/testdata/fakehelper"]
     credhelper["credhelper"]
+    selfuser["internal/client/selfuser"]
     provider["internal/client/provider"]
     kube["internal/client/kube"]
     httpx["internal/client/httpx"]
@@ -211,6 +213,9 @@ graph TD
     rbac --> safety
     rbac --> clierr
 
+    provisioning --> selfuser
+
+    provider --> selfuser
     provider --> engine
     provider --> kube
     provider --> config
@@ -266,6 +271,18 @@ server, which authorizes it with the *same* verb as the real write. An agent wit
 read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` — that means
 "the write would be denied", **not** "dry-run is broken". The Norman-tier / no-conflict-
 detection warning is emitted on both the dry-run Effect and the applied result.
+
+**Deliberate Plan-time network write: `create cluster` creatorId pre-stamping.** Before
+the server-side dry-run, `create cluster` resolves the caller's identity via the
+ext.cattle.io/v1 SelfUser probe — a real (non-dry-run) Create — and stamps the
+resolved id into the `field.cattle.io/creatorId` annotation. rancher-webhook's mutator
+stamps this annotation from `userInfo` on real creates but skips dry-run, while its
+validator requires the annotation on dry-run; pre-stamping makes the dry-run honest. If
+the probe fails, a `"creatorId not stamped"` warning is emitted and the create proceeds
+unstamped — rancher-webhook may then deny the dry-run, but a real `--apply` create is
+still expected to succeed (the mutator stamps identity server-side on real creates).
+This is the one deliberate network write during Plan; all other writes are deferred into
+the exec closure and run only after the `--apply` gate.
 
 **Read flow** (`ReadCommand`, e.g. `get pod`): `validateInput` → `Execute(ctx, in,
 prompter)` → render. `--dry-run` on a read command is rejected with

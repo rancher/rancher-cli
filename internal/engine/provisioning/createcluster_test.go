@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -39,12 +41,38 @@ var _ runtime.Input = ccInput{}
 // object exactly as PlanCreate's dry-run/real-write sequence sends it —
 // mirrors projects_test.go's recClient, extended with the Get/List a
 // node-driver Plan also needs (cloud-credential resolution).
+//
+// probeErr, probeEmpty, and probeUserID control the ext.cattle.io SelfUser
+// Create probe added by the creatorId stamping feature. Precedence:
+// probeErr (checked first) > probeEmpty > probeUserID/default. Only one of
+// these fields may be non-zero — misuse panics in Create. Calls with
+// selfuser.GVR are NOT recorded into created/dryRuns — only
+// provisioning-cluster creates are. When none is set, probeUserID defaults
+// to "u-default": every test's created object then carries the creatorId
+// annotation with that synthetic id (a deliberate side effect — a fixture
+// asserting clean annotations must set probeErr or probeEmpty to opt out).
+// probeEmpty returns a SelfUser WITHOUT status.userID (empty id, nil error).
+//
+// createErr, when non-nil, causes Create to return an error for the
+// provisioning-cluster GVR (used to exercise the stamp-warning-fold-on-
+// PlanCreate-error path). returnCreatorID, when non-empty, overrides the
+// creatorId annotation in the object returned from a real (non-dry-run)
+// provisioning-cluster create — used to test post-apply verification.
+// returnNoAnnotations strips ALL annotations from that returned object
+// (a trimmed create response) — post-apply verification must then skip,
+// not report a false mismatch.
 type ccRecClient struct {
-	objects   map[string]*unstructured.Unstructured
-	list      *unstructured.UnstructuredList
-	created   *unstructured.Unstructured
-	createdNS string
-	dryRuns   []bool
+	objects             map[string]*unstructured.Unstructured
+	list                *unstructured.UnstructuredList
+	created             *unstructured.Unstructured
+	createdNS           string
+	dryRuns             []bool
+	probeErr            error
+	probeEmpty          bool
+	probeUserID         string
+	createErr           error
+	returnCreatorID     string
+	returnNoAnnotations bool
 }
 
 func (r *ccRecClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
@@ -61,10 +89,54 @@ func (r *ccRecClient) List(context.Context, schema.GroupVersionResource, string,
 	return r.list, nil
 }
 
-func (r *ccRecClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (r *ccRecClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if gvr == selfuser.GVR {
+		set := 0
+		if r.probeErr != nil {
+			set++
+		}
+		if r.probeEmpty {
+			set++
+		}
+		if r.probeUserID != "" {
+			set++
+		}
+		if set > 1 {
+			panic("ccRecClient: only one of probeErr, probeEmpty, probeUserID may be set")
+		}
+		if r.probeErr != nil {
+			return nil, r.probeErr
+		}
+		if r.probeEmpty {
+			return obj.DeepCopy(), nil
+		}
+		uid := r.probeUserID
+		if uid == "" {
+			uid = "u-default"
+		}
+		result := obj.DeepCopy()
+		_ = unstructured.SetNestedField(result.Object, uid, "status", "userID")
+		return result, nil
+	}
+	if r.createErr != nil {
+		return nil, r.createErr
+	}
 	r.created, r.createdNS = obj, ns
 	r.dryRuns = append(r.dryRuns, dryRun)
-	return obj, nil
+	result := obj
+	if !dryRun && r.returnNoAnnotations {
+		result = obj.DeepCopy()
+		result.SetAnnotations(nil)
+	} else if !dryRun && r.returnCreatorID != "" {
+		result = obj.DeepCopy()
+		ann := result.GetAnnotations()
+		if ann == nil {
+			ann = map[string]string{}
+		}
+		ann[creatorIDAnnotation] = r.returnCreatorID
+		result.SetAnnotations(ann)
+	}
+	return result, nil
 }
 
 func (r *ccRecClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
@@ -539,4 +611,253 @@ func TestNewCreateClusterDescribe(t *testing.T) {
 	assert.True(t, d.Auth)
 	require.Len(t, d.Args, 1)
 	assert.True(t, d.Args[0].Required)
+}
+
+// TestCreateClusterCreatorID covers all creatorId stamping outcomes in one
+// table, following the TestCreateClusterModeExclusivity convention.
+//
+// Cases: stamped-success (probe returns a valid id), error-degrade (probe
+// errors), empty-id-degrade (probe returns no status.userID), malformed-id-
+// degrade (probe returns an id failing the DNS-1123-ish pattern), and
+// ordering (both a version warning and the stamp warning present — stamp
+// comes last).
+func TestCreateClusterCreatorID(t *testing.T) {
+	t.Parallel()
+
+	// Set up a version server reused by the ordering case only. t.Cleanup,
+	// NOT defer: the subtests are parallel, so a defer would close the
+	// server when this parent function returns — before the subtests run —
+	// silently degrading versionWarnings to nil. t.Cleanup waits for
+	// parallel subtests to finish.
+	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
+		rke2ReleasePath: {"v1.30.5+rke2r1"},
+		k3sReleasePath:  {},
+	}))
+	t.Cleanup(srv.Close)
+
+	cases := []struct {
+		name          string
+		probeErr      error
+		probeEmpty    bool
+		probeUserID   string
+		input         ccInput
+		objects       map[string]*unstructured.Unstructured
+		roots         engine.RootClientFactory
+		wantStamped   string
+		wantStampWarn bool
+		wantStampLast bool // stamp warning must come after any other warnings
+	}{
+		{
+			name:          "stamped-success",
+			probeUserID:   "u-test",
+			input:         ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}},
+			wantStamped:   "u-test",
+			wantStampWarn: false,
+		},
+		{
+			name:          "error-degrade",
+			probeErr:      errors.New("rpc error"),
+			input:         ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}},
+			wantStamped:   "",
+			wantStampWarn: true,
+		},
+		{
+			name:          "empty-id-degrade",
+			probeEmpty:    true,
+			input:         ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}},
+			wantStamped:   "",
+			wantStampWarn: true,
+		},
+		{
+			name:          "malformed-id-degrade",
+			probeUserID:   "U-INVALID!",
+			input:         ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}},
+			wantStamped:   "",
+			wantStampWarn: true,
+		},
+		{
+			// ordering: both a version warning (version not in discovery list)
+			// and a stamp warning are present — stamp must come last.
+			name:     "ordering-stamp-after-version",
+			probeErr: errors.New("probe fail"),
+			objects: map[string]*unstructured.Unstructured{
+				rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.5+rke2r1"),
+			},
+			roots: rootsFor(srv),
+			input: ccInput{
+				a: []string{"imported-1"},
+				b: map[string]bool{"import": true},
+				s: map[string]string{"k8s-version": "v1.99.9+rke2r1"},
+			},
+			wantStampWarn: true,
+			wantStampLast: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &ccRecClient{
+				objects:     tc.objects,
+				probeErr:    tc.probeErr,
+				probeEmpty:  tc.probeEmpty,
+				probeUserID: tc.probeUserID,
+			}
+			roots := tc.roots
+			if roots == nil {
+				roots = errRootFactory{}
+			}
+			cmd := NewCreateCluster(fakeFactory{c: client}, roots)
+
+			eff, _, err := planCluster(t, cmd, tc.input)
+			require.NoError(t, err)
+
+			ann := client.created.GetAnnotations()
+			if tc.wantStamped != "" {
+				assert.Equal(t, tc.wantStamped, ann[creatorIDAnnotation])
+			} else {
+				assert.Empty(t, ann[creatorIDAnnotation])
+			}
+
+			count := stampWarningCount(eff.Warnings)
+			if tc.wantStampWarn {
+				assert.Equal(t, 1, count, "expected exactly one stamp warning")
+			} else {
+				assert.Equal(t, 0, count, "expected no stamp warning")
+			}
+
+			if tc.wantStampLast {
+				// Hard requirements, not guarded: BOTH warnings must have
+				// fired (a silent versionWarnings regression must fail this
+				// case, not skip it), and the stamp warning must be last.
+				require.Len(t, eff.Warnings, 2,
+					"ordering case needs the version warning AND the stamp warning")
+				assert.NotContains(t, eff.Warnings[0], stampWarningPrefix,
+					"the first warning must be the version warning")
+				assert.Contains(t, eff.Warnings[1], stampWarningPrefix,
+					"stamp warning must be last among all warnings")
+			}
+		})
+	}
+}
+
+// TestCreateClusterStampWarningFoldedIntoPlanCreateError proves that when
+// the identity probe fails AND the server-side dry-run also errors, the
+// stamp warning survives to what the pipeline actually renders. Real
+// client errors are ALWAYS clierr-mapped, and the pipeline's toClierr
+// unwraps to the innermost *clierr.Error, discarding any fmt.Errorf
+// wrapper text — so for the production shape the context must ride the
+// clierr Hint. The plain-error case keeps the string wrapper.
+func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("clierr-shaped error carries the context in Hint", func(t *testing.T) {
+		t.Parallel()
+		client := &ccRecClient{
+			probeErr:  errors.New("probe failed"),
+			createErr: clierr.New(clierr.CodeValidation, "dry-run denied by webhook"),
+		}
+		cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
+
+		_, _, err := planCluster(t, cmd, ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}})
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce),
+			"the clierr must remain extractable — toClierr depends on it")
+		assert.Equal(t, "dry-run denied by webhook", ce.Message)
+		assert.Contains(t, ce.Hint, stampWarningPrefix,
+			"the stamp context must live where the envelope renders it")
+	})
+
+	t.Run("plain error keeps the string wrapper", func(t *testing.T) {
+		t.Parallel()
+		client := &ccRecClient{
+			probeErr:  errors.New("probe failed"),
+			createErr: errors.New("dry-run denied by webhook"),
+		}
+		cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
+
+		_, _, err := planCluster(t, cmd, ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dry-run denied by webhook")
+		assert.Contains(t, err.Error(), stampWarningPrefix)
+	})
+}
+
+// TestCreateClusterPostApplyCreatorIDVerification proves that after the real
+// create, the exec closure compares the server's returned creatorId against
+// the value stamped before the dry-run:
+//   - mismatched id → a warning naming both values is appended to Result.Warnings
+//   - matching id → no warning
+func TestCreateClusterPostApplyCreatorIDVerification(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name            string
+		probeUserID     string
+		returnCreatorID string
+		noAnnotations   bool
+		wantWarning     bool
+	}{
+		{
+			name:            "mismatched-creator-id-warns",
+			probeUserID:     "u-stamped",
+			returnCreatorID: "u-wrong",
+			wantWarning:     true,
+		},
+		{
+			name:        "matching-creator-id-no-warning",
+			probeUserID: "u-stamped",
+			wantWarning: false,
+		},
+		{
+			// A trimmed create response without annotations is "can't
+			// verify", never a false mismatch.
+			name:          "trimmed-response-skips-verification",
+			probeUserID:   "u-stamped",
+			noAnnotations: true,
+			wantWarning:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &ccRecClient{
+				probeUserID:         tc.probeUserID,
+				returnCreatorID:     tc.returnCreatorID,
+				returnNoAnnotations: tc.noAnnotations,
+			}
+			cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
+
+			_, exec, err := planCluster(t, cmd, ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}})
+			require.NoError(t, err)
+			require.NotNil(t, exec)
+
+			result, err := exec(context.Background())
+			require.NoError(t, err)
+
+			if tc.wantWarning {
+				require.NotEmpty(t, result.Warnings, "expected a creatorId mismatch warning")
+				assert.Contains(t, result.Warnings[0], "creatorId on the created cluster")
+				assert.Contains(t, result.Warnings[0], "u-stamped")
+				assert.Contains(t, result.Warnings[0], "u-wrong")
+			} else {
+				for _, w := range result.Warnings {
+					assert.NotContains(t, w, "creatorId on the created cluster")
+				}
+			}
+		})
+	}
+}
+
+// stampWarningCount counts warnings from the creatorId stamping degrade
+// path, so tests don't couple to the total warning count (version warnings
+// may legitimately appear alongside).
+func stampWarningCount(warnings []string) int {
+	n := 0
+	for _, w := range warnings {
+		if strings.Contains(w, stampWarningPrefix) {
+			n++
+		}
+	}
+	return n
 }

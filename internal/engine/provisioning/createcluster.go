@@ -4,11 +4,14 @@ package provisioning
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -22,6 +25,24 @@ import (
 // `create cluster` writes — the same GVR as kinds.go's provisioningcluster
 // row (Task 3).
 var provisioningClusterGVR = schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"}
+
+// creatorIDAnnotation is rancher-webhook's creator identity annotation.
+// The webhook's mutator stamps it from userInfo on real creates but skips
+// dry-run, while its validator requires the match on dry-run too — so the
+// CLI pre-stamps it to keep server-side dry-run honest. On a real create
+// the mutator overwrites it with the same value.
+const creatorIDAnnotation = "field.cattle.io/creatorId"
+
+// stampWarningPrefix is the shared prefix for all creatorId stamping
+// degrade warnings. Test assertions and the e2e txtar substrings are
+// anchored by this const on the code side, so a rename propagates
+// everywhere without a silent golden drift.
+const stampWarningPrefix = "creatorId not stamped"
+
+// validUserIDRe is DNS-1123-ish: lowercase alphanumerics, dots, and
+// hyphens, starting with a lowercase alphanumeric — the shape of Rancher
+// User object names stored in status.userID.
+var validUserIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
 
 // clusterNamespace is the fixed fleet workspace every provisioning Cluster
 // lands in — kinds.go's provisioningcluster row DefaultNamespace; `create
@@ -99,7 +120,14 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 		Usage: "Create a provisioning cluster (--import, --custom, or node-driver)",
 		Desc: "Creates a single machine pool; repeatable pool flags are not supported " +
 			"yet, so a multi-pool cluster must go through `create resource -f` with a " +
-			"full manifest.",
+			"full manifest. Before the server-side dry-run, the command resolves the " +
+			"caller's identity via the ext.cattle.io SelfUser probe and stamps it into " +
+			"the creatorId annotation (rancher-webhook's validator requires the annotation " +
+			"on dry-run even though its mutator only stamps it on real creates). If the " +
+			"probe fails, a \"" + stampWarningPrefix + "\" warning is emitted and the " +
+			"create proceeds unstamped — rancher-webhook may then deny the dry-run, but " +
+			"a real --apply create is still expected to succeed (the mutator stamps " +
+			"identity server-side on real creates).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -296,6 +324,30 @@ func parseQuantity(s string) (int, error) {
 	return n, nil
 }
 
+// stampCreatorID resolves the caller's identity and stamps the creatorId
+// annotation onto obj. It returns "" on success, or a degrade warning —
+// stamping is advisory: failure never blocks the command. The SelfUser
+// probe is a real (non-dry-run) create — the resource is a create-only
+// "whoami" virtual object — making this the file's one deliberate
+// network write during Plan, before any --apply gate.
+func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstructured.Unstructured) string {
+	probeResult, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
+	if err != nil {
+		return stampWarningPrefix + " (" + err.Error() + "): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+	}
+	userID := selfuser.UserID(probeResult)
+	if userID == "" {
+		return stampWarningPrefix + " (identity probe returned no user id): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+	}
+	if !validUserIDRe.MatchString(userID) {
+		return stampWarningPrefix + " (identity probe returned a malformed user id): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+	}
+	if err := unstructured.SetNestedField(obj.Object, userID, "metadata", "annotations", creatorIDAnnotation); err != nil {
+		return stampWarningPrefix + " (annotation write failed: " + err.Error() + "): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+	}
+	return ""
+}
+
 func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	obj, mode, err := c.build(in)
 	if err != nil {
@@ -315,12 +367,68 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		return safety.Effect{}, nil, err
 	}
 
+	stampWarning := stampCreatorID(ctx, client, obj)
+
+	// Capture the stamped id before the dry-run for post-apply verification.
+	// An empty stampWarning means the annotation was successfully written.
+	var stampedUserID string
+	if stampWarning == "" {
+		ann := obj.GetAnnotations()
+		stampedUserID = ann[creatorIDAnnotation]
+	}
+
 	eff, exec, err := engine.PlanCreate(ctx, client, provisioningClusterGVR, clusterNamespace, obj, engine.LocalCluster, "Cluster", false)
 	if err != nil {
+		if stampWarning != "" {
+			// The pipeline's error normalization unwraps to the innermost
+			// *clierr.Error and renders ONLY its own fields — a fmt.Errorf
+			// wrapper's text never reaches the envelope. Real client errors
+			// are always clierr-mapped, so the stamping context must ride
+			// the clierr Hint to survive; the string wrapper remains only
+			// for plain errors (test fakes, unexpected paths).
+			var ce *clierr.Error
+			if errors.As(err, &ce) {
+				if ce.Hint != "" {
+					ce.Hint += "; " + stampWarning
+				} else {
+					ce.Hint = stampWarning
+				}
+				return safety.Effect{}, nil, err
+			}
+			return safety.Effect{}, nil, fmt.Errorf("%w (%s)", err, stampWarning)
+		}
 		return safety.Effect{}, nil, err
 	}
 
+	// Wrap exec for post-apply creatorId verification: if the server returns
+	// a different id, rancher-webhook may not be mutating creates as expected.
+	if stampedUserID != "" {
+		wantID := stampedUserID
+		inner := exec
+		exec = func(ctx context.Context) (runtime.Result, error) {
+			result, err := inner(ctx)
+			if err != nil {
+				return result, err
+			}
+			if dataMap, ok := result.Data.(map[string]any); ok {
+				gotID, _, _ := unstructured.NestedString(dataMap, "metadata", "annotations", creatorIDAnnotation)
+				// An empty gotID means the response carried no annotations —
+				// a trimmed create response is indistinguishable from a
+				// dropped annotation, so skip (can't verify) rather than
+				// emit a false mismatch.
+				if gotID != "" && gotID != wantID {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("creatorId on the created cluster (%s) differs from the caller identity (%s): verify rancher-webhook is mutating creates", gotID, wantID))
+				}
+			}
+			return result, nil
+		}
+	}
+
 	eff.Warnings = c.versionWarnings(ctx, in.String("k8s-version"))
+	if stampWarning != "" {
+		eff.Warnings = append(eff.Warnings, stampWarning)
+	}
 	return eff, exec, nil
 }
 

@@ -3,13 +3,10 @@ package provider
 import (
 	"context"
 
+	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-var selfUsersGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: "v1", Resource: "selfusers"}
 
 // Identity is `auth check`'s PS-2 identity probe. It POSTs an empty SelfUser
 // to ext.cattle.io/v1 selfusers and returns status.userID. The store is
@@ -29,14 +26,9 @@ func Identity(ctx context.Context, eff config.Effective) (string, error) {
 		return "", err
 	}
 	defer cancel()
-	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "ext.cattle.io/v1",
-		"kind":       "SelfUser",
-	}}
-	created, err := dyn.Resource(selfUsersGVR).Create(ctx, obj, metav1.CreateOptions{})
+	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{})
 	if err != nil {
 		return "", mapErr(err)
 	}
-	userID, _, _ := unstructured.NestedString(created.Object, "status", "userID")
-	return userID, nil
+	return selfuser.UserID(created), nil
 }

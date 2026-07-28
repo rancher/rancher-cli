@@ -394,7 +394,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
-      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest.",
+      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped — rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",

@@ -116,6 +116,15 @@ vmwarevsphereconfig) take driver fields via repeatable `--set field=value`.
 Credential fields are rejected on a machine config — they belong on a
 cloud credential (`cc-*` secret), referenced via `--cloud-credential`.
 
+A `creatorId not stamped` warning on `create cluster` means the identity
+probe (an ext.cattle.io SelfUser create) failed before the server-side
+dry-run. rancher-webhook's validator requires the `creatorId` annotation on
+dry-run even though its mutator only stamps it on real creates, so the
+dry-run may be denied with an admission error. This is a diagnostic warning,
+not a definitive block — surface it to the user, but do not treat the
+dry-run denial as final: a real `--apply` create is still expected to
+succeed because the mutator stamps identity server-side on real creates.
+
 Follow through to readiness and access — and read the registration
 (join) commands from `inspect cluster`, never from the UI:
 
