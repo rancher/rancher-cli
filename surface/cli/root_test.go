@@ -767,6 +767,64 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "bogus-flag")
 }
 
+// TestAllNamespacesHintTargeted pins the -A/--all-namespaces friction point:
+// both flags are unknown on every get command (list operations already span
+// all namespaces), so the hint must say so directly instead of pointing at
+// rancher schema. A genuinely unknown flag must still get the generic hint.
+// Mirrors TestDeleteClusterHintsAtProvisioningCluster one seam over.
+func TestAllNamespacesHintTargeted(t *testing.T) {
+	t.Run("-A shorthand", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "-A"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		t.Logf("urfave -A error message: %q", env.Data.Error.Message)
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint)
+	})
+
+	t.Run("--all-namespaces long form", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--all-namespaces"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		t.Logf("urfave --all-namespaces error message: %q", env.Data.Error.Message)
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint)
+	})
+
+	t.Run("genuinely unknown flag gets generic hint", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--bogus-flag"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.NotContains(t, env.Data.Error.Hint, "all-namespaces",
+			"a genuinely unknown flag must not receive the all-namespaces hint")
+	})
+}
+
 // An explicitly overridden config dir must not put a plain-text notice ahead
 // of the error envelope — stderr must parse as pure JSON, exactly as a
 // scripted session relies on.

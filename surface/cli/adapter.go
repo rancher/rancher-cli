@@ -269,8 +269,17 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 // and group command via the adapters, since urfave checks OnUsageError on
 // the command node whose own flags failed to parse, not the root's.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
+	hint := "run: rancher schema; pass --help for usage"
+	// The kubectl reflex -A/--all-namespaces deserves the real answer in the
+	// first error: there is no such flag because list operations are not
+	// namespace-filtered by default (Route keeps ns="" for nameless lists).
+	// Mirrors commandNotFound's targeted delete-cluster hint one seam up.
+	// urfave normalises --all-namespaces to -all-namespaces in its error text.
+	if msg := err.Error(); strings.HasSuffix(msg, ": -A") || strings.HasSuffix(msg, ": -all-namespaces") {
+		hint = "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one"
+	}
 	ce := clierr.New(clierr.CodeValidation, err.Error()).
-		WithHint("run: rancher schema; pass --help for usage")
+		WithHint(hint)
 	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
 	return exit(ce)
 }
