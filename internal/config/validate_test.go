@@ -53,7 +53,7 @@ func TestValidate(t *testing.T) {
 				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "vault",
 			},
-			wantErr: `credentialStore "vault" is not one of: auto, file, keychain`,
+			wantErr: `credentialStore: unknown credential store "vault" (valid: keychain, file, auto, exec:<name>)`,
 		},
 		{
 			name: "auto and keychain are legal credentialStore values",
@@ -62,6 +62,23 @@ func TestValidate(t *testing.T) {
 				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "auto",
 			},
+		},
+		{
+			name: "exec helper is a legal credentialStore value",
+			cfg: &Config{
+				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
+				Contexts:        map[string]Context{"prod": {Server: "acme"}},
+				CredentialStore: "exec:vault",
+			},
+		},
+		{
+			name: "exec helper with invalid name is rejected",
+			cfg: &Config{
+				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
+				Contexts:        map[string]Context{"prod": {Server: "acme"}},
+				CredentialStore: "exec:Not_Valid",
+			},
+			wantErr: `invalid credential helper name "Not_Valid"`,
 		},
 	}
 	for _, tt := range tests {

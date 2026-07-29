@@ -34,11 +34,13 @@ func Validate(cfg *Config) error {
 		}
 	}
 
-	switch cfg.CredentialStore {
-	case "", "auto", "file", "keychain":
-		// legal: the four policies OpenStore/EffectivePolicy accept.
-	default:
-		errs = append(errs, fmt.Sprintf("credentialStore %q is not one of: auto, file, keychain", cfg.CredentialStore))
+	// "" means unset (EffectivePolicy falls back to auto); any other value
+	// must satisfy the same allowlist OpenStore/NewLazyStore enforce, so
+	// Validate cannot reject a policy the runtime accepts.
+	if cfg.CredentialStore != "" {
+		if err := checkPolicy(cfg.CredentialStore); err != nil {
+			errs = append(errs, fmt.Sprintf("credentialStore: %v", err))
+		}
 	}
 
 	if len(errs) == 0 {
