@@ -68,8 +68,23 @@ func (t table) Rows() [][]string {
 // columnString projects one column from one object: Path first, then each
 // AltPaths entry, first non-empty string wins. The Bool absent→"false"
 // fallback applies to Path only, preserving the single-path semantics
-// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN).
+// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN). When Condition
+// is set, Path/AltPaths/Bool are ignored and the cell is derived from the
+// named status condition instead.
 func columnString(o map[string]any, c kinds.Column) string {
+	if c.Condition != "" {
+		status, _, ok := conditionStatus(&unstructured.Unstructured{Object: o}, c.Condition)
+		switch {
+		case !ok:
+			return ""
+		case status == "True":
+			return c.Condition
+		case status == "False":
+			return "Not" + c.Condition
+		default:
+			return status
+		}
+	}
 	v, ok, _ := unstructured.NestedString(o, c.Path...)
 	if ok && v != "" {
 		return v

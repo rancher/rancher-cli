@@ -157,11 +157,21 @@ func execGet(t *testing.T, cmd runtime.Command, in runtime.Input) runtime.Result
 	return res
 }
 
+func clusterObjReady(name, display string, conditionStatus string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+		"spec":     map[string]any{"displayName": display},
+		"status": map[string]any{"conditions": []any{
+			map[string]any{"type": "Ready", "status": conditionStatus},
+		}},
+	}}
+}
+
 func TestGetClusterListsWithColumns(t *testing.T) {
 	t.Parallel()
 	client := &memClient{items: []unstructured.Unstructured{
-		clusterObj("local", "local", "active"),
-		clusterObj("c-m-abc", "prod", "active"),
+		clusterObjReady("local", "local", "True"),
+		clusterObjReady("c-m-abc", "prod", "True"),
 	}}
 	cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
 
@@ -173,9 +183,9 @@ func TestGetClusterListsWithColumns(t *testing.T) {
 	assert.Equal(t, "ClusterList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
-	assert.Equal(t, []string{"NAME", "DISPLAY", "STATE"}, tab.Columns())
+	assert.Equal(t, []string{"NAME", "DISPLAY", "READY"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
-	assert.Equal(t, []string{"c-m-abc", "prod", "active"}, tab.Rows()[1])
+	assert.Equal(t, []string{"c-m-abc", "prod", "Ready"}, tab.Rows()[1])
 }
 
 func TestGetRoleTemplateListsWithColumns(t *testing.T) {

@@ -64,6 +64,21 @@ func TestTableRowsRenderBoolLeaves(t *testing.T) {
 	assert.Equal(t, []string{"w3", "Widget Three", "true", "false", "", ""}, tab.Rows()[2])
 }
 
+func TestColumnStringConditionDerived(t *testing.T) {
+	t.Parallel()
+	col := kinds.Column{Header: "READY", Condition: "Ready"}
+	obj := func(status string) map[string]any {
+		return map[string]any{"status": map[string]any{"conditions": []any{
+			map[string]any{"type": "Provisioned", "status": "True"},
+			map[string]any{"type": "Ready", "status": status},
+		}}}
+	}
+	assert.Equal(t, "Ready", columnString(obj("True"), col))
+	assert.Equal(t, "NotReady", columnString(obj("False"), col))
+	assert.Equal(t, "Unknown", columnString(obj("Unknown"), col))
+	assert.Equal(t, "", columnString(map[string]any{}, col), "absent condition renders blank, never fabricated")
+}
+
 // TestTableMarshalJSONSingleInvariant drives the real output.Render path (not
 // a direct MarshalJSON call) so a regression here fails the same way it would
 // in production: get.go always passes exactly 1 item for a named get, so this

@@ -33,6 +33,14 @@ type Column struct {
 	// builtin) drops its false value from the wire entirely. Unmarked
 	// (string-typed) columns keep rendering absent fields blank.
 	Bool bool
+	// Condition, when set, derives the cell from the status.conditions
+	// entry of this type instead of Path/AltPaths (which are ignored):
+	// status True renders the type name ("Ready"), False renders
+	// "Not<Type>" ("NotReady"), anything else renders verbatim
+	// ("Unknown") — the kubectl node-STATUS idiom. An absent condition
+	// renders blank: nothing is fabricated. Exists because Rancher's
+	// Norman-computed status.state never appears on raw CRD reads.
+	Condition string
 }
 
 // NamespacePolicy decides namespace semantics and flag generation for a
@@ -99,7 +107,7 @@ var table = []Kind{
 		NoDeleteReason: "cluster deletion goes through delete provisioning-cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
-		Columns:        []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "STATE", Path: []string{"status", "state"}}},
+		Columns:        []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "READY", Condition: "Ready"}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
