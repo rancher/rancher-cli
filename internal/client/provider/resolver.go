@@ -15,10 +15,14 @@ type Resolver struct {
 // here only.
 func NewResolver() *Resolver {
 	return &Resolver{m: map[string]safety.Binding{
-		"create project":           {Tier: safety.TierPublic, Stability: safety.Stable},
-		"create namespace":         {Tier: safety.TierPublic, Stability: safety.Stable},
-		"project add-namespace":    {Tier: safety.TierPublic, Stability: safety.Stable},
-		"project remove-namespace": {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create project": {Tier: safety.TierPublic, Stability: safety.Stable},
+		// The three namespace mutations ride the same core-v1 dynamic path
+		// as the generated get/delete namespace (PlanCreate/PlanUpdate on
+		// the kind row's GVR) — bound to match the row (kinds.go), not the
+		// project verbs they sit beside.
+		"create namespace":         {Tier: safety.TierCRD, Stability: safety.Beta},
+		"project add-namespace":    {Tier: safety.TierCRD, Stability: safety.Beta},
+		"project remove-namespace": {Tier: safety.TierCRD, Stability: safety.Beta},
 		"grant":                    {Tier: safety.TierPublic, Stability: safety.Beta},
 		"revoke":                   {Tier: safety.TierPublic, Stability: safety.Beta},
 		"create secret":            {Tier: safety.TierPublic, Stability: safety.Beta},

@@ -15,6 +15,24 @@ func TestResolveKnownOps(t *testing.T) {
 		assert.Equal(t, safety.TierPublic, b.Tier)
 		assert.Equal(t, safety.Stable, b.Stability)
 	})
+	t.Run("create namespace is crd/beta", func(t *testing.T) {
+		b, ok := r.Resolve("create namespace")
+		assert.True(t, ok)
+		assert.Equal(t, safety.TierCRD, b.Tier)
+		assert.Equal(t, safety.Beta, b.Stability)
+	})
+	t.Run("project add-namespace is crd/beta", func(t *testing.T) {
+		b, ok := r.Resolve("project add-namespace")
+		assert.True(t, ok)
+		assert.Equal(t, safety.TierCRD, b.Tier)
+		assert.Equal(t, safety.Beta, b.Stability)
+	})
+	t.Run("project remove-namespace is crd/beta", func(t *testing.T) {
+		b, ok := r.Resolve("project remove-namespace")
+		assert.True(t, ok)
+		assert.Equal(t, safety.TierCRD, b.Tier)
+		assert.Equal(t, safety.Beta, b.Stability)
+	})
 	t.Run("grant is public/beta", func(t *testing.T) {
 		b, ok := r.Resolve("grant")
 		assert.True(t, ok)

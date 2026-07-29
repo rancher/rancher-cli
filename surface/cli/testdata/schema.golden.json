@@ -614,8 +614,8 @@
       "group": "create",
       "name": "create namespace",
       "network": true,
-      "stability": "stable",
-      "tier": "public",
+      "stability": "beta",
+      "tier": "crd",
       "toolset": "core",
       "usage": "Create a namespace, optionally as a project member"
     },
@@ -7259,8 +7259,8 @@
       "group": "project",
       "name": "project add-namespace",
       "network": true,
-      "stability": "stable",
-      "tier": "public",
+      "stability": "beta",
+      "tier": "crd",
       "toolset": "core",
       "usage": "Add a namespace to a project"
     },
@@ -7294,8 +7294,8 @@
       "group": "project",
       "name": "project remove-namespace",
       "network": true,
-      "stability": "stable",
-      "tier": "public",
+      "stability": "beta",
+      "tier": "crd",
       "toolset": "core",
       "usage": "Remove a namespace from a project"
     },
