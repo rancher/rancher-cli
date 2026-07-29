@@ -356,7 +356,7 @@ type crtFixture struct {
 	Token     string
 }
 
-// crtFixtures spans TWO namespaces (Task 5, spec D-4 review R3-3's
+// crtFixtures spans multiple namespaces (Task 5, spec D-4 review R3-3's
 // namespace-filter test fixture set): "c-fixture" is the namespace
 // e2e/scripts/registration-token.txtar addresses; "c-other" exists purely
 // so a bare `get clusterregistrationtoken` (no --namespace) proves more
@@ -365,6 +365,7 @@ type crtFixture struct {
 var crtFixtures = []crtFixture{
 	{Namespace: "c-fixture", Name: "default-token", Token: "e2e-crt-real-token-c-fixture"},
 	{Namespace: "c-other", Name: "default-token", Token: "e2e-crt-real-token-c-other"},
+	{Namespace: "c-import", Name: "default-token", Token: "e2e-crt-real-token-c-import"},
 }
 
 // crtStatus builds a clusterregistrationtoken status block. unformatted

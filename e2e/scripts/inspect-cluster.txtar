@@ -6,6 +6,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # token; see internal/testrancher crtFixtures).
 exec rancher create resource -f mgmt-c-fixture.yaml --apply
 exec rancher create resource -f mgmt-c-other.yaml --apply
+exec rancher create resource -f mgmt-c-import.yaml --apply
 
 # Custom cluster: create the provisioning CR, then stand in for the
 # provisioning controller by writing its status subresource.
@@ -51,6 +52,42 @@ jsonquery stdout data.machinePools ''
 jsonquery stdout data.registration ''
 jsonquery stdout 'warnings.#' 1
 
+# imported cluster: machines note, notApplicable, system member
+# Agent-connectivity flipstatus is omitted: the empty namespace in
+# "management.cattle.io/v3/clusters" would produce a double-slash URL
+# (/_test/status/local/management.cattle.io/v3/clusters//c-import) that
+# Go's http.ServeMux normalises away, leaving only 5 path segments instead
+# of the 6 handleStatusLever requires — the shim returns 400 Bad Request.
+# The behavior is unit-tested in task 2; this scenario covers the other
+# import-specific outputs.
+
+exec rancher create cluster insp-import --import --apply -o json
+flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-import {"clusterName":"c-import","ready":true,"conditions":[{"type":"Ready","status":"True"}]}
+
+exec rancher inspect cluster c-import -o json
+jsonquery stdout data.cluster.id c-import
+jsonquery stdout data.machinePools '[]'
+jsonquery stdout data.machines '[]'
+jsonquery stdout data.registration.notApplicable.0 nodeCommand
+jsonquery stdout data.registration.notApplicable.1 insecureNodeCommand
+stdout e2e-crt-real-token-c-import
+
+exec rancher inspect cluster c-import
+stdout 'none \(imported or custom cluster\)'
+stdout 'node join \[not applicable: imported cluster\]:'
+
+# system member: seed the c-import namespace (required for namespaced CRTBs)
+# then create a system:// CRTB — follows the project-members.txtar pattern.
+exec rancher create namespace c-import --cluster local --apply
+exec rancher create resource -f crtb-system.yaml --apply --yes
+
+exec rancher inspect cluster c-import -o json
+# .0 is safe: this scenario seeds exactly one CRTB for c-import
+jsonquery stdout data.members.0.system true
+
+exec rancher inspect cluster c-import
+stdout '\[system\]'
+
 -- mgmt-c-fixture.yaml --
 apiVersion: management.cattle.io/v3
 kind: Cluster
@@ -65,3 +102,19 @@ metadata:
   name: c-other
 spec:
   displayName: insp-other
+-- mgmt-c-import.yaml --
+apiVersion: management.cattle.io/v3
+kind: Cluster
+metadata:
+  name: c-import
+spec:
+  displayName: insp-import
+-- crtb-system.yaml --
+apiVersion: management.cattle.io/v3
+kind: ClusterRoleTemplateBinding
+metadata:
+  name: system-provisioner
+  namespace: c-import
+userPrincipalName: system://provisioning/fleet-default/insp-import
+roleTemplateName: cluster-owner
+clusterName: c-import
