@@ -245,6 +245,25 @@ func TestResolveMembersSamePrincipalTwoRoles(t *testing.T) {
 	}, rows)
 }
 
+func TestResolveMembersFlagsSystemPrincipals(t *testing.T) {
+	t.Parallel()
+	fc := newFakeClient()
+
+	rows, _, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+		memberBinding(map[string]any{"userPrincipalName": "system://provisioning/fleet-default/lx-import-k3d", "roleTemplateName": "cluster-owner"}),
+		memberBinding(map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member"}),
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		if row.Principal == "system://provisioning/fleet-default/lx-import-k3d" {
+			assert.True(t, row.System, "system:// principal flagged")
+		} else {
+			assert.False(t, row.System)
+		}
+	}
+}
+
 func TestResolveMembersCancellationAborts(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())

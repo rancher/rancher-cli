@@ -182,7 +182,7 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 	}
 	rows := make([]projectMember, 0, len(resolved))
 	for _, m := range resolved {
-		rows = append(rows, projectMember{User: m.Principal, RoleTemplate: m.Role, DisplayName: m.DisplayName})
+		rows = append(rows, projectMember{User: m.Principal, RoleTemplate: m.Role, DisplayName: m.DisplayName, System: m.System})
 	}
 	return rows, warnings, nil
 }
@@ -201,6 +201,9 @@ type projectMember struct {
 	User         string `json:"user"`
 	RoleTemplate string `json:"roleTemplate"`
 	DisplayName  string `json:"displayName,omitempty"`
+	// System marks Rancher-internal principals (system:// prefix);
+	// omitted when false so existing entries are byte-identical.
+	System bool `json:"system,omitempty"`
 }
 
 // projectResult is `inspect project`'s payload; the default rendering is the
@@ -238,10 +241,14 @@ func renderProjectText(r projectResult) string {
 		b.WriteString("  none\n")
 	default:
 		for _, m := range r.Members {
+			suffix := ""
+			if m.System {
+				suffix = " [system]"
+			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s\n", engine.Printable(m.DisplayName), engine.Printable(m.User), engine.Printable(m.RoleTemplate))
+				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.User), engine.Printable(m.RoleTemplate), suffix)
 			} else {
-				fmt.Fprintf(&b, "  %s  %s\n", engine.Printable(m.User), engine.Printable(m.RoleTemplate))
+				fmt.Fprintf(&b, "  %s  %s%s\n", engine.Printable(m.User), engine.Printable(m.RoleTemplate), suffix)
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -23,6 +24,9 @@ type memberRow struct {
 	Principal   string
 	DisplayName string
 	Role        string
+	// System marks Rancher-internal principals — detection is the
+	// system:// id prefix ONLY, never the display name.
+	System bool
 }
 
 // resolveMembers enriches crtb/prtb bindings with display names from two
@@ -156,7 +160,7 @@ func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []memberRo
 				userRefs[userName] = true
 			}
 		}
-		rows = append(rows, memberRow{Principal: principal, Role: role})
+		rows = append(rows, memberRow{Principal: principal, Role: role, System: strings.HasPrefix(principal, "system://")})
 	}
 	return rows, userRefs, groupRefs
 }

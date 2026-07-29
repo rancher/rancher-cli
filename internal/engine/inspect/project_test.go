@@ -235,6 +235,22 @@ func TestProjectMembersNullVsEmptyContract(t *testing.T) {
 	assert.Empty(t, slice, "empty members: array must be empty")
 }
 
+func TestProjectMemberSystemJSONContract(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(projectMember{User: "system://x", RoleTemplate: "r", System: true})
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(b, &doc))
+	assert.Equal(t, true, doc["system"])
+
+	b, err = json.Marshal(projectMember{User: "u-alice", RoleTemplate: "r"})
+	require.NoError(t, err)
+	doc = nil
+	require.NoError(t, json.Unmarshal(b, &doc))
+	_, has := doc["system"]
+	assert.False(t, has, "zero System must omit the key")
+}
+
 func TestRenderProjectTextEscapeStripping(t *testing.T) {
 	t.Parallel()
 	r := projectResult{

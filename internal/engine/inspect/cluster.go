@@ -47,7 +47,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
 		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions exist and each field only when its own condition does; a disconnected agent adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions exist and each field only when its own condition does; a disconnected agent adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is prefixed system:// carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Toolset:     "core",
@@ -401,7 +401,7 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 	rows := make([]clusterMember, 0, len(resolved))
 	for _, m := range resolved {
 		//lint:ignore S1016 explicit field copy: clusterMember and memberRow evolve independently
-		rows = append(rows, clusterMember{Principal: m.Principal, DisplayName: m.DisplayName, Role: m.Role}) //nolint:staticcheck
+		rows = append(rows, clusterMember{Principal: m.Principal, DisplayName: m.DisplayName, Role: m.Role, System: m.System}) //nolint:staticcheck
 	}
 	return &rows, warnings, nil
 }
@@ -506,6 +506,9 @@ type clusterMember struct {
 	Principal   string `json:"principal"`
 	DisplayName string `json:"displayName,omitempty"`
 	Role        string `json:"role"`
+	// System marks Rancher-internal principals (system:// prefix);
+	// omitted when false so existing entries are byte-identical.
+	System bool `json:"system,omitempty"`
 }
 
 type clusterIdentity struct {
@@ -690,10 +693,14 @@ func renderMembersSection(b *strings.Builder, r clusterResult) {
 		b.WriteString("  none\n")
 	default:
 		for _, m := range *r.Members {
+			suffix := ""
+			if m.System {
+				suffix = " [system]"
+			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(b, "  %s (%s)  %s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role))
+				fmt.Fprintf(b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
 			} else {
-				fmt.Fprintf(b, "  %s  %s\n", engine.Printable(m.Principal), engine.Printable(m.Role))
+				fmt.Fprintf(b, "  %s  %s%s\n", engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
 			}
 		}
 	}

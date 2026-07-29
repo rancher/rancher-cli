@@ -891,6 +891,22 @@ func TestClusterMembersTriState(t *testing.T) {
 	assert.Empty(t, slice, "non-nil empty members: array must be empty")
 }
 
+func TestClusterMemberSystemJSONContract(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(clusterMember{Principal: "system://x", Role: "r", System: true})
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(b, &doc))
+	assert.Equal(t, true, doc["system"])
+
+	b, err = json.Marshal(clusterMember{Principal: "local://u-alice", Role: "r"})
+	require.NoError(t, err)
+	doc = nil
+	require.NoError(t, json.Unmarshal(b, &doc))
+	_, has := doc["system"]
+	assert.False(t, has, "zero System must omit the key")
+}
+
 func TestRenderClusterTextEscapeStripping(t *testing.T) {
 	t.Parallel()
 	members := []clusterMember{
@@ -1345,4 +1361,17 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		assert.False(t, ok, "agent key absent, never null/{}")
 		assert.NotContains(t, res.Text, "agent:")
 	})
+}
+
+func TestRenderClusterTextSystemMemberTag(t *testing.T) {
+	t.Parallel()
+	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
+	members := []clusterMember{
+		{Principal: "system://provisioning/fleet-default/imp", Role: "cluster-owner", System: true},
+		{Principal: "okta_user://operator", Role: "cluster-member"},
+	}
+	r.Members = &members
+	text := renderClusterText(r)
+	assert.Contains(t, text, "  system://provisioning/fleet-default/imp  cluster-owner [system]\n")
+	assert.Contains(t, text, "  okta_user://operator  cluster-member\n")
 }
