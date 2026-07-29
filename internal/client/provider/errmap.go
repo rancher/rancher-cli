@@ -45,10 +45,15 @@ func mapErr(err error) error {
 		return clierr.New(clierr.CodeGeneric, err.Error()).
 			WithRetryable(true).
 			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
-	case isAgentDisconnected(err):
-		return clierr.New(clierr.CodeGeneric, err.Error()).
-			WithRetryable(true).
-			WithHint("the cluster agent is disconnected — retry once the cluster reconnects")
+	case isUnexpectedServerError(err):
+		ce := clierr.New(clierr.CodeGeneric, err.Error()).WithRetryable(true)
+		// The substring refines the hint only — it is never the classifier,
+		// so a reworded proxy body still lands retryable with the generic
+		// proxy-path hint instead of silently flipping non-retryable.
+		if strings.Contains(err.Error(), "cluster agent disconnected") {
+			return ce.WithHint("the cluster agent is disconnected — retry once the cluster reconnects")
+		}
+		return ce.WithHint("the server answered with an unstructured 5xx — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
 	default:
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
@@ -65,17 +70,14 @@ func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 	return ce.WithHint("rancher auth check")
 }
 
-// isAgentDisconnected reports the Rancher proxy's post-registration
-// agent-disconnect failure. The proxy answers a request to a downstream
-// cluster whose agent has dropped with a plain-text 5xx body ("error
-// trying to reach service: cluster agent disconnected"); client-go wraps
-// any such non-Status 5xx as a generic InternalError StatusError with an
-// UnexpectedServerResponse cause. There is no typed discriminator for the
-// disconnect itself, so after the typed narrowing (InternalError reason +
-// UnexpectedServerResponse cause — a genuine k8s Status 500, e.g.
-// Rancher's stale-precondition delete in fidelity/probes.go, carries
-// neither) the message substring is the last-resort test.
-func isAgentDisconnected(err error) bool {
+// isUnexpectedServerError reports client-go's wrapping of a non-Status
+// 5xx body (InternalError reason + UnexpectedServerResponse cause) — the
+// shape every Rancher proxy-path failure takes, because the proxy answers
+// with plain text (e.g. "error trying to reach service: cluster agent
+// disconnected"). A genuine k8s-Status 500, like Rancher's
+// stale-precondition delete in fidelity/probes.go, carries no such cause
+// and stays out of this arm.
+func isUnexpectedServerError(err error) bool {
 	if !apierrors.IsInternalError(err) {
 		return false
 	}
@@ -83,14 +85,12 @@ func isAgentDisconnected(err error) bool {
 	if !errors.As(err, &se) {
 		return false
 	}
-	unexpected := false
 	if d := se.ErrStatus.Details; d != nil {
 		for _, c := range d.Causes {
 			if c.Type == metav1.CauseTypeUnexpectedServerResponse {
-				unexpected = true
-				break
+				return true
 			}
 		}
 	}
-	return unexpected && strings.Contains(se.ErrStatus.Message, "cluster agent disconnected")
+	return false
 }

@@ -163,14 +163,15 @@ func TestMapErrAgentDisconnected(t *testing.T) {
 		assert.Empty(t, ce.Hint)
 	})
 
-	t.Run("unexpected 500 without the disconnect text stays non-retryable", func(t *testing.T) {
+	t.Run("unexpected 500 without the disconnect text stays retryable with the proxy hint", func(t *testing.T) {
+		const wantProxyHint = "the server answered with an unstructured 5xx — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed"
 		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
 			"upstream connect error", 0, true)
 		got := mapErr(err)
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
-		assert.False(t, ce.Retryable)
-		assert.Empty(t, ce.Hint)
+		assert.True(t, ce.Retryable, "unexpected 5xx via proxy must be retryable")
+		assert.Equal(t, wantProxyHint, ce.Hint)
 	})
 
 	t.Run("503 keeps its registration-window classification (no regression)", func(t *testing.T) {
