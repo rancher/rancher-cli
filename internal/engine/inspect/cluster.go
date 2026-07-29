@@ -47,7 +47,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
 		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions exist and each field only when its own condition does; a disconnected agent adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is prefixed system:// carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is prefixed system:// carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Toolset:     "core",
@@ -85,12 +85,21 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}}
 	res.Agent = agentFrom(obj)
 	var warnings []string
-	if ag := res.Agent; ag != nil && ag.Connected != nil && !*ag.Connected {
-		w := "cluster agent is not connected"
-		if ag.Message != "" {
-			w += ": " + engine.Printable(ag.Message)
+	if ag := res.Agent; ag != nil {
+		switch {
+		case ag.Connected != nil && !*ag.Connected:
+			w := "cluster agent is not connected"
+			if ag.Message != "" {
+				w += ": " + engine.Printable(ag.Message)
+			}
+			warnings = append(warnings, w)
+		case ag.Ready != nil && !*ag.Ready:
+			w := "cluster is not ready"
+			if ag.Message != "" {
+				w += ": " + engine.Printable(ag.Message)
+			}
+			warnings = append(warnings, w)
 		}
-		warnings = append(warnings, w)
 	}
 
 	prov, lookup, pwarn, absentNote, perr := correlateProvisioningCluster(ctx, mgmt, clusterID)
@@ -253,6 +262,9 @@ func statusFrom(prov *unstructured.Unstructured) *clusterStatus {
 // agentFrom reads the management Cluster's Connected and Ready conditions.
 // Returns nil when neither exists — a management object without them (the
 // e2e façade fixtures, a mid-import cluster) simply omits the section.
+// Only an explicit "True"/"False" status sets a field: "Unknown" (the normal
+// pre-reconciliation state before the first agent heartbeat) is not a verdict
+// and never collapses into disconnected.
 func agentFrom(obj *unstructured.Unstructured) *agentStatus {
 	conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
 	var ag *agentStatus
@@ -266,6 +278,9 @@ func agentFrom(obj *unstructured.Unstructured) *agentStatus {
 			continue
 		}
 		status, _, _ := unstructured.NestedString(cm, "status")
+		if status != "True" && status != "False" {
+			continue
+		}
 		message, _, _ := unstructured.NestedString(cm, "message")
 		if ag == nil {
 			ag = &agentStatus{}
@@ -628,21 +643,27 @@ func renderClusterText(r clusterResult) string {
 }
 
 // renderAgentLine appends the agent-connectivity line to the CLUSTER
-// section. Silent when the Connected condition is absent — the text card
-// never claims a connectivity state the server did not report.
+// section. Each clause renders only what the server explicitly reported:
+// no Connected/Ready verdicts, no line. Ready=True alone renders nothing —
+// "ready" without a connectivity verdict would overstate the report.
 func renderAgentLine(b *strings.Builder, ag *agentStatus) {
-	if ag == nil || ag.Connected == nil {
+	if ag == nil {
 		return
 	}
-	if *ag.Connected {
-		b.WriteString("  agent: connected\n")
-		return
-	}
-	line := "  agent: disconnected"
+	msg := ""
 	if ag.Message != "" {
-		line += " — " + truncateRunes(engine.Printable(ag.Message), conditionMessageLimit)
+		msg = " — " + truncateRunes(engine.Printable(ag.Message), conditionMessageLimit)
 	}
-	b.WriteString(line + "\n")
+	switch {
+	case ag.Connected != nil && !*ag.Connected:
+		b.WriteString("  agent: disconnected" + msg + "\n")
+	case ag.Connected != nil && ag.Ready != nil && !*ag.Ready:
+		b.WriteString("  agent: connected (not ready" + msg + ")\n")
+	case ag.Connected != nil:
+		b.WriteString("  agent: connected\n")
+	case ag.Ready != nil && !*ag.Ready:
+		b.WriteString("  agent: not ready" + msg + "\n")
+	}
 }
 
 func renderConditionsSection(b *strings.Builder, r clusterResult) {

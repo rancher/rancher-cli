@@ -154,7 +154,7 @@ non-zero exit. Only the provisioning and registration sections degrade —
 to `warnings`, or a `provisioningNote` for a confirmed missing
 provisioning CR. Check `data.status` presence before reading conditions.
 `data.agent` carries the management Cluster's agent connectivity
-(`connected`/`ready` + failing message) — a disconnected agent also lands
+(`connected`/`ready` + failing message) — a disconnected or not-ready agent also lands
 in `warnings`, so check it before trusting `data.status.ready`. On an
 imported cluster `data.registration.notApplicable` names the node-join
 fields that do not apply (they stay present — pick the import

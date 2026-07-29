@@ -1209,6 +1209,25 @@ func TestAgentFrom(t *testing.T) {
 	require.NotNil(t, ag.Ready)
 	assert.False(t, *ag.Ready)
 	assert.Equal(t, "waiting", ag.Message)
+
+	// Unknown status is not a verdict and must not set any field.
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Connected", "status": "Unknown", "message": "waiting for agent"},
+		map[string]any{"type": "Ready", "status": "Unknown"},
+	}, "status", "conditions")
+	assert.Nil(t, agentFrom(obj), "both Unknown → section absent (pre-heartbeat state is not a verdict)")
+
+	// Unknown Connected with False Ready: only Ready sets a field.
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Connected", "status": "Unknown"},
+		map[string]any{"type": "Ready", "status": "False", "message": "waiting"},
+	}, "status", "conditions")
+	ag = agentFrom(obj)
+	require.NotNil(t, ag)
+	assert.Nil(t, ag.Connected, "Unknown Connected stays nil, never fabricated as false")
+	require.NotNil(t, ag.Ready)
+	assert.False(t, *ag.Ready)
+	assert.Equal(t, "waiting", ag.Message)
 }
 
 func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
@@ -1374,6 +1393,62 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		_, ok := doc["agent"]
 		assert.False(t, ok, "agent key absent, never null/{}")
 		assert.NotContains(t, res.Text, "agent:")
+	})
+
+	t.Run("unknown conditions stay unreported", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Connected", "status": "Unknown", "message": "waiting for agent"},
+			map[string]any{"type": "Ready", "status": "Unknown"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		_, ok := doc["agent"]
+		assert.False(t, ok, "Unknown conditions must not produce an agent section")
+		assert.NotContains(t, res.Text, "agent:")
+		for _, w := range res.Warnings {
+			assert.NotContains(t, w, "agent")
+			assert.NotContains(t, w, "not ready")
+		}
+	})
+
+	t.Run("ready false without connected warns and renders", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Ready", "status": "False", "message": "provisioning"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		doc, _ := marshaledDoc(t, res.Data)
+		agent, ok := doc["agent"].(map[string]any)
+		require.True(t, ok, "agent section present when Ready is False")
+		assert.Equal(t, false, agent["ready"])
+		_, hasConnected := agent["connected"]
+		assert.False(t, hasConnected, "connected key absent when Connected condition is absent")
+
+		require.NotEmpty(t, res.Warnings)
+		assert.Equal(t, "cluster is not ready: provisioning", res.Warnings[0])
+		assert.Contains(t, res.Text, "agent: not ready — provisioning")
+	})
+
+	t.Run("connected but not ready renders the variant", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Connected", "status": "True"},
+			map[string]any{"type": "Ready", "status": "False", "message": "kubelet down"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		assert.Contains(t, res.Text, "agent: connected (not ready — kubelet down)")
+		require.NotEmpty(t, res.Warnings)
+		assert.Equal(t, "cluster is not ready: kubelet down", res.Warnings[0])
 	})
 }
 
