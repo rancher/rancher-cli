@@ -317,6 +317,12 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
 	env.Tier, env.Stability = res.Tier, res.Stability
+	env.Summary = res.Summary
+	if (streams.Format == "" || streams.Format == "table") && res.Summary != "" {
+		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
+			return clierr.New(clierr.CodeGeneric, err.Error())
+		}
+	}
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}

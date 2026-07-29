@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -686,4 +688,27 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 			assert.Equal(t, "cm-uid-1", meta["uid"])
 		})
 	}
+}
+
+// TestGetWaitStampsSummary proves that a successful --wait stamps res.Summary
+// with the "wait: <expr> satisfied after <duration>" triage line.
+func TestGetWaitStampsSummary(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	k := mustKind(t, "cluster")
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		conditionObj("Ready", "False"),
+		conditionObj("Ready", "True"),
+	}}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	res, err := cmd.Execute(context.Background(), input{
+		args: []string{"c-abc"},
+		b:    map[string]bool{"wait": true},
+	}, nil)
+	require.NoError(t, err)
+	const wantPrefix = "wait: condition=Ready satisfied after "
+	assert.True(t, strings.HasPrefix(res.Summary, wantPrefix),
+		"want summary prefix %q, got %q", wantPrefix, res.Summary)
 }

@@ -7,12 +7,16 @@ const APIVersion = "cli.rancher.io/v1"
 
 // Envelope is the single document emitted per invocation on stdout.
 type Envelope struct {
-	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
-	Kind       string   `json:"kind" yaml:"kind"`
-	Tier       string   `json:"tier,omitempty" yaml:"tier,omitempty"`
-	Stability  string   `json:"stability,omitempty" yaml:"stability,omitempty"`
-	Data       any      `json:"data,omitempty" yaml:"data,omitempty"`
-	Warnings   []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string `json:"kind" yaml:"kind"`
+	Tier       string `json:"tier,omitempty" yaml:"tier,omitempty"`
+	Stability  string `json:"stability,omitempty" yaml:"stability,omitempty"`
+	// Summary is a one-line triage signal for operators and agents when
+	// Data is a full object graph (wait success). Additive: consumers
+	// that ignore it see the exact prior envelope.
+	Summary  string   `json:"summary,omitempty" yaml:"summary,omitempty"`
+	Data     any      `json:"data,omitempty" yaml:"data,omitempty"`
+	Warnings []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 }
 
 func NewEnvelope(kind string, data any) *Envelope {

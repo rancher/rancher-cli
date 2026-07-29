@@ -9,6 +9,10 @@ flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waiter {"condit
 wait waitcmd
 stdout 'Ready'
 
+# text mode: condition already satisfied; summary line must appear before the table row
+exec rancher get gitrepo waiter --wait --timeout 5s
+stdout 'wait: condition=Ready satisfied after'
+
 -- gitrepo.yaml --
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo

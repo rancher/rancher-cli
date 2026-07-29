@@ -167,6 +167,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			name = resolved
 		}
 		var one *unstructured.Unstructured
+		var waitSummary string
 		if wait {
 			expr := forExpr
 			if expr == "" {
@@ -180,14 +181,22 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			if terr != nil {
 				return runtime.Result{}, terr
 			}
+			start := time.Now()
 			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout)
+			if err == nil {
+				elapsed := time.Since(start).Round(time.Second)
+				if elapsed == 0 {
+					elapsed = time.Since(start).Round(time.Millisecond)
+				}
+				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, elapsed)
+			}
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
 		}
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true)}, nil
+		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true), Summary: waitSummary}, nil
 	}
 	selector := ""
 	if scope != nil {

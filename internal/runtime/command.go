@@ -99,6 +99,11 @@ type Result struct {
 	Text      string
 	Tier      string
 	Stability string
+	// Summary, when non-empty, lands in the envelope's summary field and,
+	// under format ""/table, prints as its own stdout line ahead of the
+	// rendered Data. One line, no trailing newline needed.
+	// Ignored when Text is set — the Text branch renders before the Data path that prints it.
+	Summary string
 	// ExitStatus is the process exit status for this SUCCESSFUL result.
 	// Zero for every command that has not declared SuccessExitCodes. The
 	// pipeline renders the result fully BEFORE the status is honored.

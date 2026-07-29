@@ -983,3 +983,60 @@ func TestValidateInputStringSlicePerEntry(t *testing.T) {
 		assert.Nil(t, validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "b"}}}))
 	})
 }
+
+// TestResultSummaryAppearsInJSONEnvelope proves that a non-empty Result.Summary
+// lands in the envelope's top-level "summary" key under -o json.
+func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
+	t.Parallel()
+	summary := "wait: condition=Ready satisfied after 53s"
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}, Summary: summary},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	assert.Equal(t, summary, env["summary"])
+}
+
+// TestResultEmptySummaryAbsentFromJSONEnvelope proves that an empty
+// Result.Summary emits NO "summary" key — the envelope must be byte-identical
+// to a non-wait result (additive, not always-present).
+func TestResultEmptySummaryAbsentFromJSONEnvelope(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.Nil(t, ce)
+	env := decodeEnvelope(t, out.Bytes())
+	_, hasSummary := env["summary"]
+	assert.False(t, hasSummary, "empty Summary must emit no summary key in the envelope")
+}
+
+// TestResultSummaryPrintsBeforeTableInDefaultMode proves that a non-empty
+// Result.Summary is written to stdout as its own line ahead of the rendered
+// table under format ""/table.
+func TestResultSummaryPrintsBeforeTableInDefaultMode(t *testing.T) {
+	t.Parallel()
+	summary := "wait: condition=Ready satisfied after 53s"
+	cmd := fakeRead{
+		d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{
+			Kind:    "Cluster",
+			Data:    nodeMetricsRows{{"name": "node-1"}},
+			Summary: summary,
+		},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+	require.Nil(t, ce)
+	outStr := out.String()
+	assert.Contains(t, outStr, summary)
+	summaryPos := strings.Index(outStr, summary)
+	namePos := strings.Index(outStr, "NAME")
+	assert.Less(t, summaryPos, namePos, "summary must appear before the table")
+}
