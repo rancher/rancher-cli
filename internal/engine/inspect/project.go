@@ -201,7 +201,7 @@ type projectMember struct {
 	User         string `json:"user"`
 	RoleTemplate string `json:"roleTemplate"`
 	DisplayName  string `json:"displayName,omitempty"`
-	// System marks Rancher-internal principals (system:// prefix);
+	// System marks Rancher-internal principals (engine.IsSystemPrincipal);
 	// omitted when false so existing entries are byte-identical.
 	System bool `json:"system,omitempty"`
 }

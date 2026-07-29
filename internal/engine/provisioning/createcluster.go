@@ -109,7 +109,8 @@ type createClusterCmd struct {
 // pools (nodes register out of band); a node-driver cluster carries exactly
 // one machine pool backed by a resolved cloud credential and a
 // machine-config CR. Mirrors `create project`'s Plan/build split
-// (projects.go).
+// (projects.go). IsImported (imported.go) is the reader-side predicate for
+// this shape.
 func NewCreateCluster(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
 	return &createClusterCmd{clients: clients, roots: roots}
 }

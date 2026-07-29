@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 )
 
 // completionCharset is the allowlist for candidate values (AC-21).
@@ -536,14 +537,14 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 }
 
 // isSystemUserItem reports whether the user item represents a system account:
-// any entry in principalIds with the "system:" prefix.
+// any entry in principalIds that engine.IsSystemPrincipal matches.
 func isSystemUserItem(item map[string]any) bool {
 	pids, ok := item["principalIds"].([]interface{})
 	if !ok {
 		return false
 	}
 	for _, pid := range pids {
-		if s, ok := pid.(string); ok && strings.HasPrefix(s, "system:") {
+		if s, ok := pid.(string); ok && engine.IsSystemPrincipal(s) {
 			return true
 		}
 	}

@@ -33,11 +33,11 @@ func isNotFound(err error) bool {
 }
 
 // isSystemUser mirrors rancher's User.IsSystem: any principalIds entry
-// with the literal prefix "system:".
+// matching the shared system-principal predicate (engine.IsSystemPrincipal).
 func isSystemUser(u *unstructured.Unstructured) bool {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 	for _, p := range pids {
-		if strings.HasPrefix(p, "system:") {
+		if engine.IsSystemPrincipal(p) {
 			return true
 		}
 	}

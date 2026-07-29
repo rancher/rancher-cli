@@ -154,21 +154,18 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 
 // conditionStatus returns the status and message of the first
 // status.conditions[] entry whose type matches name, and whether one was
-// found — the scan shared by waitSatisfied and summarizeState.
+// found — the scan shared by waitSatisfied and summarizeState. Rides
+// engine.EachCondition for the shared decoding logic; stops at the first
+// match.
 func conditionStatus(obj *unstructured.Unstructured, name string) (status, message string, ok bool) {
-	conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
-	for _, c := range conds {
-		cm, okMap := c.(map[string]any)
-		if !okMap {
-			continue
+	engine.EachCondition(obj.Object, func(typ, s, _, msg string) bool {
+		if typ != name {
+			return true
 		}
-		if t, _, _ := unstructured.NestedString(cm, "type"); t == name {
-			s, _, _ := unstructured.NestedString(cm, "status")
-			msg, _, _ := unstructured.NestedString(cm, "message")
-			return s, msg, true
-		}
-	}
-	return "", "", false
+		status, message, ok = s, msg, true
+		return false
+	})
+	return status, message, ok
 }
 
 // summarizeState renders the last-observed signal for the timeout error,

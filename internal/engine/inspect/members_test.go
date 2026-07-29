@@ -251,14 +251,18 @@ func TestResolveMembersFlagsSystemPrincipals(t *testing.T) {
 
 	rows, _, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "system://provisioning/fleet-default/lx-import-k3d", "roleTemplateName": "cluster-owner"}),
+		memberBinding(map[string]any{"userPrincipalName": "system:serviceaccount:cattle-system:x", "roleTemplateName": "cluster-owner"}),
 		memberBinding(map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member"}),
 	})
 	require.NoError(t, err)
-	require.Len(t, rows, 2)
+	require.Len(t, rows, 3)
 	for _, row := range rows {
-		if row.Principal == "system://provisioning/fleet-default/lx-import-k3d" {
+		switch row.Principal {
+		case "system://provisioning/fleet-default/lx-import-k3d":
 			assert.True(t, row.System, "system:// principal flagged")
-		} else {
+		case "system:serviceaccount:cattle-system:x":
+			assert.True(t, row.System, "system: (no //) principal must also be flagged")
+		default:
 			assert.False(t, row.System)
 		}
 	}

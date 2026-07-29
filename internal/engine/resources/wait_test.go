@@ -454,3 +454,16 @@ func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
 	assert.NotContains(t, err.Error(), "Ready=Unknown (",
 		"an empty condition message must not open a parenthesized suffix")
 }
+
+func TestConditionStatusFirstMatchWins(t *testing.T) {
+	t.Parallel()
+	obj := &unstructured.Unstructured{Object: map[string]any{"status": map[string]any{"conditions": []any{
+		map[string]any{"type": "Ready", "status": "False", "message": "first"},
+		map[string]any{"type": "Ready", "status": "True", "message": "second"},
+	}}}}
+
+	status, message, ok := conditionStatus(obj, "Ready")
+	require.True(t, ok)
+	assert.Equal(t, "False", status, "first matching condition wins, not the last")
+	assert.Equal(t, "first", message)
+}

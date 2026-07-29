@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 )
 
 type SubjectKind string
@@ -52,7 +53,9 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 			WithHint("pass --type user or --type group")
 	}
 
-	if strings.HasPrefix(arg, "system:") {
+	// Principals with the "system:" prefix (Rancher's IsSystem predicate,
+	// shared via engine.IsSystemPrincipal) are rejected outright.
+	if engine.IsSystemPrincipal(arg) {
 		return Subject{}, clierr.New(clierr.CodeValidation,
 			"system principals cannot be granted roles").
 			WithHint("pass a user or group principal")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -24,8 +23,9 @@ type memberRow struct {
 	Principal   string
 	DisplayName string
 	Role        string
-	// System marks Rancher-internal principals — detection is the
-	// system:// id prefix ONLY, never the display name.
+	// System marks Rancher-internal principals — detection is
+	// engine.IsSystemPrincipal (Rancher's system-prefix rule), never the
+	// display name.
 	System bool
 }
 
@@ -160,7 +160,7 @@ func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []memberRo
 				userRefs[userName] = true
 			}
 		}
-		rows = append(rows, memberRow{Principal: principal, Role: role, System: strings.HasPrefix(principal, "system://")})
+		rows = append(rows, memberRow{Principal: principal, Role: role, System: engine.IsSystemPrincipal(principal)})
 	}
 	return rows, userRefs, groupRefs
 }
