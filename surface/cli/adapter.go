@@ -237,6 +237,96 @@ func exit(ce *clierr.Error) error {
 	return ucli.Exit("", ce.ExitCode())
 }
 
+// hintEntry pairs a matcher with the targeted hint it selects.
+type hintEntry[T any] struct {
+	match func(T) bool
+	hint  string
+}
+
+// firstHint walks an ordered registration table: the first matching
+// entry's hint wins; fallback when nothing matches.
+func firstHint[T any](entries []hintEntry[T], in T, fallback string) string {
+	for _, e := range entries {
+		if e.match(in) {
+			return e.hint
+		}
+	}
+	return fallback
+}
+
+// notFoundInput bundles the arguments passed to commandNotFound.
+type notFoundInput struct {
+	c    *ucli.Command
+	name string
+}
+
+// notFoundHints is the registration table for targeted command-not-found
+// hints: the first matching entry's hint wins; callers fall back to the
+// generic schema pointer when nothing matches. Register new targeted hints
+// here, not in the seam.
+var notFoundHints = []hintEntry[notFoundInput]{
+	{
+		// --version is a root-level flag only; a subgroup miss like `get
+		// version` has no such flag to point at, so it keeps the generic hint.
+		match: func(in notFoundInput) bool {
+			return in.name == "version" && in.c == in.c.Root()
+		},
+		hint: "there is no `version` command; use --version",
+	},
+	{
+		match: func(in notFoundInput) bool {
+			return in.c.Name == "delete" && (in.name == "cluster" || in.name == "clusters")
+		},
+		hint: "cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)",
+	},
+}
+
+// notFoundHint returns the targeted operator hint for commandNotFound.
+func notFoundHint(c *ucli.Command, name string) string {
+	return firstHint(notFoundHints, notFoundInput{c: c, name: name}, "run: rancher schema")
+}
+
+// usageErrorInput bundles the arguments passed to onUsageError.
+type usageErrorInput struct {
+	c   *ucli.Command
+	err error
+}
+
+// usageErrorHints is the registration table for targeted flag-parse
+// hints: the first matching entry's hint wins; callers fall back to the
+// generic schema hint when nothing matches. Register new targeted hints
+// here, not in the seam.
+//
+// c.Path() returns the root-to-leaf segment slice (urfave v3 Path()),
+// so a `get pod` leaf reports ["rancher","get","pod"]; the `get` group
+// itself reports ["rancher","get"]. The positional p[1]=="get" check
+// matches only commands directly under the `get` group — a "get" segment
+// anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
+// not trigger the hint.
+// urfave normalises --all-namespaces to -all-namespaces in its error text.
+var usageErrorHints = []hintEntry[usageErrorInput]{
+	{
+		// The kubectl reflex -A/--all-namespaces deserves the real answer in
+		// the first error, but only when the failing command sits under the
+		// `get` group — for every other verb the flag is equally unknown, but
+		// the "list operations span all namespaces" explanation is misleading.
+		match: func(in usageErrorInput) bool {
+			msg := in.err.Error()
+			if !strings.HasSuffix(msg, ": -A") && !strings.HasSuffix(msg, ": -all-namespaces") {
+				return false
+			}
+			p := in.c.Path()
+			return len(p) >= 2 && p[1] == "get"
+		},
+		hint: "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one",
+	},
+}
+
+// usageErrorHint returns the targeted operator hint for onUsageError.
+func usageErrorHint(c *ucli.Command, err error) string {
+	return firstHint(usageErrorHints, usageErrorInput{c: c, err: err}, "run: rancher schema; pass --help for usage")
+}
+
 // commandNotFound is urfave/cli's seam for an unmatched command/subcommand
 // name (registered as root's and every group's CommandNotFound). Without it,
 // urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
@@ -246,15 +336,7 @@ func exit(ce *clierr.Error) error {
 // and the process exit both happen here directly, mirroring how urfave's own
 // ShowRootCommandHelpAndExit calls OsExiter.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
-	hint := "run: rancher schema"
-	if name == "version" && c == c.Root() {
-		// --version is a root-level flag only; a subgroup miss like `get
-		// version` has no such flag to point at, so it keeps the generic hint.
-		hint = "there is no `version` command; use --version"
-	}
-	if c.Name == "delete" && (name == "cluster" || name == "clusters") {
-		hint = "cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"
-	}
+	hint := notFoundHint(c, name)
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
 		WithHint(hint)
 	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
@@ -269,15 +351,7 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 // and group command via the adapters, since urfave checks OnUsageError on
 // the command node whose own flags failed to parse, not the root's.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
-	hint := "run: rancher schema; pass --help for usage"
-	// The kubectl reflex -A/--all-namespaces deserves the real answer in the
-	// first error: there is no such flag because list operations are not
-	// namespace-filtered by default (Route keeps ns="" for nameless lists).
-	// Mirrors commandNotFound's targeted delete-cluster hint one seam up.
-	// urfave normalises --all-namespaces to -all-namespaces in its error text.
-	if msg := err.Error(); strings.HasSuffix(msg, ": -A") || strings.HasSuffix(msg, ": -all-namespaces") {
-		hint = "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one"
-	}
+	hint := usageErrorHint(c, err)
 	ce := clierr.New(clierr.CodeValidation, err.Error()).
 		WithHint(hint)
 	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))

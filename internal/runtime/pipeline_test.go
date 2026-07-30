@@ -740,6 +740,45 @@ func TestRenderResultRejectsTextAndRaw(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
+func TestRenderResultRejectsSummaryAndRawBytes(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "x", CommandType: ReadOnly},
+		res: Result{Summary: "done", RawBytes: []byte("y")},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, "command bug")
+}
+
+func TestRenderResultRejectsTextAndSummary(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "x", CommandType: ReadOnly},
+		res: Result{Text: "hello\n", Summary: "done"},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, "command bug")
+}
+
+func TestRenderResultRejectsSummaryAndRaw(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "x", CommandType: ReadOnly},
+		res: Result{Summary: "done", Raw: true, Data: map[string]string{"k": "v"}},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, "command bug")
+}
+
 // TestRenderResultEnvelopeWarningsTableStderr covers Finding 4 of the
 // adjudicated review (pipeline.go:251): renderResult's envelope path set
 // env.Warnings but never wrote anything to stderr, and renderTable

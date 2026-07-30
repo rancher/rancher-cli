@@ -457,10 +457,10 @@ func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
 
 func TestConditionStatusFirstMatchWins(t *testing.T) {
 	t.Parallel()
-	obj := &unstructured.Unstructured{Object: map[string]any{"status": map[string]any{"conditions": []any{
+	obj := map[string]any{"status": map[string]any{"conditions": []any{
 		map[string]any{"type": "Ready", "status": "False", "message": "first"},
 		map[string]any{"type": "Ready", "status": "True", "message": "second"},
-	}}}}
+	}}}
 
 	status, message, ok := conditionStatus(obj, "Ready")
 	require.True(t, ok)

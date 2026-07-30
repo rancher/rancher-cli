@@ -145,7 +145,7 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 		}
 		return strings.EqualFold(state, cond.name)
 	case "condition":
-		status, _, ok := conditionStatus(obj, cond.name)
+		status, _, ok := conditionStatus(obj.Object, cond.name)
 		return ok && status == cond.status
 	default:
 		return false
@@ -157,8 +157,8 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 // found — the scan shared by waitSatisfied and summarizeState. Rides
 // engine.EachCondition for the shared decoding logic; stops at the first
 // match.
-func conditionStatus(obj *unstructured.Unstructured, name string) (status, message string, ok bool) {
-	engine.EachCondition(obj.Object, func(typ, s, _, msg string) bool {
+func conditionStatus(obj map[string]any, name string) (status, message string, ok bool) {
+	engine.EachCondition(obj, func(typ, s, _, msg string) bool {
 		if typ != name {
 			return true
 		}
@@ -180,7 +180,7 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 		}
 		return s
 	case "condition":
-		if status, message, ok := conditionStatus(obj, cond.name); ok {
+		if status, message, ok := conditionStatus(obj.Object, cond.name); ok {
 			if message != "" {
 				return fmt.Sprintf("%s=%s (%s)", cond.name, status, engine.Printable(message))
 			}

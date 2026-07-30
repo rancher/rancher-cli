@@ -3,6 +3,7 @@ package kinds
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -87,6 +88,67 @@ func TestValidateRejectsDuplicateKey(t *testing.T) {
 	}
 	if err := validateKinds(dup); err == nil {
 		t.Error("duplicate Key must fail validation")
+	}
+}
+
+// mixedConditionColumn returns a Column that illegally combines Condition
+// with Path — used by the mixed-field rejection tests.
+func mixedConditionColumn() Column {
+	return Column{Header: "READY", Condition: "Ready", Path: []string{"status", "ready"}}
+}
+
+func TestValidateRejectsConditionMixedWithPathFields(t *testing.T) {
+	t.Parallel()
+	mixed := []Kind{
+		{Key: "a", Name: "foo", Columns: []Column{mixedConditionColumn()}},
+	}
+	if err := validateKinds(mixed); err == nil {
+		t.Error("Column mixing Condition with Path must fail validation")
+	}
+	// Real table must still pass.
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
+	}
+}
+
+// TestValidateFirstDefectWinsPerKindTableOrder pins the merged-loop's
+// first-defect-wins ordering: a column-condition conflict on kind 1 is
+// reported before an identifier collision on kind 2, because the loop
+// visits each kind fully (identifier checks then column checks) in table
+// order and returns on the first error it encounters.
+func TestValidateFirstDefectWinsPerKindTableOrder(t *testing.T) {
+	t.Parallel()
+	// Kind 1: clean identifiers, but column mixes Condition with Path.
+	// Kind 2: identifier "foo" collides with kind 1's Name — but the loop
+	// never reaches it because kind 1's column defect fires first.
+	fixture := []Kind{
+		{
+			Key:     "a",
+			Name:    "foo",
+			Columns: []Column{mixedConditionColumn()},
+		},
+		{Key: "b", Name: "bar", Aliases: []string{"foo"}},
+	}
+	err := validateKinds(fixture)
+	if err == nil {
+		t.Fatal("expected a validation error but got nil")
+	}
+	if !strings.Contains(err.Error(), "column") {
+		t.Errorf("expected column-conflict error (kind 1) to win over identifier collision (kind 2), got: %v", err)
+	}
+}
+
+func TestValidateRejectsLowercaseCondition(t *testing.T) {
+	t.Parallel()
+	lower := []Kind{
+		{Key: "a", Name: "foo", Columns: []Column{{Header: "STATUS", Condition: "diskPressure"}}},
+	}
+	if err := validateKinds(lower); err == nil {
+		t.Error("lowercase Condition type must fail validation")
+	}
+	// Real table must still pass.
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
 	}
 }
 

@@ -280,14 +280,34 @@ func missingFlags(streams IO, eff safety.Effect) []string {
 	return missing
 }
 
+// payloadExclusivityRule is the single source for the Result channel
+// invariant: Text, Raw, and RawBytes each claim the whole stdout; Summary
+// rides only the envelope/Data path.
+const payloadExclusivityRule = "Text, Raw, and RawBytes each claim the whole stdout; Summary rides only the envelope/Data path"
+
+// tableFormat reports whether format is one of the two formats rendered as text
+// tables: the default ("") and the explicit "table" value.
+func tableFormat(format string) bool {
+	return format == "" || format == "table"
+}
+
 func renderResult(streams IO, res Result) *clierr.Error {
-	if res.RawBytes != nil && res.Text != "" {
-		return clierr.New(clierr.CodeGeneric, "command bug: Result set both RawBytes and Text")
+	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
+	// any combination is a command bug.
+	claimed := 0
+	if res.Text != "" {
+		claimed++
 	}
-	if res.Raw && res.Text != "" {
-		return clierr.New(clierr.CodeGeneric, "command bug: Result set both Raw and Text")
+	if res.Raw {
+		claimed++
 	}
-	if res.Text != "" && (streams.Format == "" || streams.Format == "table") {
+	if res.RawBytes != nil {
+		claimed++
+	}
+	if claimed > 1 || (res.Summary != "" && claimed > 0) {
+		return clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
+	}
+	if res.Text != "" && tableFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
@@ -295,9 +315,6 @@ func renderResult(streams IO, res Result) *clierr.Error {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}
 		return nil
-	}
-	if res.Raw && res.RawBytes != nil {
-		return clierr.New(clierr.CodeGeneric, "command bug: Result set both Raw and RawBytes")
 	}
 	if res.RawBytes != nil {
 		if _, err := streams.Out.Write(res.RawBytes); err != nil {
@@ -318,7 +335,7 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	env.Warnings = res.Warnings
 	env.Tier, env.Stability = res.Tier, res.Stability
 	env.Summary = res.Summary
-	if (streams.Format == "" || streams.Format == "table") && res.Summary != "" {
+	if tableFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
@@ -330,7 +347,7 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	// envelope-level warning would otherwise vanish exactly where a
 	// default/table-format user looks. Mirror the "# warning: <w>" stderr
 	// convention the res.Text branch above already uses.
-	if streams.Format == "" || streams.Format == "table" {
+	if tableFormat(streams.Format) {
 		for _, w := range res.Warnings {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}
@@ -352,7 +369,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// so envelope-level warnings would otherwise vanish exactly where a user
 	// looks. Mirror the same "# warning: <w>" stderr convention Result
 	// already documents for table mode (command.go's Text field).
-	if streams.Format == "" || streams.Format == "table" {
+	if tableFormat(streams.Format) {
 		for _, w := range env.Warnings {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}

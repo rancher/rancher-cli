@@ -159,14 +159,14 @@ func execGet(t *testing.T, cmd runtime.Command, in runtime.Input) runtime.Result
 	return res
 }
 
-func clusterObjReady(name, display string, conditionStatus string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": name},
-		"spec":     map[string]any{"displayName": display},
-		"status": map[string]any{"conditions": []any{
-			map[string]any{"type": "Ready", "status": conditionStatus},
-		}},
-	}}
+// clusterObjReady builds a cluster fixture with spec.displayName and a single
+// Ready condition. It delegates the conditions shape to conditionObj so the two
+// test builders share a single source for status.conditions construction.
+func clusterObjReady(name, display string, condStatus string) unstructured.Unstructured {
+	base := conditionObj("Ready", condStatus)
+	base.Object["metadata"] = map[string]any{"name": name}
+	base.Object["spec"] = map[string]any{"displayName": display}
+	return *base
 }
 
 func TestGetClusterListsWithColumns(t *testing.T) {
@@ -711,4 +711,35 @@ func TestGetWaitStampsSummary(t *testing.T) {
 	const wantPrefix = "wait: condition=Ready satisfied after "
 	assert.True(t, strings.HasPrefix(res.Summary, wantPrefix),
 		"want summary prefix %q, got %q", wantPrefix, res.Summary)
+}
+
+// TestWaitElapsed pins the boundary behaviour of waitElapsed: the
+// millisecond floor for sub-second waits and the cutover to the
+// apimachinery short form at exactly one second.
+func TestWaitElapsed(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		elapsed time.Duration
+		want    string
+		comment string
+	}{
+		// Sub-second: floor to 1ms so a zero-elapsed wait never prints "0s".
+		{0, "1ms", "zero duration floors to 1ms"},
+		{400 * time.Microsecond, "1ms", "400µs rounds down to 0ms, then floors to 1ms"},
+		{499 * time.Microsecond, "1ms", "499µs rounds down to 0ms, then floors to 1ms"},
+		// Round is half-away-from-zero: 500µs rounds to 1ms, no floor needed.
+		{500 * time.Microsecond, "1ms", "500µs rounds up to 1ms (half-away-from-zero)"},
+		{999 * time.Millisecond, "999ms", "999ms rounds to 999ms, stays below the cutover"},
+		// At or above one second: apimachinery short form.
+		{1 * time.Second, "1s", "exactly 1s → short form 1s"},
+		{90 * time.Second, "1m", "90s → short form 1m (integer-minute truncation)"},
+		{5 * time.Minute, "5m", "5m → short form 5m"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.comment, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, waitElapsed(tt.elapsed))
+		})
+	}
 }

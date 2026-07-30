@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/duration"
 )
 
 // Flag names shared across the generic verbs. Flag generation (getFlags),
@@ -184,11 +185,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			start := time.Now()
 			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout)
 			if err == nil {
-				elapsed := time.Since(start).Round(time.Second)
-				if elapsed == 0 {
-					elapsed = time.Since(start).Round(time.Millisecond)
-				}
-				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, elapsed)
+				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 			}
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
@@ -221,6 +218,21 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		items = filtered
 	}
 	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false)}, nil
+}
+
+// waitElapsed renders the wait summary's elapsed display: the
+// apimachinery short form at or above one second; milliseconds below
+// it, floored at 1ms so an instant wait never prints the "0s" both
+// formatters would otherwise produce.
+func waitElapsed(elapsed time.Duration) string {
+	if elapsed < time.Second {
+		ms := elapsed.Round(time.Millisecond)
+		if ms == 0 {
+			ms = time.Millisecond
+		}
+		return ms.String()
+	}
+	return duration.ShortHumanDuration(elapsed)
 }
 
 // parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable

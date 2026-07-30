@@ -99,10 +99,12 @@ type Result struct {
 	Text      string
 	Tier      string
 	Stability string
-	// Summary, when non-empty, lands in the envelope's summary field and,
-	// under format ""/table, prints as its own stdout line ahead of the
-	// rendered Data. One line, no trailing newline needed.
-	// Ignored when Text is set — the Text branch renders before the Data path that prints it.
+	// Summary, when non-empty, lands in the -o json/-o yaml envelope's summary
+	// field and, under format ""/table, prints as its own stdout line ahead of
+	// the rendered Data. One line, no trailing newline needed.
+	// -o name and -o template render env.Data alone and never see Summary.
+	// Incompatible with Text, Raw, and RawBytes: setting Summary alongside any
+	// of them is a command bug and renderResult rejects it.
 	Summary string
 	// ExitStatus is the process exit status for this SUCCESSFUL result.
 	// Zero for every command that has not declared SuccessExitCodes. The

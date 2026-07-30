@@ -65,26 +65,27 @@ func (t table) Rows() [][]string {
 	return rows
 }
 
-// columnString projects one column from one object: Path first, then each
-// AltPaths entry, first non-empty string wins. The Bool absent→"false"
-// fallback applies to Path only, preserving the single-path semantics
-// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN). When Condition
-// is set, Path/AltPaths/Bool are ignored and the cell is derived from the
-// named status condition instead.
-func columnString(o map[string]any, c kinds.Column) string {
-	if c.Condition != "" {
-		status, _, ok := conditionStatus(&unstructured.Unstructured{Object: o}, c.Condition)
-		switch {
-		case !ok:
-			return ""
-		case status == "True":
-			return c.Condition
-		case status == "False":
-			return "Not" + c.Condition
-		default:
-			return status
-		}
+// conditionCell derives the cell from the named status condition: True→type
+// name, False→"Not<Type>", anything else verbatim, absent/degenerate→"".
+func conditionCell(o map[string]any, c kinds.Column) string {
+	status, _, ok := conditionStatus(o, c.Condition)
+	switch {
+	case !ok:
+		return ""
+	case status == "True":
+		return c.Condition
+	case status == "False":
+		return "Not" + c.Condition
+	default:
+		return status
 	}
+}
+
+// pathCell projects a column value from Path/AltPaths/Bool: Path first, then
+// each AltPaths entry, first non-empty string wins. The Bool absent→"false"
+// fallback applies to Path only, preserving the single-path semantics
+// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN).
+func pathCell(o map[string]any, c kinds.Column) string {
 	v, ok, _ := unstructured.NestedString(o, c.Path...)
 	if ok && v != "" {
 		return v
@@ -103,4 +104,14 @@ func columnString(o map[string]any, c kinds.Column) string {
 		}
 	}
 	return v
+}
+
+// columnString projects one column from one object. validateKinds guarantees
+// Condition and Path/AltPaths/Bool are mutually exclusive, so the dispatcher
+// selects exactly one projection mode.
+func columnString(o map[string]any, c kinds.Column) string {
+	if c.Condition != "" {
+		return conditionCell(o, c)
+	}
+	return pathCell(o, c)
 }

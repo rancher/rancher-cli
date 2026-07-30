@@ -823,6 +823,23 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		assert.NotContains(t, env.Data.Error.Hint, "all-namespaces",
 			"a genuinely unknown flag must not receive the all-namespaces hint")
 	})
+
+	t.Run("create namespace -A gets generic hint, not all-namespaces hint", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "create", "namespace", "foo", "-A"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.NotContains(t, env.Data.Error.Hint, "all-namespaces",
+			"create namespace -A must not receive the get-specific all-namespaces hint")
+	})
 }
 
 // An explicitly overridden config dir must not put a plain-text notice ahead

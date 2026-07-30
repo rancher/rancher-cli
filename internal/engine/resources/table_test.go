@@ -77,6 +77,7 @@ func TestColumnStringConditionDerived(t *testing.T) {
 	assert.Equal(t, "NotReady", columnString(obj("False"), col))
 	assert.Equal(t, "Unknown", columnString(obj("Unknown"), col))
 	assert.Equal(t, "", columnString(map[string]any{}, col), "absent condition renders blank, never fabricated")
+	assert.Equal(t, "", columnString(obj(""), col), "degenerate statusless entry renders blank")
 }
 
 // TestTableMarshalJSONSingleInvariant drives the real output.Render path (not

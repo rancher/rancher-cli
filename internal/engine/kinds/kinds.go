@@ -7,6 +7,7 @@ package kinds
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -37,9 +38,14 @@ type Column struct {
 	// entry of this type instead of Path/AltPaths (which are ignored):
 	// status True renders the type name ("Ready"), False renders
 	// "Not<Type>" ("NotReady"), anything else renders verbatim
-	// ("Unknown") — the kubectl node-STATUS idiom. An absent condition
-	// renders blank: nothing is fabricated. Exists because Rancher's
-	// Norman-computed status.state never appears on raw CRD reads.
+	// ("Unknown") — the kubectl node-STATUS idiom. An absent condition —
+	// or a degenerate entry with no status — renders blank: nothing is
+	// fabricated. Exists because Rancher's Norman-computed status.state
+	// never appears on raw CRD reads.
+	//
+	// Condition types are CamelCase by k8s convention (e.g. "Ready",
+	// "DiskPressure"); the "Not" prefix rendering depends on this.
+	// validateKinds rejects any value whose first rune is not uppercase.
 	Condition string
 }
 
@@ -587,6 +593,10 @@ func validateKinds(ts []Kind) error {
 		}
 		seenKeys[k.Key] = true
 	}
+	// Checks run per kind in table order; the FIRST defect anywhere wins.
+	// Identifier-collision and column-condition checks share this loop so a
+	// single kind can trigger at most one error, and an earlier kind's defect
+	// always takes precedence over a later kind's defect of a different type.
 	seen := map[string]string{}
 	for _, k := range ts {
 		for _, id := range append([]string{k.Name, k.Key}, k.Aliases...) {
@@ -594,6 +604,14 @@ func validateKinds(ts []Kind) error {
 				return fmt.Errorf("kind identifier %q claimed by both %q and %q", id, prev, k.Key)
 			}
 			seen[id] = k.Key
+		}
+		for _, col := range k.Columns {
+			if col.Condition != "" && (len(col.Path) > 0 || len(col.AltPaths) > 0 || col.Bool) {
+				return fmt.Errorf("kind %q column %q sets Condition together with Path/AltPaths/Bool", k.Key, col.Header)
+			}
+			if col.Condition != "" && !unicode.IsUpper(rune(col.Condition[0])) {
+				return fmt.Errorf("kind %q column %q: Condition type %q must start with an uppercase letter (k8s CamelCase convention)", k.Key, col.Header, col.Condition)
+			}
 		}
 	}
 	return nil
