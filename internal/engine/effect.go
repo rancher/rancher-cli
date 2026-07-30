@@ -14,8 +14,10 @@ import (
 // the real create. The dry-run response is exposed so a caller can compare
 // its submission against what the server accepted (create machine-config's
 // pruned-key warning, MC-12); PlanCreate delegates here, so every existing
-// create keeps its Effect byte-for-byte. Tier/Stability are stamped by the
-// pipeline, not set here. resultKind names the Result envelope kind.
+// create keeps its Effect byte-for-byte. The Effect carries no
+// contract/stability — the resolver Binding drives the pipeline's gates and
+// the manifest is the only published source. resultKind names the Result
+// envelope kind.
 // effectCluster is the cluster the mutation semantically targets — NOT the
 // proxy the client connects through (see PlanCreate's original PE-5 note).
 // destructive is the caller's per-kind policy.
@@ -55,8 +57,9 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 // plus the closure that performs the real update. The mutation is fully decided
 // by the caller: obj is the already-transformed object carrying the
 // resourceVersion precondition, diff is the precomputed field-level change, and
-// destructive is the caller's per-kind policy. Tier/Stability are stamped by
-// the pipeline. Mirrors PlanCreate so create and update share one shape.
+// destructive is the caller's per-kind policy. The Effect carries no
+// contract/stability (see PlanCreateObserved). Mirrors PlanCreate so create
+// and update share one shape.
 func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
 	if _, err := client.Update(ctx, gvr, ns, obj, true); err != nil {
 		return safety.Effect{}, nil, err

@@ -47,9 +47,9 @@ what drifted the previous revision of this doc).
 | `internal/commands/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
-| `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Tier`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
+| `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
-| `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, tier bindings, table columns. |
+| `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
@@ -59,7 +59,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe — used by the auth check identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
-| `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→tier `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
+| `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). |
@@ -251,11 +251,11 @@ Every command runs through `runtime.Run`, which type-switches on the command int
    *is* the closure Plan built (Approach B). Plan issues a **server-side dry-run** of the
    write to surface admission/RBAC/webhook denials before the user confirms.
 3. Pipeline invariants (enforced centrally, never trusted from command code):
-   - `Effect.Action` must be in the closed enum `{create, update, delete, scale}`;
+   - `Effect.Action` must be in the closed enum `{create, update, delete}`;
      unknown → structured error before any gate.
    - `Action == delete` ⇒ `Destructive == true`.
-   - `Effect.Tier` / `Effect.Stability` are **overwritten** from the resolver binding,
-     discarding whatever Plan set — gate inputs come from the resolver, not the command.
+   - `Effect.Action` is validated against the closed enum; the resolver `Binding` drives
+     gate inputs — the command's Plan cannot override the contract or stability.
    - `Effect.Server` is stamped from the factory's resolved identity; `Effect.Cluster` is
      set by Plan. Dry-run output and gating state *where* the mutation lands.
 4. `--dry-run` renders the Effect and stops (the executor closure is discarded).
@@ -267,8 +267,7 @@ Every command runs through `runtime.Run`, which type-switches on the command int
 **Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
 server, which authorizes it with the *same* verb as the real write. An agent with
 read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` — that means
-"the write would be denied", **not** "dry-run is broken". The Norman-tier / no-conflict-
-detection warning is emitted on both the dry-run Effect and the applied result.
+"the write would be denied", **not** "dry-run is broken".
 
 **Deliberate Plan-time network write: `create cluster` creatorId pre-stamping.** Before
 the server-side dry-run, `create cluster` resolves the caller's identity via the
@@ -303,7 +302,7 @@ authoritative "does this touch the network / need credentials" signal — not
 **Kind table (`internal/engine/kinds`).** One row per resource kind: `Key` (canonical
 MCP-vocabulary key — `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
 singular — `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
-(`management` | `downstream`), `Deletable`, `Binding` (tier/stability for the generated
+(`management` | `downstream`), `Deletable`, `Binding` (contract/stability for the generated
 generic ops), and table `Columns`. `Key` is conformance-tested against a pinned fixture
 copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) — the test matches on
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
@@ -456,7 +455,7 @@ never see two different servers.
 object, resourceVersion, and client that Execute uses are captured at Plan time, so
 Execute structurally cannot act on anything Plan did not preview.
 
-**Pipeline-stamped gate inputs.** Tier, stability, destructiveness, and server identity
+**Pipeline-stamped gate inputs.** Contract, stability, destructiveness, and server identity
 that drive the gates are stamped by the pipeline from the resolver binding and factory —
 never read from values the command returned — so a command cannot weaken its own gates.
 
@@ -488,10 +487,11 @@ reporting); both layers run the one safety pipeline. The RBAC binding kinds
 
 **Schema manifest as the discovery contract.** `rancher schema` emits a golden-tested
 manifest: per-command args/flags, `commandType`, `destructive`
-(`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, tier,
-stability, and aliases, plus the global flags, error-code enum, and an `effectSchema`
+(`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, `contract`,
+`stability`, and aliases, plus the global flags, error-code enum, and an `effectSchema`
 (the `Effect` field names and the closed `Action` enum) so agents can parse `--dry-run`
-output from the manifest alone.
+output from the manifest alone. `contract` and `stability` are NOT serialized in Effect
+or Result envelopes — the schema manifest is the single published source.
 
 **Reserved `RancherClient` port.** `ClusterClient` covers the two cluster-scoped endpoint
 families (`/k8s/clusters/local` and `/k8s/clusters/<id>`). Management-*plane* operations

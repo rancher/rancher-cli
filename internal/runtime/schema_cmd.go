@@ -50,11 +50,11 @@ func (s *schemaCmd) Describe() Descriptor {
 				Desc: "show only commands with this verb (the first word of the command name)"},
 			{Name: "destructive", Type: "bool",
 				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
-			// Tiers PRESENT in the manifest, not every declared safety.Tier —
-			// pinned by TestSchemaTierEnumMatchesCommandTiers.
-			{Name: "tier", Type: "string",
-				Enum: []string{"public", "crd"},
-				Desc: "show only commands served at this tier"},
+			// Contracts PRESENT in the manifest, not every declared safety.Contract —
+			// pinned by TestSchemaContractEnumMatchesCommandContracts.
+			{Name: "contract", Type: "string",
+				Enum: []string{"public", "internal"},
+				Desc: "show only commands with this contract designation"},
 			{Name: "mutating", Type: "bool",
 				Desc: "show only mutating commands"},
 			{Name: "search", Type: "string",
@@ -160,7 +160,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 // filters must match for a command to be retained (they compose as AND).
 type schemaFilters struct {
 	verb        string
-	tier        string
+	contract    string
 	search      string
 	destructive bool
 	mutating    bool
@@ -169,7 +169,7 @@ type schemaFilters struct {
 func filtersFrom(in Input) schemaFilters {
 	return schemaFilters{
 		verb:        in.String("verb"),
-		tier:        in.String("tier"),
+		contract:    in.String("contract"),
 		search:      in.String("search"),
 		destructive: in.Bool("destructive"),
 		mutating:    in.Bool("mutating"),
@@ -177,7 +177,7 @@ func filtersFrom(in Input) schemaFilters {
 }
 
 func (f schemaFilters) active() bool {
-	return f.verb != "" || f.tier != "" || f.search != "" || f.destructive || f.mutating
+	return f.verb != "" || f.contract != "" || f.search != "" || f.destructive || f.mutating
 }
 
 // describe names the active flags as typed, for conflict errors and the
@@ -190,8 +190,8 @@ func (f schemaFilters) describe() []string {
 	if f.destructive {
 		out = append(out, "--destructive")
 	}
-	if f.tier != "" {
-		out = append(out, "--tier "+f.tier)
+	if f.contract != "" {
+		out = append(out, "--contract "+f.contract)
 	}
 	if f.mutating {
 		out = append(out, "--mutating")
@@ -203,8 +203,8 @@ func (f schemaFilters) describe() []string {
 }
 
 // keep reports whether c survives every active filter: --verb matches the
-// first name token, --destructive keeps true and dependsOnInput, --tier the
-// resolver tier, --mutating the commandType, --search SE-11's substring set.
+// first name token, --destructive keeps true and dependsOnInput, --contract the
+// resolver contract, --mutating the commandType, --search SE-11's substring set.
 func (f schemaFilters) keep(c SchemaCommand) bool {
 	if f.verb != "" {
 		verb, _, _ := strings.Cut(c.Name, " ")
@@ -215,7 +215,7 @@ func (f schemaFilters) keep(c SchemaCommand) bool {
 	if f.destructive && c.Destructive != "true" && c.Destructive != "dependsOnInput" {
 		return false
 	}
-	if f.tier != "" && c.Tier != f.tier {
+	if f.contract != "" && c.Contract != f.contract {
 		return false
 	}
 	if f.mutating && c.CommandType != Mutating {

@@ -47,8 +47,7 @@ type IO struct {
 
 // Run executes one command through the single middleware path. b is the
 // resolver binding for the command's op ({} for config/local commands); the
-// pipeline stamps Tier/Stability from it — Effect/Result values set by the
-// command are overwritten, never trusted.
+// internal Binding drives the --allow-deprecated gate.
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	d := cmd.Describe()
 
@@ -83,7 +82,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	}
 }
 
-// runMutating drives the Plan → invariant checks → tier/server stamping →
+// runMutating drives the Plan → invariant checks → server stamping →
 // confirmation gate → Execute path for a mutating command.
 func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	eff, exec, err := c.Plan(ctx, in)
@@ -93,7 +92,6 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	if ce := checkPlan(eff, exec); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
-	eff.Tier, eff.Stability = b.Tier, b.Stability
 	if streams.ServerIdentity != nil {
 		server, err := streams.ServerIdentity()
 		if err != nil {
@@ -104,21 +102,16 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	if streams.DryRun {
 		return 0, renderEffect(streams, eff)
 	}
-	if missing := missingFlags(streams, eff); len(missing) > 0 {
+	if missing := missingFlags(streams, eff, b); len(missing) > 0 {
 		return 0, renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
 			"confirmation required for this mutation").
-			WithHint("re-run with: "+strings.Join(missing, " ")).
-			WithTier(string(eff.Tier)))
+			WithHint("re-run with: "+strings.Join(missing, " ")))
 	}
 	res, err := exec(ctx)
 	if err != nil {
 		return 0, renderErr(streams, toClierr(err))
 	}
-	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
-	if b.Tier == safety.TierNorman && !eff.ConflictDetection {
-		res.Warnings = append(res.Warnings, "served via norman tier: no conflict detection")
-	}
 	return finishResult(streams, c.Describe(), res)
 }
 
@@ -139,15 +132,13 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 	return nil
 }
 
-// runRead executes a read command and stamps the binding tier/stability onto
-// the result.
+// runRead executes a read command.
 func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY)
 	res, err := c.Execute(ctx, in, p)
 	if err != nil {
 		return 0, renderErr(streams, toClierr(err))
 	}
-	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	return finishResult(streams, c.Describe(), res)
 }
 
@@ -265,8 +256,8 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 	return nil
 }
 
-// missingFlags computes the confirmation flags absent for this Effect.
-func missingFlags(streams IO, eff safety.Effect) []string {
+// missingFlags computes the confirmation flags absent for this Effect and binding.
+func missingFlags(streams IO, eff safety.Effect, b safety.Binding) []string {
 	var missing []string
 	if !streams.Apply {
 		missing = append(missing, "--apply")
@@ -274,7 +265,7 @@ func missingFlags(streams IO, eff safety.Effect) []string {
 	if eff.Destructive && !streams.Yes {
 		missing = append(missing, "--yes")
 	}
-	if eff.Stability == safety.Deprecated && !streams.AllowDeprecated {
+	if b.Stability == safety.Deprecated && !streams.AllowDeprecated {
 		missing = append(missing, "--allow-deprecated")
 	}
 	return missing
@@ -333,7 +324,6 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
-	env.Tier, env.Stability = res.Tier, res.Stability
 	env.Summary = res.Summary
 	if tableFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
@@ -357,11 +347,7 @@ func renderResult(streams IO, res Result) *clierr.Error {
 
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
-	env.Tier, env.Stability = string(eff.Tier), string(eff.Stability)
 	env.Warnings = append(env.Warnings, eff.Warnings...)
-	if !eff.ConflictDetection && eff.Tier == safety.TierNorman {
-		env.Warnings = append(env.Warnings, "served via norman tier: no conflict detection")
-	}
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}

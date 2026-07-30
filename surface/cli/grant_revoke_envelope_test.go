@@ -29,19 +29,15 @@ type effectData struct {
 		From any    `json:"from"`
 		To   any    `json:"to"`
 	} `json:"diff"`
-	ConflictDetection bool   `json:"conflictDetection"`
-	Reversible        bool   `json:"reversible"`
-	Destructive       bool   `json:"destructive"`
-	Tier              string `json:"tier"`
-	Stability         string `json:"stability"`
+	ConflictDetection bool `json:"conflictDetection"`
+	Reversible        bool `json:"reversible"`
+	Destructive       bool `json:"destructive"`
 }
 
 type effectEnvelope struct {
-	Kind      string     `json:"kind"`
-	Tier      string     `json:"tier"`
-	Stability string     `json:"stability"`
-	Warnings  []string   `json:"warnings"`
-	Data      effectData `json:"data"`
+	Kind     string     `json:"kind"`
+	Warnings []string   `json:"warnings"`
+	Data     effectData `json:"data"`
 }
 
 type grEnvData struct {
@@ -410,8 +406,6 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		var env effectEnvelope
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
-		assert.Equal(t, "public", env.Tier)
-		assert.Equal(t, "beta", env.Stability)
 		assert.Empty(t, env.Warnings)
 		assert.Equal(t, "create", env.Data.Action)
 		assert.True(t, env.Data.Destructive, "grant must be Destructive")
@@ -441,8 +435,6 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		var env effectEnvelope
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
-		assert.Equal(t, "public", env.Tier)
-		assert.Equal(t, "beta", env.Stability)
 		assert.Equal(t, []string{"/clusterName", "/roleTemplateName", "/userName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
@@ -469,8 +461,6 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		var env effectEnvelope
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
-		assert.Equal(t, "public", env.Tier)
-		assert.Equal(t, "beta", env.Stability)
 		assert.Equal(t, []string{"/globalRoleName", "/userName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)

@@ -507,7 +507,7 @@ func TestCreateMachineConfigNullValueKept(t *testing.T) {
 // non-destructive.
 func TestCreateMachineConfigGateBehavior(t *testing.T) {
 	t.Parallel()
-	binding := safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta}
+	binding := safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}
 	in := mcInput{
 		a:  []string{"digitaloceanconfig", "web-pool"},
 		s:  map[string]string{"region": "nyc3"},

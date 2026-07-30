@@ -159,12 +159,12 @@ func TestBindingsGeneratedPerKind(t *testing.T) {
 
 	gc, ok := b["get cluster"]
 	require.True(t, ok, "get cluster must have a generated binding")
-	assert.Equal(t, safety.TierCRD, gc.Tier)
+	assert.Equal(t, safety.ContractInternal, gc.Contract)
 	assert.Equal(t, safety.Beta, gc.Stability)
 
 	dp, ok := b["delete project"]
 	require.True(t, ok, "delete project must have a generated binding")
-	assert.Equal(t, safety.TierPublic, dp.Tier)
+	assert.Equal(t, safety.ContractPublic, dp.Contract)
 	assert.Equal(t, safety.Stable, dp.Stability)
 
 	_, ok = b["delete cluster"]

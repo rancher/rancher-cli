@@ -54,7 +54,7 @@ different actor for a different purpose:
 ### 2. Discover, don't guess
 
 ```
-rancher schema -o json              # every command: args, flags, aliases, destructive markers, tier/stability, error-code enum
+rancher schema -o json              # every command: args, flags, aliases, destructive markers, contract/stability, error-code enum
 rancher schema get pod -o json      # one command's contract
 ```
 
@@ -93,11 +93,11 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 
 - A mutation without `--apply` is refused with `CONFIRMATION_REQUIRED`; the
   error's `hint` names the exact flags to add. Relay the dry-run Effect (action,
-  diff, tier) to the user before applying anything non-trivial.
+  target, diff) to the user before applying anything non-trivial.
 - Patch previews include a field-level diff (`data.diff`) — show it.
 - `secret` diffs are redacted by design: `data`/`stringData` entries show the
   changed path but `from`/`to` are `<redacted>`, never the raw value.
-- `--allow-deprecated` is required to write through a deprecated-tier API.
+- `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too.
 - Never chain `--apply --yes` onto a command you have not dry-run or whose
@@ -311,8 +311,8 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   env vars. Sensitive kinds (users, settings, role bindings, …) escalate
   mutations to the destructive gate — expect `--yes` to be demanded even for a
   patch.
-- **Tier/stability:** server ops surface `tier` (`public` > `crd` > `norman`)
-  and `stability` (`stable`/`beta`/`deprecated`) — mention them when the user
+- **Contract/stability:** server ops surface `contract` (`public` | `internal`)
+  and `stability` (`stable`/`beta`/`deprecated`) in the schema manifest — mention them when the user
   is deciding whether to depend on an operation.
 - **Token commands — local vs. server:**
 

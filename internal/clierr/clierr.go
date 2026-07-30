@@ -42,7 +42,6 @@ type Error struct {
 	Hint       string      `json:"hint,omitempty"`
 	Candidates []Candidate `json:"candidates,omitempty"`
 	Retryable  bool        `json:"retryable"`
-	Tier       string      `json:"tier,omitempty"`
 	// Details carries an optional command-specific structured payload
 	// (e.g. revoke's partial-failure split). Shape is owned by the
 	// producing command; consumers decode by command context.
@@ -75,7 +74,6 @@ func CodeExits() map[string]int {
 }
 
 func (e *Error) WithHint(h string) *Error            { e.Hint = h; return e }
-func (e *Error) WithTier(t string) *Error            { e.Tier = t; return e }
 func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
 func (e *Error) WithDetails(d any) *Error            { e.Details = d; return e }

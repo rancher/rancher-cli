@@ -229,13 +229,13 @@ func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime
 }
 
 // registeredVerbState describes a verb that HAS a registered command:
-// available unless the override marks it a refusal. Tier/stability come from
+// available unless the override marks it a refusal. Contract/stability come from
 // the row's own Binding — the same source kinds.Bindings() (and BuildRoot's
 // del-override resolver) feed the resolver from.
 func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.VerbState {
 	vs := runtime.VerbState{
 		State:     runtime.VerbAvailable,
-		Tier:      string(k.Binding.Tier),
+		Contract:  string(k.Binding.Contract),
 		Stability: string(k.Binding.Stability),
 	}
 	if note, refused := ov.refusals[verb]; refused {
@@ -268,7 +268,7 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string,
 		return nil, "", fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
 	}
 	// Engine commands (read or mutating) must resolve to a binding; Local
-	// config/auth commands carry no tier.
+	// config/auth commands carry no contract.
 	if d.CommandType != runtime.Local {
 		if _, ok := resolver.Resolve(d.Name); !ok {
 			return nil, "", fmt.Errorf("engine command %q has no resolver binding", d.Name)
@@ -459,13 +459,58 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 // validates, registers, and wires every command. `schema` is a fixed command
 // backed by the same registry. Global flags are defined at root so subcommand
 // actions can read them (c.Bool("dry-run"), c.String("config"), ...).
-func BuildRoot(version string) (*ucli.Command, error) {
-	if err := kinds.Validate(); err != nil {
-		return nil, fmt.Errorf("kind table: %w", err)
+// derivedOpKinds maps every bespoke op whose surface IS a single kind row's
+// resource to that row's key. Their bindings are derived from the rows at
+// composition time — never hand-copied literals in provider.NewResolver —
+// so an edit to a row's Binding propagates to every op it backs.
+// TestCreateOpBindingsTrackKindRows ranges over this same map, so a new
+// entry is covered the moment it is added. The namespace mutations ride the
+// same core-v1 dynamic path as the generated namespace verbs and are bound
+// to that row, not the project verbs they sit beside.
+var derivedOpKinds = map[string]string{
+	"create project":           "project",
+	"create token":             "token",
+	"create kubeconfig":        "kubeconfig",
+	"create namespace":         "namespace",
+	"project add-namespace":    "namespace",
+	"project remove-namespace": "namespace",
+	"create secret":            "secret",
+	"create cluster":           "provisioningcluster",
+}
+
+// bespokePublicOps is the closed, reviewed set of ContractPublic ops with
+// no single backing kind row (they span several listed Public API kinds).
+// TestPublicContractOpsArePinned consumes it both ways: an op here must
+// resolve public, and a public op must be here or back a public kind row —
+// so widening the public surface is always a reviewed edit to this file or
+// the kind table, never silent.
+var bespokePublicOps = map[string]bool{"grant": true, "revoke": true}
+
+// lookupRow resolves a kind-table key to its row, shared by the derived-op
+// and delete-override loops so the lookup-and-fail shape and its error
+// wording exist once.
+func lookupRow(key string) (kinds.Kind, error) {
+	row, ok := kinds.Lookup(key)
+	if !ok {
+		return kinds.Kind{}, fmt.Errorf("kind table: %q kind not found", key)
 	}
-	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
-	if err != nil {
-		return nil, fmt.Errorf("resolver: %w", err)
+	return row, nil
+}
+
+// composeBindings builds the full op→binding resolver BuildRoot registers:
+// the bespoke provider map, the kind table's generated ops, the
+// derivedOpKinds ops, and the delete overrides derived from their rows.
+// Derivation over hand-copied literals is the rule throughout: an edit to a
+// row's Binding propagates to every op that row backs, with nothing to keep
+// in sync by hand.
+func composeBindings() (runtime.Resolver, error) {
+	derivedOps := runtime.MapResolver{}
+	for op, key := range derivedOpKinds {
+		row, err := lookupRow(key)
+		if err != nil {
+			return nil, err
+		}
+		derivedOps[op] = row.Binding
 	}
 	// A kindOverrideTable row whose del override sits on a Deletable: false
 	// kind (D-R1-3) never gets a binding from kinds.Bindings() above — the
@@ -485,18 +530,39 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		if ov.del == nil {
 			continue
 		}
-		row, ok := kinds.Lookup(key)
-		if !ok {
-			return nil, fmt.Errorf("kind table: %q kind not found", key)
+		row, err := lookupRow(key)
+		if err != nil {
+			return nil, err
 		}
 		if !delOverrideOnNonDeletable(row, ov) {
 			continue
 		}
 		delOverrides["delete "+row.Name] = row.Binding
 	}
-	resolver, err = runtime.ComposeResolvers(resolver, delOverrides)
+	// One fold over every source, one error-wrap site: adding a fifth
+	// source is one element here, not another compose-and-wrap copy.
+	resolver := runtime.Resolver(runtime.MapResolver(provider.NewResolver()))
+	for _, src := range []runtime.Resolver{
+		runtime.MapResolver(kinds.Bindings()),
+		derivedOps,
+		delOverrides,
+	} {
+		var err error
+		resolver, err = runtime.ComposeResolvers(resolver, src)
+		if err != nil {
+			return nil, fmt.Errorf("resolver: %w", err)
+		}
+	}
+	return resolver, nil
+}
+
+func BuildRoot(version string) (*ucli.Command, error) {
+	if err := kinds.Validate(); err != nil {
+		return nil, fmt.Errorf("kind table: %w", err)
+	}
+	resolver, err := composeBindings()
 	if err != nil {
-		return nil, fmt.Errorf("resolver: %w", err)
+		return nil, err
 	}
 	reg := runtime.NewRegistry(resolver)
 	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))

@@ -26,7 +26,7 @@ type ArgSpec struct {
 	Env      []string `json:"env,omitempty"`     // env vars that back this flag, if any
 }
 
-// Descriptor is a command's self-description (no tier/stability — those come
+// Descriptor is a command's self-description (no contract/stability — those come
 // from the resolver at schema-generation time). Args are positional; Flags are
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
 // urfave command by the surface adapter.
@@ -96,9 +96,7 @@ type Result struct {
 	// json/yaml/template/name render the envelope over Data as usual.
 	// Mutually exclusive with RawBytes; renderResult rejects a Result that
 	// sets both.
-	Text      string
-	Tier      string
-	Stability string
+	Text string
 	// Summary, when non-empty, lands in the -o json/-o yaml envelope's summary
 	// field and, under format ""/table, prints as its own stdout line ahead of
 	// the rendered Data. One line, no trailing newline needed.

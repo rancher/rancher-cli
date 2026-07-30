@@ -67,7 +67,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 		CommandType: ReadOnly,
 		Network:     true,
 		Auth:        true,
-		Tier:        "crd",
+		Contract:    "internal",
 		Stability:   "beta",
 	}
 	card := renderCommandCard(cardManifest(), c)
@@ -79,7 +79,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "flags:")
 	assert.Contains(t, lines, "  --cluster string  target cluster `id|name`")
 	assert.Contains(t, lines, "  --wait bool  wait for the resource")
-	assert.Contains(t, lines, "contract: readOnly · crd · beta · network · auth")
+	assert.Contains(t, lines, "contract: readOnly · internal · beta · network · auth")
 	assert.Contains(t, lines, "gates: none (read-only)")
 	assert.Contains(t, lines, "Reads pods on the downstream cluster via the management proxy.")
 	assert.Contains(t, lines, "examples:")
@@ -104,7 +104,7 @@ func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 		Destructive: "true",
 		Network:     true,
 		Auth:        true,
-		Tier:        "norman",
+		Contract:    "internal",
 		Stability:   "deprecated",
 	}
 	card := renderCommandCard(cardManifest(), c)
@@ -114,7 +114,7 @@ func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 	assert.Equal(t, "rancher delete project <name>", lines[0], "required arg renders in angle brackets")
 	assert.Contains(t, lines, "  --filename/-f string (required)  manifest file  [env: RANCHER_FILE]")
 	assert.Contains(t, lines, "  --type user|group  subject type")
-	assert.Contains(t, lines, "contract: mutating · norman · deprecated · destructive=true · network · auth")
+	assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · network · auth")
 	assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 }
 
@@ -151,8 +151,8 @@ func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 		Destructive: "dependsOnInput",
 		Network:     true,
 		Auth:        true,
-		Tier:        "public",
-		Stability:   "beta",
+		Contract:    "public",
+		Stability:   "stable",
 	}
 	card := renderCommandCard(cardManifest(), c)
 	assert.Contains(t, strings.Split(card, "\n"),
@@ -170,8 +170,8 @@ func TestSchemaKindCardFields(t *testing.T) {
 		Scope: "management", NamespacePolicy: "workspace", DefaultNamespace: "fleet-default",
 		WaitDefault: "condition=Ready", Sensitive: true, Completable: true,
 		Verbs: map[string]VerbState{
-			"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-			"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+			"patch":  {State: VerbAvailable, Contract: "internal", Stability: "beta"},
 			"delete": {State: VerbAbsent, Note: "controller-owned; delete the owning source object"},
 		},
 	}
@@ -191,8 +191,8 @@ func TestSchemaKindCardFields(t *testing.T) {
 
 	verbsAt := slices.Index(lines, "verbs:")
 	require.GreaterOrEqual(t, verbsAt, 0)
-	assert.Equal(t, "  get: available (crd · beta)", lines[verbsAt+1])
-	assert.Equal(t, "  patch: available (crd · beta)", lines[verbsAt+2])
+	assert.Equal(t, "  get: available (internal · beta)", lines[verbsAt+1])
+	assert.Equal(t, "  patch: available (internal · beta)", lines[verbsAt+2])
 	assert.Equal(t, "  delete: not available — controller-owned; delete the owning source object", lines[verbsAt+3])
 }
 
@@ -204,8 +204,8 @@ func TestSchemaKindCardOmitsEmptyFields(t *testing.T) {
 		Name: "widget", Key: "widget", Resource: "widgets",
 		Scope: "downstream", NamespacePolicy: "plain",
 		Verbs: map[string]VerbState{
-			"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-			"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+			"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+			"patch":  {State: VerbAvailable, Contract: "internal", Stability: "beta"},
 			"delete": {State: VerbAbsent},
 		},
 	}
@@ -254,7 +254,7 @@ func TestSchemaKindVerbLine(t *testing.T) {
 		vs   VerbState
 		want string
 	}{
-		{"available with binding", VerbState{State: VerbAvailable, Tier: "crd", Stability: "beta"}, "get: available (crd · beta)"},
+		{"available with binding", VerbState{State: VerbAvailable, Contract: "internal", Stability: "beta"}, "get: available (internal · beta)"},
 		{"available without binding", VerbState{State: VerbAvailable}, "get: available"},
 		{"refused with note", VerbState{State: VerbRefused, Note: "read-only: consumed, not edited"}, "get: refused — read-only: consumed, not edited"},
 		{"refused without note", VerbState{State: VerbRefused}, "get: refused"},

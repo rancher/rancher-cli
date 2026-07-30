@@ -17,9 +17,9 @@ func TestActionValid(t *testing.T) {
 		{ActionCreate, true},
 		{ActionUpdate, true},
 		{ActionDelete, true},
-		{ActionScale, true},
 		{Action(""), false},
 		{Action("destroy"), false},
+		{Action("scale"), false},
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, tt.action.Valid(), "Action(%q).Valid()", tt.action)
@@ -32,13 +32,20 @@ func TestEffectJSONShape(t *testing.T) {
 		Action: ActionDelete, Target: "projects/web",
 		Server: "prod", Cluster: "c-abc",
 		ResourceVersion: "42", ConflictDetection: true,
-		Destructive: true, Tier: TierPublic, Stability: Stable,
+		Destructive: true,
 	}
 	b, err := json.Marshal(eff)
 	require.NoError(t, err)
-	for _, key := range []string{`"action":"delete"`, `"server":"prod"`, `"cluster":"c-abc"`, `"tier":"public"`, `"stability":"stable"`} {
-		assert.Contains(t, string(b), key, "Effect JSON")
-	}
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "delete", m["action"])
+	assert.Equal(t, "prod", m["server"])
+	assert.Equal(t, "c-abc", m["cluster"])
+	// contract and stability are NOT in the serialized Effect (manifest is
+	// the single source).
+	assert.NotContains(t, m, "contract")
+	assert.NotContains(t, m, "stability")
+	assert.NotContains(t, m, "tier")
 }
 
 // TestEffectWarningsNeverSerialize pins the json:"-" tag deliberately kept on
@@ -51,6 +58,8 @@ func TestEffectWarningsNeverSerialize(t *testing.T) {
 	eff := Effect{Action: ActionUpdate, Target: "x", Warnings: []string{"note-a"}}
 	b, err := json.Marshal(eff)
 	require.NoError(t, err)
-	assert.NotContains(t, string(b), "note-a")
-	assert.NotContains(t, string(b), "warnings")
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.NotContains(t, m, "warnings")
+	assert.NotContains(t, m, "Warnings")
 }

@@ -21,10 +21,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// provisioningClusterGVR is the provisioning.cattle.io/v1 Cluster resource
-// `create cluster` writes — the same GVR as kinds.go's provisioningcluster
-// row (Task 3).
-var provisioningClusterGVR = schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"}
+// provisioningClusterGVR is the provisioning.cattle.io/v1 Cluster GVR
+// `create cluster` writes, read from the kind table's provisioningcluster
+// row — the same live anchor derivedOpKinds relies on (surface/cli), so a
+// row rename breaks both by the same key instead of leaving a hand-copied
+// GVR silently compiling. The init-time panic guards a static-table miss
+// that any test run or binary startup surfaces immediately; there is no
+// runtime error path because none can occur (BuildRoot validates the table
+// before any command runs).
+var provisioningClusterGVR = func() schema.GroupVersionResource {
+	row, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		panic("provisioningcluster kind row not found")
+	}
+	return row.GVR
+}()
 
 // creatorIDAnnotation is rancher-webhook's creator identity annotation.
 // The webhook's mutator stamps it from userInfo on real creates but skips

@@ -21,7 +21,7 @@ is verb-first (kubectl-style): `auth …`, `config …`, `get …`, `create …`
 table-driven `get` and `delete` over a kind table (management: cluster, node,
 namespace, project; downstream core: pod, deployment, service, configmap,
 secret) and the bespoke `create project` write, all running through the full
-plan/apply pipeline (dry-run → apply, confirmation gating, tiered stability).
+plan/apply pipeline (dry-run → apply, confirmation gating, contract/stability).
 Generic `create`/`patch`, fleet/provisioning kinds, RBAC, kubeconfig, and
 settings land in later Phase-1 waves.
 
@@ -113,7 +113,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
     rancher config set-context --current --cluster c-m-abc123 --project p-xyz789
     rancher config current-context -o json
 
-    # Read clusters (crd tier, read-only)
+    # Read clusters (internal contract, read-only)
     rancher get clusters -o json
 
     # Create a project: preview the effect, then apply
@@ -150,20 +150,20 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
 | `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
 | `config set-completion [--network true\|false] [--timeout <budget>]` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
-| `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — public tier; dry-run/apply |
-| `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — crd tier; dry-run/apply |
-| `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — public tier; dry-run/apply |
+| `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — dry-run/apply |
+| `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — dry-run/apply |
+| `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — dry-run/apply |
 | `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
-| `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — public tier; sensitive; dry-run/apply --yes |
-| `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — public tier; sensitive; dry-run/apply --yes |
-| `create cluster <name> (--import \| --custom \| --machine-config <kind>/<name> --cloud-credential <cc>) [--k8s-version --pool-name --etcd --controlplane --worker --quantity]` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool (multi-pool goes through `create resource -f`) — crd tier; dry-run/apply; a `creatorId not stamped` warning means the identity probe failed (dry-run may be denied, but `--apply` is still expected to succeed) |
-| `create machine-config <kind> <name> [--region --size --image --monitoring --ipv6 --private-networking --tags] [--set field=value ...]` | Create a standalone machine config (driver fields at the CR root) for `create cluster --machine-config <kind>/<name>`; digitaloceanconfig has curated flags, the other kinds take `--set`; credential fields rejected — crd tier; dry-run/apply |
+| `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — sensitive; dry-run/apply --yes |
+| `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — sensitive; dry-run/apply --yes |
+| `create cluster <name> (--import \| --custom \| --machine-config <kind>/<name> --cloud-credential <cc>) [--k8s-version --pool-name --etcd --controlplane --worker --quantity]` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool (multi-pool goes through `create resource -f`) — dry-run/apply; a `creatorId not stamped` warning means the identity probe failed (dry-run may be denied, but `--apply` is still expected to succeed) |
+| `create machine-config <kind> <name> [--region --size --image --monitoring --ipv6 --private-networking --tags] [--set field=value ...]` | Create a standalone machine config (driver fields at the CR root) for `create cluster --machine-config <kind>/<name>`; digitaloceanconfig has curated flags, the other kinds take `--set`; credential fields rejected — dry-run/apply |
 | `get cloud-credential [name]` | List cloud credentials or show one — secret values never shown |
 | `get kubernetes-versions` | List available Kubernetes versions (rke2/k3s), merged with the server's default and supported-range settings |
-| `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — crd tier; dry-run/apply |
-| `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — crd tier; dry-run/apply |
-| `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — public tier; dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
-| `revoke <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) [--role <r>] [--type user\|group]` | Revoke role binding(s) at project, cluster, or global scope — public tier; destructive; dry-run/apply --yes; omitting --role revokes every role at the scope; partial failures leave already-deleted bindings removed |
+| `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — dry-run/apply |
+| `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — dry-run/apply |
+| `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
+| `revoke <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) [--role <r>] [--type user\|group]` | Revoke role binding(s) at project, cluster, or global scope — destructive; dry-run/apply --yes; omitting --role revokes every role at the scope; partial failures leave already-deleted bindings removed |
 | `inspect cluster <name-or-id>` | Composite cluster read: management identity + agent connectivity (management Connected/Ready conditions; a disconnect warns) + provisioning status/conditions (ready derived from the Ready condition), machine pools, members (ClusterRoleTemplateBindings with display names resolved), machines (CAPI Machines with phase and first failing condition message — surfacing provider errors invisible to other commands), and node-join/import registration commands; the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); provisioning, members, machines, and registration sections degrade independently to notes/warnings |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
@@ -173,7 +173,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
-| `schema [command\|kind] [--kind] [--verb --destructive --tier --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` is the full manifest |
+| `schema [command\|kind] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` is the full manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 | `skill install [--agent <claude\|codex\|copilot\|agents\|all>] [--scope <user\|project>] [--force]` | Install the rancher agents skill into coding-agent harnesses |
 | `skill uninstall [--agent AGENT] [--scope SCOPE]` | Remove rancher-installed agents skills (only exact owner-marked installations) |
@@ -267,7 +267,7 @@ call can reach.
   manifest-driven and declarative flows.
 
 `rancher schema <kind>` shows one kind's effective verb table — available
-(with tier and stability), refused (with the reason), or not available
+(with contract and stability), refused (with the reason), or not available
 (with the reason removal is routed elsewhere).
 
 ### Project scope (`--project`)
@@ -333,11 +333,13 @@ Every command emits one JSON document per invocation under `-o json` — an
   `apiVersion`, the error-code enum with exit codes, the global flags, the
   kind vocabulary (aliases, GVR, scope, per-kind verb availability), and
   every command with its args, flags, `commandType`, `successExitCodes`, and
-  (for server ops) `tier`/`stability`, as one document. `rancher schema <command|kind>`
+  (for server ops) `contract`/`stability`, as one document. The schema manifest
+  is the single source for contract and stability — these fields are NOT in Effect
+  or Result envelopes. `rancher schema <command|kind>`
   narrows to one command (e.g. `rancher schema get pod`) or one kind (e.g.
   `rancher schema clusterregistrationtoken`) — a name that is both
   (`kubeconfig`) resolves as the command; `--kind` forces the kind reading.
-  `--verb`, `--destructive`, `--tier`, `--mutating`, and `--search <term>`
+  `--verb`, `--destructive`, `--contract`, `--mutating`, and `--search <term>`
   filter the whole surface instead (they don't combine with a selector);
   zero hits still exit `0`. Under the default format, bare `schema` prints
   a grouped table of contents, a command selector prints the command's card
@@ -357,7 +359,7 @@ Every server-mutating command runs one pipeline, in order:
 
        --apply                 execute the mutation
        --yes                   confirm a destructive effect
-       --allow-deprecated      permit a deprecated-tier write
+       --allow-deprecated      permit a deprecated-stability write
 
 3. `--yes` stacks on `--apply` (never alone) when the effect is destructive:
    every `delete`, `revoke`, writes to sensitive kinds (`patch feature`,
@@ -365,7 +367,7 @@ Every server-mutating command runs one pipeline, in order:
    schema marks each command `destructive: true|false|dependsOnInput` —
    `dependsOnInput` means the input decides (e.g. `create resource -f`
    escalates only when the manifest's kind is sensitive).
-4. `--allow-deprecated` is required additionally for a deprecated-tier write.
+4. `--allow-deprecated` is required additionally for a deprecated-stability write.
 5. Within a single invocation, updates and deletes carry a resourceVersion
    precondition from their own plan — if the resource changes between the
    plan's dry-run and execution, the mutation fails (exit `5`,
@@ -385,9 +387,9 @@ deliberately or stops. Interactive users pay a little flag overhead for that
 guarantee.
 
 `--dry-run` is valid only for mutating commands (rejected elsewhere with
-`DRY_RUN_NOT_APPLICABLE`). Each server op carries a support **tier**
-(`public` > `crd` > `norman`) and **stability** (`stable`/`beta`/`deprecated`)
-surfaced in output so an agent knows the contract before acting.
+`DRY_RUN_NOT_APPLICABLE`). Each server op carries a **contract**
+(`public` | `internal`) and **stability** (`stable`/`beta`/`deprecated`)
+surfaced in the schema manifest so an agent knows the contract before acting.
 
 `--dry-run` runs a real server-side dry-run: it needs the same RBAC verb as the
 write, so read-only credentials get an `RBAC` error (that means the write would
@@ -556,7 +558,7 @@ explicit, machine-checked exception).
       config/               XDG config, credential store, atomic writes
       client/kube/          rest.Config for the Rancher k8s proxy
       client/httpx/         HTTP client (TLS / proxy / timeouts)
-      client/provider/      op tier/stability resolver + dynamic ClusterClient (adapter)
+      client/provider/      op contract/stability resolver + dynamic ClusterClient (adapter)
       runtime/              Command contract, middleware pipeline, schema
       engine/               ClusterClient port + plan/execute helpers
       engine/kinds/         kind table (MCP keys, GVRs, scope, bindings)

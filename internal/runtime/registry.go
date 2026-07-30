@@ -44,7 +44,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--dry-run", Type: "bool", AppliesTo: "mutating", Desc: "preview Effect, no change"},
 		{Name: "--apply", Type: "bool", AppliesTo: "mutating", Desc: "execute the mutation"},
 		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
-		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-tier write"},
+		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-stability write"},
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
 		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
@@ -85,7 +85,7 @@ func EnvVars() []EnvVar {
 	}
 }
 
-// SchemaCommand is one command entry in the manifest (Descriptor + tier).
+// SchemaCommand is one command entry in the manifest (Descriptor + contract).
 type SchemaCommand struct {
 	Name             string      `json:"name"`
 	Aliases          []string    `json:"aliases,omitempty"`
@@ -99,7 +99,7 @@ type SchemaCommand struct {
 	Toolset          string      `json:"toolset,omitempty"`
 	Network          bool        `json:"network"`
 	Auth             bool        `json:"auth"`
-	Tier             string      `json:"tier,omitempty"`
+	Contract         string      `json:"contract,omitempty"`
 	Stability        string      `json:"stability,omitempty"`
 	ProjectScope     bool        `json:"projectScope,omitempty"`
 	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
@@ -119,11 +119,11 @@ const (
 )
 
 // VerbState is one generated verb's effective availability on a kind.
-// Tier/Stability are set for registered verbs (available, refused); Note
+// Contract/Stability are set for registered verbs (available, refused); Note
 // carries a refusal's wording or an absence's reviewed reason.
 type VerbState struct {
 	State     string `json:"state"`
-	Tier      string `json:"tier,omitempty"`
+	Contract  string `json:"contract,omitempty"`
 	Stability string `json:"stability,omitempty"`
 	Note      string `json:"note,omitempty"`
 }
@@ -164,7 +164,7 @@ type EffectSchema struct {
 // effectSchema is the static Effect contract. Actions are built from the safety
 // enum so a new Action cannot be silently omitted; fields mirror safety.Effect.
 func effectSchema() EffectSchema {
-	actions := []safety.Action{safety.ActionCreate, safety.ActionUpdate, safety.ActionDelete, safety.ActionScale}
+	actions := []safety.Action{safety.ActionCreate, safety.ActionUpdate, safety.ActionDelete}
 	strs := make([]string, len(actions))
 	for i, a := range actions {
 		strs[i] = string(a)
@@ -181,8 +181,6 @@ func effectSchema() EffectSchema {
 			{Name: "conflictDetection", Type: "bool"},
 			{Name: "reversible", Type: "bool"},
 			{Name: "destructive", Type: "bool"},
-			{Name: "tier", Type: "string"},
-			{Name: "stability", Type: "string"},
 		},
 	}
 }
@@ -229,14 +227,14 @@ type SchemaGroup struct {
 	Commands []string `json:"commands"`
 }
 
-// Resolver maps operation names to their current tier binding. provider
+// Resolver maps operation names to their current contract binding. provider
 // implements it; the kind table composes into it in a later branch.
 type Resolver interface {
 	Resolve(op string) (safety.Binding, bool)
 	All() map[string]safety.Binding
 }
 
-// Registry holds all commands, the tier resolver, and the schema-only data
+// Registry holds all commands, the contract resolver, and the schema-only data
 // the surface layer hands over at BuildRoot (kind rows, ordered sections).
 type Registry struct {
 	resolver Resolver
@@ -321,7 +319,7 @@ func (reg *Registry) Validate() error {
 }
 
 // Schema assembles the manifest, merging each Descriptor with the resolver
-// tier. minRancherVersion is threaded through from the caller (like
+// binding. minRancherVersion is threaded through from the caller (like
 // cliVersion) rather than imported: internal/runtime must not import
 // internal/config, where the const lives. ReadOnly/ReadOnlySources are left
 // at their zero value here — that state is per-invocation, not registry
@@ -365,7 +363,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			SuccessExitCodes: d.SuccessExitCodes,
 		}
 		if b, ok := reg.resolver.Resolve(d.Name); ok {
-			sc.Tier = string(b.Tier)
+			sc.Contract = string(b.Contract)
 			sc.Stability = string(b.Stability)
 		}
 		m.Commands = append(m.Commands, sc)

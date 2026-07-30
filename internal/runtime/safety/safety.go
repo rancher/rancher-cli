@@ -8,28 +8,33 @@ const (
 	ActionCreate Action = "create"
 	ActionUpdate Action = "update"
 	ActionDelete Action = "delete"
-	ActionScale  Action = "scale"
 )
 
 // Valid reports whether a is one of the closed enum values.
 func (a Action) Valid() bool {
 	switch a {
-	case ActionCreate, ActionUpdate, ActionDelete, ActionScale:
+	case ActionCreate, ActionUpdate, ActionDelete:
 		return true
 	}
 	return false
 }
 
-// Tier is the API backend that serves an operation.
-type Tier string
+// Contract is the Rancher Kubernetes Public API membership designation for an
+// operation. Public means the kind is on the semi-official Rancher Kubernetes
+// Public API list; Internal means it is not cited there.
+type Contract string
 
 const (
-	TierPublic Tier = "public"
-	TierCRD    Tier = "crd"
-	TierNorman Tier = "norman"
+	ContractPublic   Contract = "public"
+	ContractInternal Contract = "internal"
 )
 
-// Stability is the support contract of an operation.
+// Stability is the support contract of an operation, independent of
+// Contract: today's rows pair {public,stable} and {internal,beta}, and
+// Deprecated's designated first row is the legacy v3 Token kind
+// (Token.management.cattle.io — still serving UI session tokens and some
+// derived tokens in Rancher 2.15), which will land as internal/deprecated
+// with its writes behind --allow-deprecated.
 type Stability string
 
 const (
@@ -38,9 +43,9 @@ const (
 	Deprecated Stability = "deprecated"
 )
 
-// Binding is the resolved tier+stability for an operation.
+// Binding is the resolved contract+stability for an operation.
 type Binding struct {
-	Tier      Tier
+	Contract  Contract
 	Stability Stability
 }
 
@@ -51,10 +56,11 @@ type DiffEntry struct {
 	To   any    `json:"to"`
 }
 
-// Effect is the server-computed preview of a mutation (from Plan). Tier and
-// Stability are stamped by the pipeline from the resolver binding — values a
-// command sets are overwritten, never trusted. Server is stamped by the
-// surface adapter (Branch 2); Cluster is set by the command's Plan.
+// Effect is the server-computed preview of a mutation (from Plan). Contract and
+// Stability are NOT serialized — the schema manifest is the single published
+// source for those; the internal Binding continues to drive the --allow-deprecated
+// gate in the pipeline. Server is stamped by the surface adapter (Branch 2);
+// Cluster is set by the command's Plan.
 type Effect struct {
 	Action            Action      `json:"action"`
 	Target            string      `json:"target"`
@@ -65,8 +71,6 @@ type Effect struct {
 	ConflictDetection bool        `json:"conflictDetection"`
 	Reversible        bool        `json:"reversible"`
 	Destructive       bool        `json:"destructive"`
-	Tier              Tier        `json:"tier,omitempty"`
-	Stability         Stability   `json:"stability,omitempty"`
 	// Warnings are advisory preview notes rendered with the Effect BEFORE
 	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
 	// cascade). They never gate — gating is Action/Destructive/Stability's

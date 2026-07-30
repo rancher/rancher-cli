@@ -9,8 +9,6 @@ const APIVersion = "cli.rancher.io/v1"
 type Envelope struct {
 	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
 	Kind       string `json:"kind" yaml:"kind"`
-	Tier       string `json:"tier,omitempty" yaml:"tier,omitempty"`
-	Stability  string `json:"stability,omitempty" yaml:"stability,omitempty"`
 	// Summary is a one-line triage signal for operators and agents when
 	// Data is a full object graph (wait success). Additive: consumers
 	// that ignore it see the exact prior envelope.

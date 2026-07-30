@@ -31,7 +31,6 @@ func TestExitCodeMapping(t *testing.T) {
 func TestBuilderAndError(t *testing.T) {
 	e := New(CodeConfirmationRequired, "needs confirm").
 		WithHint("re-run with: --apply --yes").
-		WithTier("crd").
 		WithRetryable(true)
 	require.Equal(t, "needs confirm", e.Error())
 	assert.Equal(t, "re-run with: --apply --yes", e.Hint)

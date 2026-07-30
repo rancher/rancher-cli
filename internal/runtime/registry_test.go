@@ -15,10 +15,10 @@ type stubResolver map[string]safety.Binding
 func (s stubResolver) Resolve(op string) (safety.Binding, bool) { b, ok := s[op]; return b, ok }
 func (s stubResolver) All() map[string]safety.Binding           { return s }
 
-func TestSchemaMergesResolverTier(t *testing.T) {
+func TestSchemaMergesResolverContract(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{
-		"get cluster": {Tier: safety.TierCRD, Stability: safety.Beta},
+		"get cluster": {Contract: safety.ContractInternal, Stability: safety.Beta},
 	})
 	reg.Register(fakeRead{d: Descriptor{Name: "widgets ls", Usage: "list", CommandType: ReadOnly}})
 	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
@@ -37,7 +37,7 @@ func TestSchemaMergesResolverTier(t *testing.T) {
 		byName[c.Name] = c
 	}
 	require.Contains(t, byName, "get cluster")
-	assert.Equal(t, "crd", byName["get cluster"].Tier) // merged from resolver
+	assert.Equal(t, "internal", byName["get cluster"].Contract) // merged from resolver
 
 	// Per-command Flags must reach the manifest (agent discoverability).
 	require.Contains(t, byName, "widgets set")
@@ -86,7 +86,7 @@ func TestValidateRejectsMutatingWithoutBinding(t *testing.T) {
 func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
 	t.Parallel()
 	t.Run("read command declared mutating", func(t *testing.T) {
-		reg := NewRegistry(stubResolver{"x": {Tier: safety.TierPublic, Stability: safety.Stable}})
+		reg := NewRegistry(stubResolver{"x": {Contract: safety.ContractPublic, Stability: safety.Stable}})
 		reg.Register(fakeRead{d: Descriptor{Name: "x", CommandType: Mutating}})
 		err := reg.Validate()
 		require.Error(t, err)
@@ -121,7 +121,7 @@ func TestValidateRejectsDualInterface(t *testing.T) {
 func TestValidatePassesWellFormedRegistry(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{
-		"create widget": {Tier: safety.TierPublic, Stability: safety.Stable},
+		"create widget": {Contract: safety.ContractPublic, Stability: safety.Stable},
 	})
 	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
 	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})

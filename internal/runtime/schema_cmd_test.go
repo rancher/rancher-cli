@@ -81,7 +81,7 @@ func TestSchemaFilter(t *testing.T) {
 // exercise selection, the card, and structured output.
 func cardRegistry() *Registry {
 	reg := NewRegistry(stubResolver{
-		"delete project": {Tier: safety.TierNorman, Stability: safety.Deprecated},
+		"delete project": {Contract: safety.ContractInternal, Stability: safety.Deprecated},
 	})
 	reg.Register(fakeRead{d: Descriptor{
 		Name: "get pod", Aliases: []string{"pods", "po"}, Usage: "List pods or show one",
@@ -131,7 +131,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher delete project <name>", lines[0])
-		assert.Contains(t, lines, "contract: mutating · norman · deprecated · destructive=true · network · auth")
+		assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · network · auth")
 		assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 	})
 
@@ -174,8 +174,8 @@ func kindRegistry() *Registry {
 			Scope: "management", NamespacePolicy: "none",
 			Completable: true, WaitDefault: "condition=Ready",
 			Verbs: map[string]VerbState{
-				"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-				"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+				"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+				"patch":  {State: VerbAvailable, Contract: "internal", Stability: "beta"},
 				"delete": {State: VerbAbsent, Note: "cluster deletion goes through delete provisioning-cluster"},
 			},
 		},
@@ -185,8 +185,8 @@ func kindRegistry() *Registry {
 			Group:   "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens",
 			Scope: "management", NamespacePolicy: "plain",
 			Verbs: map[string]VerbState{
-				"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-				"patch":  {State: VerbRefused, Tier: "crd", Stability: "beta", Note: "read-only: consumed, not edited"},
+				"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+				"patch":  {State: VerbRefused, Contract: "internal", Stability: "beta", Note: "read-only: consumed, not edited"},
 				"delete": {State: VerbAbsent, Note: "consumed, not deleted"},
 			},
 		},
@@ -196,9 +196,9 @@ func kindRegistry() *Registry {
 			Scope: "management", NamespacePolicy: "workspace", DefaultNamespace: "fleet-default",
 			Sensitive: true, WaitDefault: "condition=Ready",
 			Verbs: map[string]VerbState{
-				"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-				"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-				"delete": {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+				"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+				"patch":  {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+				"delete": {State: VerbAvailable, Contract: "internal", Stability: "beta"},
 			},
 		},
 		{
@@ -206,17 +206,17 @@ func kindRegistry() *Registry {
 			Group: "ext.cattle.io", Resource: "kubeconfigs",
 			Scope: "management", NamespacePolicy: "none", Sensitive: true,
 			Verbs: map[string]VerbState{
-				"get":    {State: VerbAvailable, Tier: "public", Stability: "beta"},
-				"patch":  {State: VerbAvailable, Tier: "public", Stability: "beta"},
-				"delete": {State: VerbAvailable, Tier: "public", Stability: "beta"},
+				"get":    {State: VerbAvailable, Contract: "public", Stability: "stable"},
+				"patch":  {State: VerbAvailable, Contract: "public", Stability: "stable"},
+				"delete": {State: VerbAvailable, Contract: "public", Stability: "stable"},
 			},
 		},
 		{
 			Name: "widget", Key: "widget", Resource: "widgets",
 			Scope: "downstream", NamespacePolicy: "plain",
 			Verbs: map[string]VerbState{
-				"get":    {State: VerbAvailable, Tier: "crd", Stability: "beta"},
-				"patch":  {State: VerbAvailable, Tier: "crd", Stability: "beta"},
+				"get":    {State: VerbAvailable, Contract: "internal", Stability: "beta"},
+				"patch":  {State: VerbAvailable, Contract: "internal", Stability: "beta"},
 				"delete": {State: VerbAbsent},
 			},
 		},
@@ -240,7 +240,7 @@ func kindRegistry() *Registry {
 			if verb == "get" {
 				reg.Register(fakeRead{d: Descriptor{Name: name, CommandType: ReadOnly}})
 			} else {
-				res[name] = safety.Binding{Tier: safety.Tier(vs.Tier), Stability: safety.Stability(vs.Stability)}
+				res[name] = safety.Binding{Contract: safety.Contract(vs.Contract), Stability: safety.Stability(vs.Stability)}
 				reg.Register(fakeMutating{d: Descriptor{Name: name, CommandType: Mutating}})
 			}
 			byVerb[verb] = append(byVerb[verb], name)
@@ -304,7 +304,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 
 // TestSchemaKindCardVerbTable covers SE-5's verb table: for every exemplar
 // kind, each verb line is derived from the manifest's own VerbState via the
-// spec wording — available (tier · stability) | refused — <note> |
+// spec wording — available (contract · stability) | refused — <note> |
 // not available — <reason> | not available — then the four interesting
 // states are pinned so the fixture cannot drift silently.
 func TestSchemaKindCardVerbTable(t *testing.T) {
@@ -322,7 +322,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 	wantVerbLine := func(verb string, vs VerbState) string {
 		switch vs.State {
 		case VerbAvailable:
-			return verb + ": available (" + vs.Tier + " · " + vs.Stability + ")"
+			return verb + ": available (" + vs.Contract + " · " + vs.Stability + ")"
 		case VerbRefused:
 			return verb + ": refused — " + vs.Note
 		default:
@@ -351,7 +351,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 		assert.Contains(t, lines, "  delete: not available — consumed, not deleted")
 
 		lines, _ = sel(t, "provisioning-cluster")
-		assert.Contains(t, lines, "  delete: available (crd · beta)")
+		assert.Contains(t, lines, "  delete: available (internal · beta)")
 
 		lines, _ = sel(t, "cluster")
 		assert.Contains(t, lines, "  delete: not available — cluster deletion goes through delete provisioning-cluster")
@@ -645,7 +645,7 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 	assert.Empty(t, m.ReadOnlySources)
 }
 
-// TestSchemaFilters covers SE-10: --verb, --destructive, --tier, and
+// TestSchemaFilters covers SE-10: --verb, --destructive, --contract, and
 // --mutating filter the manifest's commands (composing with each other and
 // with --search), prune Groups to the retained set (SE-18), and render the
 // filtered TOC as Text.
@@ -682,9 +682,9 @@ func TestSchemaFilters(t *testing.T) {
 		assert.Equal(t, []string{"delete project"}, names(m))
 	})
 
-	t.Run("--tier keeps the tier's commands", func(t *testing.T) {
+	t.Run("--contract keeps the contract's commands", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{strs: map[string]string{"tier": "norman"}})
+		m, _ := run(t, tin{strs: map[string]string{"contract": "internal"}})
 		assert.Equal(t, []string{"delete project"}, names(m))
 	})
 
@@ -711,10 +711,10 @@ func TestSchemaFilters(t *testing.T) {
 
 	t.Run("composed filters can produce zero hits, naming every active filter", func(t *testing.T) {
 		t.Parallel()
-		m, text := run(t, tin{strs: map[string]string{"verb": "get", "tier": "norman"}})
+		m, text := run(t, tin{strs: map[string]string{"verb": "get", "contract": "public"}})
 		assert.Empty(t, m.Commands)
 		assert.Empty(t, m.Groups)
-		assert.Equal(t, "no commands match --verb get --tier norman\n", text)
+		assert.Equal(t, "no commands match --verb get --contract public\n", text)
 	})
 }
 
@@ -794,11 +794,11 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := cmd.(ReadCommand).Execute(context.Background(),
-			tin{flags: map[string]bool{"kind": true}, strs: map[string]string{"tier": "crd"}}, nil)
+			tin{flags: map[string]bool{"kind": true}, strs: map[string]string{"contract": "internal"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "--tier")
+		assert.Contains(t, ce.Message, "--contract")
 		assert.Contains(t, ce.Message, "--kind")
 	})
 
@@ -808,7 +808,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		cases := []tin{
 			{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}},
 			{a: []string{"get", "pod"}, flags: map[string]bool{"destructive": true}},
-			{a: []string{"get", "pod"}, strs: map[string]string{"tier": "crd"}},
+			{a: []string{"get", "pod"}, strs: map[string]string{"contract": "internal"}},
 			{a: []string{"get", "pod"}, flags: map[string]bool{"mutating": true}},
 			{a: []string{"get", "pod"}, strs: map[string]string{"search": "pod"}},
 		}
@@ -892,12 +892,12 @@ func completionRegistry() *Registry {
 		{
 			Name: "pod", Key: "pod", Aliases: []string{"pods", "po"},
 			Resource: "pods", Scope: "downstream", NamespacePolicy: "plain",
-			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Tier: "crd", Stability: "beta"}},
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Contract: "internal", Stability: "beta"}},
 		},
 		{
 			Name: "kubeconfig", Key: "kubeconfig", Aliases: []string{"kubeconfigs"},
 			Resource: "kubeconfigs", Scope: "management", NamespacePolicy: "none",
-			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Tier: "public", Stability: "beta"}},
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Contract: "public", Stability: "stable"}},
 		},
 		{
 			Name: "cluster", Key: "managementcluster", Aliases: []string{"clusters"},

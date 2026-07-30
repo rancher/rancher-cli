@@ -394,6 +394,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped — rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
       "destructive": "false",
       "examples": [
@@ -457,13 +458,13 @@
       "name": "create cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Create a provisioning cluster (--import, --custom, or node-driver)"
     },
     {
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "examples": [
         "rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml"
@@ -502,8 +503,7 @@
       "group": "create",
       "name": "create kubeconfig",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Create a kubeconfig with an embedded token"
     },
@@ -529,6 +529,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "desc": "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; reference it afterwards with `create cluster --machine-config <kind>/<name>` (the two-step node-driver flow). Driver fields sit at the CR root — there is no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via --set key=value. Credential-carried fields are rejected: credentials belong on a cloud credential (cc-* secret), never on a machine config.",
       "destructive": "false",
       "examples": [
@@ -581,7 +582,6 @@
       "name": "create machine-config",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Create a machine config for a node-driver cluster pool"
     },
@@ -595,6 +595,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "examples": [
         "rancher create namespace team-a --project p-x --cluster c-x --apply"
@@ -615,7 +616,6 @@
       "name": "create namespace",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Create a namespace, optionally as a project member"
     },
@@ -629,6 +629,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "false",
       "examples": [
         "rancher create project web --cluster c-x --dry-run",
@@ -661,13 +662,13 @@
       "name": "create project",
       "network": true,
       "stability": "stable",
-      "tier": "public",
       "toolset": "core",
       "usage": "Create a project in a cluster"
     },
     {
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "dependsOnInput",
       "examples": [
         "rancher create resource -f deploy.yaml --cluster prod --dry-run",
@@ -698,7 +699,6 @@
       "name": "create resource",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Create a resource from a manifest file"
     },
@@ -712,6 +712,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "examples": [
         "rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
@@ -753,13 +754,13 @@
       "name": "create secret",
       "network": true,
       "stability": "beta",
-      "tier": "public",
       "toolset": "core",
       "usage": "Create a secret, optionally project-scoped"
     },
     {
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "examples": [
         "rancher create token --ttl 90d --description ci --apply --yes"
@@ -784,8 +785,7 @@
       "group": "create",
       "name": "create token",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Create a token on the server"
     },
@@ -802,6 +802,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -829,7 +830,6 @@
       "name": "delete amazonec2config",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the amazonec2config"
     },
@@ -846,6 +846,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -873,7 +874,6 @@
       "name": "delete azureconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the azureconfig"
     },
@@ -891,6 +891,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -918,8 +919,7 @@
       "group": "delete",
       "name": "delete clusterroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Delete the clusterroletemplatebinding"
     },
@@ -937,6 +937,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -971,7 +972,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the configmap"
     },
@@ -988,6 +988,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1022,7 +1023,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the cronjob"
     },
@@ -1040,6 +1040,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1074,7 +1075,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the daemonset"
     },
@@ -1092,6 +1092,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1126,7 +1127,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the deployment"
     },
@@ -1143,6 +1143,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1170,7 +1171,6 @@
       "name": "delete digitaloceanconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the digitaloceanconfig"
     },
@@ -1187,6 +1187,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1214,7 +1215,6 @@
       "name": "delete gitrepo",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the gitrepo"
     },
@@ -1231,6 +1231,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -1252,8 +1253,7 @@
       "group": "delete",
       "name": "delete globalrolebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Delete the globalrolebinding"
     },
@@ -1270,6 +1270,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1297,7 +1298,6 @@
       "name": "delete harvesterconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the harvesterconfig"
     },
@@ -1315,6 +1315,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1349,7 +1350,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the ingress"
     },
@@ -1366,6 +1366,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1400,7 +1401,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the job"
     },
@@ -1417,6 +1417,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1451,7 +1452,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the k3k-cluster"
     },
@@ -1468,6 +1468,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -1489,8 +1490,7 @@
       "group": "delete",
       "name": "delete kubeconfig",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Delete the kubeconfig"
     },
@@ -1508,6 +1508,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1536,7 +1537,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the namespace"
     },
@@ -1554,6 +1554,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1588,7 +1589,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the persistentvolumeclaim"
     },
@@ -1606,6 +1606,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1640,7 +1641,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the pod"
     },
@@ -1657,6 +1657,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -1685,7 +1686,6 @@
       "name": "delete project",
       "network": true,
       "stability": "stable",
-      "tier": "public",
       "toolset": "core",
       "usage": "Delete the project"
     },
@@ -1703,6 +1703,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -1730,8 +1731,7 @@
       "group": "delete",
       "name": "delete projectroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Delete the projectroletemplatebinding"
     },
@@ -1748,6 +1748,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1775,7 +1776,6 @@
       "name": "delete provisioning-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the provisioning-cluster"
     },
@@ -1793,6 +1793,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1827,7 +1828,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the replicaset"
     },
@@ -1844,6 +1844,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1878,7 +1879,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the secret"
     },
@@ -1896,6 +1896,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1930,7 +1931,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the service"
     },
@@ -1948,6 +1948,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -1982,7 +1983,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the serviceaccount"
     },
@@ -2000,6 +2000,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -2034,7 +2035,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the statefulset"
     },
@@ -2051,6 +2051,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -2072,8 +2073,7 @@
       "group": "delete",
       "name": "delete token",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Delete the token"
     },
@@ -2090,6 +2090,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -2117,7 +2118,6 @@
       "name": "delete vmwarevsphereconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Delete the vmwarevsphereconfig"
     },
@@ -2133,6 +2133,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2159,7 +2160,6 @@
       "name": "get amazonec2config",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List amazonec2configs or show one"
     },
@@ -2175,6 +2175,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2201,7 +2202,6 @@
       "name": "get azureconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List azureconfigs or show one"
     },
@@ -2217,6 +2217,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2243,7 +2244,6 @@
       "name": "get bundle",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List bundles or show one"
     },
@@ -2259,6 +2259,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2285,7 +2286,6 @@
       "name": "get bundledeployment",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List bundledeployments or show one"
     },
@@ -2301,6 +2301,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2327,7 +2328,6 @@
       "name": "get capi-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List capi-clusters or show one"
     },
@@ -2340,11 +2340,11 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "group": "get",
       "name": "get cloud-credential",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List cloud credentials or show one (secret values never shown)"
     },
@@ -2360,6 +2360,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -2381,7 +2382,6 @@
       "name": "get cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List clusters or show one"
     },
@@ -2397,6 +2397,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2423,7 +2424,6 @@
       "name": "get clustergroup",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List clustergroups or show one"
     },
@@ -2440,6 +2440,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2466,7 +2467,6 @@
       "name": "get clusterregistrationtoken",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List clusterregistrationtokens or show one"
     },
@@ -2483,6 +2483,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2508,8 +2509,7 @@
       "group": "get",
       "name": "get clusterroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List clusterroletemplatebindings or show one"
     },
@@ -2526,6 +2526,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2558,7 +2559,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List configmaps or show one"
     },
@@ -2574,6 +2574,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2606,7 +2607,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List cronjobs or show one"
     },
@@ -2623,6 +2623,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2655,7 +2656,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List daemonsets or show one"
     },
@@ -2672,6 +2672,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2704,7 +2705,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List deployments or show one"
     },
@@ -2720,6 +2720,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2746,7 +2747,6 @@
       "name": "get digitaloceanconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List digitaloceanconfigs or show one"
     },
@@ -2763,6 +2763,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -2795,7 +2796,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List events or show one"
     },
@@ -2811,6 +2811,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -2832,7 +2833,6 @@
       "name": "get feature",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List features or show one"
     },
@@ -2848,6 +2848,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2874,7 +2875,6 @@
       "name": "get fleet-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List fleet-clusters or show one"
     },
@@ -2890,6 +2890,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -2916,7 +2917,6 @@
       "name": "get gitrepo",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List gitrepos or show one"
     },
@@ -2932,6 +2932,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -2952,8 +2953,7 @@
       "group": "get",
       "name": "get globalrole",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List globalroles or show one"
     },
@@ -2969,6 +2969,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -2989,8 +2990,7 @@
       "group": "get",
       "name": "get globalrolebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List globalrolebindings or show one"
     },
@@ -3006,6 +3006,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3032,7 +3033,6 @@
       "name": "get harvesterconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List harvesterconfigs or show one"
     },
@@ -3049,6 +3049,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3081,7 +3082,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List ingresses or show one"
     },
@@ -3097,6 +3097,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3129,7 +3130,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List jobs or show one"
     },
@@ -3145,6 +3145,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3177,7 +3178,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List k3k-clusters or show one"
     },
@@ -3193,6 +3193,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -3213,20 +3214,19 @@
       "group": "get",
       "name": "get kubeconfig",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List kubeconfigs or show one"
     },
     {
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "desc": "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
       "group": "get",
       "name": "get kubernetes-versions",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List available Kubernetes versions (rke2/k3s)"
     },
@@ -3242,6 +3242,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3268,7 +3269,6 @@
       "name": "get machine",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List machines or show one"
     },
@@ -3284,6 +3284,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3310,7 +3311,6 @@
       "name": "get machinedeployment",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List machinedeployments or show one"
     },
@@ -3326,6 +3326,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3352,7 +3353,6 @@
       "name": "get machineset",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List machinesets or show one"
     },
@@ -3369,6 +3369,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3396,7 +3397,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List namespaces or show one"
     },
@@ -3412,6 +3412,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3438,7 +3439,6 @@
       "name": "get node",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List nodes or show one"
     },
@@ -3454,6 +3454,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -3475,7 +3476,6 @@
       "name": "get nodedriver",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List nodedrivers or show one"
     },
@@ -3492,6 +3492,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3518,7 +3519,6 @@
       "name": "get persistentvolume",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List persistentvolumes or show one"
     },
@@ -3535,6 +3535,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3567,7 +3568,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List persistentvolumeclaims or show one"
     },
@@ -3584,6 +3584,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3616,7 +3617,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List pods or show one"
     },
@@ -3632,6 +3632,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3658,7 +3659,6 @@
       "name": "get project",
       "network": true,
       "stability": "stable",
-      "tier": "public",
       "toolset": "core",
       "usage": "List projects or show one"
     },
@@ -3675,6 +3675,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3700,8 +3701,7 @@
       "group": "get",
       "name": "get projectroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List projectroletemplatebindings or show one"
     },
@@ -3717,6 +3717,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -3743,7 +3744,6 @@
       "name": "get provisioning-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List provisioning-clusters or show one"
     },
@@ -3760,6 +3760,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3792,7 +3793,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List replicasets or show one"
     },
@@ -3808,6 +3808,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -3828,8 +3829,7 @@
       "group": "get",
       "name": "get roletemplate",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List roletemplates or show one"
     },
@@ -3845,6 +3845,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3877,7 +3878,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List secrets or show one"
     },
@@ -3894,6 +3894,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3926,7 +3927,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List services or show one"
     },
@@ -3943,6 +3943,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -3975,7 +3976,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List serviceaccounts or show one"
     },
@@ -3991,6 +3991,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -4012,7 +4013,6 @@
       "name": "get setting",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List settings or show one"
     },
@@ -4029,6 +4029,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -4061,7 +4062,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List statefulsets or show one"
     },
@@ -4077,6 +4077,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -4097,8 +4098,7 @@
       "group": "get",
       "name": "get token",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List tokens or show one"
     },
@@ -4114,6 +4114,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "public",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -4134,8 +4135,7 @@
       "group": "get",
       "name": "get user",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "List users or show one"
     },
@@ -4151,6 +4151,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "`namespace` to operate in",
@@ -4177,7 +4178,6 @@
       "name": "get vmwarevsphereconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List vmwarevsphereconfigs or show one"
     },
@@ -4192,6 +4192,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -4232,14 +4233,14 @@
       ],
       "name": "grant",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Grant a role to a user or group at project, cluster, or global scope"
     },
     {
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "desc": "Lists container images referenced by active pods (status.phase Running or Pending; Succeeded and Failed pods are excluded, terminating pods remain until removed), reading spec.containers, spec.initContainers, and spec.ephemeralContainers. --match filters by case-sensitive substring over the image reference exactly as written in the pod spec: repeatable, values OR, no OCI normalization (a bare nginx:1.25 does not match docker.io); anchor with delimiters, e.g. --match registry.old.corp/ for a registry. --match never inspects image contents. --by workload resolves each pod's controller owner chain and reports one row per image and owning workload object (apiVersion, kind, name, uid) with the count of pods controlled by exactly that object; owner-resolution failures degrade to the first-level reference plus a warning.",
       "examples": [
         "images --all-clusters --match library/elasticsearch: --by workload"
@@ -4273,7 +4274,6 @@
       "name": "images",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "List container images in use, grouped by image or owning workload"
     },
@@ -4291,12 +4291,12 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
       "group": "inspect",
       "name": "inspect cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration"
     },
@@ -4314,6 +4314,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -4331,7 +4332,6 @@
       "name": "inspect deployment",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Inspect a deployment and the pods it selects"
     },
@@ -4349,6 +4349,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -4371,7 +4372,6 @@
       "name": "inspect pod",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Inspect a pod: owners, metrics, and container logs"
     },
@@ -4388,6 +4388,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "flags": [
         {
           "desc": "target cluster `id|name` (defaults to the current context)",
@@ -4399,7 +4400,6 @@
       "name": "inspect project",
       "network": true,
       "stability": "beta",
-      "tier": "public",
       "toolset": "core",
       "usage": "Inspect a project: namespaces, members, quota, and usage"
     },
@@ -4431,6 +4431,7 @@
       ],
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "examples": [
         "rancher logs agent --cluster prod",
         "rancher logs server --since 1h"
@@ -4470,7 +4471,6 @@
       "name": "logs",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
     },
@@ -4487,6 +4487,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4527,7 +4528,6 @@
       "name": "patch amazonec2config",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the amazonec2config"
     },
@@ -4544,6 +4544,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4584,7 +4585,6 @@
       "name": "patch azureconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the azureconfig"
     },
@@ -4601,6 +4601,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4641,7 +4642,6 @@
       "name": "patch bundle",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the bundle"
     },
@@ -4658,6 +4658,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4698,7 +4699,6 @@
       "name": "patch bundledeployment",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the bundledeployment"
     },
@@ -4715,6 +4715,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4755,7 +4756,6 @@
       "name": "patch capi-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the capi-cluster"
     },
@@ -4772,6 +4772,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4807,7 +4808,6 @@
       "name": "patch cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the cluster"
     },
@@ -4824,6 +4824,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4864,7 +4865,6 @@
       "name": "patch clustergroup",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the clustergroup"
     },
@@ -4882,6 +4882,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -4923,7 +4924,6 @@
       "name": "patch clusterregistrationtoken",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the clusterregistrationtoken"
     },
@@ -4941,6 +4941,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -4981,8 +4982,7 @@
       "group": "patch",
       "name": "patch clusterroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the clusterroletemplatebinding"
     },
@@ -5000,6 +5000,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5047,7 +5048,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the configmap"
     },
@@ -5064,6 +5064,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5111,7 +5112,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the cronjob"
     },
@@ -5129,6 +5129,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5176,7 +5177,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the daemonset"
     },
@@ -5194,6 +5194,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5241,7 +5242,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the deployment"
     },
@@ -5258,6 +5258,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5298,7 +5299,6 @@
       "name": "patch digitaloceanconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the digitaloceanconfig"
     },
@@ -5316,6 +5316,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5363,7 +5364,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the event"
     },
@@ -5380,6 +5380,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -5415,7 +5416,6 @@
       "name": "patch feature",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the feature"
     },
@@ -5432,6 +5432,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -5472,7 +5473,6 @@
       "name": "patch fleet-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the fleet-cluster"
     },
@@ -5489,6 +5489,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5529,7 +5530,6 @@
       "name": "patch gitrepo",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the gitrepo"
     },
@@ -5546,6 +5546,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -5580,8 +5581,7 @@
       "group": "patch",
       "name": "patch globalrole",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the globalrole"
     },
@@ -5598,6 +5598,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -5632,8 +5633,7 @@
       "group": "patch",
       "name": "patch globalrolebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the globalrolebinding"
     },
@@ -5650,6 +5650,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5690,7 +5691,6 @@
       "name": "patch harvesterconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the harvesterconfig"
     },
@@ -5708,6 +5708,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5755,7 +5756,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the ingress"
     },
@@ -5772,6 +5772,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5819,7 +5820,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the job"
     },
@@ -5836,6 +5836,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5883,7 +5884,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the k3k-cluster"
     },
@@ -5900,6 +5900,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -5934,8 +5935,7 @@
       "group": "patch",
       "name": "patch kubeconfig",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the kubeconfig"
     },
@@ -5952,6 +5952,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -5992,7 +5993,6 @@
       "name": "patch machine",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the machine"
     },
@@ -6009,6 +6009,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6049,7 +6050,6 @@
       "name": "patch machinedeployment",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the machinedeployment"
     },
@@ -6066,6 +6066,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6106,7 +6107,6 @@
       "name": "patch machineset",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the machineset"
     },
@@ -6124,6 +6124,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6165,7 +6166,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the namespace"
     },
@@ -6182,6 +6182,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6222,7 +6223,6 @@
       "name": "patch node",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the node"
     },
@@ -6239,6 +6239,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -6274,7 +6275,6 @@
       "name": "patch nodedriver",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the nodedriver"
     },
@@ -6292,6 +6292,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6332,7 +6333,6 @@
       "name": "patch persistentvolume",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the persistentvolume"
     },
@@ -6350,6 +6350,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6397,7 +6398,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the persistentvolumeclaim"
     },
@@ -6415,6 +6415,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6462,7 +6463,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the pod"
     },
@@ -6479,6 +6479,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "false",
       "flags": [
         {
@@ -6520,7 +6521,6 @@
       "name": "patch project",
       "network": true,
       "stability": "stable",
-      "tier": "public",
       "toolset": "core",
       "usage": "Patch the project"
     },
@@ -6538,6 +6538,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -6578,8 +6579,7 @@
       "group": "patch",
       "name": "patch projectroletemplatebinding",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the projectroletemplatebinding"
     },
@@ -6596,6 +6596,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -6636,7 +6637,6 @@
       "name": "patch provisioning-cluster",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the provisioning-cluster"
     },
@@ -6654,6 +6654,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6701,7 +6702,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the replicaset"
     },
@@ -6718,6 +6718,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -6752,8 +6753,7 @@
       "group": "patch",
       "name": "patch roletemplate",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the roletemplate"
     },
@@ -6770,6 +6770,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -6817,7 +6818,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the secret"
     },
@@ -6835,6 +6835,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6882,7 +6883,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the service"
     },
@@ -6900,6 +6900,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -6947,7 +6948,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the serviceaccount"
     },
@@ -6964,6 +6964,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "true",
       "flags": [
         {
@@ -6999,7 +7000,6 @@
       "name": "patch setting",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the setting"
     },
@@ -7017,6 +7017,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -7064,7 +7065,6 @@
       "network": true,
       "projectScope": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the statefulset"
     },
@@ -7081,6 +7081,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -7115,8 +7116,7 @@
       "group": "patch",
       "name": "patch token",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the token"
     },
@@ -7133,6 +7133,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "flags": [
         {
@@ -7167,8 +7168,7 @@
       "group": "patch",
       "name": "patch user",
       "network": true,
-      "stability": "beta",
-      "tier": "crd",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Patch the user"
     },
@@ -7185,6 +7185,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "flags": [
         {
@@ -7225,7 +7226,6 @@
       "name": "patch vmwarevsphereconfig",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Patch the vmwarevsphereconfig"
     },
@@ -7239,6 +7239,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "examples": [
         "rancher project add-namespace team-a --project p-x --cluster c-x --apply"
@@ -7260,7 +7261,6 @@
       "name": "project add-namespace",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Add a namespace to a project"
     },
@@ -7274,6 +7274,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "internal",
       "destructive": "false",
       "examples": [
         "rancher project remove-namespace team-a --project p-x --cluster c-x --apply"
@@ -7295,7 +7296,6 @@
       "name": "project remove-namespace",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Remove a namespace from a project"
     },
@@ -7310,6 +7310,7 @@
       ],
       "auth": true,
       "commandType": "mutating",
+      "contract": "public",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
@@ -7349,8 +7350,7 @@
       ],
       "name": "revoke",
       "network": true,
-      "stability": "beta",
-      "tier": "public",
+      "stability": "stable",
       "toolset": "core",
       "usage": "Revoke a user's or group's role binding(s) at project, cluster, or global scope"
     },
@@ -7404,12 +7404,12 @@
           "type": "bool"
         },
         {
-          "desc": "show only commands served at this tier",
+          "desc": "show only commands with this contract designation",
           "enum": [
             "public",
-            "crd"
+            "internal"
           ],
-          "name": "tier",
+          "name": "contract",
           "type": "string"
         },
         {
@@ -7552,6 +7552,7 @@
     {
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "examples": [
         "rancher support-bundle -f bundle.tar.gz",
         "rancher support-bundle --targets agent,fleet-agent --clusters prod,staging"
@@ -7589,13 +7590,13 @@
       "name": "support-bundle",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
     },
     {
       "auth": true,
       "commandType": "readOnly",
+      "contract": "internal",
       "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns member-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket.",
       "flags": [
         {
@@ -7628,7 +7629,6 @@
       "name": "usage",
       "network": true,
       "stability": "beta",
-      "tier": "crd",
       "toolset": "core",
       "usage": "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods"
     }
@@ -7637,8 +7637,7 @@
     "actions": [
       "create",
       "update",
-      "delete",
-      "scale"
+      "delete"
     ],
     "fields": [
       {
@@ -7676,14 +7675,6 @@
       {
         "name": "destructive",
         "type": "bool"
-      },
-      {
-        "name": "tier",
-        "type": "string"
-      },
-      {
-        "name": "stability",
-        "type": "string"
       }
     ]
   },
@@ -7788,7 +7779,7 @@
     },
     {
       "appliesTo": "mutating",
-      "desc": "permit a deprecated-tier write",
+      "desc": "permit a deprecated-stability write",
       "name": "--allow-deprecated",
       "type": "bool"
     },
@@ -8090,14 +8081,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v3",
@@ -8116,19 +8107,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "public",
           "stability": "stable",
-          "state": "available",
-          "tier": "public"
+          "state": "available"
         },
         "get": {
+          "contract": "public",
           "stability": "stable",
-          "state": "available",
-          "tier": "public"
+          "state": "available"
         },
         "patch": {
+          "contract": "public",
           "stability": "stable",
-          "state": "available",
-          "tier": "public"
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8149,14 +8140,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1",
@@ -8175,19 +8166,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8205,19 +8196,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1",
@@ -8237,19 +8228,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1",
@@ -8267,19 +8258,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8296,19 +8287,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8325,19 +8316,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8355,19 +8346,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8385,19 +8376,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8415,19 +8406,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8444,19 +8435,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1",
@@ -8474,19 +8465,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8504,19 +8495,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8537,14 +8528,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8561,19 +8552,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8590,19 +8581,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8623,14 +8614,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -8648,19 +8639,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1alpha1",
@@ -8683,14 +8674,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1alpha1",
@@ -8713,14 +8704,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1alpha1"
@@ -8742,14 +8733,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1alpha1"
@@ -8772,14 +8763,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1alpha1",
@@ -8802,14 +8793,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8831,14 +8822,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8860,14 +8851,14 @@
           "state": "absent"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8889,14 +8880,14 @@
           "state": "absent"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8918,14 +8909,14 @@
           "state": "absent"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8943,19 +8934,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -8974,19 +8965,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -9005,19 +8996,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       },
       "version": "v3"
@@ -9036,19 +9027,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1",
@@ -9071,14 +9062,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "waitDefault": "condition=Ready"
@@ -9100,14 +9091,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "waitDefault": "condition=Ready"
@@ -9129,14 +9120,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "waitDefault": "condition=Ready"
@@ -9158,14 +9149,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "waitDefault": "condition=Ready"
@@ -9182,19 +9173,19 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1beta1",
@@ -9213,19 +9204,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       }
     },
@@ -9242,19 +9233,19 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "patch": {
-          "stability": "beta",
-          "state": "available",
-          "tier": "public"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         }
       }
     },
@@ -9271,19 +9262,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -9301,19 +9292,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -9331,19 +9322,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -9361,19 +9352,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -9391,19 +9382,19 @@
       "scope": "management",
       "verbs": {
         "delete": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v1"
@@ -9426,14 +9417,14 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         }
       },
       "version": "v3"
@@ -9455,15 +9446,15 @@
           "state": "absent"
         },
         "get": {
+          "contract": "internal",
           "stability": "beta",
-          "state": "available",
-          "tier": "crd"
+          "state": "available"
         },
         "patch": {
+          "contract": "internal",
           "note": "read-only: consumed, not edited",
           "stability": "beta",
-          "state": "refused",
-          "tier": "crd"
+          "state": "refused"
         }
       },
       "version": "v3"

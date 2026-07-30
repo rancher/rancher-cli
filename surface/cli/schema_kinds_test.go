@@ -106,7 +106,7 @@ func TestSchemaKindsManifestFields(t *testing.T) {
 	assert.True(t, pod.Completable)
 	get := pod.Verbs["get"]
 	assert.Equal(t, runtime.VerbAvailable, get.State)
-	assert.Equal(t, string(safety.TierCRD), get.Tier)
+	assert.Equal(t, string(safety.ContractInternal), get.Contract)
 	assert.Equal(t, string(safety.Beta), get.Stability)
 
 	gitrepo := byName["gitrepo"]
@@ -123,7 +123,7 @@ func TestSchemaKindsBuilderPlainAbsence(t *testing.T) {
 	t.Parallel()
 	row := kinds.Kind{
 		Key: "widget", Name: "widget", Deletable: false,
-		Binding: safety.Binding{Tier: safety.TierCRD, Stability: safety.Beta},
+		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	}
 	out := schemaKinds([]kinds.Kind{row}, nil)
 	require.Len(t, out, 1)
@@ -131,7 +131,7 @@ func TestSchemaKindsBuilderPlainAbsence(t *testing.T) {
 	del := out[0].Verbs["delete"]
 	assert.Equal(t, runtime.VerbAbsent, del.State)
 	assert.Empty(t, del.Note, "no NoDeleteReason means a plain absence")
-	assert.Empty(t, del.Tier, "an absent verb carries no binding")
+	assert.Empty(t, del.Contract, "an absent verb carries no binding")
 	assert.Empty(t, del.Stability)
 
 	assert.Equal(t, runtime.VerbAvailable, out[0].Verbs["get"].State)

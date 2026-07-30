@@ -88,13 +88,13 @@ func flagLine(f ArgSpec) string {
 }
 
 // contractLine renders the command's contract facts in SE-1's order —
-// commandType · tier · stability · destructive · network · auth — omitting
-// segments with no value (tier/stability unresolved, destructive unset,
+// commandType · contract · stability · destructive · network · auth — omitting
+// segments with no value (contract/stability unresolved, destructive unset,
 // network/auth false).
 func contractLine(c SchemaCommand) string {
 	parts := []string{string(c.CommandType)}
-	if c.Tier != "" {
-		parts = append(parts, c.Tier)
+	if c.Contract != "" {
+		parts = append(parts, c.Contract)
 	}
 	if c.Stability != "" {
 		parts = append(parts, c.Stability)
@@ -208,7 +208,7 @@ func kindNamespaceLine(k SchemaKind) string {
 }
 
 // verbLine renders one verb of the SE-5 table, worded exactly per spec:
-// `available (tier · stability)` | `refused — <note>` |
+// `available (contract · stability)` | `refused — <note>` |
 // `not available — <reason>` | `not available`. The degenerate shapes
 // (available without a binding, refused without a note) drop the empty
 // segment rather than rendering stray punctuation.
@@ -216,8 +216,8 @@ func verbLine(verb string, vs VerbState) string {
 	switch vs.State {
 	case VerbAvailable:
 		var meta []string
-		if vs.Tier != "" {
-			meta = append(meta, vs.Tier)
+		if vs.Contract != "" {
+			meta = append(meta, vs.Contract)
 		}
 		if vs.Stability != "" {
 			meta = append(meta, vs.Stability)

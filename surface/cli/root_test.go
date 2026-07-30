@@ -77,9 +77,9 @@ func schemaCommandNames(t *testing.T) []string {
 	return names
 }
 
-// schemaCommandBinding returns the tier/stability the schema manifest
+// schemaCommandBinding returns the contract/stability the schema manifest
 // reports for op, and whether op was found at all.
-func schemaCommandBinding(t *testing.T, op string) (tier, stability string, found bool) {
+func schemaCommandBinding(t *testing.T, op string) (contract, stability string, found bool) {
 	t.Helper()
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -93,7 +93,7 @@ func schemaCommandBinding(t *testing.T, op string) (tier, stability string, foun
 		Data struct {
 			Commands []struct {
 				Name      string `json:"name"`
-				Tier      string `json:"tier"`
+				Contract  string `json:"contract"`
 				Stability string `json:"stability"`
 			} `json:"commands"`
 		} `json:"data"`
@@ -101,7 +101,7 @@ func schemaCommandBinding(t *testing.T, op string) (tier, stability string, foun
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 	for _, c := range env.Data.Commands {
 		if c.Name == op {
-			return c.Tier, c.Stability, true
+			return c.Contract, c.Stability, true
 		}
 	}
 	return "", "", false
@@ -114,19 +114,19 @@ func schemaCommandBinding(t *testing.T, op string) (tier, stability string, foun
 // Binding, read via kinds.Lookup at composition time — never a hand-copied
 // literal, which has no machine-checked link back to the row and can
 // silently drift from a future edit to the row's Binding in kinds.go. This
-// test asserts the schema-reported tier/stability for the op equals
+// test asserts the schema-reported contract/stability for the op equals
 // kinds.Lookup("provisioningcluster").Binding exactly; before the fix (a
 // hand-copied literal in provider.NewResolver), temporarily editing the
-// row's Binding in kinds.go to a different tier/stability made this test
+// row's Binding in kinds.go to a different contract/stability made this test
 // fail while the hand-copied literal silently kept the stale value — the
 // exact drift this composition now closes.
 func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 	pcRow, ok := kinds.Lookup("provisioningcluster")
 	require.True(t, ok)
 
-	tier, stability, found := schemaCommandBinding(t, "delete provisioning-cluster")
+	contract, stability, found := schemaCommandBinding(t, "delete provisioning-cluster")
 	require.True(t, found, "delete provisioning-cluster must be wired despite Deletable: false")
-	assert.Equal(t, string(pcRow.Binding.Tier), tier)
+	assert.Equal(t, string(pcRow.Binding.Contract), contract)
 	assert.Equal(t, string(pcRow.Binding.Stability), stability)
 }
 
@@ -178,11 +178,11 @@ func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
 		"schema --verb enum drifted from the registry's verbs; update the Enum literal in schemaCmd.Describe()")
 }
 
-// TestSchemaTierEnumMatchesCommandTiers pins the --tier enum to the tiers
-// actually PRESENT in the manifest's commands, not every declared
-// safety.Tier: an enum value with zero possible matches would make
+// TestSchemaContractEnumMatchesCommandContracts pins the --contract enum to the
+// contracts actually PRESENT in the manifest's commands, not every declared
+// safety.Contract: an enum value with zero possible matches would make
 // completion suggest an impossible filter that validation then accepts.
-func TestSchemaTierEnumMatchesCommandTiers(t *testing.T) {
+func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
@@ -194,9 +194,9 @@ func TestSchemaTierEnumMatchesCommandTiers(t *testing.T) {
 	var env struct {
 		Data struct {
 			Commands []struct {
-				Name  string `json:"name"`
-				Tier  string `json:"tier"`
-				Flags []struct {
+				Name     string `json:"name"`
+				Contract string `json:"contract"`
+				Flags    []struct {
 					Name string   `json:"name"`
 					Enum []string `json:"enum"`
 				} `json:"flags"`
@@ -206,23 +206,23 @@ func TestSchemaTierEnumMatchesCommandTiers(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 
 	seen := map[string]bool{}
-	var wantTiers []string
-	var tierEnum []string
+	var wantContracts []string
+	var contractEnum []string
 	for _, c := range env.Data.Commands {
-		if c.Tier != "" && !seen[c.Tier] {
-			seen[c.Tier] = true
-			wantTiers = append(wantTiers, c.Tier)
+		if c.Contract != "" && !seen[c.Contract] {
+			seen[c.Contract] = true
+			wantContracts = append(wantContracts, c.Contract)
 		}
 		if c.Name == "schema" {
 			for _, f := range c.Flags {
-				if f.Name == "tier" {
-					tierEnum = f.Enum
+				if f.Name == "contract" {
+					contractEnum = f.Enum
 				}
 			}
 		}
 	}
-	assert.ElementsMatch(t, wantTiers, tierEnum,
-		"schema --tier enum drifted from the tiers present in the manifest; update the Enum literal in schemaCmd.Describe()")
+	assert.ElementsMatch(t, wantContracts, contractEnum,
+		"schema --contract enum drifted from the contracts present in the manifest; update the Enum literal in schemaCmd.Describe()")
 }
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -532,9 +532,9 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	require.NotNil(t, nodeDelete, "delete node must be wired from a del override on a Deletable: false row")
 	assert.Equal(t, "MARKER-DEL", nodeDelete.Usage)
 
-	tier, stability, found := schemaCommandBinding(t, "delete node")
+	contract, stability, found := schemaCommandBinding(t, "delete node")
 	require.True(t, found, "delete node must resolve a binding derived from node's own row")
-	assert.Equal(t, string(nodeKind.Binding.Tier), tier)
+	assert.Equal(t, string(nodeKind.Binding.Contract), contract)
 	assert.Equal(t, string(nodeKind.Binding.Stability), stability)
 
 	// provisioningcluster's own del override must still resolve too — the
@@ -1003,4 +1003,74 @@ func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 	assert.Equal(t, "Context", env["kind"])
+}
+
+// TestPublicContractOpsArePinned closes the op-level half of the public-API
+// conformance guarantee (the kind-table half lives in
+// internal/engine/kinds/publicapi_test.go): every operation the composed
+// resolver marks ContractPublic must either belong to a kind whose row is
+// itself ContractPublic (generated verbs and the derived create ops inherit
+// the row's binding) or appear in the pinned bespoke list below. Adding a
+// new public op compiles fine — this test is what turns the widened public
+// surface into a reviewed diff instead of silent drift.
+func TestPublicContractOpsArePinned(t *testing.T) {
+	t.Parallel()
+	publicKindByName := map[string]bool{}
+	for _, k := range kinds.All() {
+		if k.Binding.Contract == safety.ContractPublic {
+			publicKindByName[k.Name] = true
+		}
+	}
+	resolver, err := composeBindings()
+	require.NoError(t, err)
+	// Both directions: every pinned bespoke op must actually resolve public…
+	for op := range bespokePublicOps {
+		b, ok := resolver.Resolve(op)
+		require.True(t, ok, op)
+		assert.Equal(t, safety.ContractPublic, b.Contract,
+			"op %q is in bespokePublicOps but does not resolve ContractPublic", op)
+	}
+	// …and every public op must back a public kind row or be pinned.
+	for op, b := range resolver.All() {
+		if b.Contract != safety.ContractPublic || bespokePublicOps[op] {
+			continue
+		}
+		if key, ok := derivedOpKinds[op]; ok {
+			row, found := kinds.Lookup(key)
+			require.True(t, found, key)
+			assert.Equal(t, safety.ContractPublic, row.Binding.Contract,
+				"derived op %q is ContractPublic but its %q row is not", op, key)
+			continue
+		}
+		// Generated verbs are "<verb> <kind-name>"; the kind name is the
+		// last space-separated token.
+		parts := strings.Split(op, " ")
+		kindName := parts[len(parts)-1]
+		assert.True(t, publicKindByName[kindName],
+			"op %q is ContractPublic but neither backs a public kind row nor is in bespokePublicOps — widening the public surface must be a reviewed edit there", op)
+	}
+}
+
+// TestCreateOpBindingsTrackKindRows pins the derivation rule: every op in
+// derivedOpKinds must resolve to its kind row's Binding exactly, because
+// composeBindings derives them via the row rather than a hand-copied
+// literal in provider.NewResolver — the same drift-closure as
+// TestDeleteProvisioningClusterBindingTracksKindRow. Ranging over the SAME
+// map production uses means a new derived op is covered the moment it is
+// added.
+func TestCreateOpBindingsTrackKindRows(t *testing.T) {
+	t.Parallel()
+	resolver, err := composeBindings()
+	require.NoError(t, err)
+	require.NotEmpty(t, derivedOpKinds)
+	// Absence from provider.NewResolver needs no assertion: a literal
+	// reappearing there collides in ComposeResolvers and fails the
+	// composeBindings call above.
+	for op, key := range derivedOpKinds {
+		row, ok := kinds.Lookup(key)
+		require.True(t, ok, key)
+		b, ok := resolver.Resolve(op)
+		require.True(t, ok, op)
+		assert.Equal(t, row.Binding, b, "op %q must track the %q row's Binding", op, key)
+	}
 }

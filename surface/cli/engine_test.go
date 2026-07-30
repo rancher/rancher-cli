@@ -8,11 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -262,20 +260,20 @@ func TestResolveClusterDistinctNamesShareOneList(t *testing.T) {
 func TestRegistryBindingLookup(t *testing.T) {
 	t.Parallel()
 	// The registry runs on the composed resolver: generated bindings from the
-	// kind table plus the bespoke provider map.
-	res, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
+	// kind table plus the bespoke provider map plus the derived create ops.
+	res, err := composeBindings()
 	require.NoError(t, err)
 	reg := runtime.NewRegistry(res)
 
 	b := reg.Binding("get cluster") // owned by the kind table
-	assert.Equal(t, safety.TierCRD, b.Tier)
+	assert.Equal(t, safety.ContractInternal, b.Contract)
 	assert.Equal(t, safety.Beta, b.Stability)
 
-	b2 := reg.Binding("create project") // owned by the bespoke resolver
-	assert.Equal(t, safety.TierPublic, b2.Tier)
+	b2 := reg.Binding("create project") // derived from the project kind row
+	assert.Equal(t, safety.ContractPublic, b2.Contract)
 	assert.Equal(t, safety.Stable, b2.Stability)
 
 	bU := reg.Binding("nope")
-	assert.Empty(t, bU.Tier)
+	assert.Empty(t, bU.Contract)
 	assert.Empty(t, bU.Stability)
 }

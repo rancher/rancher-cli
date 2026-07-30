@@ -9,7 +9,7 @@ Output is enveloped JSON/YAML/table (`-o table|json|yaml`, plus `-o name` for
 IDs only); table is the default for interactive use. Mutating commands need
 `--apply` (and `--yes` for destructive ones) — there is no implicit write.
 Run `rancher schema` to discover the full command surface, including flags,
-tiers, and stability, without reading docs.
+contract, and stability, without reading docs.
 
 ## Command disposition
 

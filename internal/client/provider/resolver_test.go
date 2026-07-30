@@ -10,40 +10,27 @@ import (
 func TestResolveKnownOps(t *testing.T) {
 	r := NewResolver()
 	resolve := func(op string) (safety.Binding, bool) { b, ok := r[op]; return b, ok }
-	t.Run("create project is public/stable", func(t *testing.T) {
-		b, ok := resolve("create project")
-		assert.True(t, ok)
-		assert.Equal(t, safety.TierPublic, b.Tier)
-		assert.Equal(t, safety.Stable, b.Stability)
-	})
-	t.Run("create namespace is crd/beta", func(t *testing.T) {
-		b, ok := resolve("create namespace")
-		assert.True(t, ok)
-		assert.Equal(t, safety.TierCRD, b.Tier)
-		assert.Equal(t, safety.Beta, b.Stability)
-	})
-	t.Run("project add-namespace is crd/beta", func(t *testing.T) {
-		b, ok := resolve("project add-namespace")
-		assert.True(t, ok)
-		assert.Equal(t, safety.TierCRD, b.Tier)
-		assert.Equal(t, safety.Beta, b.Stability)
-	})
-	t.Run("project remove-namespace is crd/beta", func(t *testing.T) {
-		b, ok := resolve("project remove-namespace")
-		assert.True(t, ok)
-		assert.Equal(t, safety.TierCRD, b.Tier)
-		assert.Equal(t, safety.Beta, b.Stability)
-	})
-	t.Run("grant is public/beta", func(t *testing.T) {
+	// Ops with a 1:1 backing kind row are absent from this map by design:
+	// they derive from their rows at composition time in BuildRoot
+	// (derivedOpKinds; surface/cli's TestCreateOpBindingsTrackKindRows).
+	// A literal reappearing here collides in ComposeResolvers and fails
+	// BuildRoot, so absence needs no per-op assertion.
+	t.Run("grant is public/stable", func(t *testing.T) {
 		b, ok := resolve("grant")
 		assert.True(t, ok)
-		assert.Equal(t, safety.TierPublic, b.Tier)
-		assert.Equal(t, safety.Beta, b.Stability)
+		assert.Equal(t, safety.ContractPublic, b.Contract)
+		assert.Equal(t, safety.Stable, b.Stability)
 	})
-	t.Run("revoke is public/beta", func(t *testing.T) {
+	t.Run("revoke is public/stable", func(t *testing.T) {
 		b, ok := resolve("revoke")
 		assert.True(t, ok)
-		assert.Equal(t, safety.TierPublic, b.Tier)
+		assert.Equal(t, safety.ContractPublic, b.Contract)
+		assert.Equal(t, safety.Stable, b.Stability)
+	})
+	t.Run("inspect project is internal/beta (deliberate downgrade from prior public)", func(t *testing.T) {
+		b, ok := resolve("inspect project")
+		assert.True(t, ok)
+		assert.Equal(t, safety.ContractInternal, b.Contract)
 		assert.Equal(t, safety.Beta, b.Stability)
 	})
 	t.Run("project add-member is not owned by the bespoke resolver", func(t *testing.T) {
