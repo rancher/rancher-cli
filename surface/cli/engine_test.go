@@ -263,7 +263,7 @@ func TestRegistryBindingLookup(t *testing.T) {
 	t.Parallel()
 	// The registry runs on the composed resolver: generated bindings from the
 	// kind table plus the bespoke provider map.
-	res, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	res, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
 	require.NoError(t, err)
 	reg := runtime.NewRegistry(res)
 

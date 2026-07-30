@@ -48,7 +48,6 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 		Usage:       "Verify connectivity and credentials against the current server",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher auth check -o json"},
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
@@ -238,8 +237,7 @@ func tokenWarning(err error, supported *bool) string {
 	if errors.Is(err, errLegacyToken) {
 		return err.Error()
 	}
-	var ce *clierr.Error
-	if errors.As(err, &ce) && ce.Code == clierr.CodeNotFound && supported != nil && *supported {
+	if clierr.IsNotFound(err) && supported != nil && *supported {
 		return "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login"
 	}
 	return degradeWarning("token", err)

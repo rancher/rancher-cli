@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
@@ -12,7 +13,9 @@ type MapResolver map[string]safety.Binding
 
 func (m MapResolver) Resolve(op string) (safety.Binding, bool) { b, ok := m[op]; return b, ok }
 
-func (m MapResolver) All() map[string]safety.Binding { return m }
+// All returns a fresh copy so no caller can mutate the resolver's bindings
+// out from under the other consumers of the same map.
+func (m MapResolver) All() map[string]safety.Binding { return maps.Clone(m) }
 
 // ComposeResolvers merges two resolvers, rejecting any op defined by both — a
 // single source per op (the kind table OR the bespoke map, never both).

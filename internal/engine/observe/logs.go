@@ -53,7 +53,6 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 			"rancher logs agent --cluster prod",
 			"rancher logs server --since 1h",
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 	}

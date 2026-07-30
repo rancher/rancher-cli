@@ -4,18 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"time"
 )
 
 type Options struct {
 	CACert   string
 	Insecure bool
-	ProxyURL string
 	Timeout  time.Duration
 }
 
@@ -34,16 +31,7 @@ func New(o Options) (*http.Client, error) {
 		tlsConfig.RootCAs = roots
 	}
 
-	var proxyFunc func(*http.Request) (*url.URL, error)
-	if o.ProxyURL != "" {
-		proxyURLParsed, err := url.Parse(o.ProxyURL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy URL: %w", err)
-		}
-		proxyFunc = http.ProxyURL(proxyURLParsed)
-	} else {
-		proxyFunc = http.ProxyFromEnvironment
-	}
+	proxyFunc := http.ProxyFromEnvironment
 
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,

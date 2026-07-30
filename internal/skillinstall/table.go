@@ -59,13 +59,18 @@ func envOrHomeSub(env string, parts ...string) func() (string, error) {
 	}
 }
 
-func dirExists(f func() (string, error), up int) func() bool {
+// harnessRootDepth is how many path segments every harness row's UserDir
+// sits below its detection root (e.g. ~/.claude/skills/rancher → ~/.claude).
+// A future harness whose layout differs needs its own probe, not this one.
+const harnessRootDepth = 2
+
+func dirExists(f func() (string, error)) func() bool {
 	return func() bool {
 		p, err := f()
 		if err != nil {
 			return false
 		}
-		for i := 0; i < up; i++ {
+		for i := 0; i < harnessRootDepth; i++ {
 			p = filepath.Dir(p)
 		}
 		info, err := os.Stat(p)
@@ -83,23 +88,23 @@ func Harnesses() []Harness {
 		{
 			Name: "claude", UserDir: claudeUser,
 			ProjectDir: func(cwd string) string { return filepath.Join(cwd, ".claude", "skills", "rancher") },
-			Detect:     dirExists(claudeUser, 2),
+			Detect:     dirExists(claudeUser),
 		},
 		{
 			Name: "codex", UserDir: codexUser,
 			ProjectDir: func(cwd string) string { return filepath.Join(cwd, ".codex", "skills", "rancher") },
-			Detect:     dirExists(codexUser, 2),
+			Detect:     dirExists(codexUser),
 		},
 		{
 			Name: "copilot", UserDir: copilotUser,
 			ProjectDir: func(cwd string) string { return filepath.Join(cwd, ".agents", "skills", "rancher") },
-			Detect:     dirExists(copilotUser, 2),
+			Detect:     dirExists(copilotUser),
 			AliasOf:    "agents",
 		},
 		{
 			Name: "agents", UserDir: agentsUser,
 			ProjectDir: func(cwd string) string { return filepath.Join(cwd, ".agents", "skills", "rancher") },
-			Detect:     dirExists(agentsUser, 2),
+			Detect:     dirExists(agentsUser),
 		},
 	}
 }

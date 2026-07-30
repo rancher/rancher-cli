@@ -94,7 +94,6 @@ func (skillInstallCmd) Describe() runtime.Descriptor {
 			"rancher skill install --agent claude --scope project",
 		},
 		CommandType: runtime.Local,
-		Toolset:     "core",
 	}
 }
 
@@ -152,7 +151,6 @@ func (skillUninstallCmd) Describe() runtime.Descriptor {
 		Flags:       skillFlags(),
 		Examples:    []string{"rancher skill uninstall --agent claude"},
 		CommandType: runtime.Local,
-		Toolset:     "core",
 	}
 }
 
@@ -216,7 +214,6 @@ func (skillStatusCmd) Describe() runtime.Descriptor {
 			"rancher skill status --agent claude --require-installed",
 		},
 		CommandType:      runtime.Local,
-		Toolset:          "core",
 		SuccessExitCodes: []int{0, 7},
 	}
 }

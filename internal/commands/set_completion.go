@@ -42,7 +42,6 @@ func (setCompletionCmd) Describe() runtime.Descriptor {
 			"rancher config set-completion --network=true",
 			"rancher config set-completion --network=true --timeout=1s",
 		},
-		Toolset: "core",
 	}
 }
 

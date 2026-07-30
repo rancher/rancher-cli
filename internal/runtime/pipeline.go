@@ -88,7 +88,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	eff, exec, err := c.Plan(ctx, in)
 	if err != nil {
-		return 0, renderErr(streams, toClierr(err).WithPhase("plan"))
+		return 0, renderErr(streams, toClierr(err))
 	}
 	if ce := checkPlan(eff, exec); ce != nil {
 		return 0, renderErr(streams, ce)
@@ -97,7 +97,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	if streams.ServerIdentity != nil {
 		server, err := streams.ServerIdentity()
 		if err != nil {
-			return 0, renderErr(streams, toClierr(err).WithPhase("plan"))
+			return 0, renderErr(streams, toClierr(err))
 		}
 		eff.Server = server
 	}
@@ -112,7 +112,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	}
 	res, err := exec(ctx)
 	if err != nil {
-		return 0, renderErr(streams, toClierr(err).WithPhase("execute"))
+		return 0, renderErr(streams, toClierr(err))
 	}
 	res.Tier, res.Stability = string(b.Tier), string(b.Stability)
 	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
@@ -416,7 +416,7 @@ func allowedExitStatus(declared []int, status int) bool {
 }
 
 // toClierr normalizes any error into a structured *clierr.Error, unwrapping
-// %w-wrapped clierr errors so hint/phase/candidates survive.
+// %w-wrapped clierr errors so hint/candidates survive.
 func toClierr(err error) *clierr.Error {
 	var ce *clierr.Error
 	if errors.As(err, &ce) {

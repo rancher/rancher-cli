@@ -116,7 +116,6 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 				Desc: "Show only images whose reference contains `substr` (repeatable, OR)"},
 		},
 		Examples: []string{"images --all-clusters --match library/elasticsearch: --by workload"},
-		Toolset:  "core",
 		Network:  true,
 		Auth:     true,
 	}
@@ -149,7 +148,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return c.allClusters(ctx, by, needles)
 	}
 
-	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}

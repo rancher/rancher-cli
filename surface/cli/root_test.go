@@ -444,7 +444,7 @@ func TestAssembleCommandsUnknownGroupReachable(t *testing.T) {
 
 func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	t.Parallel()
-	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
 	require.NoError(t, err)
 	reg := runtime.NewRegistry(resolver)
 
@@ -586,7 +586,7 @@ func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	t.Parallel()
-	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
 	require.NoError(t, err)
 	reg := runtime.NewRegistry(resolver)
 

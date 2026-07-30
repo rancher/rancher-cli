@@ -23,7 +23,7 @@ import (
 const (
 	FlagCluster   = engine.FlagCluster
 	FlagNamespace = "namespace"
-	FlagProject   = "project"
+	flagProject   = "project"
 	flagFilename  = "filename"
 	flagPatch     = "patch"
 	flagWait      = "wait"
@@ -78,7 +78,6 @@ func (c getCmd) Describe() runtime.Descriptor {
 		CommandType:  runtime.ReadOnly,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Flags:        getFlags(c.k),
-		Toolset:      "core",
 		Network:      true,
 		Auth:         true,
 		ProjectScope: kinds.ProjectScopable(c.k),
@@ -261,9 +260,8 @@ func hasName(in runtime.Input) bool {
 // label selector, used only by the namespace-kind special case (Members is
 // nil there — membership is enforced by the server, not the caller).
 type ProjectScope struct {
-	ProjectID string
-	Members   map[string]bool
-	Selector  string
+	Members  map[string]bool
+	Selector string
 }
 
 // EffectiveProject resolves --project (flag > context, PC-2's precedence).
@@ -272,7 +270,7 @@ type ProjectScope struct {
 // instead of some reading the flag directly and silently skipping the
 // context fallback.
 func EffectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	if p := in.String(FlagProject); p != "" {
+	if p := in.String(flagProject); p != "" {
 		return p, nil
 	}
 	return clients.ContextProject()
@@ -424,7 +422,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 					"pass a member namespace, or omit --namespace to scope the whole project")
 			}
 		}
-		return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Members: members}, nil
+		return clientCluster, ns, effectCluster, &ProjectScope{Members: members}, nil
 
 	default: // NSNone — cluster-scoped, no namespace
 		if scopable {
@@ -479,7 +477,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	return clientCluster, ns, effectCluster, &ProjectScope{ProjectID: projectID, Selector: selector}, nil
+	return clientCluster, ns, effectCluster, &ProjectScope{Selector: selector}, nil
 }
 
 // routeCluster picks the serving cluster for the scope-driven policies (NSNone,
@@ -490,45 +488,18 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 	if k.Scope == kinds.Management {
 		return engine.LocalCluster, ns, engine.LocalCluster, nil
 	}
-	id, err := ResolveDownstreamCluster(ctx, clients, in)
+	id, err := engine.ResolveDownstreamCluster(ctx, clients, in)
 	if err != nil {
 		return "", "", "", err
 	}
 	return id, ns, id, nil
 }
 
-// ResolveDownstreamCluster resolves --cluster for a command that always
-// targets a downstream cluster and is not tied to a kind's Scope (the fleet-
-// wide inspect composites: images, usage): an explicit flag is resolved via
-// ResolveCluster; an empty flag falls back to the context cluster, else a
-// VALIDATION error. routeCluster's Downstream branch is exactly this.
-// Delegates to engine.ResolveDownstreamCluster, which also serves the
-// projects package's bespoke commands — resources already imports projects
-// (Route's membership validation), so the shared logic lives in engine to
-// avoid a cycle.
-func ResolveDownstreamCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	return engine.ResolveDownstreamCluster(ctx, clients, in)
-}
-
-// kindTitle upper-cases the kind's first rune for the Result envelope Kind
-// ("cluster" → "Cluster", "pod" → "Pod"). Only a fallback for a kind with no
-// K8sKind — see resultKind.
-func kindTitle(name string) string {
-	if name == "" {
-		return ""
-	}
-	r := []rune(name)
-	return strings.ToUpper(string(r[0])) + string(r[1:])
-}
-
 // resultKind is the Result envelope's Kind for a kind table row: the
-// manifest's proper Kubernetes casing (k.K8sKind, e.g. "RoleTemplate")
-// when set, falling back to kindTitle(k.Name) otherwise. This keeps
-// get/patch/delete's envelope kind consistent with create's, which already
-// echoes k.K8sKind.
+// manifest's proper Kubernetes casing (k.K8sKind, e.g. "RoleTemplate").
+// Non-empty K8sKind is a table invariant enforced by kinds validation. This
+// keeps get/patch/delete's envelope kind consistent with create's, which
+// already echoes k.K8sKind.
 func resultKind(k kinds.Kind) string {
-	if k.K8sKind != "" {
-		return k.K8sKind
-	}
-	return kindTitle(k.Name)
+	return k.K8sKind
 }

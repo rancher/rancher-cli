@@ -142,7 +142,7 @@ func getJSON(ctx context.Context, hc *http.Client, token, url string, dst any) e
 // Rancher management API path; decodes the k8s items envelope.
 // Returns nil on any fetch error (AC-18).
 // hc must be the single per-dispatch client (finding 9).
-func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability, _ string) []string {
+func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil // exec-cred-only: cluster list requires management token
 	}

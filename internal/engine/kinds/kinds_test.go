@@ -125,9 +125,10 @@ func TestValidateFirstDefectWinsPerKindTableOrder(t *testing.T) {
 		{
 			Key:     "a",
 			Name:    "foo",
+			K8sKind: "Foo",
 			Columns: []Column{mixedConditionColumn()},
 		},
-		{Key: "b", Name: "bar", Aliases: []string{"foo"}},
+		{Key: "b", Name: "bar", K8sKind: "Bar", Aliases: []string{"foo"}},
 	}
 	err := validateKinds(fixture)
 	if err == nil {
@@ -255,6 +256,14 @@ func TestBindingRowsCarryMemberColumns(t *testing.T) {
 	assert.Equal(t, Column{Header: "MEMBER", Path: []string{"userName"}, AltPaths: memberFallback}, prtb.Columns[0])
 	assert.Equal(t, Column{Header: "ROLE", Path: []string{"roleTemplateName"}}, prtb.Columns[1])
 	assert.Equal(t, Column{Header: "PROJECT", Path: []string{"projectName"}}, prtb.Columns[2])
+}
+
+func TestValidateKindsRejectsEmptyK8sKind(t *testing.T) {
+	t.Parallel()
+	k := Kind{Key: "test", Name: "test", K8sKind: ""}
+	err := validateKinds([]Kind{k})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "K8sKind")
 }
 
 func TestLookupGVK(t *testing.T) {

@@ -55,7 +55,7 @@ func TestFetchClustersReturnsSanitizedSorted(t *testing.T) {
 	hc := &http.Client{}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	got := fetchClusters(ctx, hc, cap, "")
+	got := fetchClusters(ctx, hc, cap)
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 	assert.Equal(t, int32(1), hits.Load())
 }
@@ -71,7 +71,7 @@ func TestFetchClustersDropsSpacedDisplayNames(t *testing.T) {
 	hc := &http.Client{}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	got := fetchClusters(ctx, hc, cap, "")
+	got := fetchClusters(ctx, hc, cap)
 	assert.Equal(t, []string{"c-abc"}, got)
 }
 
@@ -86,7 +86,7 @@ func TestFetchClustersTimeoutYieldsEmpty(t *testing.T) {
 	hc := &http.Client{}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	got := fetchClusters(ctx, hc, cap, "")
+	got := fetchClusters(ctx, hc, cap)
 	assert.Empty(t, got)
 }
 
@@ -101,7 +101,7 @@ func TestFetchClusters401YieldsEmpty(t *testing.T) {
 	hc := &http.Client{}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	got := fetchClusters(ctx, hc, cap, "")
+	got := fetchClusters(ctx, hc, cap)
 	assert.Empty(t, got)
 }
 
@@ -374,4 +374,18 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 		assert.NotContains(t, l, " ",
 			"the AC-21 charset admits no multi-token candidate at the surface layer")
 	}
+}
+
+// TestNewConfigViewSortsNames pins the completion output order for context
+// and server names at the source every delegating command shares — the
+// contract internal/commands' per-command tests rely on when they prove
+// delegation only.
+func TestNewConfigViewSortsNames(t *testing.T) {
+	t.Parallel()
+	view := newConfigView(&config.Config{
+		Contexts: map[string]config.Context{"zebra-ctx": {}, "alpha-ctx": {}, "mid-ctx": {}},
+		Servers:  map[string]config.Server{"zebra-srv": {}, "alpha-srv": {}},
+	}, "")
+	assert.Equal(t, []string{"alpha-ctx", "mid-ctx", "zebra-ctx"}, view.ContextNames())
+	assert.Equal(t, []string{"alpha-srv", "zebra-srv"}, view.ServerNames())
 }

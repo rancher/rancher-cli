@@ -16,9 +16,9 @@ func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
 	return readCacheROFromFile(filepath.Join(dir, "token-cache.yaml"))
 }
 
-// readCacheROFromFile reads token-cache.yaml at path and returns unexpired
-// entries. It never writes to disk regardless of expired entries found.
-func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
+// loadCacheMap reads and unmarshals token-cache.yaml at path. A missing
+// file is an empty cache, not an error. Never writes to disk.
+func loadCacheMap(path string) (map[string]cachedCred, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -30,25 +30,47 @@ func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
+	return m, nil
+}
+
+// collectCacheEntries reads token-cache.yaml at path and returns conv's
+// result for every unexpired entry, applying the shared per-entry rules
+// (expiry skip, legacy name-from-key fallback) in the single, preallocated
+// iteration both readers share. The bearer token is passed alongside the
+// metadata; a conv that does not want tokens simply ignores the argument,
+// so tokens never propagate past the unmarshal on that path.
+func collectCacheEntries[T any](path string, conv func(info CachedCredInfo, token string) T) ([]T, error) {
+	m, err := loadCacheMap(path)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
-	out := make([]CachedCredInfo, 0, len(m))
+	out := make([]T, 0, len(m))
 	for key, cred := range m {
 		if !cred.Expiry.IsZero() && now.After(cred.Expiry) {
-			continue // skip expired; do NOT write
+			continue
 		}
 		name := cred.Name
 		if name == "" {
-			name = key // legacy bare entry
+			name = key
 		}
-		out = append(out, CachedCredInfo{
+		out = append(out, conv(CachedCredInfo{
 			Key:     key,
 			Name:    name,
 			Server:  cred.Server,
 			Cluster: cred.Cluster,
 			Expiry:  cred.Expiry,
-		})
+		}, cred.Token))
 	}
 	return out, nil
+}
+
+// readCacheROFromFile reads token-cache.yaml at path and returns unexpired
+// entries. Bearer tokens never propagate past the unmarshal on this path.
+func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
+	return collectCacheEntries(path, func(info CachedCredInfo, _ string) CachedCredInfo {
+		return info
+	})
 }
 
 // ReadFileTokenSilent reads the login token for serverName from credentials.yaml
@@ -95,37 +117,7 @@ func ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, cluster string) ([
 // readCacheROWithTokensFromFile reads token-cache.yaml and returns unexpired
 // entries including their bearer tokens. Never writes to disk.
 func readCacheROWithTokensFromFile(path string) ([]CachedCredEntry, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var m map[string]cachedCred
-	if err := yaml.Unmarshal(b, &m); err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	out := make([]CachedCredEntry, 0, len(m))
-	for key, cred := range m {
-		if !cred.Expiry.IsZero() && now.After(cred.Expiry) {
-			continue
-		}
-		name := cred.Name
-		if name == "" {
-			name = key
-		}
-		out = append(out, CachedCredEntry{
-			CachedCredInfo: CachedCredInfo{
-				Key:     key,
-				Name:    name,
-				Server:  cred.Server,
-				Cluster: cred.Cluster,
-				Expiry:  cred.Expiry,
-			},
-			Token: cred.Token,
-		})
-	}
-	return out, nil
+	return collectCacheEntries(path, func(info CachedCredInfo, token string) CachedCredEntry {
+		return CachedCredEntry{CachedCredInfo: info, Token: token}
+	})
 }

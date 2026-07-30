@@ -14,7 +14,7 @@ type contextCurrentCmd struct{ dir string }
 func NewContextCurrent(dir string) runtime.Command { return &contextCurrentCmd{dir: dir} }
 
 func (contextCurrentCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "config current-context", Usage: "Show the current context", CommandType: runtime.Local, Toolset: "core"}
+	return runtime.Descriptor{Name: "config current-context", Usage: "Show the current context", CommandType: runtime.Local}
 }
 func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(c.dir))
@@ -56,7 +56,6 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 			{Name: "project", Type: "string", Desc: "project `id|name` to set in the current context"},
 		},
 		Examples: []string{"rancher config set-context --current --cluster c-1 --project p-1"},
-		Toolset:  "core",
 	}
 }
 func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -115,7 +114,6 @@ func (contextUseCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Examples:    []string{"rancher config use-context acme-prod"},
-		Toolset:     "core",
 	}
 }
 func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {

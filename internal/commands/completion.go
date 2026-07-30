@@ -29,7 +29,6 @@ func (completionCmd) Describe() runtime.Descriptor {
 			"rancher completion fish > ~/.config/fish/completions/rancher.fish",
 		},
 		CommandType: runtime.Local,
-		Toolset:     "core",
 	}
 }
 

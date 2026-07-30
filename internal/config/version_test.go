@@ -35,7 +35,7 @@ func TestCompareVersions(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			cmp, ok := CompareVersions(tt.a, tt.b)
+			cmp, ok := compareVersions(tt.a, tt.b)
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
 				assert.Equal(t, tt.wantCmp, cmp)

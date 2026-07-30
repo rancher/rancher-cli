@@ -374,8 +374,6 @@ func TestScenarios(t *testing.T) {
 			// only the config FILE's server entry — config-flow scripts pass
 			// --cacert on login for that.
 			e.Setenv("RANCHER_CLI_CACERT", facadeCACertPEM)
-			e.Setenv("TEST_RANCHER_LOGIN_USER", "e2e-user")
-			e.Setenv("TEST_RANCHER_LOGIN_PASS", "e2e-pass")
 			e.Setenv("RANCHER_CLI_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
 			// E2E-A-003: credstore-pin.txtar clears this itself as its first
 			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) — testscript.Env carries

@@ -614,10 +614,10 @@ func TestCanonicalServerHostEquivalentHTTPSSpellingsShareOneKey(t *testing.T) {
 		"HTTPS://HOST:443",
 		"HTTPS://host",
 	}
-	want := CanonicalServerHost("https://host")
+	want := canonicalServerHost("https://host")
 	require.NotEmpty(t, want)
 	for _, s := range spellings {
-		assert.Equal(t, want, CanonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
+		assert.Equal(t, want, canonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
 	}
 }
 
@@ -629,9 +629,9 @@ func TestCanonicalServerHostHTTPEquivalentSpellings(t *testing.T) {
 		"HTTP://HOST:80",
 		"HTTP://host",
 	}
-	want := CanonicalServerHost("http://host")
+	want := canonicalServerHost("http://host")
 	require.NotEmpty(t, want)
 	for _, s := range spellings {
-		assert.Equal(t, want, CanonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
+		assert.Equal(t, want, canonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
 	}
 }

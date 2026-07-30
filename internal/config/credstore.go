@@ -581,7 +581,7 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 	if u, err := url.Parse(identity); err == nil && u.Scheme != "" {
 		scheme = strings.ToLower(u.Scheme)
 	}
-	targetHost := CanonicalServerHost(identity)
+	targetHost := canonicalServerHost(identity)
 	creds, err := store.ListCachedCreds()
 	if err != nil {
 		return nil, err
@@ -598,7 +598,7 @@ func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error
 		} else {
 			// Legacy format: Server carries only a host (no scheme). Normalize
 			// using the target's scheme so default-port suffixes strip correctly.
-			match = CanonicalServerHost(scheme+"://"+c.Server) == targetHost
+			match = canonicalServerHost(scheme+"://"+c.Server) == targetHost
 		}
 		if !match {
 			continue
@@ -625,14 +625,14 @@ func CanonicalServerIdentity(rawURL string) string {
 	return strings.ToLower(rawURL)
 }
 
-// CanonicalServerHost derives the canonical cache-identity host from a full
+// canonicalServerHost derives the canonical cache-identity host from a full
 // server URL: the host lowercased and stripped of its scheme's default port
 // (443 for https, 80 for http). Falls back to a lowercased ServerHost when
 // the URL cannot be canonicalized, so callers always get a non-empty string
 // for a non-empty URL. Used internally by DrainExecCacheForServer for legacy
 // record normalization; use ServerHost for non-cache identity (e.g. kubeconfig
 // entry names).
-func CanonicalServerHost(rawURL string) string {
+func canonicalServerHost(rawURL string) string {
 	if cu, err := credhelper.CanonicalServerURL(rawURL); err == nil {
 		if u, err := url.Parse(cu); err == nil && u.Host != "" {
 			return u.Host

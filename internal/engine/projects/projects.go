@@ -150,7 +150,6 @@ func (createCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher create project web --cluster c-x --dry-run", "rancher create project web --cluster c-x --apply"},
 		Destructive: "false",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

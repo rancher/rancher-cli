@@ -8,11 +8,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
-// DiffObjects walks two decoded-JSON trees and emits one DiffEntry per changed
-// leaf, keyed by JSON pointer. A key present on one side only yields a nil
-// From or To. metadata.resourceVersion and metadata.managedFields are skipped
-// (server-managed churn, not a user-visible change).
-func DiffObjects(prefix string, a, b any) []safety.DiffEntry {
+// DiffObjects walks two decoded-JSON trees and emits one DiffEntry per
+// changed leaf, keyed by JSON pointer.
+func DiffObjects(a, b any) []safety.DiffEntry {
+	return diffObjects("", a, b)
+}
+
+func diffObjects(prefix string, a, b any) []safety.DiffEntry {
 	switch prefix {
 	case "/metadata/resourceVersion", "/metadata/managedFields":
 		return nil
@@ -25,7 +27,7 @@ func DiffObjects(prefix string, a, b any) []safety.DiffEntry {
 		}
 		var out []safety.DiffEntry
 		for _, k := range unionKeys(av, bv) {
-			out = append(out, DiffObjects(prefix+"/"+k, av[k], bv[k])...)
+			out = append(out, diffObjects(prefix+"/"+k, av[k], bv[k])...)
 		}
 		return out
 	case []any:
@@ -42,7 +44,7 @@ func DiffObjects(prefix string, a, b any) []safety.DiffEntry {
 			if i < len(bv) {
 				bi = bv[i]
 			}
-			out = append(out, DiffObjects(fmt.Sprintf("%s/%d", prefix, i), ai, bi)...)
+			out = append(out, diffObjects(fmt.Sprintf("%s/%d", prefix, i), ai, bi)...)
 		}
 		return out
 	default:

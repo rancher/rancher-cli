@@ -31,13 +31,17 @@ func TestExitCodeMapping(t *testing.T) {
 func TestBuilderAndError(t *testing.T) {
 	e := New(CodeConfirmationRequired, "needs confirm").
 		WithHint("re-run with: --apply --yes").
-		WithPhase("plan").
 		WithTier("crd").
 		WithRetryable(true)
 	require.Equal(t, "needs confirm", e.Error())
 	assert.Equal(t, "re-run with: --apply --yes", e.Hint)
-	assert.Equal(t, "plan", e.Phase)
 	assert.True(t, e.Retryable)
+}
+
+func TestIsNotFound(t *testing.T) {
+	assert.True(t, IsNotFound(New(CodeNotFound, "x")))
+	assert.False(t, IsNotFound(New(CodeGeneric, "x")))
+	assert.False(t, IsNotFound(nil))
 }
 
 func TestAllCodesNonEmpty(t *testing.T) {

@@ -238,7 +238,6 @@ func (c *getCloudCredCmd) Describe() runtime.Descriptor {
 		Usage:       "List cloud credentials or show one (secret values never shown)",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

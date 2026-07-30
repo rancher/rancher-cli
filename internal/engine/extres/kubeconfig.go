@@ -3,6 +3,7 @@ package extres
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -45,7 +46,6 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml",
 		},
 		Destructive: "true", // the kubeconfig kind is Sensitive
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
@@ -89,7 +89,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		if !hasWildcard && !containsString(clusterList, resolved) {
+		if !hasWildcard && !slices.Contains(clusterList, resolved) {
 			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--current-context %q must name one of --clusters", raw)).
 				WithHint("pass --current-context as one of the values given to --clusters")
@@ -162,13 +162,4 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 		return runtime.Result{RawBytes: append([]byte(header), []byte(value)...)}, nil
 	}
 	return eff, exec, nil
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

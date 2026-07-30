@@ -1,5 +1,7 @@
 package clierr
 
+import "errors"
+
 const (
 	CodeContextNotSet        = "CONTEXT_NOT_SET"
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
@@ -38,7 +40,6 @@ type Error struct {
 	Code       string      `json:"code"`
 	Message    string      `json:"message"`
 	Hint       string      `json:"hint,omitempty"`
-	Phase      string      `json:"phase,omitempty"`
 	Candidates []Candidate `json:"candidates,omitempty"`
 	Retryable  bool        `json:"retryable"`
 	Tier       string      `json:"tier,omitempty"`
@@ -74,7 +75,6 @@ func CodeExits() map[string]int {
 }
 
 func (e *Error) WithHint(h string) *Error            { e.Hint = h; return e }
-func (e *Error) WithPhase(p string) *Error           { e.Phase = p; return e }
 func (e *Error) WithTier(t string) *Error            { e.Tier = t; return e }
 func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
@@ -88,3 +88,17 @@ func AllCodes() []string {
 		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodeGeneric,
 	}
 }
+
+// AsNotFound returns err's *Error when err is a structured NOT_FOUND error,
+// nil otherwise — for callers that also need the concrete error (message,
+// hint) without a second chain walk.
+func AsNotFound(err error) *Error {
+	var ce *Error
+	if errors.As(err, &ce) && ce.Code == CodeNotFound {
+		return ce
+	}
+	return nil
+}
+
+// IsNotFound reports whether err is a structured NOT_FOUND error.
+func IsNotFound(err error) bool { return AsNotFound(err) != nil }

@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -72,7 +71,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 	for {
 		obj, err := client.Get(ctx, gvr, ns, name)
 		switch {
-		case err != nil && isNotFound(err):
+		case err != nil && clierr.IsNotFound(err):
 			return nil, err
 		case err != nil:
 			// Transient error: fall through to the poll-or-timeout select below,
@@ -94,11 +93,6 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 		case <-time.After(pollInterval):
 		}
 	}
-}
-
-func isNotFound(err error) bool {
-	var ce *clierr.Error
-	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound
 }
 
 func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond) *clierr.Error {

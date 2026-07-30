@@ -45,7 +45,6 @@ func (createCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

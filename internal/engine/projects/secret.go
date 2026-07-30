@@ -61,7 +61,6 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 			"rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply",
 		},
 		Destructive: "true",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

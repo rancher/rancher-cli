@@ -1,10 +1,6 @@
 package commands
 
-import (
-	"sort"
-
-	"github.com/rancher/rancher-cli/internal/config"
-)
+import "sort"
 
 // sortedKeys returns m's keys, sorted lexicographically — Go map iteration
 // order is not stable, and completion candidate order is pinned (external
@@ -16,26 +12,4 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// contextNames returns the configured context names, sorted
-// lexicographically, or nil on any config load error (a missing config is
-// not an error — config.Load returns an empty, usable Config).
-func contextNames(dir string) []string {
-	cfg, err := config.Load(config.FilePath(dir))
-	if err != nil {
-		return nil
-	}
-	return sortedKeys(cfg.Contexts)
-}
-
-// serverNames returns the configured server names, sorted lexicographically,
-// or nil on any config load error. Shared by `config use-server`, `config
-// delete-server`, and `config get-servers`.
-func serverNames(dir string) []string {
-	cfg, err := config.Load(config.FilePath(dir))
-	if err != nil {
-		return nil
-	}
-	return sortedKeys(cfg.Servers)
 }

@@ -35,7 +35,6 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher project add-namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
@@ -87,7 +86,6 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher project remove-namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
@@ -155,7 +153,7 @@ func loadMembershipTarget(ctx context.Context, clients engine.ClusterClientFacto
 // shared PlanUpdate. An unchanged namespace (re-adding to its own project)
 // yields an empty diff rather than an error.
 func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, before, after *unstructured.Unstructured, cluster string) (safety.Effect, runtime.ExecuteFunc, error) {
-	diff := engine.DiffObjects("", before.Object, after.Object)
+	diff := engine.DiffObjects(before.Object, after.Object)
 	rv := before.GetResourceVersion()
 	after.SetResourceVersion(rv)
 	nsKind, _ := kinds.Lookup("namespace")

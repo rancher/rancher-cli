@@ -31,7 +31,6 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 	}

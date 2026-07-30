@@ -33,14 +33,10 @@ var OutputFormats = []string{"table", "json", "yaml", "name"}
 var OutputFormatCompletions = append(append([]string{}, OutputFormats...),
 	output.TemplatePrefix, output.TemplatePrefix+"{{.}}")
 
-// ShellCompletionShells is the single shared list of shells `completion
-// <shell>` emits scripts for — used both to populate the schema manifest's
-// shellCompletion field and by the completion command itself (its Enum,
-// unknown-shell error, and its own --generate-shell-completion), so the list
-// is never duplicated.
-func ShellCompletionShells() []string {
-	return []string{"bash", "zsh", "fish", "pwsh"}
-}
+// ShellCompletionShells returns the single shared list of shells
+// `completion <shell>` emits scripts for — a fresh slice on every call, so
+// no caller can mutate the canonical order out from under the others.
+func ShellCompletionShells() []string { return []string{"bash", "zsh", "fish", "pwsh"} }
 
 // GlobalFlags is the confirmation/output model, discoverable via schema.
 func GlobalFlags() []GlobalFlag {
@@ -357,10 +353,14 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 	}
 	for _, c := range reg.cmds {
 		d := c.Describe()
+		toolset := d.Toolset
+		if toolset == "" {
+			toolset = "core"
+		}
 		sc := SchemaCommand{
 			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Desc: d.Desc, Args: d.Args, Flags: d.Flags,
 			Examples: d.Examples, CommandType: d.CommandType,
-			Destructive: d.Destructive, Toolset: d.Toolset, Network: d.Network, Auth: d.Auth,
+			Destructive: d.Destructive, Toolset: toolset, Network: d.Network, Auth: d.Auth,
 			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
 		}

@@ -584,6 +584,11 @@ func Lookup(q string) (Kind, bool) {
 func Validate() error { return validateKinds(table) }
 
 func validateKinds(ts []Kind) error {
+	for _, k := range ts {
+		if k.K8sKind == "" {
+			return fmt.Errorf("kind %q has empty K8sKind", k.Name)
+		}
+	}
 	// Key uniqueness is its own pass: the self-Key exemption in the collision
 	// pass below would otherwise mask two kinds sharing a Key.
 	seenKeys := map[string]bool{}

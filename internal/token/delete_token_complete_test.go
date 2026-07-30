@@ -17,11 +17,9 @@ type testConfigView struct {
 	dir string
 }
 
-func (v testConfigView) ContextNames() []string   { return nil }
-func (v testConfigView) ServerNames() []string    { return nil }
-func (v testConfigView) CurrentContext() string   { return "" }
-func (v testConfigView) CurrentServerURL() string { return "" }
-func (v testConfigView) ConfigDir() string        { return v.dir }
+func (v testConfigView) ContextNames() []string { return nil }
+func (v testConfigView) ServerNames() []string  { return nil }
+func (v testConfigView) ConfigDir() string      { return v.dir }
 
 var _ runtime.ConfigView = testConfigView{}
 

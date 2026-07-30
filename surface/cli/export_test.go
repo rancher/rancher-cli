@@ -24,12 +24,12 @@ func ResolveCompletionTokenForTest(argTail []string, clusterID string) TokenCapa
 func TokenCapabilityForTest(url, token string, idOnly bool) TokenCapability {
 	return TokenCapability{ServerURL: url, Token: token, IDOnly: idOnly}
 }
-func FetchClustersForTest(ctx context.Context, cap TokenCapability, partial string) []string {
+func FetchClustersForTest(ctx context.Context, cap TokenCapability) []string {
 	hc, err := newCompletionClient(cap.CACert)
 	if err != nil {
 		return nil
 	}
-	return fetchClusters(ctx, hc, cap, partial)
+	return fetchClusters(ctx, hc, cap)
 }
 func SanitizeCandidatesForTest(s []string) []string { return sanitizeCandidates(s) }
 func KindForDescriptorForTest(name string) (kinds.Kind, bool) {

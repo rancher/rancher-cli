@@ -103,7 +103,6 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 		Examples: []string{
@@ -265,7 +264,6 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 			"rancher auth delete-token --all",
 			"rancher auth delete-token prod",
 		},
-		Toolset: "core",
 	}
 }
 

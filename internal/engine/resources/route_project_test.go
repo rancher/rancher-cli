@@ -96,7 +96,7 @@ func TestRouteDownstreamNSPlainNamedOpMemberNamespacePasses(t *testing.T) {
 	assert.Equal(t, "ns-a", ns)
 	assert.Equal(t, "c-abc", effCluster)
 	require.NotNil(t, scope)
-	assert.Equal(t, "p-1", scope.ProjectID)
+	assert.NotNil(t, scope.Members)
 }
 
 func TestRouteDownstreamNSPlainNamedOpNonMemberNamespaceRejected(t *testing.T) {
@@ -130,7 +130,7 @@ func TestRouteDownstreamNSPlainListWithoutNamespaceCarriesMemberSet(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, "", ns)
 	require.NotNil(t, scope)
-	assert.Equal(t, "p-1", scope.ProjectID)
+	assert.NotNil(t, scope.Members)
 	assert.Equal(t, map[string]bool{"ns-a": true}, scope.Members)
 }
 
@@ -142,7 +142,7 @@ func TestRouteContextProjectFallsBackWhenFlagEmpty(t *testing.T) {
 		input{s: map[string]string{"cluster": "prod"}}, false)
 	require.NoError(t, err)
 	require.NotNil(t, scope)
-	assert.Equal(t, "p-1", scope.ProjectID)
+	assert.NotNil(t, scope.Members)
 }
 
 func TestRouteFlagProjectTakesPrecedenceOverContext(t *testing.T) {
@@ -156,7 +156,17 @@ func TestRouteFlagProjectTakesPrecedenceOverContext(t *testing.T) {
 		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	require.NotNil(t, scope)
-	assert.Equal(t, "p-1", scope.ProjectID, "the --project flag wins over the context project")
+	require.NotNil(t, scope.Members)
+	// Precedence is observable in the member-set fetch: the namespaces list
+	// must be scoped by the FLAG's project (p-1), not the context's (p-2).
+	var nsSelectors []string
+	for _, call := range client.listCalls {
+		if call.resource == "namespaces" {
+			nsSelectors = append(nsSelectors, call.selector)
+		}
+	}
+	assert.Equal(t, []string{"field.cattle.io/projectId=p-1"}, nsSelectors,
+		"the --project flag wins over the context project")
 }
 
 func TestRouteNamespaceKindWithProjectIsNotRejected(t *testing.T) {

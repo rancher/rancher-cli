@@ -26,7 +26,7 @@ func (pingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtim
 
 func TestAdaptRunsAndRendersJSON(t *testing.T) {
 	var out bytes.Buffer
-	reg := runtime.NewRegistry(provider.NewResolver())
+	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
 	root := &ucli.Command{
 		Name:     "rancher",
 		Writer:   &out,
@@ -70,7 +70,7 @@ func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
 // already publishes.
 func TestAdaptSetsArgsUsageFromDescriptorArgs(t *testing.T) {
 	t.Parallel()
-	reg := runtime.NewRegistry(provider.NewResolver())
+	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
 	cmd := Adapt(reg, schemaLikeCmd{})
 	assert.Equal(t, "[command]", cmd.ArgsUsage)
 }
@@ -200,7 +200,7 @@ func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
 	t.Run("occurrences ordered, commas preserved, presence reported", func(t *testing.T) {
 		t.Parallel()
 		echo := &sliceEchoCmd{}
-		cmd := Adapt(runtime.NewRegistry(provider.NewResolver()), echo)
+		cmd := Adapt(runtime.NewRegistry(runtime.MapResolver(provider.NewResolver())), echo)
 		cmd.Writer = &bytes.Buffer{}
 		cmd.ErrWriter = &bytes.Buffer{}
 		err := cmd.Run(context.Background(), []string{"slice-echo",
@@ -216,7 +216,7 @@ func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
 	t.Run("omitted flags report absent", func(t *testing.T) {
 		t.Parallel()
 		echo := &sliceEchoCmd{}
-		cmd := Adapt(runtime.NewRegistry(provider.NewResolver()), echo)
+		cmd := Adapt(runtime.NewRegistry(runtime.MapResolver(provider.NewResolver())), echo)
 		cmd.Writer = &bytes.Buffer{}
 		cmd.ErrWriter = &bytes.Buffer{}
 		err := cmd.Run(context.Background(), []string{"slice-echo"})

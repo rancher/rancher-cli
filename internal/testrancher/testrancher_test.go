@@ -111,7 +111,7 @@ func TestAuthProvidersListsLocalAndOptionallyAzureAD(t *testing.T) {
 
 func TestLocalLoginHappyAndReject(t *testing.T) {
 	t.Parallel()
-	_, srv := newFacade(t, testrancher.Options{LoginUser: "e2e-user", LoginPass: "e2e-pass"}, &recordingHandler{})
+	_, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
 
 	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
 		map[string]string{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass"}, "")
@@ -283,7 +283,7 @@ func TestMintClusterNameRecorded(t *testing.T) {
 
 func TestDeterministicNameAndSecretSequenceIncludingProviderLoginTwoSlots(t *testing.T) {
 	t.Parallel()
-	_, srv := newFacade(t, testrancher.Options{LoginUser: "e2e-user", LoginPass: "e2e-pass", SeedToken: "e2e:secret"}, &recordingHandler{})
+	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
 	// Slot 1: two independent mints in sequence are strictly incrementing.
 	_, body1 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
@@ -301,7 +301,7 @@ func TestDeterministicNameAndSecretSequenceIncludingProviderLoginTwoSlots(t *tes
 
 func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	t.Parallel()
-	_, srv := newFacade(t, testrancher.Options{LoginUser: "e2e-user", LoginPass: "e2e-pass", SeedToken: "e2e:secret"}, &recordingHandler{})
+	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
 	// Reproduces resolveProviderLoginToken (login_ext.go): login mints session
 	// token S (slot 1), MintDerivedToken mints derived token D (slot 2) using S

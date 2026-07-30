@@ -53,12 +53,12 @@ func sign(n int) int {
 	}
 }
 
-// CompareVersions compares two Rancher version strings numerically on
+// compareVersions compares two Rancher version strings numerically on
 // major.minor.patch (PS-8): an absent patch component compares as 0 on
 // either side ("2.14" == "2.14.0"; "2.14.1" >= "2.14"; "2.14.0" < "2.14.2").
 // ok is false when either string has no parseable leading major.minor — the
 // caller must treat that as unknown, never as below-floor.
-func CompareVersions(a, b string) (cmp int, ok bool) {
+func compareVersions(a, b string) (cmp int, ok bool) {
 	aMaj, aMin, aPatch, aOK := parseVersion(a)
 	bMaj, bMin, bPatch, bOK := parseVersion(b)
 	if !aOK || !bOK {
@@ -80,7 +80,7 @@ func CompareVersions(a, b string) (cmp int, ok bool) {
 // "assume supported" posture as UnknownServerVersionWarning, never a
 // failure. warning is "" only when supported is true.
 func EvalMinVersionSupport(raw string) (supported *bool, warning string) {
-	cmp, ok := CompareVersions(raw, MinRancherVersion)
+	cmp, ok := compareVersions(raw, MinRancherVersion)
 	if !ok {
 		return nil, UnknownServerVersionWarning
 	}

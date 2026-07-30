@@ -65,7 +65,6 @@ func (revokeCmd) Describe() runtime.Descriptor {
 			"rancher revoke okta_group://gid --global --role admin --apply --yes",
 		},
 		Destructive: "true",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

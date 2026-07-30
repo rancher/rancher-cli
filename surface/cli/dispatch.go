@@ -504,7 +504,7 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 	var raw []string
 	switch site.FlagName {
 	case "cluster", "context":
-		raw = fetchClusters(ctx, hc, cap, "")
+		raw = fetchClusters(ctx, hc, cap)
 	case "project":
 		raw = fetchProjects(ctx, hc, cap, clusterID)
 	case "namespace":
@@ -600,7 +600,7 @@ func livePositionalCandidates(
 	if k.Scope == kinds.Management {
 		switch k.Name {
 		case "cluster":
-			return fetchClusters(ctx, hc, cap, "")
+			return fetchClusters(ctx, hc, cap)
 		case "project":
 			return fetchProjects(ctx, hc, cap, clusterID)
 		case "nodedriver":
@@ -968,19 +968,4 @@ func stripRoutingPrefixByDepth(argv []string, depth int) []string {
 		return nil
 	}
 	return argv[i:]
-}
-
-// stripRoutingPrefix is kept for dispatch_test.go TestStripRoutingPrefix
-// compatibility. New code uses stripRoutingPrefixByCmd.
-func stripRoutingPrefix(argv []string, descriptorName string) []string {
-	parts := strings.Fields(descriptorName)
-	if len(argv) < len(parts) {
-		return nil
-	}
-	for i, p := range parts {
-		if i >= len(argv) || argv[i] != p {
-			return argv
-		}
-	}
-	return argv[len(parts):]
 }

@@ -34,12 +34,14 @@ func TestSettingValue(t *testing.T) {
 		hasValue   bool
 		hasDefault bool
 		want       string
+		wantFound  bool
 	}{
 		{
-			name:     "value present and non-empty is returned",
-			value:    "v1.30.5+rke2r1",
-			hasValue: true,
-			want:     "v1.30.5+rke2r1",
+			name:      "value present and non-empty is returned",
+			value:     "v1.30.5+rke2r1",
+			hasValue:  true,
+			want:      "v1.30.5+rke2r1",
+			wantFound: true,
 		},
 		{
 			name:       "value present but empty falls back to default",
@@ -48,6 +50,7 @@ func TestSettingValue(t *testing.T) {
 			def:        "v1.30.5+rke2r1",
 			hasDefault: true,
 			want:       "v1.30.5+rke2r1",
+			wantFound:  true,
 		},
 		{
 			name:       "value absent falls back to default",
@@ -55,19 +58,31 @@ func TestSettingValue(t *testing.T) {
 			def:        "v1.30.5+rke2r1",
 			hasDefault: true,
 			want:       "v1.30.5+rke2r1",
+			wantFound:  true,
 		},
 		{
-			name:       "both absent is empty",
+			name:       "empty default still reports found",
+			hasValue:   false,
+			def:        "",
+			hasDefault: true,
+			want:       "",
+			wantFound:  true,
+		},
+		{
+			name:       "both absent is empty and not found",
 			hasValue:   false,
 			hasDefault: false,
 			want:       "",
+			wantFound:  false,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			obj := settingObj(tc.value, tc.def, tc.hasValue, tc.hasDefault)
-			assert.Equal(t, tc.want, SettingValue(obj))
+			got, found := SettingValue(obj)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.wantFound, found)
 		})
 	}
 }

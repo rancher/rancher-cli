@@ -59,7 +59,6 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:        patchFlags(c.k),
 		Destructive:  destructive,
-		Toolset:      "core",
 		Network:      true,
 		Auth:         true,
 		ProjectScope: kinds.ProjectScopable(c.k),
@@ -129,7 +128,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// type, unlike mapping ops to entries (a move would misreport as a single
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
-	diff := engine.DiffObjects("", orig.Object, patched.Object)
+	diff := engine.DiffObjects(orig.Object, patched.Object)
 	if c.k.Sensitive {
 		redactSensitiveDiff(diff)
 	}

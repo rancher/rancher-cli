@@ -341,9 +341,6 @@ var (
 	postStageHook func(stagingDir string) error
 )
 
-// SetStageHookForTest installs the population-failure seam. Test-only.
-func SetStageHookForTest(f func(relPath string) error) { stageHook = f }
-
 // validateStaged proves the completed staged tree is exactly what will be
 // advertised: complete owner marker, our provenance, and a canonical
 // digest that matches the stamped value.

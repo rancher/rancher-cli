@@ -49,7 +49,7 @@ func Render(w io.Writer, format string, env *Envelope) error {
 		if err != nil {
 			return err
 		}
-		return EncodeJSON(w, src)
+		return encodeJSON(w, src)
 	case "yaml":
 		src, err := renderSource(env)
 		if err != nil {
@@ -113,10 +113,10 @@ func renderTemplate(w io.Writer, src string, env *Envelope) error {
 	return err
 }
 
-// EncodeJSON writes v to w as indented JSON with HTML escaping disabled. This
+// encodeJSON writes v to w as indented JSON with HTML escaping disabled. This
 // JSON is a CLI/agent contract read raw, not embedded in HTML, so `<`, `>`, `&`
 // stay literal instead of becoming < / > / &.
-func EncodeJSON(w io.Writer, v any) error {
+func encodeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
@@ -132,9 +132,9 @@ func renderTable(w io.Writer, env *Envelope) error {
 			return err
 		}
 		if !hit {
-			return EncodeJSON(w, env.Data)
+			return encodeJSON(w, env.Data)
 		}
-		return EncodeJSON(w, tree)
+		return encodeJSON(w, tree)
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	cols := t.Columns()

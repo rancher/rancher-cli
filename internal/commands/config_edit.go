@@ -53,7 +53,6 @@ func (configEditCmd) Describe() runtime.Descriptor {
 		Usage:       "Edit the config file in $VISUAL or $EDITOR",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config edit"},
-		Toolset:     "core",
 	}
 }
 

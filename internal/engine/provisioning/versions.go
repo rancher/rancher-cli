@@ -9,7 +9,6 @@ package provisioning
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -302,24 +301,19 @@ func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path stri
 	return versions, nil
 }
 
-// isNotFoundError reports whether err is engine.RootClient's documented 404
-// mapping (clierr.CodeNotFound) — the "older server, route doesn't exist
-// yet" case that degrades to a warning rather than failing the whole read.
-func isNotFoundError(err error) bool {
-	var ce *clierr.Error
-	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound
-}
-
 // getSettingValue reads the named management.cattle.io/v3 Setting and
 // returns its value; ANY failure (not found, RBAC, decode) degrades to ""
 // rather than propagating — a missing/empty setting means "no default
-// marked" / "range unknown", never an error (spec D-7).
+// marked" / "range unknown", never an error (spec D-7). SettingValue's
+// presence bool is deliberately dropped: this path treats absent and empty
+// identically by that same rule.
 func getSettingValue(ctx context.Context, client engine.ClusterClient, name string) string {
 	obj, err := client.Get(ctx, settingsGVR, "", name)
 	if err != nil || obj == nil {
 		return ""
 	}
-	return engine.SettingValue(obj)
+	v, _ := engine.SettingValue(obj)
+	return v
 }
 
 // distroResult carries one distro's full concurrent-fetch outcome: its
@@ -399,7 +393,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 		g.Go(func() error {
 			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {
-				if isNotFoundError(err) {
+				if clierr.IsNotFound(err) {
 					results[i].warning = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
 					return nil
 				}
@@ -538,7 +532,6 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 		Usage:       "List available Kubernetes versions (rke2/k3s)",
 		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
 		CommandType: runtime.ReadOnly,
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

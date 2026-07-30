@@ -51,7 +51,6 @@ func (loginCmd) Describe() runtime.Descriptor {
 		Examples: []string{
 			"rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 < token.txt",
 		},
-		Toolset: "core",
 	}
 }
 

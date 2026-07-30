@@ -2,7 +2,6 @@ package rbac
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -24,13 +23,6 @@ type ResolvedSubject struct {
 }
 
 const candidateCap = 10
-
-// isNotFound reports whether err is the structured NOT_FOUND — the ONLY
-// error that advances a lookup chain (spec: fallback discipline).
-func isNotFound(err error) bool {
-	var ce *clierr.Error
-	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound
-}
 
 // isSystemUser mirrors rancher's User.IsSystem: any principalIds entry
 // matching the shared system-principal predicate (engine.IsSystemPrincipal).
@@ -78,7 +70,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			id = ProvisionedUserID(sub.Principal)
 		}
 		obj, err := client.Get(ctx, userKind.GVR, "", id)
-		if err != nil && !isNotFound(err) {
+		if err != nil && !clierr.IsNotFound(err) {
 			return ResolvedSubject{}, err
 		}
 		if err == nil {
@@ -175,7 +167,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 		return resolvedFromUser(obj)
 	}
-	if !isNotFound(err) {
+	if !clierr.IsNotFound(err) {
 		return ResolvedSubject{}, err
 	}
 

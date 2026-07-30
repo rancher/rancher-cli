@@ -37,7 +37,6 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 			"rancher create token --ttl 90d --description ci --apply --yes",
 		},
 		Destructive: "true", // the token kind is Sensitive
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

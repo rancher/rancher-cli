@@ -13,8 +13,6 @@ import (
 	"sort"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/rancher/rancher-cli/internal/output"
 )
 
 const (
@@ -49,10 +47,9 @@ func SetSource(fsys fs.FS) { source = fsys }
 
 // Provenance is the metadata block of an installed SKILL.md.
 type Provenance struct {
-	Owner            string `yaml:"rancherCliInstaller"`
-	CLIVersion       string `yaml:"cliVersion"`
-	OutputAPIVersion string `yaml:"outputApiVersion"`
-	ContentDigest    string `yaml:"contentDigest"`
+	Owner         string `yaml:"rancherCliInstaller"`
+	CLIVersion    string `yaml:"cliVersion"`
+	ContentDigest string `yaml:"contentDigest"`
 }
 
 func splitSkillMD(b []byte) (fm []byte, body []byte, err error) {
@@ -143,10 +140,9 @@ func stampSkillMD(orig []byte, cliVersion, digest string) ([]byte, error) {
 		return nil, err
 	}
 	meta := map[string]map[string]string{"metadata": {
-		OwnerKey:           OwnerValue,
-		"cliVersion":       cliVersion,
-		"outputApiVersion": output.APIVersion,
-		"contentDigest":    digest,
+		OwnerKey:        OwnerValue,
+		"cliVersion":    cliVersion,
+		"contentDigest": digest,
 	}}
 	mb, err := yaml.Marshal(meta)
 	if err != nil {

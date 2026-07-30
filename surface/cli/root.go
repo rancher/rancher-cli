@@ -463,7 +463,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	if err := kinds.Validate(); err != nil {
 		return nil, fmt.Errorf("kind table: %w", err)
 	}
-	resolver, err := runtime.ComposeResolvers(provider.NewResolver(), runtime.MapResolver(kinds.Bindings()))
+	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
 	if err != nil {
 		return nil, fmt.Errorf("resolver: %w", err)
 	}

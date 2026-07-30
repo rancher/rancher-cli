@@ -38,14 +38,13 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"}},
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
 }
 
 func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}

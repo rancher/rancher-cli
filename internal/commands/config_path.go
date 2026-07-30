@@ -27,7 +27,6 @@ func (configPathCmd) Describe() runtime.Descriptor {
 		Usage:       "Print the resolved config file path",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config path"},
-		Toolset:     "core",
 	}
 }
 

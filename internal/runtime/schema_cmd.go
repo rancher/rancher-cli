@@ -62,7 +62,6 @@ func (s *schemaCmd) Describe() Descriptor {
 		},
 		CommandType: ReadOnly,
 		Examples:    []string{"rancher schema -o json", "rancher schema get pod -o json"},
-		Toolset:     "core",
 	}
 }
 

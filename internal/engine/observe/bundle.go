@@ -3,7 +3,6 @@ package observe
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -59,19 +58,6 @@ type bundleManifest struct {
 
 func errorStatus(err error) string { return fmt.Sprintf("error: %s", err) }
 
-func skippedStatus(reason string) string {
-	return fmt.Sprintf("skipped: not applicable — %s", reason)
-}
-
-// isNonACE reports whether err is the kube-api-auth non-ACE precheck from
-// ResolveOnCluster — a structural inapplicability detected at target
-// resolution time, not an attempted-and-failed collection, so it manifests
-// as skipped rather than error.
-func isNonACE(err error) bool {
-	var ce *clierr.Error
-	return errors.As(err, &ce) && ce.Code == clierr.CodeNotFound && ce.Message == nonACEHint
-}
-
 type supportBundleCmd struct {
 	clients engine.ClusterClientFactory
 	schema  func() any
@@ -103,7 +89,6 @@ func (c *supportBundleCmd) Describe() runtime.Descriptor {
 			"rancher support-bundle -f bundle.tar.gz",
 			"rancher support-bundle --targets agent,fleet-agent --clusters prod,staging",
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 	}
@@ -176,8 +161,18 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		entries = append(entries, ArchiveEntry{Path: "rancher/schema.json", Data: schemaData})
 	}
 
+	// Partial re-decode of the already-marshaled manifest, on purpose: it
+	// reads the one field without coupling observe to runtime.Manifest's
+	// concrete type. Failure leaves the version empty; the bundle is not
+	// worth failing over a version stamp.
+	var cliBuildVersion struct {
+		CLIVersion string `json:"cliVersion"`
+	}
+	_ = json.Unmarshal(schemaData, &cliBuildVersion)
+	cliVer := cliBuildVersion.CLIVersion
+
 	versionData, _ := json.Marshal(map[string]string{
-		"cliVersion":    cliVersionFrom(schemaData),
+		"cliVersion":    cliVer,
 		"serverVersion": settingsValues["server-version"],
 	})
 	entries = append(entries, ArchiveEntry{Path: "rancher/version.json", Data: versionData})
@@ -200,7 +195,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	entries = append(entries, ArchiveEntry{Path: "README.txt", Data: []byte(readmeText)})
 
 	manifest := bundleManifest{
-		CLIVersion:    cliVersionFrom(schemaData),
+		CLIVersion:    cliVer,
 		ServerVersion: settingsValues["server-version"],
 		Timestamp:     nowFunc().UTC().Format(time.RFC3339),
 		Items:         items,
@@ -237,17 +232,6 @@ func itemStatus(err error) string {
 		return errorStatus(err)
 	}
 	return statusCollected
-}
-
-// cliVersionFrom extracts "cliVersion" from the already-marshaled schema
-// manifest JSON, keeping this package decoupled from runtime.Manifest's
-// concrete type (the constructor's schema func returns `any`).
-func cliVersionFrom(schemaJSON []byte) string {
-	var v struct {
-		CLIVersion string `json:"cliVersion"`
-	}
-	_ = json.Unmarshal(schemaJSON, &v)
-	return v.CLIVersion
 }
 
 // parseTargetsFlag resolves --targets: "" or "all" means every target;
@@ -334,11 +318,10 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 		if err != nil {
 			continue
 		}
-		if v, found, _ := unstructured.NestedString(obj.Object, "value"); found && v != "" {
-			values[name] = v
-			continue
-		}
-		if v, found, _ := unstructured.NestedString(obj.Object, "default"); found {
+		// Key presence means "the server reports this setting": a Setting
+		// carrying neither value nor default is omitted entirely, so a
+		// presence check downstream stays meaningful.
+		if v, ok := engine.SettingValue(obj); ok {
 			values[name] = v
 		}
 	}
@@ -388,9 +371,11 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err != nil {
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: errorStatus(err)})
 	} else {
+		clusterState, _, _ := unstructured.NestedString(obj.Object, "status", "state")
+		clusterConds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		data, _ := json.Marshal(map[string]any{
-			"state":      firstString(obj.Object, "status", "state"),
-			"conditions": firstSlice(obj.Object, "status", "conditions"),
+			"state":      clusterState,
+			"conditions": clusterConds,
 		})
 		entries = append(entries, ArchiveEntry{Path: fmt.Sprintf("clusters/%s/cluster.json", clusterID), Data: data})
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: statusCollected})
@@ -404,9 +389,10 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		} else {
 			rows := make([]map[string]any, 0, len(list.Items))
 			for i := range list.Items {
+				nodeConds, _, _ := unstructured.NestedSlice(list.Items[i].Object, "status", "conditions")
 				rows = append(rows, map[string]any{
 					"name":       list.Items[i].GetName(),
-					"conditions": firstSlice(list.Items[i].Object, "status", "conditions"),
+					"conditions": nodeConds,
 				})
 			}
 			data, _ := json.Marshal(rows)
@@ -422,8 +408,8 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		}
 		resolved, err := ResolveOnCluster(ctx, clients, t, clusterID)
 		if err != nil {
-			if isNonACE(err) {
-				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: skippedStatus(nonACEHint)})
+			if nf := clierr.AsNotFound(err); nf != nil && nf.Message == nonACEHint {
+				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: fmt.Sprintf("skipped: not applicable — %s", nonACEHint)})
 			} else {
 				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: errorStatus(err)})
 			}
@@ -479,16 +465,6 @@ func collectEvents(ctx context.Context, clients engine.ClusterClientFactory, clu
 		rows = append(rows, list.Items[i].Object)
 	}
 	return json.Marshal(rows)
-}
-
-func firstString(obj map[string]any, fields ...string) string {
-	v, _, _ := unstructured.NestedString(obj, fields...)
-	return v
-}
-
-func firstSlice(obj map[string]any, fields ...string) []any {
-	v, _, _ := unstructured.NestedSlice(obj, fields...)
-	return v
 }
 
 const readmeText = `This is a Rancher CLI support bundle.

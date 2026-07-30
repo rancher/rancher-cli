@@ -57,9 +57,6 @@ type Options struct {
 	// Legacy makes the mint branch of the token POST 404 (ErrExtGroupAbsent),
 	// while CR-create fallthrough is unaffected.
 	Legacy bool
-	// NamePrefix names minted tokens ("<prefix>-<n>"); defaults to
-	// "fac-token". Minted secrets always use "fac-secret-<n>".
-	NamePrefix string
 	// LoginUser/LoginPass are the fixed local-provider credentials; default
 	// "e2e-user"/"e2e-pass".
 	LoginUser string
@@ -75,14 +72,6 @@ type Options struct {
 	// existing e2e script already authenticates with (FA-1: "the mint
 	// requires a valid façade-issued (or seed) bearer").
 	SeedToken string
-	// CRTUnformatted makes the clusterregistrationtoken Steve route serve
-	// its fixture objects with the seven command/manifest fields still
-	// carrying the k8s proxy's own literal "{token}" placeholder — i.e. as
-	// if Steve's splicing formatter never ran (rancher
-	// clusterregistrationtoken.go:24-72). Exercises `get
-	// clusterregistrationtoken`'s placeholder guard end-to-end; false
-	// (the default) serves fully spliced fixtures.
-	CRTUnformatted bool
 }
 
 // record is one façade-issued token.
@@ -109,9 +98,6 @@ type Facade struct {
 // New builds a Facade from opts, applying defaults for the fields FA-1
 // leaves optional.
 func New(opts Options) *Facade {
-	if opts.NamePrefix == "" {
-		opts.NamePrefix = "fac-token"
-	}
 	if opts.LoginUser == "" {
 		opts.LoginUser = "e2e-user"
 	}
@@ -368,36 +354,30 @@ var crtFixtures = []crtFixture{
 	{Namespace: "c-import", Name: "default-token", Token: "e2e-crt-real-token-c-import"},
 }
 
-// crtStatus builds a clusterregistrationtoken status block. unformatted
-// serves the k8s proxy's own literal "{token}" placeholder in the seven
-// command/manifest fields instead of splicing in token — as if Steve's
-// formatter never ran — for CRTUnformatted's placeholder-guard path.
-// status.token is never the placeholder itself: it is the splice SOURCE the
-// real formatter reads to perform the ReplaceAll.
-func crtStatus(token string, unformatted bool) map[string]any {
-	val := token
-	if unformatted {
-		val = "{token}"
-	}
+// crtStatus builds a clusterregistrationtoken status block with token
+// spliced into the seven command/manifest fields, as the real formatter
+// serves them. status.token is the splice SOURCE the real formatter reads
+// to perform the ReplaceAll.
+func crtStatus(token string) map[string]any {
 	return map[string]any{
-		"command":                    "curl --insecure -sfL https://rancher.example/v3/import/" + val + ".yaml | kubectl apply -f -",
-		"insecureCommand":            "curl -sfL https://rancher.example/v3/import/" + val + ".yaml | kubectl apply -f -",
-		"nodeCommand":                "sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token " + val,
-		"insecureNodeCommand":        "sudo docker run -d --name=cattle-agent rancher/rancher-agent --token " + val,
-		"windowsNodeCommand":         "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + val,
-		"insecureWindowsNodeCommand": "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + val,
-		"manifestUrl":                "https://rancher.example/v3/import/" + val + ".yaml",
+		"command":                    "curl --insecure -sfL https://rancher.example/v3/import/" + token + ".yaml | kubectl apply -f -",
+		"insecureCommand":            "curl -sfL https://rancher.example/v3/import/" + token + ".yaml | kubectl apply -f -",
+		"nodeCommand":                "sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token " + token,
+		"insecureNodeCommand":        "sudo docker run -d --name=cattle-agent rancher/rancher-agent --token " + token,
+		"windowsNodeCommand":         "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + token,
+		"insecureWindowsNodeCommand": "docker run --isolation=hyperv --name=cattle-agent rancher/rancher-agent --token " + token,
+		"manifestUrl":                "https://rancher.example/v3/import/" + token + ".yaml",
 		"token":                      token,
 		"expiresAt":                  "2099-01-01T00:00:00Z",
 	}
 }
 
-func crtBody(fx crtFixture, unformatted bool) map[string]any {
+func crtBody(fx crtFixture) map[string]any {
 	return map[string]any{
 		"id":       fx.Namespace + "/" + fx.Name,
 		"metadata": map[string]any{"namespace": fx.Namespace, "name": fx.Name},
 		"spec":     map[string]any{"clusterName": fx.Namespace},
-		"status":   crtStatus(fx.Token, unformatted),
+		"status":   crtStatus(fx.Token),
 	}
 }
 
@@ -412,7 +392,7 @@ func (f *Facade) handleCRTCollection(w http.ResponseWriter, r *http.Request) {
 	}
 	data := make([]map[string]any, 0, len(crtFixtures))
 	for _, fx := range crtFixtures {
-		data = append(data, crtBody(fx, f.opts.CRTUnformatted))
+		data = append(data, crtBody(fx))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
@@ -429,7 +409,7 @@ func (f *Facade) handleCRTSingle(w http.ResponseWriter, r *http.Request, rest st
 	if ok {
 		for _, fx := range crtFixtures {
 			if fx.Namespace == ns && fx.Name == name {
-				writeJSON(w, http.StatusOK, crtBody(fx, f.opts.CRTUnformatted))
+				writeJSON(w, http.StatusOK, crtBody(fx))
 				return
 			}
 		}
@@ -495,7 +475,7 @@ func (f *Facade) mintToken(clusterName string, ttlMs int64) *record {
 	f.counter++
 	n := f.counter
 	rec := &record{
-		name:            fmt.Sprintf("%s-%d", f.opts.NamePrefix, n),
+		name:            fmt.Sprintf("fac-token-%d", n),
 		secret:          fmt.Sprintf("fac-secret-%d", n),
 		resourceVersion: "1",
 		clusterName:     clusterName,

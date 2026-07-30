@@ -175,9 +175,8 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 }
 
 // TestContextUseCompleteArgsDelegatesToContextNames proves only the wiring:
-// sort order and the missing/corrupt-config degrade-to-empty behavior are
-// contextNames-level facts, pinned once in names_test.go (external review
-// findings 8+9).
+// sort order is a ConfigView-level fact, pinned once at newConfigView in
+// surface/cli.
 func TestContextUseCompleteArgsDelegatesToContextNames(t *testing.T) {
 	t.Parallel()
 	view := testView{ctxNames: []string{"acme", "prod"}}

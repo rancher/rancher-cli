@@ -76,17 +76,17 @@ func TestEnumCandidatesGlobalOutputEqualsForm(t *testing.T) {
 func TestStripRoutingPrefix(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		argv []string
-		name string
-		want []string
+		argv  []string
+		depth int
+		want  []string
 	}{
-		{[]string{"get", "pod", "--cluster", "prod"}, "get pod", []string{"--cluster", "prod"}},
-		{[]string{"usage", "--by=n"}, "usage", []string{"--by=n"}},
-		{[]string{"config", "use-context"}, "config use-context", []string{}},
+		{[]string{"get", "pod", "--cluster", "prod"}, 2, []string{"--cluster", "prod"}},
+		{[]string{"usage", "--by=n"}, 1, []string{"--by=n"}},
+		{[]string{"config", "use-context"}, 2, []string{}},
 	}
 	for _, tc := range tests {
-		got := stripRoutingPrefix(tc.argv, tc.name)
-		assert.Equal(t, tc.want, got, tc.name)
+		got := stripRoutingPrefixByDepth(tc.argv, tc.depth)
+		assert.Equal(t, tc.want, got)
 	}
 }
 

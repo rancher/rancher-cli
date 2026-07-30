@@ -1,11 +1,8 @@
 package provider
 
-import "github.com/rancher/rancher-cli/internal/runtime/safety"
-
-// Resolver maps operation names to their current tier binding.
-type Resolver struct {
-	m map[string]safety.Binding
-}
+import (
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+)
 
 // NewResolver returns the bespoke op map: bindings for non-generic operations
 // only (composites, auth-adjacent). Bindings for generated generic ops
@@ -13,8 +10,8 @@ type Resolver struct {
 // in at BuildRoot — an op defined by both sources fails composition. Keys are
 // the canonical-singular Descriptor.Name; promotions of a bespoke op are edits
 // here only.
-func NewResolver() *Resolver {
-	return &Resolver{m: map[string]safety.Binding{
+func NewResolver() map[string]safety.Binding {
+	return map[string]safety.Binding{
 		"create project": {Tier: safety.TierPublic, Stability: safety.Stable},
 		// The three namespace mutations ride the same core-v1 dynamic path
 		// as the generated get/delete namespace (PlanCreate/PlanUpdate on
@@ -43,20 +40,5 @@ func NewResolver() *Resolver {
 
 		"logs":           {Tier: safety.TierCRD, Stability: safety.Beta},
 		"support-bundle": {Tier: safety.TierCRD, Stability: safety.Beta},
-	}}
-}
-
-// Resolve returns the binding for an op, if known.
-func (r *Resolver) Resolve(op string) (safety.Binding, bool) {
-	b, ok := r.m[op]
-	return b, ok
-}
-
-// All returns a copy of the full op map (for the schema manifest).
-func (r *Resolver) All() map[string]safety.Binding {
-	out := make(map[string]safety.Binding, len(r.m))
-	for k, v := range r.m {
-		out[k] = v
 	}
-	return out
 }

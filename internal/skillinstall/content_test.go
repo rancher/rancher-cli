@@ -40,7 +40,6 @@ func TestRenderedStampsProvenance(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "skill-install/v1", prov.Owner)
 	assert.Equal(t, "v1.2.3", prov.CLIVersion)
-	assert.Equal(t, "cli.rancher.io/v1", prov.OutputAPIVersion)
 	assert.Len(t, prov.ContentDigest, 64)
 	assert.Equal(t, []byte("reference\n"), files["ref.md"])
 	assert.Equal(t, []byte("skill-install/v1\n"), files[OwnerMarkerFile])
@@ -62,7 +61,7 @@ func TestRenderedPreservesNameAndDescription(t *testing.T) {
 	for k := range fm.Metadata {
 		keys = append(keys, k)
 	}
-	assert.ElementsMatch(t, []string{"rancherCliInstaller", "cliVersion", "outputApiVersion", "contentDigest"}, keys)
+	assert.ElementsMatch(t, []string{"rancherCliInstaller", "cliVersion", "contentDigest"}, keys)
 }
 
 // TestDigestRoundTrip: recomputing the canonical digest over the rendered

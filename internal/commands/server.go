@@ -41,7 +41,7 @@ type serverLsCmd struct{ dir string }
 func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
 
 func (serverLsCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "config get-servers", Usage: "List configured servers", CommandType: runtime.Local, Toolset: "core"}
+	return runtime.Descriptor{Name: "config get-servers", Usage: "List configured servers", CommandType: runtime.Local}
 }
 func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(s.dir))
@@ -73,7 +73,6 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 		// Required:false — a missing name is handled here with an AMBIGUOUS_SELECTION
 		// candidate list (server names), richer than the generic validateInput error.
 		Args:     []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Toolset:  "core",
 		Examples: []string{"rancher config use-server prod"},
 	}
 }

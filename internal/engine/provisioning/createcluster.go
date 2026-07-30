@@ -81,10 +81,26 @@ func machineConfigKindNames() []string {
 	return keys
 }
 
-// machineConfigKindsHint renders machineConfigKinds sorted, for a
-// VALIDATION hint.
+// machineConfigKindsHint renders the closed kind set for flag descriptions
+// and VALIDATION hints — one derivation shared by every mention, so the
+// spellings cannot drift.
 func machineConfigKindsHint() string {
 	return strings.Join(machineConfigKindNames(), ", ")
+}
+
+// parseQuantity validates --quantity: empty defaults to 1, anything else
+// must be a positive integer (same validation shape as inspect/pod.go's
+// parseTail).
+func parseQuantity(s string) (int, *clierr.Error) {
+	if s == "" {
+		return 1, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--quantity %q is not a positive integer", s)).
+			WithHint("pass --quantity <n>, n >= 1")
+	}
+	return n, nil
 }
 
 // clusterMode is the three mutually-exclusive shapes build recognizes.
@@ -135,7 +151,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 			{Name: "import", Type: "bool", Desc: "imported cluster (no RKE config)"},
 			{Name: "custom", Type: "bool", Desc: "custom cluster; nodes join separately via a registration command"},
 			// The closed kind set is derived from the SAME single source the
-			// VALIDATION hint uses (machineConfigKindsHint over
+			// VALIDATION hint uses (machineConfigKindNames over
 			// kinds.MachineConfigGroup), so schema and hint can never drift.
 			// Deliberately NOT ArgSpec.Enum: the flag's values are kind/name
 			// composites, so the runtime enum validator would reject them all.
@@ -155,7 +171,6 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 				"--k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply",
 		},
 		Destructive: "false",
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}
@@ -288,9 +303,9 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 			WithHint("pass at least one of --etcd, --controlplane, --worker")
 	}
 
-	quantity, err := parseQuantity(in.String("quantity"))
-	if err != nil {
-		return err
+	quantity, qerr := parseQuantity(in.String("quantity"))
+	if qerr != nil {
+		return qerr
 	}
 
 	_ = unstructured.SetNestedField(obj.Object, k8sVersion, "spec", "kubernetesVersion")
@@ -309,20 +324,6 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 		},
 	}
 	return unstructured.SetNestedSlice(obj.Object, []any{pool}, "spec", "rkeConfig", "machinePools")
-}
-
-// parseQuantity defaults an empty --quantity to 1 and rejects anything that
-// is not a positive integer.
-func parseQuantity(s string) (int, error) {
-	if s == "" {
-		return 1, nil
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 1 {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--quantity %q is not a positive integer", s)).
-			WithHint("pass --quantity <n>, n >= 1")
-	}
-	return n, nil
 }
 
 // stampCreatorID resolves the caller's identity and stamps the creatorId

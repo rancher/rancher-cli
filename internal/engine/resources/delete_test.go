@@ -99,7 +99,7 @@ func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
 
 // TestDeleteMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
 // the delete path: the envelope kind must echo k.K8sKind's casing
-// ("StatefulSet"), not kindTitle(k.Name)'s mangled "Statefulset".
+// ("StatefulSet"), not a naive first-rune capitalization ("Statefulset").
 func TestDeleteMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	t.Parallel()
 	client := &delClient{obj: objWithRV("web", "1")}

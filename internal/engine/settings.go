@@ -8,11 +8,14 @@ import "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 // ServerVersionSetting reading the same top-level "value" field). Shared by
 // every caller that reads a Setting's effective value (provisioning's
 // kubernetes-versions merge, support-bundle's settings snapshot) so the
-// value-or-default fallback cannot drift between them.
-func SettingValue(obj *unstructured.Unstructured) string {
+// value-or-default fallback cannot drift between them. The bool reports
+// whether the object carried either field at all — false means the server
+// reports no value for this setting, which the support bundle renders as
+// key absence rather than an empty string.
+func SettingValue(obj *unstructured.Unstructured) (string, bool) {
 	if v, found, _ := unstructured.NestedString(obj.Object, "value"); found && v != "" {
-		return v
+		return v, true
 	}
-	v, _, _ := unstructured.NestedString(obj.Object, "default")
-	return v
+	v, found, _ := unstructured.NestedString(obj.Object, "default")
+	return v, found
 }

@@ -38,7 +38,6 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"rancher kubeconfig --cluster prod > prod.yaml",
 		},
 		CommandType: runtime.Local,
-		Toolset:     "core",
 		Network:     true,
 		Auth:        true,
 	}

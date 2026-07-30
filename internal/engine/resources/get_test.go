@@ -305,7 +305,7 @@ func TestGetClusterNamedMiss(t *testing.T) {
 
 // TestResultKindUsesK8sKindCasing is the exercise bug 7 repro: envelope
 // kinds must echo the manifest's Kubernetes casing (k.K8sKind), not
-// kindTitle(k.Name)'s naive first-rune capitalization, which mangles
+// a naive first-rune capitalization, which would mangle
 // multi-word kinds like "roletemplate" -> "Roletemplate" instead of
 // "RoleTemplate".
 func TestResultKindUsesK8sKindCasing(t *testing.T) {

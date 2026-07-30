@@ -52,7 +52,6 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			{Name: "node", Type: "string",
 				Desc: "Limit results to one node"},
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 	}
@@ -82,7 +81,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 		}
 	}
 
-	clusterID, err := resources.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}

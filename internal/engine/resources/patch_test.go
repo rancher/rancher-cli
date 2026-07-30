@@ -112,7 +112,7 @@ func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
 
 // TestPatchMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
 // the patch path: the envelope kind must echo k.K8sKind's casing
-// ("StatefulSet"), not kindTitle(k.Name)'s mangled "Statefulset".
+// ("StatefulSet"), not a naive first-rune capitalization ("Statefulset").
 func TestPatchMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)

@@ -157,7 +157,7 @@ func assertNotHTMLEscaped(t *testing.T, out string) {
 func TestEncodeJSONKeepsAngleAndAmpLiteral(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
-	require.NoError(t, EncodeJSON(&buf, map[string]string{"desc": escapeProbe}))
+	require.NoError(t, encodeJSON(&buf, map[string]string{"desc": escapeProbe}))
 	assertNotHTMLEscaped(t, buf.String())
 }
 
@@ -222,7 +222,7 @@ func TestRenderFastPathByteIdentical(t *testing.T) {
 	var got bytes.Buffer
 	require.NoError(t, Render(&got, "json", env))
 	var want bytes.Buffer
-	require.NoError(t, EncodeJSON(&want, env))
+	require.NoError(t, encodeJSON(&want, env))
 	assert.Equal(t, want.String(), got.String(),
 		"no managedFields: output is byte-identical to today's encoder (MF-2 fast path)")
 
@@ -293,9 +293,9 @@ func TestRenderTableFallbackFastPathByteIdentical(t *testing.T) {
 	var got bytes.Buffer
 	require.NoError(t, Render(&got, "table", env))
 	var want bytes.Buffer
-	require.NoError(t, EncodeJSON(&want, env.Data))
+	require.NoError(t, encodeJSON(&want, env.Data))
 	assert.Equal(t, want.String(), got.String(),
-		"no managedFields: table fallback is byte-identical to EncodeJSON(env.Data) (MF-2 fast path)")
+		"no managedFields: table fallback is byte-identical to encodeJSON(env.Data) (MF-2 fast path)")
 }
 
 // TestRenderTableFallbackShapeOverType pins spec MF-6: a payload whose Data

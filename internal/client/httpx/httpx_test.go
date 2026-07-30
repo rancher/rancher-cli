@@ -92,27 +92,6 @@ func TestNew(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to append CA certs from PEM")
 	})
 
-	t.Run("explicit proxy URL", func(t *testing.T) {
-		proxyURL := "http://proxy.example.com:8080"
-		client, err := New(Options{ProxyURL: proxyURL})
-		require.NoError(t, err)
-
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
-		require.NotNil(t, tr.Proxy)
-
-		req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
-		u, err := tr.Proxy(req)
-		require.NoError(t, err)
-		assert.Equal(t, proxyURL, u.String())
-	})
-
-	t.Run("invalid proxy URL", func(t *testing.T) {
-		_, err := New(Options{ProxyURL: "://invalid"})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid proxy URL")
-	})
-
 	t.Run("proxy from environment", func(t *testing.T) {
 		client, err := New(Options{})
 		require.NoError(t, err)

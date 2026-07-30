@@ -142,8 +142,6 @@ type MutatingCommand interface {
 type ConfigView interface {
 	ContextNames() []string
 	ServerNames() []string
-	CurrentContext() string
-	CurrentServerURL() string
 	ConfigDir() string
 }
 

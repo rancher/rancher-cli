@@ -194,9 +194,8 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 }
 
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
-// wiring: sort order and the missing/corrupt-config degrade-to-empty
-// behavior are serverNames-level facts, pinned once in names_test.go
-// (external review findings 8+9).
+// wiring: sort order is a ConfigView-level fact, pinned once at
+// newConfigView in surface/cli.
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := testView{srvNames: []string{"acme"}}

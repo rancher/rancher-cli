@@ -42,7 +42,6 @@ func (c *podCmd) Describe() runtime.Descriptor {
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 			{Name: flagTail, Type: "string", Desc: "max log `lines` per container (default 50)"},
 		},
-		Toolset: "core",
 		Network: true,
 		Auth:    true,
 	}
