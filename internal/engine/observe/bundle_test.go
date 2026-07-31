@@ -18,9 +18,12 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func execBundle(t *testing.T, clients engine.ClusterClientFactory, in input) (runtime.Result, error) {
+func execBundle(t *testing.T, clients engine.ClusterClientFactory, in input, opts ...func(*supportBundleCmd)) (runtime.Result, error) {
 	t.Helper()
-	cmd := NewSupportBundle(clients, func() any { return map[string]string{"cliVersion": "v9.9.9"} }).(runtime.ReadCommand)
+	cmd := NewSupportBundle(clients, func() any { return map[string]string{"cliVersion": "v9.9.9"} }).(*supportBundleCmd)
+	for _, opt := range opts {
+		opt(cmd)
+	}
 	return cmd.Execute(context.Background(), in, nil)
 }
 
@@ -245,11 +248,8 @@ func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
 }
 
 func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
-	// Not t.Parallel(): mutates the package-level nowFunc and the process cwd.
-	origNow := nowFunc
-	defer func() { nowFunc = origNow }()
+	// Not t.Parallel(): changes the process cwd.
 	fixed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	nowFunc = func() time.Time { return fixed }
 
 	dir := t.TempDir()
 	origWD, err := os.Getwd()
@@ -258,7 +258,9 @@ func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
 	defer func() { _ = os.Chdir(origWD) }()
 
 	factory := &fakeFactory{local: newFakeClient()}
-	res, err := execBundle(t, factory, input{s: map[string]string{flagClusters: "local", flagTargets: "webhook"}})
+	res, err := execBundle(t, factory,
+		input{s: map[string]string{flagClusters: "local", flagTargets: "webhook"}},
+		func(cmd *supportBundleCmd) { cmd.now = func() time.Time { return fixed } })
 	require.NoError(t, err)
 	data := res.Data.(bundleResult)
 	assert.Equal(t, fmt.Sprintf("rancher-support-%d.tar.gz", fixed.Unix()), data.Path)

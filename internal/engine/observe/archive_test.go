@@ -107,27 +107,21 @@ func TestWriteArchiveRefusesSymlink(t *testing.T) {
 // TestWriteArchiveRemovesFileOnMidWriteFailure pins the O_EXCL cleanup: a
 // failure on the write path (tar/gzip write or close) must not leave a
 // truncated file behind, since that would block every retry at the same
-// path via the existing-file refusal above. writeEntriesFunc is swapped for
-// the duration of the test — real tar/gzip writes to a byte slice have no
-// way to fail deterministically, so this is the seam.
+// path via the existing-file refusal above. A failing writer is injected
+// via writeArchiveWith to exercise the cleanup without mutating package state.
 func TestWriteArchiveRemovesFileOnMidWriteFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bundle.tar.gz")
 
-	orig := writeEntriesFunc
-	defer func() { writeEntriesFunc = orig }()
 	injected := errors.New("disk exploded")
-	writeEntriesFunc = func(io.Writer, []ArchiveEntry) (int64, error) {
-		return 0, injected
-	}
-
-	_, err := WriteArchive(path, []ArchiveEntry{{Path: "manifest.json", Data: []byte("{}")}})
+	_, err := writeArchiveWith(path, []ArchiveEntry{{Path: "manifest.json", Data: []byte("{}")}},
+		func(io.Writer, []ArchiveEntry) (int64, error) { return 0, injected })
 	require.ErrorIs(t, err, injected)
 
 	_, statErr := os.Stat(path)
 	assert.True(t, os.IsNotExist(statErr), "a failed write must remove the file it exclusively created")
 
-	writeEntriesFunc = orig
 	total, err := WriteArchive(path, []ArchiveEntry{{Path: "manifest.json", Data: []byte("{}")}})
 	require.NoError(t, err, "the same path must be writable again once the failed attempt's file is gone")
 	assert.Greater(t, total, int64(0))

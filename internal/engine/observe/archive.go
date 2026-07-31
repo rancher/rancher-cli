@@ -17,11 +17,6 @@ type ArchiveEntry struct {
 	Data []byte
 }
 
-// writeEntriesFunc is the tar/gzip write path, indirected so a test can
-// force a mid-write failure without depending on real disk-full/quota
-// conditions to exercise WriteArchive's cleanup behavior.
-var writeEntriesFunc = writeEntries
-
 // writeEntries writes sorted entries as a gzip-compressed tar to w,
 // returning the total uncompressed content size.
 func writeEntries(w io.Writer, entries []ArchiveEntry) (int64, error) {
@@ -59,6 +54,13 @@ func writeEntries(w io.Writer, entries []ArchiveEntry) (int64, error) {
 // behind would make the O_EXCL refusal above permanently block every retry
 // at the same path. Returns the total uncompressed content size.
 func WriteArchive(path string, entries []ArchiveEntry) (int64, error) {
+	return writeArchiveWith(path, entries, writeEntries)
+}
+
+// writeArchiveWith is the injectable core of WriteArchive; the write function
+// is passed explicitly so tests can inject a failing writer without mutating
+// package-level state.
+func writeArchiveWith(path string, entries []ArchiveEntry, write func(io.Writer, []ArchiveEntry) (int64, error)) (int64, error) {
 	sorted := append([]ArchiveEntry{}, entries...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 
@@ -71,7 +73,7 @@ func WriteArchive(path string, entries []ArchiveEntry) (int64, error) {
 		return 0, err
 	}
 
-	total, writeErr := writeEntriesFunc(f, sorted)
+	total, writeErr := write(f, sorted)
 	closeErr := f.Close()
 
 	if writeErr != nil {

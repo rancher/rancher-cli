@@ -25,10 +25,6 @@ const (
 	statusSkippedNotApplicable = "skipped: not applicable"
 )
 
-// nowFunc is the support-bundle default filename's clock; overridden in
-// tests for a deterministic name.
-var nowFunc = time.Now
-
 // settingsAllowlist is the ONLY settings support-bundle ever reads —
 // diagnostic identifiers, never a full settings dump (cacerts, registry pull
 // secrets, and friends are secret-adjacent and must never ship).
@@ -61,6 +57,7 @@ func errorStatus(err error) string { return fmt.Sprintf("error: %s", err) }
 type supportBundleCmd struct {
 	clients engine.ClusterClientFactory
 	schema  func() any
+	now     func() time.Time
 }
 
 // NewSupportBundle builds `support-bundle [--targets ...|all] [--clusters
@@ -70,7 +67,7 @@ type supportBundleCmd struct {
 // snapshot — into one tar.gz, tri-state manifested so support can tell
 // "not applicable" from "collector failed" at a glance.
 func NewSupportBundle(clients engine.ClusterClientFactory, schema func() any) runtime.Command {
-	return &supportBundleCmd{clients: clients, schema: schema}
+	return &supportBundleCmd{clients: clients, schema: schema, now: time.Now}
 }
 
 func (c *supportBundleCmd) Describe() runtime.Descriptor {
@@ -125,7 +122,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	}
 	path := in.String(flagFilename)
 	if path == "" {
-		path = fmt.Sprintf("rancher-support-%d.tar.gz", nowFunc().Unix())
+		path = fmt.Sprintf("rancher-support-%d.tar.gz", c.now().Unix())
 	}
 
 	local, err := c.clients.Cluster(ctx, engine.LocalCluster)
@@ -197,7 +194,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	manifest := bundleManifest{
 		CLIVersion:    cliVer,
 		ServerVersion: settingsValues["server-version"],
-		Timestamp:     nowFunc().UTC().Format(time.RFC3339),
+		Timestamp:     c.now().UTC().Format(time.RFC3339),
 		Items:         items,
 	}
 	manifestData, err := json.Marshal(manifest)
