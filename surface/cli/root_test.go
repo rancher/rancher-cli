@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -824,7 +825,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 			"a genuinely unknown flag must not receive the all-namespaces hint")
 	})
 
-	t.Run("create namespace -A gets generic hint, not all-namespaces hint", func(t *testing.T) {
+	t.Run("create namespace -A gets verb-agnostic all-namespaces hint", func(t *testing.T) {
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)
 		var out, errOut bytes.Buffer
@@ -837,9 +838,66 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.NotContains(t, env.Data.Error.Hint, "all-namespaces",
-			"create namespace -A must not receive the get-specific all-namespaces hint")
+		assert.Equal(t, "there is no all-namespaces flag; run: rancher schema for this command's real flags", env.Data.Error.Hint,
+			"create namespace -A must get the verb-agnostic hint, not the get-specific or generic hint")
 	})
+
+	t.Run("create namespace with genuinely unknown flag gets generic hint", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "create", "namespace", "foo", "--bogus-flag"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.Equal(t, "run: rancher schema; pass --help for usage", env.Data.Error.Hint,
+			"a genuinely unknown flag on a non-get verb must get the generic hint")
+	})
+
+	t.Run("bare get group -A pins path-length-2 boundary", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(context.Background(), []string{"rancher", "get", "-A"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint,
+			"bare get group -A (path length 2) must yield the get-scoped wording, pinning the >= 2 boundary")
+	})
+}
+
+// TestAllNamespacesHintsBothShareOpeningClause pins F5: both rendered
+// wordings of the -A/--all-namespaces hint open with noAllNamespacesFlag.
+// Calling allNamespacesEntry.hint directly for a get-context command and a
+// non-get-context command verifies the shared clause is not accidentally
+// dropped if the branching logic changes.
+func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
+	t.Parallel()
+	root := &ucli.Command{Name: "rancher"}
+	get := &ucli.Command{Name: "get"}
+	create := &ucli.Command{Name: "create"}
+	root.Commands = []*ucli.Command{get, create}
+	root.Writer = &bytes.Buffer{}
+	_ = root.Run(context.Background(), []string{"rancher"}) // wires parent pointers via setupDefaults
+
+	err := errors.New("flag provided but not defined: -A")
+	getHint := allNamespacesEntry.hint(usageErrorInput{c: get, err: err})
+	assert.True(t, strings.HasPrefix(getHint, noAllNamespacesFlag),
+		"get-scoped -A hint must open with the noAllNamespacesFlag clause")
+	nonGetHint := allNamespacesEntry.hint(usageErrorInput{c: create, err: err})
+	assert.True(t, strings.HasPrefix(nonGetHint, noAllNamespacesFlag),
+		"verb-agnostic -A hint must open with the noAllNamespacesFlag clause")
 }
 
 // An explicitly overridden config dir must not put a plain-text notice ahead

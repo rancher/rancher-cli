@@ -237,10 +237,13 @@ func exit(ce *clierr.Error) error {
 	return ucli.Exit("", ce.ExitCode())
 }
 
-// hintEntry pairs a matcher with the targeted hint it selects.
+// hintEntry pairs a matcher with the targeted hint it selects. hint
+// receives the same input as match so one entry can vary its wording
+// by context instead of relying on table order between overlapping
+// entries.
 type hintEntry[T any] struct {
 	match func(T) bool
-	hint  string
+	hint  func(T) string
 }
 
 // firstHint walks an ordered registration table: the first matching
@@ -248,10 +251,16 @@ type hintEntry[T any] struct {
 func firstHint[T any](entries []hintEntry[T], in T, fallback string) string {
 	for _, e := range entries {
 		if e.match(in) {
-			return e.hint
+			return e.hint(in)
 		}
 	}
 	return fallback
+}
+
+// constHint wraps a fixed hint string for entries whose wording does
+// not vary by input.
+func constHint[T any](s string) func(T) string {
+	return func(T) string { return s }
 }
 
 // notFoundInput bundles the arguments passed to commandNotFound.
@@ -271,13 +280,13 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		match: func(in notFoundInput) bool {
 			return in.name == "version" && in.c == in.c.Root()
 		},
-		hint: "there is no `version` command; use --version",
+		hint: constHint[notFoundInput]("there is no `version` command; use --version"),
 	},
 	{
 		match: func(in notFoundInput) bool {
 			return in.c.Name == "delete" && (in.name == "cluster" || in.name == "clusters")
 		},
-		hint: "cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)",
+		hint: constHint[notFoundInput]("cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"),
 	},
 }
 
@@ -292,10 +301,22 @@ type usageErrorInput struct {
 	err error
 }
 
-// usageErrorHints is the registration table for targeted flag-parse
-// hints: the first matching entry's hint wins; callers fall back to the
-// generic schema hint when nothing matches. Register new targeted hints
-// here, not in the seam.
+const noAllNamespacesFlag = "there is no all-namespaces flag"
+
+// isAllNamespacesFlag reports whether err is an unknown-flag error for the
+// kubectl -A/--all-namespaces reflex. urfave normalises --all-namespaces
+// to -all-namespaces in its error text.
+func isAllNamespacesFlag(err error) bool {
+	// test constructions and future entries may hand the predicate a nil error.
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.HasSuffix(msg, ": -A") || strings.HasSuffix(msg, ": -all-namespaces")
+}
+
+// allNamespacesEntry is the kubectl-reflex -A/--all-namespaces entry —
+// addressable by name so tests pin THIS entry, not a table position.
 //
 // c.Path() returns the root-to-leaf segment slice (urfave v3 Path()),
 // so a `get pod` leaf reports ["rancher","get","pod"]; the `get` group
@@ -303,24 +324,26 @@ type usageErrorInput struct {
 // matches only commands directly under the `get` group — a "get" segment
 // anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
 // not trigger the hint.
-// urfave normalises --all-namespaces to -all-namespaces in its error text.
-var usageErrorHints = []hintEntry[usageErrorInput]{
-	{
-		// The kubectl reflex -A/--all-namespaces deserves the real answer in
-		// the first error, but only when the failing command sits under the
-		// `get` group — for every other verb the flag is equally unknown, but
-		// the "list operations span all namespaces" explanation is misleading.
-		match: func(in usageErrorInput) bool {
-			msg := in.err.Error()
-			if !strings.HasSuffix(msg, ": -A") && !strings.HasSuffix(msg, ": -all-namespaces") {
-				return false
-			}
-			p := in.c.Path()
-			return len(p) >= 2 && p[1] == "get"
-		},
-		hint: "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one",
+var allNamespacesEntry = hintEntry[usageErrorInput]{
+	// kubectl reflex -A/--all-namespaces: the flag exists nowhere.
+	// Under the get group the wording explains that lists already
+	// span all namespaces; elsewhere it just names the missing flag.
+	// One entry, wording chosen here — no order-dependent
+	// specialize-then-generalize pair.
+	match: func(in usageErrorInput) bool { return isAllNamespacesFlag(in.err) },
+	hint: func(in usageErrorInput) string {
+		if p := in.c.Path(); len(p) >= 2 && p[1] == "get" {
+			return noAllNamespacesFlag + " — list operations already span all namespaces; use --namespace where the kind accepts one"
+		}
+		return noAllNamespacesFlag + "; run: rancher schema for this command's real flags"
 	},
 }
+
+// usageErrorHints is the registration table for targeted flag-parse
+// hints: the first matching entry's hint wins; callers fall back to the
+// generic schema hint when nothing matches. Register new targeted hints
+// here, not in the seam.
+var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry}
 
 // usageErrorHint returns the targeted operator hint for onUsageError.
 func usageErrorHint(c *ucli.Command, err error) string {
