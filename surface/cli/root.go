@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/managementtoken"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
@@ -158,6 +159,16 @@ var kindOverrideTable = map[string]kindOverride{
 		patch:    func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
 		refusals: map[string]string{"patch": "read-only: consumed, not edited"},
 	},
+	// managementtoken: patch is refused — writes go through Rancher's auth
+	// lifecycle; the CLI does not bypass it. Delete is guarded against removing
+	// the token backing the current session.
+	"managementtoken": {
+		patch: func(k kinds.Kind, d runDeps) runtime.Command { return managementtoken.NewRefusePatch(k) },
+		del: func(k kinds.Kind, d runDeps) runtime.Command {
+			return managementtoken.NewDeleteGuard(k, d.clients, d.sessionNamer)
+		},
+		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
+	},
 	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
 	// diff/redaction/RV-precondition behavior — only an advisory etcd-quorum
 	// preview is added, via the EffectEnricher seam, never a gate.
@@ -196,6 +207,11 @@ func kindOverrides() map[string]kindOverride {
 // "refused"; a del override on a Deletable: false row surfaces delete as
 // "available" (the provisioningcluster case); a delete neither the row nor
 // an override generates is "absent", carrying the row's NoDeleteReason.
+//
+// "create" verb state: only kinds with NoCreateViaManifest set carry a
+// "create" entry (state=refused, note=the restriction message). Kinds without
+// the field are omitted from "create" — absence means no reviewed restriction
+// is recorded, not that create-resource is guaranteed to accept the kind.
 func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime.SchemaKind {
 	out := make([]runtime.SchemaKind, 0, len(rows))
 	for _, k := range rows {
@@ -208,6 +224,14 @@ func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime
 			verbs["delete"] = registeredVerbState(k, "delete", ov)
 		} else {
 			verbs["delete"] = runtime.VerbState{State: runtime.VerbAbsent, Note: k.NoDeleteReason}
+		}
+		if k.NoCreateViaManifest != "" {
+			verbs["create"] = runtime.VerbState{
+				State:     runtime.VerbRefused,
+				Contract:  string(k.Binding.Contract),
+				Stability: string(k.Binding.Stability),
+				Note:      k.NoCreateViaManifest,
+			}
 		}
 		out = append(out, runtime.SchemaKind{
 			Name:             k.Name,

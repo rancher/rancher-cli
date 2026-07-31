@@ -393,6 +393,7 @@ func TestScenarios(t *testing.T) {
 			"flipstatus":    cmdFlipStatus,
 			"rawget":        cmdRawGet,
 			"seedexeccache": cmdSeedExecCache,
+			"seedobj":       cmdSeedObj,
 		},
 	})
 }

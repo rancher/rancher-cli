@@ -202,10 +202,10 @@ nodes join with:
     rancher kubeconfig --cluster web > web.yaml
 
 <!-- conformance:surface-counts -->
-Generated per kind from the 47-kind table: `get <kind>` (47), `patch <kind>`
-(47), `delete <kind>` (28 — 27 deletable kinds, including the RBAC binding
-kinds, `token`, and `kubeconfig`, plus a `provisioning-cluster` override) —
-122 generated commands, 165 total together with the fixed commands above. The authoritative, always-current list is
+Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
+(48), `delete <kind>` (29 — 28 deletable kinds, including the RBAC binding
+kinds, `token`, `kubeconfig`, and `management-token`, plus a `provisioning-cluster` override) —
+125 generated commands, 168 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 

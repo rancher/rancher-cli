@@ -19,6 +19,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 	"github.com/tidwall/gjson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
 )
@@ -132,5 +133,48 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	key := config.CacheKey(name, srvID, cluster)
 	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, srvID, cluster); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)
+	}
+}
+
+// cmdSeedObj creates an object directly via the envtest dynamic client:
+// seedobj <group>/<version>/<resource> <ns> <file>. "core" is the
+// empty-group sentinel (matches flipstatus/rawget convention). Use "." for
+// <ns> when the resource is cluster-scoped (namespace is omitted from the
+// API call). Reads a YAML or JSON manifest from the embedded txtar file.
+func cmdSeedObj(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 3 {
+		ts.Fatalf("usage: seedobj <group>/<version>/<resource> <ns> <file>")
+	}
+	parts := strings.SplitN(args[0], "/", 3)
+	if len(parts) != 3 {
+		ts.Fatalf("seedobj: malformed gvr %q, want group/version/resource", args[0])
+	}
+	group, version, resource := parts[0], parts[1], parts[2]
+	if group == "core" {
+		group = ""
+	}
+	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+	ns := args[1]
+	if ns == "." {
+		ns = ""
+	}
+	raw := ts.ReadFile(args[2])
+	j, err := yaml.YAMLToJSON([]byte(raw))
+	if err != nil {
+		ts.Fatalf("seedobj: yaml-to-json: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(j, &m); err != nil {
+		ts.Fatalf("seedobj: unmarshal: %v", err)
+	}
+	obj := &unstructured.Unstructured{Object: m}
+	if ns == "" {
+		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+			ts.Fatalf("seedobj: %v", err)
+		}
+	} else {
+		if _, err := dynCli.Resource(gvr).Namespace(ns).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+			ts.Fatalf("seedobj: %v", err)
+		}
 	}
 }

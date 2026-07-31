@@ -20,6 +20,7 @@ var cliOnlyKinds = map[string]bool{
 	"amazonec2config": true, "azureconfig": true, "digitaloceanconfig": true,
 	"harvesterconfig": true, "vmwarevsphereconfig": true,
 	"clusterregistrationtoken": true,
+	"managementtoken":          true, // deprecated legacy v3 Token; no MCP tool counterpart
 	"nodedriver":               true,
 }
 

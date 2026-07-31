@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -276,4 +278,72 @@ func TestRegistryBindingLookup(t *testing.T) {
 	bU := reg.Binding("nope")
 	assert.Empty(t, bU.Contract)
 	assert.Empty(t, bU.Stability)
+}
+
+// makeJWT builds a minimal JWT string (header.payload.sig) for tests. The
+// signature segment is garbage — jwtTokenID intentionally skips verification.
+func makeJWT(payload map[string]any) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+	p, _ := json.Marshal(payload)
+	payloadEnc := base64.RawURLEncoding.EncodeToString(p)
+	sig := base64.RawURLEncoding.EncodeToString([]byte("fakesig"))
+	return header + "." + payloadEnc + "." + sig
+}
+
+// TestJWTTokenIDIDSecret verifies the id:secret path returns the id half.
+func TestJWTTokenIDIDSecret(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "mytoken", jwtTokenID("mytoken:secret"))
+}
+
+// TestJWTTokenIDV3JWT verifies that a Rancher JWT with token_kind=v3 returns
+// the backing token name from the "token" claim.
+func TestJWTTokenIDV3JWT(t *testing.T) {
+	t.Parallel()
+	tok := makeJWT(map[string]any{"token": "local-abc-123", "token_kind": "v3"})
+	assert.Equal(t, "local-abc-123", jwtTokenID(tok))
+}
+
+// TestJWTTokenIDExtJWT verifies that a Rancher JWT with token_kind=ext returns
+// "" — the backing ext.cattle.io Token cannot match a management-token name.
+func TestJWTTokenIDExtJWT(t *testing.T) {
+	t.Parallel()
+	tok := makeJWT(map[string]any{"token": "ext-abc-123", "token_kind": "ext"})
+	assert.Equal(t, "", jwtTokenID(tok))
+}
+
+// TestJWTTokenIDMalformedJWT verifies that a malformed bearer (wrong segment
+// count or non-base64 payload) returns "" without panicking.
+func TestJWTTokenIDMalformedJWT(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "", jwtTokenID("not.a.valid.jwt.at.all"))
+	assert.Equal(t, "", jwtTokenID("only.two"))
+	assert.Equal(t, "", jwtTokenID("bad.!!!.sig"))
+}
+
+// TestJWTTokenIDEmpty verifies that an empty bearer returns "".
+func TestJWTTokenIDEmpty(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "", jwtTokenID(""))
+}
+
+// TestActiveTokenIDV3JWT verifies the full factory path: a JWT bearer with
+// token_kind=v3 in the credential store yields the backing token name.
+func TestActiveTokenIDV3JWT(t *testing.T) {
+	t.Parallel()
+	tok := makeJWT(map[string]any{"token": "session-token-xyz", "token_kind": "v3"})
+	f := newClientFactory(writeTestConfig(t), &countingStore{token: tok})
+	id, err := f.ActiveTokenID()
+	require.NoError(t, err)
+	assert.Equal(t, "session-token-xyz", id)
+}
+
+// TestActiveTokenIDIDSecret verifies the full factory path for an id:secret
+// bearer — the id half is returned.
+func TestActiveTokenIDIDSecret(t *testing.T) {
+	t.Parallel()
+	f := newClientFactory(writeTestConfig(t), &countingStore{token: "mytoken:mysecret"})
+	id, err := f.ActiveTokenID()
+	require.NoError(t, err)
+	assert.Equal(t, "mytoken", id)
 }

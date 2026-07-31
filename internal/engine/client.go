@@ -95,3 +95,15 @@ type RootClient interface {
 type RootClientFactory interface {
 	Root() (RootClient, error)
 }
+
+// SessionTokenNamer exposes the ID component of the current session's bearer
+// credential — the part before ":" in the stored "id:secret" token. Only the
+// ID (the token object name) is returned; the secret never crosses this
+// boundary. Used by the management-token delete guard to detect when the
+// target name matches the token backing the active session.
+type SessionTokenNamer interface {
+	// ActiveTokenID returns the name portion of the current session's bearer
+	// token ("id" from "id:secret"). Returns "" when no credential is resolved
+	// (not logged in). Never returns the secret half.
+	ActiveTokenID() (string, error)
+}

@@ -1,0 +1,69 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed management.cattle.io/v3 Token objects directly via the envtest dynamic
+# client (create resource is refused for this kind — see the patch/create
+# assertions below). "." for <ns> because tokens are cluster-scoped.
+seedobj management.cattle.io/v3/tokens . mtoken.yaml
+
+# List via canonical kind name; assert the seeded object is present.
+exec rancher get management-token -o json
+jsonquery stdout 'data.#(metadata.name=="mgmt-token-test").metadata.name' mgmt-token-test
+jsonquery stdout 'data.#(metadata.name=="mgmt-token-test").userId' u-mgmt-1
+
+# Fix 1 — credential redaction: the root-level token field must NOT appear in
+# get -o json output. gjson returns "" for a missing key; if the field were
+# present its value would be non-empty ("live-credential-value").
+jsonquery stdout 'data.#(metadata.name=="mgmt-token-test").token' ''
+
+# Get by name resolves via alias v3token; credential field must still be absent.
+exec rancher get v3token mgmt-token-test -o json
+jsonquery stdout 'data.metadata.name' mgmt-token-test
+jsonquery stdout 'data.token' ''
+
+# Fix 2 — patch refusal: management-token patch must be refused with a
+# VALIDATION error before any network call. Only the stable code is asserted;
+# the message text is implementation detail.
+! exec rancher patch management-token mgmt-token-test --patch '[{"op":"replace","path":"/description","value":"changed"}]' --apply --yes --allow-deprecated
+jsonquery stderr 'data.error.code' VALIDATION
+
+# Fix 2 — create resource rejection: a management.cattle.io/v3 Token manifest
+# must be refused with a VALIDATION error before any network call.
+! exec rancher create resource -f mtoken.yaml --apply --yes
+jsonquery stderr 'data.error.code' VALIDATION
+
+# Fix 3 — session guard: seed a token whose name matches the harness
+# credential id ("e2e" — the id part of testToken "e2e:secret") and verify
+# that deleting it is refused with a VALIDATION error.
+seedobj management.cattle.io/v3/tokens . session-token.yaml
+
+! exec rancher delete management-token e2e --apply --yes --allow-deprecated
+jsonquery stderr 'data.error.code' VALIDATION
+
+# Delete WITHOUT --allow-deprecated is refused: management-token is Deprecated.
+! exec rancher delete management-token mgmt-token-test --apply --yes
+jsonquery stderr 'data.error.code' CONFIRMATION_REQUIRED
+jsonquery stderr 'data.error.hint' 're-run with: --allow-deprecated'
+
+# Delete WITH all required flags succeeds for a non-session token.
+exec rancher delete management-token mgmt-token-test --apply --yes --allow-deprecated
+
+-- mtoken.yaml --
+apiVersion: management.cattle.io/v3
+kind: Token
+metadata:
+  name: mgmt-token-test
+userId: u-mgmt-1
+authProvider: local
+description: management-token-e2e-test
+token: live-credential-value
+
+-- session-token.yaml --
+apiVersion: management.cattle.io/v3
+kind: Token
+metadata:
+  name: e2e
+userId: u-session
+authProvider: local
+description: session-token-for-guard-test
+token: session-credential

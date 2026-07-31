@@ -28,18 +28,65 @@ func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) tabl
 // `data.metadata.name` (single) and `data.0.metadata.name`/`data.#` (list)
 // address the real object graph. sigs.k8s.io/yaml marshals through JSON, so
 // this fixes -o yaml too; no separate MarshalYAML is needed.
+// Fields listed in the kind's RedactPaths are removed before marshaling.
 func (t table) MarshalJSON() ([]byte, error) {
 	if t.single {
 		if len(t.items) != 1 {
 			return nil, fmt.Errorf("table: a single result must have exactly 1 item, got %d", len(t.items))
 		}
-		return json.Marshal(t.items[0].Object)
+		return json.Marshal(scrubPaths(t.items[0].Object, t.k.RedactPaths))
 	}
 	objs := make([]map[string]any, len(t.items))
 	for i := range t.items {
-		objs[i] = t.items[i].Object
+		objs[i] = scrubPaths(t.items[i].Object, t.k.RedactPaths)
 	}
 	return json.Marshal(objs)
+}
+
+// scrubPaths returns a shallow copy of obj with every listed path deleted.
+// A path is a []string key sequence; only root-level and one level of nesting
+// are needed today (managementtoken's "token" is at root). The copy is shallow
+// at the top level: nested maps along the path are deep-copied only as far as
+// needed so the original objects are not mutated.
+func scrubPaths(obj map[string]any, paths [][]string) map[string]any {
+	if len(paths) == 0 {
+		return obj
+	}
+	out := make(map[string]any, len(obj))
+	for k, v := range obj {
+		out[k] = v
+	}
+	for _, path := range paths {
+		deletePath(out, path)
+	}
+	return out
+}
+
+// deletePath removes the leaf addressed by path from m, copying intermediate
+// maps as needed so the originals are not mutated.
+func deletePath(m map[string]any, path []string) {
+	if len(path) == 0 {
+		return
+	}
+	if len(path) == 1 {
+		delete(m, path[0])
+		return
+	}
+	child, ok := m[path[0]]
+	if !ok {
+		return
+	}
+	childMap, ok := child.(map[string]any)
+	if !ok {
+		return
+	}
+	// Copy the child map before mutating so the original is not touched.
+	copied := make(map[string]any, len(childMap))
+	for k, v := range childMap {
+		copied[k] = v
+	}
+	deletePath(copied, path[1:])
+	m[path[0]] = copied
 }
 
 func (t table) Columns() []string {

@@ -55,6 +55,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
+| `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded — deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
@@ -91,6 +92,7 @@ graph TD
     projects["internal/engine/projects"]
     provisioning["internal/engine/provisioning"]
     extres["internal/engine/extres"]
+    managementtoken["internal/engine/managementtoken"]
     observe["internal/engine/observe"]
     rbac["internal/engine/rbac"]
     config["internal/config"]
@@ -117,6 +119,7 @@ graph TD
     cli --> kinds
     cli --> projects
     cli --> provisioning
+    cli --> managementtoken
     cli --> extres
     cli --> observe
     cli --> resources
@@ -199,6 +202,13 @@ graph TD
     extres --> runtime
     extres --> safety
     extres --> clierr
+
+    managementtoken --> engine
+    managementtoken --> kinds
+    managementtoken --> resources
+    managementtoken --> runtime
+    managementtoken --> safety
+    managementtoken --> clierr
 
     observe --> engine
     observe --> kinds

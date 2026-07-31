@@ -262,3 +262,21 @@ func TestCreateResourceClusterScopedRejectsNamespace(t *testing.T) {
 	requireValidation(t, err)
 	assert.Empty(t, fac.clusterCalls)
 }
+
+// TestCreateResourceRejectsNoCreateViaManifestKind verifies that a manifest
+// whose resolved kind has NoCreateViaManifest set is rejected with a
+// VALIDATION error before any network call, and that the hint is surfaced.
+func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
+	t.Parallel()
+	const manifest = "apiVersion: management.cattle.io/v3\nkind: Token\nmetadata:\n  name: t\n"
+	fac := &recFactory{client: &createClient{}}
+	_, _, err := planCreate(t, NewCreate(fac, mapFileSource{"m.yaml": []byte(manifest)}),
+		input{s: map[string]string{"filename": "m.yaml"}})
+	requireValidation(t, err)
+	// Verify no network call was made.
+	assert.Empty(t, fac.clusterCalls, "no network call should be made when the kind is rejected")
+	// Verify hint references the ext kind path.
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Contains(t, ce.Hint, "create token")
+}

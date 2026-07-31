@@ -38,6 +38,9 @@ func schemaManifest(t *testing.T) runtime.Manifest {
 // available OR refused has a registered generated command "<verb> <name>"
 // (a refusal is a registered command that declines at Plan), and an absent
 // verb has none — both directions, derived from manifest data alone.
+// Kinds may carry additional verb states beyond the three core generated verbs
+// (e.g. a "create" refused state for kinds that reject create-resource); those
+// extra entries are not checked here.
 func TestSchemaKindVerbSurfaceMatchesRegisteredCommands(t *testing.T) {
 	m := schemaManifest(t)
 	require.Len(t, m.Kinds, len(kinds.All()), "every kind-table row must reach the manifest")
@@ -48,7 +51,6 @@ func TestSchemaKindVerbSurfaceMatchesRegisteredCommands(t *testing.T) {
 	}
 	verbs := []string{"get", "patch", "delete"}
 	for _, k := range m.Kinds {
-		require.Len(t, k.Verbs, len(verbs), "kind %q must state all three generated verbs", k.Name)
 		for _, verb := range verbs {
 			vs, ok := k.Verbs[verb]
 			require.True(t, ok, "kind %q missing verb %q", k.Name, verb)
@@ -63,6 +65,31 @@ func TestSchemaKindVerbSurfaceMatchesRegisteredCommands(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestSchemaManagementTokenCreateRefused verifies that the schema manifest
+// surfaces the management-token "create" verb as refused, so agents can
+// discover that create-resource rejects v3 Token manifests without running a
+// live command. Only kinds that actively refuse create via NoCreateViaManifest
+// carry this verb state; the absence of "create" in other kinds' verb maps
+// does not mean create is available — it means no reviewed restriction was
+// recorded (agents should treat absence as unknown, not available).
+func TestSchemaManagementTokenCreateRefused(t *testing.T) {
+	m := schemaManifest(t)
+	var mt *runtime.SchemaKind
+	for i := range m.Kinds {
+		if m.Kinds[i].Key == "managementtoken" {
+			mt = &m.Kinds[i]
+			break
+		}
+	}
+	require.NotNil(t, mt, "managementtoken kind must appear in the manifest")
+	create, ok := mt.Verbs["create"]
+	require.True(t, ok, "managementtoken must carry a 'create' verb state in the manifest")
+	assert.Equal(t, runtime.VerbRefused, create.State)
+	assert.NotEmpty(t, create.Note, "refused create must carry the restriction note")
+	assert.Equal(t, string(safety.ContractInternal), create.Contract)
+	assert.Equal(t, string(safety.Deprecated), create.Stability)
 }
 
 // TestSchemaKindsManifestFields pins the SE-8 kind rows: the refused verb

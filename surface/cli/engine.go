@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,6 +209,58 @@ func (f *clientFactory) Identity() (string, error) {
 	return eff.ServerName, nil
 }
 
+// ActiveTokenID implements engine.SessionTokenNamer. It returns the name
+// component of the current bearer token. For id:secret bearers it is the id
+// half. For Rancher-issued JWTs (three dot-separated base64url segments, no
+// colon) the payload's "token" claim is used when "token_kind" is "v3"; for
+// ext-kind JWTs the backing token is an ext.cattle.io Token (a different
+// resource), so "" is returned and the guard skips. Unparseable bearers also
+// return "" — the guard is best-effort convenience, not an authorization
+// decision; the server enforces authz on the delete itself.
+// Returns "" when no credential is stored or resolved. The secret half is
+// never exposed.
+func (f *clientFactory) ActiveTokenID() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	return jwtTokenID(eff.Token), nil
+}
+
+// jwtTokenID extracts the backing token name from a bearer credential.
+// For id:secret bearers it returns the id half. For Rancher-issued JWTs it
+// decodes the payload (base64url, no padding) and reads the "token" claim
+// when "token_kind" is "v3". Returns "" for ext-kind claims, malformed input,
+// or empty input.
+//
+// NO signature verification is performed: this is a local footgun guard
+// resolving the caller's own identity hint, not an authorization decision —
+// the server enforces authz on the delete itself.
+func jwtTokenID(bearer string) string {
+	if id, _, ok := strings.Cut(bearer, ":"); ok {
+		return id
+	}
+	parts := strings.Split(bearer, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Token string `json:"token"`
+		Kind  string `json:"token_kind"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	if claims.Kind != "v3" {
+		return ""
+	}
+	return claims.Token
+}
+
 // clusters returns the management cluster LIST, fetched at most once per
 // invocation regardless of how many distinct names ResolveCluster is asked
 // to resolve. Concurrent callers block on the same sync.Once rather than
@@ -279,12 +334,13 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 // ignores the rest, so a command is one entry row — no per-shape adapter or
 // wiring switch.
 type runDeps struct {
-	clients engine.ClusterClientFactory
-	roots   engine.RootClientFactory
-	src     engine.FileSource
-	dir     string
-	store   config.CredStore
-	version string
+	clients      engine.ClusterClientFactory
+	roots        engine.RootClientFactory
+	src          engine.FileSource
+	dir          string
+	store        config.CredStore
+	version      string
+	sessionNamer engine.SessionTokenNamer
 }
 
 // adaptEntry wires one declarative entry through the single run path: it
@@ -332,7 +388,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				}
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
-				cmd = make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version})
+				cmd = make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version, sessionNamer: f})
 			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {

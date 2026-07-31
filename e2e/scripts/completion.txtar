@@ -17,6 +17,9 @@ exec rancher get --generate-shell-completion
 stdout '(?m)^pod:'
 stdout '(?m)^po:'
 stdout '(?m)^pods:'
+stdout '(?m)^management-token:'
+stdout '(?m)^v3token:'
+stdout '(?m)^v3tokens:'
 
 # Seed a context via a direct config-file write (config-commands.txtar's
 # precedent) — no login flow needed just to populate config.yaml. The

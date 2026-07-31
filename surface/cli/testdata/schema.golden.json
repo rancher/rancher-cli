@@ -1496,6 +1496,47 @@
     },
     {
       "aliases": [
+        "managementtokens",
+        "v3token",
+        "v3tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "delete",
+      "name": "delete management-token",
+      "network": true,
+      "stability": "deprecated",
+      "toolset": "core",
+      "usage": "Delete the management-token"
+    },
+    {
+      "aliases": [
         "namespaces",
         "ns"
       ],
@@ -3355,6 +3396,45 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List machinesets or show one"
+    },
+    {
+      "aliases": [
+        "managementtokens",
+        "v3token",
+        "v3tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get management-token",
+      "network": true,
+      "stability": "deprecated",
+      "toolset": "core",
+      "usage": "List management-tokens or show one"
     },
     {
       "aliases": [
@@ -6112,6 +6192,60 @@
     },
     {
       "aliases": [
+        "managementtokens",
+        "v3token",
+        "v3tokens"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "desc": "inline RFC 6902 JSON `patch` ops",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "desc": "patch `file`, or - for stdin",
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "group": "patch",
+      "name": "patch management-token",
+      "network": true,
+      "stability": "deprecated",
+      "toolset": "core",
+      "usage": "Patch the management-token"
+    },
+    {
+      "aliases": [
         "namespaces",
         "ns"
       ],
@@ -7954,6 +8088,7 @@
         "get machinedeployment",
         "get k3k-cluster",
         "get token",
+        "get management-token",
         "get kubeconfig",
         "get amazonec2config",
         "get azureconfig",
@@ -8018,6 +8153,7 @@
         "patch machinedeployment",
         "patch k3k-cluster",
         "patch token",
+        "patch management-token",
         "patch kubeconfig",
         "patch amazonec2config",
         "patch azureconfig",
@@ -8053,6 +8189,7 @@
         "delete provisioning-cluster",
         "delete k3k-cluster",
         "delete token",
+        "delete management-token",
         "delete kubeconfig",
         "delete amazonec2config",
         "delete azureconfig",
@@ -9219,6 +9356,45 @@
           "state": "available"
         }
       }
+    },
+    {
+      "aliases": [
+        "managementtokens",
+        "v3token",
+        "v3tokens"
+      ],
+      "group": "management.cattle.io",
+      "key": "managementtoken",
+      "name": "management-token",
+      "namespacePolicy": "none",
+      "resource": "tokens",
+      "scope": "management",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "token creation must go through Rancher's auth lifecycle — use 'rancher create token' (the ext.cattle.io kind) for new tokens",
+          "stability": "deprecated",
+          "state": "refused"
+        },
+        "delete": {
+          "contract": "internal",
+          "stability": "deprecated",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "deprecated",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it",
+          "stability": "deprecated",
+          "state": "refused"
+        }
+      },
+      "version": "v3"
     },
     {
       "aliases": [

@@ -94,6 +94,11 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			fmt.Sprintf("unsupported resource %s/%s", obj.GetAPIVersion(), obj.GetKind())).
 			WithHint("supported kinds: " + supportedKinds())
 	}
+	if k.NoCreateViaManifest != "" {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("cannot create %s via manifest", k.Name)).
+			WithHint(k.NoCreateViaManifest)
+	}
 
 	overrides, err := c.reconcile(ctx, k, in, obj.GetNamespace())
 	if err != nil {

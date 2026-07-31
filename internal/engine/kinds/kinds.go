@@ -97,6 +97,19 @@ type Kind struct {
 	Completable bool
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
+	// RedactPaths lists dot-path field paths (each as a []string key sequence)
+	// scrubbed from every serialized representation — list/get JSON/YAML output
+	// and patch diff From/To entries — because they carry live credentials. The
+	// root-level token field on management.cattle.io/v3 Token is the canonical
+	// example. Scrubbing is removal in JSON/YAML output and "<redacted>" in diff
+	// entries (matching the existing sensitive-diff convention).
+	RedactPaths [][]string
+	// NoCreateViaManifest, when non-empty, prevents `create resource` from
+	// accepting a manifest whose resolved kind matches this row. The value is
+	// surfaced as the error hint. Use it for kinds whose creation must go
+	// through a higher-level command that handles key generation, lifecycle
+	// derivation, or other invariants that a raw manifest write cannot satisfy.
+	NoCreateViaManifest string
 }
 
 // MachineConfigGroup is the GVR group shared by every rke-machine-config
@@ -412,6 +425,33 @@ var table = []Kind{
 			{Header: "EXPIRES", Path: []string{"status", "expiresAt"}},
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
 		},
+	},
+	{
+		// Not on the Rancher Kubernetes Public API list; deprecated in favor of
+		// ext.cattle.io Token; still serving UI session tokens and derived tokens
+		// in Rancher 2.15. The v3 Token type (pkg/apis/management.cattle.io/v3)
+		// has its fields at the object root, not under spec/status.
+		Key: "managementtoken", Name: "management-token", Aliases: []string{"managementtokens", "v3token", "v3tokens"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"},
+		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
+		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Deprecated},
+		Columns: []Column{
+			// STRING leaves only (see the token entry's note): root-level fields on
+			// the v3 Token type (userId, authProvider, expiresAt, description).
+			{Header: "USER", Path: []string{"userId"}},
+			{Header: "AUTH PROVIDER", Path: []string{"authProvider"}},
+			{Header: "EXPIRES", Path: []string{"expiresAt"}},
+			{Header: "DESCRIPTION", Path: []string{"description"}},
+		},
+		// management.cattle.io/v3 Token carries the raw credential at root-level
+		// .token (writeOnly in Norman; plaintext when Rancher's token-hashing
+		// feature is off, which is the default). Scrub it from every serialized
+		// representation — get/list JSON/YAML output and patch diff entries.
+		RedactPaths: [][]string{{"token"}},
+		// Token creation must go through Rancher's auth lifecycle (key
+		// generation, TTL clamp, identity derivation). Use `create token` (the
+		// ext.cattle.io kind) for new tokens instead.
+		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle — use 'rancher create token' (the ext.cattle.io kind) for new tokens",
 	},
 	{
 		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},

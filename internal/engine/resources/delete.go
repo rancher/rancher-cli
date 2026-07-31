@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type deleteCmd struct {
@@ -83,16 +84,25 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster)
+}
+
+// PlanFromFetched builds a delete Effect and exec closure from an object
+// already fetched by the caller. Both the dry-run admission preview and the
+// exec closure derive their resourceVersion from obj — no second GET occurs,
+// so the guard's safety decision and the deletion's precondition are bound to
+// the same read.
+func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string) (safety.Effect, runtime.ExecuteFunc, error) {
 	rv := obj.GetResourceVersion()
 	// Admission preview: a server-side dry-run delete surfaces RBAC/webhook
 	// denials before the user confirms.
-	if err := client.Delete(ctx, c.k.GVR, ns, name, rv, true); err != nil {
+	if err := client.Delete(ctx, k.GVR, ns, name, rv, true); err != nil {
 		return safety.Effect{}, nil, err
 	}
-	title := resultKind(c.k)
+	title := resultKind(k)
 	eff := safety.Effect{
 		Action:            safety.ActionDelete,
-		Target:            c.k.GVR.Resource + "/" + name,
+		Target:            k.GVR.Resource + "/" + name,
 		Cluster:           effectCluster,
 		ResourceVersion:   rv,
 		ConflictDetection: true,
@@ -100,7 +110,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		Destructive:       true,
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) {
-		if err := client.Delete(ctx, c.k.GVR, ns, name, rv, false); err != nil {
+		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err
 		}
 		return runtime.Result{Kind: title + "Delete", Data: map[string]any{"deleted": name}}, nil

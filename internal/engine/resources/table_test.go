@@ -2,11 +2,13 @@ package resources
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -106,4 +108,100 @@ func TestTableMarshalJSONSingleInvariant(t *testing.T) {
 			assert.Contains(t, err.Error(), fmt.Sprintf("got %d", len(tt.items)))
 		})
 	}
+}
+
+// TestTableMarshalJSONRedactsKindPaths verifies that a kind's RedactPaths are
+// absent from -o json output. The test decodes the marshaled JSON rather than
+// string-matching, so whitespace or key ordering can never cause a false pass.
+func TestTableMarshalJSONRedactsKindPaths(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{
+		Name:        "widget",
+		K8sKind:     "Widget",
+		RedactPaths: [][]string{{"secret"}, {"nested", "cred"}},
+	}
+	obj := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w1"},
+		"public":   "visible",
+		"secret":   "must-be-gone",
+		"nested":   map[string]any{"cred": "also-gone", "safe": "keep"},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{obj}, true)
+	b, err := tab.MarshalJSON()
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(b, &decoded))
+	assert.Equal(t, "visible", decoded["public"], "non-redacted field must be present")
+	assert.NotContains(t, decoded, "secret", "RedactPaths root field must be absent")
+	nested, _ := decoded["nested"].(map[string]any)
+	require.NotNil(t, nested, "parent of a nested redact path must still be present")
+	assert.NotContains(t, nested, "cred", "nested redact field must be absent")
+	assert.Equal(t, "keep", nested["safe"], "sibling of redacted nested field must be present")
+}
+
+// TestTableMarshalJSONRedactsListItems verifies that redaction applies to
+// every item in a list result, not just the first.
+func TestTableMarshalJSONRedactsListItems(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{
+		Name:        "widget",
+		K8sKind:     "Widget",
+		RedactPaths: [][]string{{"token"}},
+	}
+	items := []unstructured.Unstructured{
+		{Object: map[string]any{"metadata": map[string]any{"name": "a"}, "token": "cred-a"}},
+		{Object: map[string]any{"metadata": map[string]any{"name": "b"}, "token": "cred-b"}},
+	}
+	tab := newTable(k, items, false)
+	b, err := tab.MarshalJSON()
+	require.NoError(t, err)
+
+	var decoded []map[string]any
+	require.NoError(t, json.Unmarshal(b, &decoded))
+	require.Len(t, decoded, 2)
+	assert.NotContains(t, decoded[0], "token", "token must be absent from item 0")
+	assert.NotContains(t, decoded[1], "token", "token must be absent from item 1")
+}
+
+// TestTableMarshalJSONDoesNotMutateOriginal verifies that scrubPaths does not
+// mutate the original unstructured object (important: a command may hold the
+// object in memory after serialization).
+func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{
+		Name:        "widget",
+		K8sKind:     "Widget",
+		RedactPaths: [][]string{{"secret"}},
+	}
+	obj := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w1"},
+		"secret":   "must-survive-in-original",
+	}}
+	tab := newTable(k, []unstructured.Unstructured{obj}, true)
+	_, err := tab.MarshalJSON()
+	require.NoError(t, err)
+	assert.Equal(t, "must-survive-in-original", obj.Object["secret"],
+		"the original unstructured object must not be mutated by scrubPaths")
+}
+
+// TestRedactKindPathsBlanksDiffEntries verifies that redactKindPaths replaces
+// From/To with "<redacted>" for diff entries whose path matches a RedactPaths
+// entry, and leaves unrelated entries intact.
+func TestRedactKindPathsBlanksDiffEntries(t *testing.T) {
+	t.Parallel()
+	diff := []safety.DiffEntry{
+		{Path: "/token", From: "old-cred", To: "new-cred"},
+		{Path: "/token/sub", From: "sub-old", To: "sub-new"},
+		{Path: "/description", From: "old-desc", To: "new-desc"},
+		{Path: "/tokenExtra", From: "keep-old", To: "keep-new"}, // prefix match must not fire
+	}
+	redactKindPaths(diff, [][]string{{"token"}})
+
+	assert.Equal(t, "<redacted>", diff[0].From, "/token From must be redacted")
+	assert.Equal(t, "<redacted>", diff[0].To, "/token To must be redacted")
+	assert.Equal(t, "<redacted>", diff[1].From, "/token/sub From must be redacted")
+	assert.Equal(t, "<redacted>", diff[1].To, "/token/sub To must be redacted")
+	assert.Equal(t, "old-desc", diff[2].From, "/description must be untouched")
+	assert.Equal(t, "keep-old", diff[3].From, "/tokenExtra must not match /token prefix")
 }

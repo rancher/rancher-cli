@@ -132,6 +132,9 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if c.k.Sensitive {
 		redactSensitiveDiff(diff)
 	}
+	if len(c.k.RedactPaths) > 0 {
+		redactKindPaths(diff, c.k.RedactPaths)
+	}
 
 	patched.SetResourceVersion(rv)
 	// PlanUpdate dry-runs the update for an admission preview and returns the
@@ -196,4 +199,33 @@ func redactSensitiveDiff(diff []safety.DiffEntry) {
 func isSecretDataPath(path string) bool {
 	return path == "/data" || strings.HasPrefix(path, "/data/") ||
 		path == "/stringData" || strings.HasPrefix(path, "/stringData/")
+}
+
+// redactKindPaths blanks From/To for diff entries whose JSON Pointer path
+// matches any of the per-kind RedactPaths ([]string key sequence → JSON
+// Pointer "/key0/key1/..."). This covers credential fields declared on
+// individual kind rows (e.g. root-level "token" on management-token) that
+// the generic /data//stringData guard does not reach.
+func redactKindPaths(diff []safety.DiffEntry, paths [][]string) {
+	for i, e := range diff {
+		for _, path := range paths {
+			if matchesRedactPath(e.Path, path) {
+				diff[i].From = "<redacted>"
+				diff[i].To = "<redacted>"
+				break
+			}
+		}
+	}
+}
+
+// matchesRedactPath reports whether the JSON Pointer entryPath equals or is
+// nested under the path specified by keys. For keys ["token"], it matches
+// "/token" and "/token/anything"; for keys ["metadata","name"], it matches
+// "/metadata/name" and "/metadata/name/anything".
+func matchesRedactPath(entryPath string, keys []string) bool {
+	if len(keys) == 0 {
+		return false
+	}
+	pointer := "/" + strings.Join(keys, "/")
+	return entryPath == pointer || strings.HasPrefix(entryPath, pointer+"/")
 }
