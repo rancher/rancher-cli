@@ -102,7 +102,8 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond)
 	}
 	return clierr.New(clierr.CodeGeneric,
 		fmt.Sprintf("timed out waiting for %s; last state: %s", name, summary)).
-		WithRetryable(true)
+		WithRetryable(true).
+		WithHint("the wait condition was not met in time — the message carries the last observed state; retry with a longer --timeout or inspect the resource for what is holding it back")
 }
 
 // resolvedState reads status.state (the Rancher idiom); when absent it falls
