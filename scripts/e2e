@@ -7,7 +7,8 @@ set -euo pipefail
 ENVTEST_K8S_VERSION="1.34.0"
 
 echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
-KUBEBUILDER_ASSETS="$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use "${ENVTEST_K8S_VERSION}" -p path)"
+# Pinned for repeatability/supply-chain; bump alongside controller-runtime (go.mod).
+KUBEBUILDER_ASSETS="$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use "${ENVTEST_K8S_VERSION}" -p path)"
 export KUBEBUILDER_ASSETS
 echo "==> assets: ${KUBEBUILDER_ASSETS}"
 
