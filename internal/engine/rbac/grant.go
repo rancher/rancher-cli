@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -29,12 +30,17 @@ func NewGrant(clients engine.ClusterClientFactory) runtime.Command {
 
 func (grantCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "grant",
-		Usage:       "Grant a role to a user or group at project, cluster, or global scope",
+		Name:  "grant",
+		Usage: "Grant a role to a user or group at project, cluster, or global scope",
+		Desc: "Resolves the subject and verifies the role exists at the declared scope " +
+			"(roletemplate for project/cluster, globalrole for global), then checks for an " +
+			"existing duplicate binding and plans a create. " +
+			"Discover available roles: rancher get roletemplates (project/cluster scopes) " +
+			"or rancher get globalroles (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
-			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global)"},
+			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: rancher get roletemplates (project/cluster) or rancher get globalroles (global)"},
 			{Name: "project", Type: "string", Desc: "project scope: project `id|name`"},
 			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster qualifying --project"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
@@ -80,6 +86,10 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, err
 	}
 	bindKind, _ := kinds.Lookup(scope.KindKey)
+
+	if err := checkRole(ctx, client, role, scope.Kind); err != nil {
+		return safety.Effect{}, nil, err
+	}
 
 	// Best-effort duplicate preflight (design: check/use race accepted).
 	list, err := client.List(ctx, bindKind.GVR, scope.NS, "")
@@ -173,6 +183,81 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 	out := make([]safety.DiffEntry, 0, len(paths))
 	for _, k := range paths {
 		out = append(out, safety.DiffEntry{Path: "/" + k, From: nil, To: fields[k]})
+	}
+	return out
+}
+
+// checkRole verifies that role exists at the given scope before the mutation is
+// planned. On NOT_FOUND it returns a structured error with nearby candidates
+// (roletemplates filtered by context == scope, or globalroles for global scope)
+// and a discovery hint. A non-cancellation, non-NotFound Get failure degrades
+// gracefully — an RBAC-restricted granter must not be blocked by an unreadable
+// role object, so validation is skipped and the grant proceeds. Caller-context
+// cancellation always propagates.
+func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) error {
+	roleKindKey := "roletemplate"
+	if scope == ScopeGlobal {
+		roleKindKey = "globalrole"
+	}
+	roleKind, _ := kinds.Lookup(roleKindKey)
+
+	_, err := client.Get(ctx, roleKind.GVR, "", role)
+	if err == nil {
+		return nil
+	}
+	if !clierr.IsNotFound(err) {
+		// Degrade: non-cancellation errors skip role validation so an
+		// RBAC-restricted granter is not blocked by unreadable role objects.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return nil
+	}
+
+	hint := "run: rancher get roletemplates"
+	if scope == ScopeGlobal {
+		hint = "run: rancher get globalroles"
+	}
+	list, lerr := client.List(ctx, roleKind.GVR, "", "")
+	if lerr != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// Degraded list: return NOT_FOUND with hint but no candidates.
+		return clierr.New(clierr.CodeNotFound, "role not found: "+role).WithHint(hint)
+	}
+
+	var pool []*unstructured.Unstructured
+	for i := range list.Items {
+		rt := &list.Items[i]
+		if scope != ScopeGlobal {
+			rtContext, _, _ := unstructured.NestedString(rt.Object, "context")
+			if rtContext != string(scope) {
+				continue
+			}
+		}
+		pool = append(pool, rt)
+	}
+
+	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
+		WithCandidates(nearRoleCandidates(role, pool)).
+		WithHint(hint)
+}
+
+// nearRoleCandidates filters roles to case-insensitive substring matches of
+// input against id and displayName, capped at candidateCap.
+func nearRoleCandidates(input string, roles []*unstructured.Unstructured) []clierr.Candidate {
+	needle := strings.ToLower(input)
+	var out []clierr.Candidate
+	for _, r := range roles {
+		if len(out) == candidateCap {
+			break
+		}
+		display, _, _ := unstructured.NestedString(r.Object, "displayName")
+		hay := strings.ToLower(r.GetName() + " " + display)
+		if strings.Contains(hay, needle) {
+			out = append(out, clierr.Candidate{ID: r.GetName(), Name: display})
+		}
 	}
 	return out
 }

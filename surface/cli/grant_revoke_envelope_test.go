@@ -191,6 +191,25 @@ func grHandler(opts *serverOpts) http.Handler {
 
 	mux := http.NewServeMux()
 
+	// RoleTemplate GET by name — any name is accepted; checkRole only needs
+	// a non-error response to confirm the role exists.
+	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates/", func(w http.ResponseWriter, r *http.Request) {
+		grWriteJSON(w, map[string]any{
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "RoleTemplate",
+			"metadata":   map[string]any{"name": "rt", "resourceVersion": "1"},
+		})
+	})
+
+	// GlobalRole GET by name — any name is accepted.
+	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/globalroles/", func(w http.ResponseWriter, r *http.Request) {
+		grWriteJSON(w, map[string]any{
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "GlobalRole",
+			"metadata":   map[string]any{"name": "gr", "resourceVersion": "1"},
+		})
+	})
+
 	// Cluster list (for ResolveCluster("c-x")).
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/clusters", func(w http.ResponseWriter, r *http.Request) {
 		grWriteJSON(w, grKubeList([]map[string]any{

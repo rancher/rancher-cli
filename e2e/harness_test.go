@@ -487,6 +487,10 @@ func seedRoleObjects() {
 	}{
 		{"e2e-project-role", "project"},
 		{"e2e-cluster-role", "cluster"},
+		// project-member and cluster-member are the canonical role names used
+		// by project-members.txtar; seeded so grant's role pre-flight passes.
+		{"project-member", "project"},
+		{"cluster-member", "cluster"},
 	} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "management.cattle.io/v3",

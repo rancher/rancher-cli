@@ -14,6 +14,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// roleGet returns a minimal role object for seeding fakeClient.gets at key
+// "/<name>" (empty namespace — roletemplates and globalroles are cluster-scoped).
+func roleGet(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+	}}
+}
+
 func prtbObj(name, userName, userPrincipal, groupPrincipal, role string) map[string]any {
 	obj := map[string]any{
 		"apiVersion":       "management.cattle.io/v3",
@@ -72,7 +80,10 @@ func TestGrantProjectUserByID(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
-		gets:  map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
@@ -122,6 +133,7 @@ func TestGrantClusterScope(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets:  map[string]*unstructured.Unstructured{"/cluster-owner": roleGet("cluster-owner")},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"clusterroletemplatebindings": {},
 		},
@@ -157,6 +169,7 @@ func TestGrantGlobalScope(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets:  map[string]*unstructured.Unstructured{"/admin": roleGet("admin")},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"globalrolebindings": {},
 		},
@@ -195,7 +208,10 @@ func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{
 		// No users: the principal will not resolve to an existing user
-		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
@@ -229,7 +245,10 @@ func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
 func TestGrantGroupPassthrough(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{
-		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
@@ -281,7 +300,10 @@ func TestGrantDuplicateConflict(t *testing.T) {
 					{Object: prtbObj("pm-1", "u-abc", "", "", "project-member")},
 				}},
 			},
-			gets:         map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+			gets: map[string]*unstructured.Unstructured{
+				"c-x/p-x":         projectGetObj("p-x"),
+				"/project-member": roleGet("project-member"),
+			},
 			conflictName: "pm-1",
 		},
 		{
@@ -299,6 +321,7 @@ func TestGrantDuplicateConflict(t *testing.T) {
 					}},
 				}},
 			},
+			gets:         map[string]*unstructured.Unstructured{"/cluster-owner": roleGet("cluster-owner")},
 			conflictName: "co-1",
 		},
 		{
@@ -317,6 +340,7 @@ func TestGrantDuplicateConflict(t *testing.T) {
 					}},
 				}},
 			},
+			gets:         map[string]*unstructured.Unstructured{"/admin": roleGet("admin")},
 			conflictName: "grb-1",
 		},
 	}
@@ -350,7 +374,10 @@ func TestGrantDuplicateAliasConflict(t *testing.T) {
 		users: []map[string]any{
 			userObj("u-abc", "Alice", "alice", "local://u-abc", "okta_user://alice"),
 		},
-		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects": projectList("p-x"),
 			"projectroletemplatebindings": {Items: []unstructured.Unstructured{
@@ -378,7 +405,10 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 	forbidden := clierr.New(clierr.CodeRBAC, "projectroletemplatebindings is forbidden")
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
-		gets:  map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects": projectList("p-x"),
 		},
@@ -442,4 +472,97 @@ func TestGrantMissingRole(t *testing.T) {
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "--role")
+}
+
+func TestGrantBadRoleAtClusterScope(t *testing.T) {
+	t.Parallel()
+	// "cluster-owne" is a realistic typo of "cluster-owner": the seeded
+	// cluster-context roletemplate's name contains "cluster-owne" as a
+	// substring so the candidate list is non-empty.
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"roletemplates": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster", "displayName": "Cluster Owner"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-member"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "cluster-owne"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "cluster-owne")
+	assert.Contains(t, ce.Hint, "get roletemplates")
+	// candidates: cluster-context roletemplates whose names contain "cluster-owne"
+	require.NotEmpty(t, ce.Candidates)
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	assert.Contains(t, ids, "cluster-owner")
+	assert.NotContains(t, ids, "project-member", "project-context roles must be excluded from cluster-scope candidates")
+}
+
+func TestGrantBadRoleAtGlobalScope(t *testing.T) {
+	t.Parallel()
+	// "admi" is a realistic typo of "admin".
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"globalroles": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{"metadata": map[string]any{"name": "admin"}, "displayName": "Admin"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "restricted-admin"}}},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		bools:   map[string]bool{"global": true},
+		strings: map[string]string{"role": "admi"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "admi")
+	assert.Contains(t, ce.Hint, "get globalroles")
+	require.NotEmpty(t, ce.Candidates)
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	assert.Contains(t, ids, "admin")
+}
+
+func TestGrantRoleReadDegraded(t *testing.T) {
+	t.Parallel()
+	// A non-NotFound, non-cancellation error on the role Get must not block
+	// the grant: an RBAC-restricted granter must not be blocked by an
+	// unreadable role object. Plan must succeed (degraded validation).
+	rbacErr := clierr.New(clierr.CodeRBAC, "roletemplates is forbidden")
+	client := &fakeClient{
+		users:   []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		getErrs: map[string]error{"cluster-owner": rbacErr},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"clusterroletemplatebindings": {},
+		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err, "non-NotFound role read error must degrade and allow the grant to proceed")
+	require.NotNil(t, exec)
+	assert.Equal(t, "clusterroletemplatebindings/cluster-owner-*", eff.Target)
 }

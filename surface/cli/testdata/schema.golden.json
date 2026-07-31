@@ -4312,6 +4312,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Resolves the subject and verifies the role exists at the declared scope (roletemplate for project/cluster, globalrole for global), then checks for an existing duplicate binding and plans a create. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -4320,7 +4321,7 @@
       ],
       "flags": [
         {
-          "desc": "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global)",
+          "desc": "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: rancher get roletemplates (project/cluster) or rancher get globalroles (global)",
           "name": "role",
           "required": true,
           "type": "string"
@@ -7484,6 +7485,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Lists the scope's bindings for the subject, optionally filtered by --role, dry-runs each delete, and plans sequential execution. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",

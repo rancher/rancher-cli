@@ -17,6 +17,11 @@ exec rancher get user u-alice -o json
 jsonquery stdout data.displayName alice
 jsonquery stdout 'data.principalIds.0' local://u-alice
 
+# bad role pre-flight: NOT_FOUND before any binding is attempted.
+! exec rancher grant alice --role no-such-role --project members-proj --cluster testcluster --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.hint 'run: rancher get roletemplates'
+
 # grant dry-run preview: effect carries action + target prefix.
 exec rancher grant alice --role project-member --project members-proj --cluster testcluster --dry-run -o json
 jsonquery stdout data.action create

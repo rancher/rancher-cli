@@ -48,8 +48,12 @@ func NewRevoke(clients engine.ClusterClientFactory) runtime.Command {
 
 func (revokeCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "revoke",
-		Usage:       "Revoke a user's or group's role binding(s) at project, cluster, or global scope",
+		Name:  "revoke",
+		Usage: "Revoke a user's or group's role binding(s) at project, cluster, or global scope",
+		Desc: "Lists the scope's bindings for the subject, optionally filtered by --role, " +
+			"dry-runs each delete, and plans sequential execution. " +
+			"Discover available roles: rancher get roletemplates (project/cluster scopes) " +
+			"or rancher get globalroles (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
