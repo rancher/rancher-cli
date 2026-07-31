@@ -14,7 +14,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/util/duration"
 )
 
 // Flag names shared across the generic verbs. Flag generation (getFlags),
@@ -219,10 +218,10 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false)}, nil
 }
 
-// waitElapsed renders the wait summary's elapsed display: the
-// apimachinery short form at or above one second; milliseconds below
-// it, floored at 1ms so an instant wait never prints the "0s" both
-// formatters would otherwise produce.
+// waitElapsed renders the wait summary's elapsed display: Go's
+// second-rounded duration format at or above one second (1m35s — never
+// truncated to the coarser unit); milliseconds below it, floored at 1ms
+// so an instant wait never prints "0s".
 func waitElapsed(elapsed time.Duration) string {
 	if elapsed < time.Second {
 		ms := elapsed.Round(time.Millisecond)
@@ -231,7 +230,7 @@ func waitElapsed(elapsed time.Duration) string {
 		}
 		return ms.String()
 	}
-	return duration.ShortHumanDuration(elapsed)
+	return elapsed.Round(time.Second).String()
 }
 
 // parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable

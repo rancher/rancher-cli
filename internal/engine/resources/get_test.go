@@ -730,10 +730,11 @@ func TestWaitElapsed(t *testing.T) {
 		// Round is half-away-from-zero: 500µs rounds to 1ms, no floor needed.
 		{500 * time.Microsecond, "1ms", "500µs rounds up to 1ms (half-away-from-zero)"},
 		{999 * time.Millisecond, "999ms", "999ms rounds to 999ms, stays below the cutover"},
-		// At or above one second: apimachinery short form.
-		{1 * time.Second, "1s", "exactly 1s → short form 1s"},
-		{90 * time.Second, "1m", "90s → short form 1m (integer-minute truncation)"},
-		{5 * time.Minute, "5m", "5m → short form 5m"},
+		// At or above one second: Go's second-rounded format.
+		{1 * time.Second, "1s", "exactly 1s → second-rounded 1s"},
+		{90 * time.Second, "1m30s", "90s → second-rounded 1m30s"},
+		{95 * time.Second, "1m35s", "95s → second-rounded 1m35s (the live case)"},
+		{5 * time.Minute, "5m0s", "5m → second-rounded 5m0s"},
 	}
 	for _, tt := range tests {
 		tt := tt
