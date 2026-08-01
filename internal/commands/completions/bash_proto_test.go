@@ -58,11 +58,11 @@ _get_comp_words_by_ref() {
     for (( _i=0; _i<${#COMP_WORDS[@]}; _i++ )); do
       _tok="${COMP_WORDS[$_i]}"
       if [[ ${#_tok} -eq 1 && "$_nb" == *"$_tok"* && ${#_w[@]} -gt 0 ]]; then
-        _w[-1]+="$_tok"
+        _w[${#_w[@]}-1]+="$_tok"
       elif [[ ${#_w[@]} -gt 0 ]]; then
-        _lc="${_w[-1]: -1}"
+        _lc="${_w[${#_w[@]}-1]: -1}"
         if [[ -n "$_lc" && "$_nb" == *"$_lc"* ]]; then
-          _w[-1]+="$_tok"
+          _w[${#_w[@]}-1]+="$_tok"
         else
           _w+=("$_tok")
         fi
