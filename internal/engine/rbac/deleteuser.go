@@ -1,15 +1,22 @@
 // deleteuser.go implements the delete override for the user kind row: the
 // row becomes Deletable and the generic delete provides the full dry-run/
 // apply/--yes gating; this wrapper adds a cascade warning and a self-delete
-// guard. The guard uses the ext.cattle.io SelfUser probe to resolve the
-// current user's ID at plan time — the same probe the create-cluster command
-// uses for creatorId stamping — and refuses deletion when the target matches
-// the authenticated caller's own record. Guard failure (probe unavailable or
-// empty ID) is non-blocking: the guard skips and the inner Plan proceeds.
+// guard. The guard runs after inner.Plan confirms the target's existence,
+// using the ext.cattle.io SelfUser probe to resolve the current user's ID
+// and refusing deletion when the target matches the authenticated caller's
+// own record. A probe that returns NOT_FOUND (the ext.cattle.io group absent
+// on older Rancher) skips the guard as a legitimately unsupported endpoint.
+// A probe that returns an empty identity (success, but no userID field)
+// refuses retryably — an unverifiable identity must cost a retry rather than
+// risk a lockout, same as any other probe failure. Any other probe or Cluster
+// failure refuses with a retryable GENERIC error: for an irreversible identity
+// deletion a transient failure must cost a retry, not risk a lockout.
 package rbac
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -17,7 +24,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
 // cascadeWarning: deleting a user removes the identity record and
@@ -25,67 +31,54 @@ import (
 // project memberships, global role bindings) with it.
 const userCascadeWarning = "deleting this user removes the identity record; Rancher's controllers remove the user's role bindings (cluster memberships, project memberships, global role bindings) with it"
 
-type deleteUserCmd struct {
-	inner   runtime.MutatingCommand
-	clients engine.ClusterClientFactory
-}
-
 // NewDeleteUser builds the delete override for the user kind row. clients is
-// passed straight through to resources.NewDelete, which performs the entire
-// real choreography (Route/Get/rv/dry-run/exec) unmodified; this command
-// adds two things: a self-delete guard (SelfUser probe) and the cascade
-// warning appended to the resulting Effect.
+// passed straight through to resources.NewGuardedDelete, which runs the inner
+// Plan choreography (Route/Get/rv/dry-run/exec) first and then runs the
+// self-delete guard and appends the cascade warning to the resulting Effect.
 func NewDeleteUser(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
-	inner, ok := resources.NewDelete(k, clients).(runtime.MutatingCommand)
-	if !ok {
-		// Unreachable: resources.NewDelete always returns a MutatingCommand.
-		panic("resources.NewDelete did not return a runtime.MutatingCommand")
-	}
-	return &deleteUserCmd{inner: inner, clients: clients}
-}
-
-// Describe delegates to the wrapped generic delete's Descriptor verbatim —
-// same Name ("delete user"), Args, Flags, Destructive — so the row's schema/
-// completion/routing surface is unchanged from what resources.NewDelete(k, …)
-// would have generated; only Plan's behavior differs.
-func (c *deleteUserCmd) Describe() runtime.Descriptor {
-	return c.inner.Describe()
-}
-
-func (c *deleteUserCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	if err := c.guardSelfDelete(ctx, in); err != nil {
-		return safety.Effect{}, nil, err
-	}
-
-	eff, exec, err := c.inner.Plan(ctx, in)
-	if err != nil {
-		return safety.Effect{}, nil, err
-	}
-	eff.Warnings = append(eff.Warnings, userCascadeWarning)
-	return eff, exec, nil
+	return resources.NewGuardedDelete(k, clients, func(ctx context.Context, in runtime.Input) error {
+		return guardSelfDelete(ctx, clients, in)
+	}, userCascadeWarning)
 }
 
 // guardSelfDelete probes the current user's identity via the SelfUser
 // endpoint and refuses deletion when the target arg matches the authenticated
-// caller's own user ID. A probe failure or empty ID is non-blocking — the
-// guard skips silently rather than preventing a legitimate delete when the
-// identity endpoint is unavailable (e.g. under a restricted token or on an
-// older Rancher that lacks the ext.cattle.io group).
-func (c *deleteUserCmd) guardSelfDelete(ctx context.Context, in runtime.Input) error {
+// caller's own user ID. Cancellation propagates. A NOT_FOUND probe error
+// means the ext.cattle.io endpoint is absent (older Rancher) — skip the
+// guard. A probe that succeeds but carries no userID refuses retryably: an
+// unverifiable identity must cost a retry, not risk a lockout. A transient
+// API-aggregation flap can momentarily drop the ext.cattle.io group from
+// discovery and produce the same NOT_FOUND as a permanently absent endpoint,
+// so the NOT_FOUND skip is a deliberate availability tradeoff — the guard is
+// defense-in-depth; the destructive gates (--dry-run preview, --apply, --yes,
+// cascade warning) remain the primary protection.
+func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) error {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
 		return nil
 	}
-	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		return nil // Probe inaccessible; skip guard.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return guardVerifyRefusal(err)
 	}
 	probe, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
 	if err != nil {
-		return nil // Probe failed; skip guard.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if clierr.IsNotFound(err) {
+			return nil // ext.cattle.io absent on older Rancher — unsupported endpoint, skip
+		}
+		return guardVerifyRefusal(err)
 	}
 	currentID := selfuser.UserID(probe)
-	if currentID == "" || currentID != args[0] {
+	if currentID == "" {
+		return guardVerifyRefusal(errors.New("probe returned no identity"))
+	}
+	if currentID != args[0] {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
@@ -93,4 +86,10 @@ func (c *deleteUserCmd) guardSelfDelete(ctx context.Context, in runtime.Input) e
 		WithHint("switch to a different admin account, then delete this user — another admin must do it")
 }
 
-var _ runtime.MutatingCommand = (*deleteUserCmd)(nil)
+// guardVerifyRefusal returns the retryable GENERIC error used when the
+// self-delete guard cannot be verified. The cause is embedded for diagnostics.
+func guardVerifyRefusal(cause error) *clierr.Error {
+	return clierr.Retryable(clierr.CodeGeneric,
+		fmt.Sprintf("could not verify the target is not your own user: %v", cause)).
+		WithHint("the self-delete guard could not run — retry, or have another admin delete this user")
+}

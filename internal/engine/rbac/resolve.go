@@ -247,21 +247,38 @@ func principalOwned(pids []string, principal string) bool {
 	return false
 }
 
-// nearCandidates filters users to case-insensitive substring matches of
-// input against id, displayName, and username, capped at candidateCap.
-func nearCandidates(input string, users []*unstructured.Unstructured) []clierr.Candidate {
-	needle := strings.ToLower(input)
+// nearFilter applies case-insensitive substring matching of needle against
+// the haystack returned by hay(i) for each candidate at index i. Returns at
+// most limit matching candidates in input order.
+func nearFilter(needle string, cands []clierr.Candidate, hay func(int) string, limit int) []clierr.Candidate {
+	ln := strings.ToLower(needle)
 	var out []clierr.Candidate
-	for _, u := range users {
-		if len(out) == candidateCap {
+	for i, c := range cands {
+		if len(out) == limit {
 			break
 		}
-		display, _, _ := unstructured.NestedString(u.Object, "displayName")
-		username, _, _ := unstructured.NestedString(u.Object, "username")
-		hay := strings.ToLower(u.GetName() + " " + display + " " + username)
-		if strings.Contains(hay, needle) {
-			out = append(out, candidate(u))
+		if strings.Contains(strings.ToLower(hay(i)), ln) {
+			out = append(out, c)
 		}
 	}
 	return out
+}
+
+// nearCandidates filters users to case-insensitive substring matches of
+// input against id, displayName, and username, capped at candidateCap.
+// The haystack for each candidate is id + " " + displayName + " " + username
+// (empties preserved), which is the exact pre-consolidation shape — an empty
+// displayName produces a double space between id and username, so a needle
+// built against that shape matches correctly without false positives from
+// the username appearing twice.
+func nearCandidates(input string, users []*unstructured.Unstructured) []clierr.Candidate {
+	cands := make([]clierr.Candidate, 0, len(users))
+	hays := make([]string, 0, len(users))
+	for _, u := range users {
+		display, _, _ := unstructured.NestedString(u.Object, "displayName")
+		username, _, _ := unstructured.NestedString(u.Object, "username")
+		cands = append(cands, candidate(u))
+		hays = append(hays, u.GetName()+" "+display+" "+username)
+	}
+	return nearFilter(input, cands, func(i int) string { return hays[i] }, candidateCap)
 }

@@ -612,10 +612,11 @@ func livePositionalCandidates(
 			}
 			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
 		case "user":
-			// Management user list: same token boundary as nodedriver. Candidates
-			// mirror the grant/revoke subject source: id union username, system
-			// accounts filtered via isSystemUserItem/engine.IsSystemPrincipal.
-			return fetchUsers(ctx, hc, cap)
+			// Kind-positional user completion (get/delete/patch): address by
+			// metadata.name only — bare usernames are rejected verbatim by these
+			// commands. Grant/revoke subject completion (above) keeps the full
+			// id+username union. System accounts filtered.
+			return fetchUserIDs(ctx, hc, cap)
 		default:
 			// Other management kinds: no generic downstream path applies.
 			return nil

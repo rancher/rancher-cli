@@ -455,22 +455,18 @@ func hasCredentialConfigKey(item map[string]any) bool {
 	return false
 }
 
-// fetchUsers lists management Users and returns candidates suitable for the
-// grant/revoke subject positional. System users (any principalIds entry with
-// prefix "system:") are excluded.
-//
-// Candidates:
-//   - metadata.name id — always emitted; Get-by-id resolution is deterministic.
-//   - username — emitted ONLY when it uniquely resolves: no other non-system user
-//     carries the same string as their username OR displayName. A user whose own
-//     displayName equals their own username is not double-counted (self-collision
-//     does not suppress). This mirrors the ambiguity check in ResolveSubject so
-//     that a candidate offered by completion will not fail with AMBIGUOUS_SELECTION
-//     at execution time.
-//
-// Management list: requires a management token — exec-cred-only capabilities
-// (IDOnly) return nil without a request, same boundary as fetchRoleTemplates.
-func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
+// userEntry is a single non-system management user returned by fetchUserEntries.
+type userEntry struct {
+	id          string
+	username    string
+	displayName string
+}
+
+// fetchUserEntries fetches the management user list and returns all non-system
+// users deduped by metadata.name id. Both fetchUsers and fetchUserIDs ride
+// this first pass. Returns nil on any error or when the capability boundary
+// prevents the request.
+func fetchUserEntries(ctx context.Context, hc *http.Client, cap TokenCapability) []userEntry {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
 	}
@@ -479,14 +475,6 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
 		return nil
 	}
-
-	type userEntry struct {
-		id          string
-		username    string
-		displayName string
-	}
-
-	// First pass: collect non-system users, deduped by metadata.name id.
 	seenID := map[string]bool{}
 	var entries []userEntry
 	for _, item := range col.Items {
@@ -506,6 +494,29 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 		displayName, _ := item["displayName"].(string)
 		entries = append(entries, userEntry{id: id, username: username, displayName: displayName})
 	}
+	return entries
+}
+
+// fetchUsers lists management Users and returns candidates suitable for the
+// grant/revoke subject positional. System users (any principalIds entry with
+// prefix "system:") are excluded.
+//
+// Candidates:
+//   - metadata.name id — always emitted; Get-by-id resolution is deterministic.
+//   - username — emitted ONLY when it uniquely resolves: no other non-system user
+//     carries the same string as their username OR displayName. A user whose own
+//     displayName equals their own username is not double-counted (self-collision
+//     does not suppress). This mirrors the ambiguity check in ResolveSubject so
+//     that a candidate offered by completion will not fail with AMBIGUOUS_SELECTION
+//     at execution time.
+//
+// Management list: requires a management token — exec-cred-only capabilities
+// (IDOnly) return nil without a request, same boundary as fetchRoleTemplates.
+func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
+	entries := fetchUserEntries(ctx, hc, cap)
+	if entries == nil {
+		return nil
+	}
 
 	// Build string frequency: count distinct users whose username OR displayName
 	// equals each string. A user whose username == displayName contributes only
@@ -524,8 +535,8 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 		}
 	}
 
-	// Second pass: emit id unconditionally; emit username only when it uniquely
-	// resolves (freq == 1: no other user would produce AMBIGUOUS_SELECTION).
+	// Emit id unconditionally; emit username only when it uniquely resolves
+	// (freq == 1: no other user would produce AMBIGUOUS_SELECTION).
 	var names []string
 	for _, e := range entries {
 		names = append(names, e.id)
@@ -534,6 +545,23 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 		}
 	}
 	return dedupe(sanitizeCandidates(names))
+}
+
+// fetchUserIDs lists management Users and returns only their metadata.name ids.
+// Used for kind-positional completion (get/delete/patch user) where the command
+// addresses users by metadata.name only — bare usernames are rejected verbatim.
+// System-account filtering matches fetchUsers. Management-token boundary: same
+// as fetchUsers (IDOnly or no token → nil, zero requests).
+func fetchUserIDs(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
+	entries := fetchUserEntries(ctx, hc, cap)
+	if entries == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.id)
+	}
+	return sanitizeCandidates(ids)
 }
 
 // isSystemUserItem reports whether the user item represents a system account:

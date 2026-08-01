@@ -42,11 +42,10 @@ func mapErr(err error) error {
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())
 	case apierrors.IsServiceUnavailable(err):
-		return clierr.New(clierr.CodeGeneric, err.Error()).
-			WithRetryable(true).
+		return clierr.Retryable(clierr.CodeGeneric, err.Error()).
 			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
 	case isUnexpectedServerError(err):
-		ce := clierr.New(clierr.CodeGeneric, err.Error()).WithRetryable(true)
+		ce := clierr.Retryable(clierr.CodeGeneric, err.Error())
 		// The substring refines the hint only — it is never the classifier,
 		// so a reworded proxy body still lands retryable with the generic
 		// proxy-path hint instead of silently flipping non-retryable.

@@ -168,7 +168,7 @@ func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
 	assert.Contains(t, err.Error(), "Pending", "timeout message shows the real phase, not <no state>")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "the wait condition was not met in time — the message carries the last observed state; retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
 }
 
 func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
@@ -241,7 +241,7 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.True(t, ce.Retryable)
 	assert.Contains(t, err.Error(), "provisioning")
-	assert.Equal(t, "the wait condition was not met in time — the message carries the last observed state; retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
 }
 
 func TestWaitForNotFoundFailsImmediately(t *testing.T) {
@@ -286,7 +286,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.True(t, ce.Retryable)
 	assert.Contains(t, err.Error(), "no state observed")
-	assert.Equal(t, "the wait condition was not met in time — the message carries the last observed state; retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
 }
 
 // TestGetClusterBareWaitAppliesRowDefault is IC-11's command-boundary pin:

@@ -78,6 +78,10 @@ func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
 func (e *Error) WithDetails(d any) *Error            { e.Details = d; return e }
 
+// Retryable builds a new Error with the given code and message with Retryable
+// set to true. It is shorthand for New(code, message).WithRetryable(true).
+func Retryable(code, message string) *Error { return New(code, message).WithRetryable(true) }
+
 // AllCodes lists every stable error code (for the schema manifest).
 func AllCodes() []string {
 	return []string{

@@ -565,7 +565,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 			return token, nil
 
 		case <-timeout.C:
-			return token, clierr.New(clierr.CodeAuth, "timed out waiting for the auth token").WithRetryable(true)
+			return token, clierr.Retryable(clierr.CodeAuth, "timed out waiting for the auth token")
 		case <-interrupt:
 			return token, clierr.New(clierr.CodeGeneric, "interrupted waiting for the auth token")
 		case <-ctx.Done():

@@ -22,7 +22,7 @@ func (s stubInput) IsSet(string) bool         { return false }
 func (s stubInput) Args() []string            { return s.args }
 
 func TestResolveScopeGlobal(t *testing.T) {
-	got, err := ResolveScope(context.Background(), fakeFactory{&fakeClient{}}, stubInput{bools: map[string]bool{"global": true}})
+	got, err := ResolveScope(context.Background(), fakeFactory{c: &fakeClient{}}, stubInput{bools: map[string]bool{"global": true}})
 	require.NoError(t, err)
 	assert.Equal(t, Scope{Kind: ScopeGlobal, KindKey: "globalrolebinding", RoleField: "globalRoleName"}, got)
 }
@@ -33,7 +33,7 @@ func TestResolveScopeConflicts(t *testing.T) {
 		{"cluster": "c-x"},     // with global below
 	}
 	for _, strs := range tests {
-		_, err := ResolveScope(context.Background(), fakeFactory{&fakeClient{}}, stubInput{strings: strs, bools: map[string]bool{"global": true}})
+		_, err := ResolveScope(context.Background(), fakeFactory{c: &fakeClient{}}, stubInput{strings: strs, bools: map[string]bool{"global": true}})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -41,7 +41,7 @@ func TestResolveScopeConflicts(t *testing.T) {
 }
 
 func TestResolveScopeNoneIsValidationError(t *testing.T) {
-	_, err := ResolveScope(context.Background(), fakeFactory{&fakeClient{}}, stubInput{})
+	_, err := ResolveScope(context.Background(), fakeFactory{c: &fakeClient{}}, stubInput{})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -51,7 +51,7 @@ func TestResolveScopeCluster(t *testing.T) {
 	// ResolveDownstreamCluster resolves the explicit flag; with a bare id
 	// and no clusters listed it may pass the id through or resolve it —
 	// read internal/engine/route.go before finalizing this fake's data.
-	got, err := ResolveScope(context.Background(), fakeFactory{&fakeClient{}}, stubInput{strings: map[string]string{"cluster": "c-x"}})
+	got, err := ResolveScope(context.Background(), fakeFactory{c: &fakeClient{}}, stubInput{strings: map[string]string{"cluster": "c-x"}})
 	require.NoError(t, err)
 	assert.Equal(t, ScopeCluster, got.Kind)
 	assert.Equal(t, "c-x", got.Cluster)

@@ -65,7 +65,7 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 		gets:        map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 		allowDelete: true,
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	eff, exec, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x"},
@@ -107,7 +107,7 @@ func TestRevokeSingleRole(t *testing.T) {
 		gets:        map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 		allowDelete: true,
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	eff, exec, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -141,7 +141,7 @@ func TestRevokeByPrincipalMatchesUserPrincipalName(t *testing.T) {
 		},
 		allowDelete: true,
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	eff, exec, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x"},
@@ -172,7 +172,7 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 		},
 		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	_, _, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "nonexistent-role"},
@@ -246,7 +246,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 				listsByGVR: tt.listsByGVR,
 				gets:       tt.gets,
 			}
-			cmd := NewRevoke(fakeFactory{c})
+			cmd := NewRevoke(fakeFactory{c: c})
 
 			_, _, err := planRevoke(t, cmd, tt.input)
 			require.Error(t, err)
@@ -278,7 +278,7 @@ func TestRevokePartialFailure(t *testing.T) {
 		allowDelete: true,
 		deleteErrs:  map[string]error{"crtb-beta": conflictErr},
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	_, exec, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x"},
@@ -336,7 +336,7 @@ func TestRevokeStaleHashIDOccupiedConflict(t *testing.T) {
 			}},
 		},
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	_, _, err := planRevoke(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x"},
@@ -359,7 +359,7 @@ func TestRevokeGlobalScope(t *testing.T) {
 		},
 		allowDelete: true,
 	}
-	cmd := NewRevoke(fakeFactory{client})
+	cmd := NewRevoke(fakeFactory{c: client})
 
 	eff, exec, err := planRevoke(t, cmd, stubInput{
 		bools: map[string]bool{"global": true},

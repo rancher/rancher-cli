@@ -90,7 +90,7 @@ func TestGrantProjectUserByID(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -139,7 +139,7 @@ func TestGrantClusterScope(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},
@@ -175,7 +175,7 @@ func TestGrantGlobalScope(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		bools:   map[string]bool{"global": true},
@@ -218,7 +218,7 @@ func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -255,7 +255,7 @@ func TestGrantGroupPassthrough(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -353,7 +353,7 @@ func TestGrantDuplicateConflict(t *testing.T) {
 				listsByGVR: tt.listsByGVR,
 				gets:       tt.gets,
 			}
-			cmd := NewGrant(fakeFactory{client})
+			cmd := NewGrant(fakeFactory{c: client})
 
 			_, _, err := planGrant(t, cmd, tt.input)
 			var ce *clierr.Error
@@ -385,7 +385,7 @@ func TestGrantDuplicateAliasConflict(t *testing.T) {
 			}},
 		},
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -416,7 +416,7 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 			"projectroletemplatebindings": forbidden,
 		},
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -441,12 +441,15 @@ func TestGrantStaleHashIDOccupiedConflict(t *testing.T) {
 		users: []map[string]any{
 			userObj(id, "Alice", "alice", "okta_user://renamed"),
 		},
-		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
 			"projects": projectList("p-x"),
 		},
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
@@ -459,10 +462,98 @@ func TestGrantStaleHashIDOccupiedConflict(t *testing.T) {
 	assert.Nil(t, client.created, "must not proceed to create on occupied-id conflict")
 }
 
+func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
+	t.Parallel()
+	// A project-context roletemplate IS found by Get but must be refused when
+	// the requested scope is cluster. The error names both contexts and carries
+	// the valid at-scope pool (cluster-context + empty-context roles) so the
+	// caller is guided to the right options.
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets: map[string]*unstructured.Unstructured{
+			"/project-member": {Object: map[string]any{
+				"metadata": map[string]any{"name": "project-member"},
+				"context":  "project",
+			}},
+		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"roletemplates": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-member"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+				// Empty-context role is valid at every scope and must appear in candidates.
+				{Object: map[string]any{"metadata": map[string]any{"name": "base-viewer"}, "context": ""}},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "project-member", "message must name the role")
+	assert.Contains(t, ce.Message, "project", "message must name the role's context")
+	assert.Contains(t, ce.Message, "cluster", "message must name the requested scope")
+	assert.Contains(t, ce.Hint, "get roletemplates")
+	// Candidates must be non-empty: scope-mismatch shows the valid at-scope pool.
+	require.NotEmpty(t, ce.Candidates)
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	// Cluster-context roles appear.
+	assert.Contains(t, ids, "cluster-owner")
+	assert.Contains(t, ids, "cluster-member")
+	// Empty-context role appears (valid everywhere, including cluster scope).
+	assert.Contains(t, ids, "base-viewer")
+	// Wrong-context (project) role must not appear.
+	assert.NotContains(t, ids, "project-member")
+}
+
+// TestGrantCheckRolePreflightOrder verifies that checkRole runs before the
+// duplicate-binding list: if the role Get returns NOT_FOUND while the binding
+// list contains a stale duplicate, NOT_FOUND wins — a grant of a nonexistent
+// role cannot proceed regardless of the duplicate.
+func TestGrantCheckRolePreflightOrder(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		// Role does not exist.
+		getErrs: map[string]error{
+			"cluster-owner": clierr.New(clierr.CodeNotFound, "not found: cluster-owner"),
+		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			// Stale duplicate binding exists in the list.
+			"clusterroletemplatebindings": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{
+					"metadata":         map[string]any{"name": "co-1", "namespace": "c-x"},
+					"userName":         "u-abc",
+					"roleTemplateName": "cluster-owner",
+				}},
+			}},
+			"roletemplates": {},
+		},
+	}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code, "role not found must win over stale duplicate binding")
+	assert.Contains(t, ce.Message, "cluster-owner")
+}
+
 func TestGrantMissingRole(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x"},
@@ -489,7 +580,7 @@ func TestGrantBadRoleAtClusterScope(t *testing.T) {
 			}},
 		},
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x", "role": "cluster-owne"},
@@ -522,7 +613,7 @@ func TestGrantBadRoleAtGlobalScope(t *testing.T) {
 			}},
 		},
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	_, _, err := planGrant(t, cmd, stubInput{
 		bools:   map[string]bool{"global": true},
@@ -556,7 +647,7 @@ func TestGrantRoleReadDegraded(t *testing.T) {
 		},
 		allowCreate: true,
 	}
-	cmd := NewGrant(fakeFactory{client})
+	cmd := NewGrant(fakeFactory{c: client})
 
 	eff, exec, err := planGrant(t, cmd, stubInput{
 		strings: map[string]string{"cluster": "c-x", "role": "cluster-owner"},

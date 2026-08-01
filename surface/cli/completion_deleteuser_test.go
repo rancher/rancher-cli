@@ -24,7 +24,7 @@ func TestLivePositionalDeleteUserCandidates(t *testing.T) {
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
 	assert.Contains(t, got, "u-alice", "user id must be a candidate")
-	assert.Contains(t, got, "alice", "username must be a candidate when unique")
+	assert.NotContains(t, got, "alice", "username must not be offered for delete user — rejected verbatim")
 	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
 	assert.NotContains(t, got, "system-svc", "system username must be excluded")
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
@@ -65,4 +65,22 @@ func TestLivePositionalGetUserCandidates(t *testing.T) {
 	assert.Contains(t, got, "u-alice")
 	assert.NotContains(t, got, "u-sys")
 	assert.Equal(t, int32(1), hits.Load())
+}
+
+// TestLivePositionalPatchUserCandidates confirms the management branch handles
+// `patch user <TAB>` using the same user fetch as get and delete.
+func TestLivePositionalPatchUserCandidates(t *testing.T) {
+	t.Parallel()
+	srv, hits := userServer(t)
+	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "patch user"}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+
+	assert.Contains(t, got, "u-alice", "user id must be a candidate")
+	assert.NotContains(t, got, "alice", "username must not be offered for patch user — rejected verbatim")
+	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
+	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }

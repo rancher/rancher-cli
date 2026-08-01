@@ -165,7 +165,7 @@ func oauthAuthCodeAuth(
 
 		return rancherLogin(ctx, client, input, oauthToken)
 	case <-timeout.C:
-		return nil, clierr.New(clierr.CodeAuth, "timed out waiting for browser authentication").WithRetryable(true)
+		return nil, clierr.Retryable(clierr.CodeAuth, "timed out waiting for browser authentication")
 	case <-interrupt:
 		return nil, clierr.New(clierr.CodeGeneric, "authentication interrupted by user")
 	case <-ctx.Done():

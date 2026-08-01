@@ -4312,7 +4312,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Resolves the subject and verifies the role exists at the declared scope (roletemplate for project/cluster, globalrole for global), then checks for an existing duplicate binding and plans a create. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
+      "desc": "Verifies the role exists at the declared scope (roletemplate for project/cluster, globalrole for global), resolves the subject, then checks for an existing duplicate binding and plans a create. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",

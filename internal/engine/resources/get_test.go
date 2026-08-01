@@ -735,6 +735,9 @@ func TestWaitElapsed(t *testing.T) {
 		{90 * time.Second, "1m30s", "90s → second-rounded 1m30s"},
 		{95 * time.Second, "1m35s", "95s → second-rounded 1m35s (the live case)"},
 		{5 * time.Minute, "5m0s", "5m → second-rounded 5m0s"},
+		// Hour-scale: full precision is deliberate (not the coarser AGE-column form).
+		{2*time.Hour + 15*time.Minute + 30*time.Second, "2h15m30s", "2h15m30s pinned at hour scale"},
+		{1*time.Hour + 0*time.Minute + 1*time.Second, "1h0m1s", "1h0m1s — zero-minute field retained"},
 	}
 	for _, tt := range tests {
 		tt := tt

@@ -11,10 +11,10 @@ jsonquery stdout data.displayName e2euser
 
 # Dry-run: the envelope carries the cascade warning (role bindings cascade);
 # the envtest harness has no SelfUser store so the self-delete guard probe
-# fails gracefully and is skipped — the inner Plan proceeds.
+# returns NOT_FOUND — endpoint absent, guard skips — and the inner Plan proceeds.
 exec rancher delete user u-e2e --dry-run -o json
 jsonquery stdout data.action delete
-stdout bindings
+jsonquery stdout warnings.0 'deleting this user removes the identity record; Rancher''s controllers remove the user''s role bindings (cluster memberships, project memberships, global role bindings) with it'
 
 # Gate: --apply alone is refused because delete is destructive (needs --yes).
 ! exec rancher delete user u-e2e --apply -o json

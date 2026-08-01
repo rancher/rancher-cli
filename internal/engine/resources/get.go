@@ -219,9 +219,12 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 }
 
 // waitElapsed renders the wait summary's elapsed display: Go's
-// second-rounded duration format at or above one second (1m35s — never
-// truncated to the coarser unit); milliseconds below it, floored at 1ms
-// so an instant wait never prints "0s".
+// second-rounded duration format at or above one second (1m35s, 2h15m30s —
+// full seconds precision, never truncated to a coarser unit). This
+// deliberately diverges from the AGE-column short form (hours-only for long
+// durations) which is the k8s table idiom; wait summaries warrant the full
+// breakdown. Below one second: milliseconds, floored at 1ms so an instant
+// wait never prints "0s".
 func waitElapsed(elapsed time.Duration) string {
 	if elapsed < time.Second {
 		ms := elapsed.Round(time.Millisecond)

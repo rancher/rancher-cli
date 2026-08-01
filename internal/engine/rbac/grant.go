@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -32,9 +31,9 @@ func (grantCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "grant",
 		Usage: "Grant a role to a user or group at project, cluster, or global scope",
-		Desc: "Resolves the subject and verifies the role exists at the declared scope " +
-			"(roletemplate for project/cluster, globalrole for global), then checks for an " +
-			"existing duplicate binding and plans a create. " +
+		Desc: "Verifies the role exists at the declared scope " +
+			"(roletemplate for project/cluster, globalrole for global), resolves the subject, " +
+			"then checks for an existing duplicate binding and plans a create. " +
 			"Discover available roles: rancher get roletemplates (project/cluster scopes) " +
 			"or rancher get globalroles (global scope).",
 		CommandType: runtime.Mutating,
@@ -57,6 +56,13 @@ func (grantCmd) Describe() runtime.Descriptor {
 	}
 }
 
+// Plan verifies the role, resolves the subject, checks for a duplicate binding,
+// and plans a create. Preflight error policy: role verification (checkRole)
+// degrades on non-cancellation, non-NotFound errors — the server enforces the
+// role constraint regardless, so blocking an RBAC-restricted granter from an
+// unreadable role object would be worse than a missed client-side check. Subject
+// resolution (ResolveSubject) is fatal on any error: the binding requires a
+// resolved subject, and there is no safe fallback without one.
 func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
@@ -76,10 +82,6 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	rs, err := ResolveSubject(ctx, c.clients, sub)
-	if err != nil {
-		return safety.Effect{}, nil, err
-	}
 
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -87,7 +89,17 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	bindKind, _ := kinds.Lookup(scope.KindKey)
 
+	// checkRole runs before ResolveSubject and the duplicate-binding List:
+	// a bad role fails immediately without a subject round-trip. A role
+	// deleted out-of-band while a stale binding exists surfaces as
+	// NOT_FOUND — a grant of a nonexistent role cannot proceed regardless;
+	// a CONFLICT naming a role that no longer exists misleads.
 	if err := checkRole(ctx, client, role, scope.Kind); err != nil {
+		return safety.Effect{}, nil, err
+	}
+
+	rs, err := ResolveSubject(ctx, c.clients, sub)
+	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 
@@ -187,12 +199,14 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 	return out
 }
 
-// checkRole verifies that role exists at the given scope before the mutation is
-// planned. On NOT_FOUND it returns a structured error with nearby candidates
-// (roletemplates filtered by context == scope, or globalroles for global scope)
-// and a discovery hint. A non-cancellation, non-NotFound Get failure degrades
-// gracefully — an RBAC-restricted granter must not be blocked by an unreadable
-// role object, so validation is skipped and the grant proceeds. Caller-context
+// checkRole verifies that role exists at the given scope before the mutation
+// is planned. On NOT_FOUND it returns a structured error with nearby
+// candidates (roletemplates whose context is empty or matches scope, or
+// globalroles for global scope) and a discovery hint. On scope mismatch the
+// full at-scope pool is returned directly — the name is right, the scope is
+// wrong, so nearness filtering would be misleading. A non-cancellation,
+// non-NotFound Get failure degrades gracefully — an RBAC-restricted granter
+// must not be blocked by an unreadable role object. Caller-context
 // cancellation always propagates.
 func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) error {
 	roleKindKey := "roletemplate"
@@ -201,13 +215,35 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	}
 	roleKind, _ := kinds.Lookup(roleKindKey)
 
-	_, err := client.Get(ctx, roleKind.GVR, "", role)
+	obj, err := client.Get(ctx, roleKind.GVR, "", role)
 	if err == nil {
+		// Scope check for non-global scopes: a roletemplate whose top-level
+		// context field is non-empty and differs from the requested scope is
+		// not usable there — catch it here so the raw webhook error does not
+		// surface. Empty-context objects always pass (legacy/inherited roles).
+		if scope != ScopeGlobal {
+			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != "" && rtCtx != string(scope) {
+				hint := "run: rancher get roletemplates"
+				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
+				if perr != nil {
+					return perr
+				}
+				// Scope mismatch: the name is correct but the scope is wrong.
+				// Show the valid at-scope roles directly — no nearness needle.
+				// Empty needle matches everything; nearFilter caps at candidateCap.
+				candidates := nearFilter("", pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
+				return clierr.New(clierr.CodeNotFound,
+					fmt.Sprintf("role %s is a %s role, not usable at %s scope", role, rtCtx, scope)).
+					WithCandidates(candidates).
+					WithHint(hint)
+			}
+		}
 		return nil
 	}
 	if !clierr.IsNotFound(err) {
-		// Degrade: non-cancellation errors skip role validation so an
-		// RBAC-restricted granter is not blocked by unreadable role objects.
+		// Degrade: see Plan's preflight error policy — the server enforces
+		// the role constraint; an unreadable role object must not block a
+		// legitimately permitted granter. Cancellation always propagates.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -218,48 +254,40 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	if scope == ScopeGlobal {
 		hint = "run: rancher get globalroles"
 	}
-	list, lerr := client.List(ctx, roleKind.GVR, "", "")
-	if lerr != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		// Degraded list: return NOT_FOUND with hint but no candidates.
-		return clierr.New(clierr.CodeNotFound, "role not found: "+role).WithHint(hint)
+	pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
+	if perr != nil {
+		return perr
 	}
-
-	var pool []*unstructured.Unstructured
-	for i := range list.Items {
-		rt := &list.Items[i]
-		if scope != ScopeGlobal {
-			rtContext, _, _ := unstructured.NestedString(rt.Object, "context")
-			if rtContext != string(scope) {
-				continue
-			}
-		}
-		pool = append(pool, rt)
-	}
-
 	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
-		WithCandidates(nearRoleCandidates(role, pool)).
+		WithCandidates(nearFilter(role, pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)).
 		WithHint(hint)
 }
 
-// nearRoleCandidates filters roles to case-insensitive substring matches of
-// input against id and displayName, capped at candidateCap.
-func nearRoleCandidates(input string, roles []*unstructured.Unstructured) []clierr.Candidate {
-	needle := strings.ToLower(input)
-	var out []clierr.Candidate
-	for _, r := range roles {
-		if len(out) == candidateCap {
-			break
+// rolePoolAtScope lists the role kind and returns all roles whose context is
+// empty (valid at every scope) or equals scope as Candidates. Cancellation
+// propagates; any other list failure degrades to (nil, nil) so an
+// RBAC-restricted granter is not blocked.
+func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind kinds.Kind, scope ScopeKind) ([]clierr.Candidate, error) {
+	list, err := client.List(ctx, roleKind.GVR, "", "")
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		display, _, _ := unstructured.NestedString(r.Object, "displayName")
-		hay := strings.ToLower(r.GetName() + " " + display)
-		if strings.Contains(hay, needle) {
-			out = append(out, clierr.Candidate{ID: r.GetName(), Name: display})
-		}
+		return nil, nil // degraded
 	}
-	return out
+	cands := make([]clierr.Candidate, 0, len(list.Items))
+	for i := range list.Items {
+		rt := &list.Items[i]
+		if scope != ScopeGlobal {
+			rtCtx, _, _ := unstructured.NestedString(rt.Object, "context")
+			if rtCtx != "" && rtCtx != string(scope) {
+				continue
+			}
+		}
+		display, _, _ := unstructured.NestedString(rt.Object, "displayName")
+		cands = append(cands, clierr.Candidate{ID: rt.GetName(), Name: display})
+	}
+	return cands, nil
 }
 
 // bindingMatchesSubject reports whether an existing binding is for the

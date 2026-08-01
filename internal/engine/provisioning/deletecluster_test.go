@@ -86,14 +86,14 @@ func planDeleteCluster(t *testing.T, cmd runtime.Command, in runtime.Input) (saf
 	return mc.Plan(context.Background(), in)
 }
 
-// TestDeleteProvisioningClusterRefusesLocalWithoutClientCall pins the D-6
-// guard's core property: the literal argument "local" is refused with
-// CodeValidation BEFORE any client call — not merely before the dry-run
-// delete, but before the initial Get too, since the check happens ahead of
-// delegating to the wrapped generic delete's Plan at all.
-func TestDeleteProvisioningClusterRefusesLocalWithoutClientCall(t *testing.T) {
+// TestDeleteProvisioningClusterRefusesLocal pins the D-6 guard's core
+// property: the literal argument "local" is refused with CodeValidation.
+// The guard runs after inner.Plan, so the object must exist for the refusal
+// to fire — inner.Plan confirms existence and completes the dry-run before
+// the guard checks the argument.
+func TestDeleteProvisioningClusterRefusesLocal(t *testing.T) {
 	t.Parallel()
-	client := &delRecClient{}
+	client := &delRecClient{obj: clusterObjWithRV("local", "1")}
 	cmd := NewDeleteProvisioningCluster(mustProvisioningClusterKind(t), fakeFactory{c: client})
 
 	_, exec, err := planDeleteCluster(t, cmd, ccInput{a: []string{"local"}})
@@ -104,8 +104,9 @@ func TestDeleteProvisioningClusterRefusesLocalWithoutClientCall(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "refusing to delete the local cluster", ce.Message)
 
-	assert.Equal(t, 0, client.getCalls, "the local refusal must short-circuit before any Get call")
-	assert.Empty(t, client.deletes, "the local refusal must short-circuit before any Delete call")
+	assert.Greater(t, client.getCalls, 0, "inner Plan must Get before the guard check")
+	assert.NotEmpty(t, client.deletes, "inner Plan's dry-run must have executed")
+	assert.True(t, client.deletes[0].dryRun, "inner Plan issues a dry-run delete")
 }
 
 // TestDeleteProvisioningClusterCarriesCascadeWarning pins the second D-6

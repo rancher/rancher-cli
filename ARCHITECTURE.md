@@ -290,8 +290,9 @@ validator requires the annotation on dry-run; pre-stamping makes the dry-run hon
 the probe fails, a `"creatorId not stamped"` warning is emitted and the create proceeds
 unstamped — rancher-webhook may then deny the dry-run, but a real `--apply` create is
 still expected to succeed (the mutator stamps identity server-side on real creates).
-This is the one deliberate network write during Plan; all other writes are deferred into
-the exec closure and run only after the `--apply` gate.
+These are the two deliberate network writes during Plan — `create cluster` uses the SelfUser
+probe for creatorId stamping, and `delete user` uses it for the self-delete guard. All other
+writes are deferred into the exec closure and run only after the `--apply` gate.
 
 **Read flow** (`ReadCommand`, e.g. `get pod`): `validateInput` → `Execute(ctx, in,
 prompter)` → render. `--dry-run` on a read command is rejected with

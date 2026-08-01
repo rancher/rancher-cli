@@ -30,6 +30,9 @@ type fakeClient struct {
 	listErrByGVR map[string]error                          // keyed by gvr.Resource; overrides listErr for that GVR
 	gets         map[string]*unstructured.Unstructured     // keyed by "ns/name"
 
+	createFn func(gvr schema.GroupVersionResource) (*unstructured.Unstructured, error)
+
+	createCalls   int
 	created       *unstructured.Unstructured
 	createdNS     string
 	createDryRuns []bool
@@ -103,7 +106,11 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, _,
 	return out, nil
 }
 
-func (f *fakeClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (f *fakeClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	f.createCalls++
+	if f.createFn != nil {
+		return f.createFn(gvr)
+	}
 	if !f.allowCreate {
 		return nil, fmt.Errorf("unexpected Create")
 	}
@@ -133,11 +140,23 @@ func (f *fakeClient) Logs(context.Context, string, string, engine.LogOptions) (s
 	return "", fmt.Errorf("unexpected Logs")
 }
 
-type fakeFactory struct{ c engine.ClusterClient }
+type fakeFactory struct {
+	c        engine.ClusterClient
+	cErr     error
+	ctxAware bool
+}
 
-func (f fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return f.c, nil }
-func (f fakeFactory) ContextCluster() (string, error)                               { return "", nil }
-func (f fakeFactory) ContextProject() (string, error)                               { panic("unused") }
+func (f fakeFactory) Cluster(ctx context.Context, _ string) (engine.ClusterClient, error) {
+	if f.ctxAware && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if f.cErr != nil {
+		return nil, f.cErr
+	}
+	return f.c, nil
+}
+func (f fakeFactory) ContextCluster() (string, error) { return "", nil }
+func (f fakeFactory) ContextProject() (string, error) { return "", nil }
 func (f fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if nameOrID == "" || nameOrID == "local" {
 		return "local", nil
@@ -146,14 +165,14 @@ func (f fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string,
 }
 
 func TestResolveSubjectGroupPassthrough(t *testing.T) {
-	got, err := ResolveSubject(context.Background(), fakeFactory{&fakeClient{}}, Subject{Kind: SubjectGroup, Principal: "okta_group://y"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: &fakeClient{}}, Subject{Kind: SubjectGroup, Principal: "okta_group://y"})
 	require.NoError(t, err)
 	assert.Equal(t, ResolvedSubject{Principal: "okta_group://y"}, got)
 }
 
 func TestResolveSubjectBareByIDNoList(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{userObj("u-abc", "Jane", "jane", "okta_user://x", "local://u-abc")}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "u-abc"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "u-abc"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-abc", got.UserID)
 	assert.Equal(t, "local://u-abc", got.Principal, "preferredPrincipal picks local://")
@@ -166,7 +185,7 @@ func TestResolveSubjectBareByDisplayName(t *testing.T) {
 		userObj("u-abc", "Jane Doe", "jane", "okta_user://x"),
 		userObj("u-sys", "System account for Cluster c-x", "system-c-x", "system://c-x"),
 	}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "Jane Doe"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane Doe"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-abc", got.UserID)
 	assert.Equal(t, "okta_user://x", got.Principal)
@@ -176,7 +195,7 @@ func TestResolveSubjectBareSystemDisplayExcluded(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-sys", "Deploy Bot", "bot", "system://c-x"),
 	}}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "Deploy Bot"})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Deploy Bot"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code, "system users must not resolve")
@@ -202,7 +221,7 @@ func TestResolveSubjectSystemUserGetHitIsTerminal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &fakeClient{users: sysUsers}
-			got, err := ResolveSubject(context.Background(), fakeFactory{c}, tt.sub)
+			got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, tt.sub)
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -217,7 +236,7 @@ func TestResolveSubjectBareAmbiguousDisplay(t *testing.T) {
 		userObj("u-1", "Jane", "jane1", "okta_user://1"),
 		userObj("u-2", "Jane", "jane2", "okta_user://2"),
 	}}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "Jane"})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -231,7 +250,7 @@ func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 	}
 	users = append(users, userObj("u-zzz", "Zed", "zed", "okta_user://z"))
 	c := &fakeClient{users: users}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "jan"})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "jan"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -244,7 +263,7 @@ func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 
 func TestResolveSubjectBareCandidateNameFallsBackToUsername(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{userObj("u-abc", "", "jane", "okta_user://x")}}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "jan"})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "jan"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	require.Len(t, ce.Candidates, 1)
@@ -253,7 +272,7 @@ func TestResolveSubjectBareCandidateNameFallsBackToUsername(t *testing.T) {
 
 func TestResolveSubjectLocalPrincipalStrips(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{userObj("u-abc", "Jane", "jane", "local://u-abc")}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: "local://u-abc"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: "local://u-abc"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-abc", got.UserID)
 	assert.Equal(t, "local://u-abc", got.Principal, "principal kept as given")
@@ -267,7 +286,7 @@ func TestResolveSubjectExternalPrincipalHashHit(t *testing.T) {
 	principal := "okta_user://alice"
 	id := ProvisionedUserID(principal)
 	c := &fakeClient{users: []map[string]any{userObj(id, "Alice", "alice", principal)}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: principal})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: principal})
 	require.NoError(t, err)
 	assert.Equal(t, id, got.UserID)
 	assert.Equal(t, principal, got.Principal)
@@ -285,7 +304,7 @@ func TestResolveSubjectExternalPrincipalHashHitOccupiedConflict(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj(id, "Alice", "alice", "okta_user://renamed"),
 	}}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: requestedPrincipal})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: requestedPrincipal})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
@@ -313,7 +332,7 @@ func TestResolveSubjectExternalPrincipalHashHitAmbiguousOwners(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &fakeClient{users: tt.users}
-			_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: principal})
+			_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: principal})
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -341,7 +360,7 @@ func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &fakeClient{users: tt.users}
-			_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: principal})
+			_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: principal})
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -355,7 +374,7 @@ func TestResolveSubjectExternalPrincipalListScanHit(t *testing.T) {
 	// User exists under a non-hash id (e.g. created before EnsureUser, or
 	// renamed) — the principalIds list scan must find it.
 	c := &fakeClient{users: []map[string]any{userObj("user-vwq4j", "Admin", "admin", "okta_user://alice", "local://user-vwq4j")}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: "okta_user://alice"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: "okta_user://alice"})
 	require.NoError(t, err)
 	assert.Equal(t, "user-vwq4j", got.UserID)
 	assert.Equal(t, "okta_user://alice", got.Principal, "given principal, not preferredPrincipal")
@@ -364,7 +383,7 @@ func TestResolveSubjectExternalPrincipalListScanHit(t *testing.T) {
 
 func TestResolveSubjectExternalPrincipalProvisions(t *testing.T) {
 	c := &fakeClient{}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Principal: "okta_user://ghost"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: "okta_user://ghost"})
 	require.NoError(t, err)
 	assert.Equal(t, ResolvedSubject{Principal: "okta_user://ghost", Provision: true}, got)
 }
@@ -374,7 +393,7 @@ func TestResolveSubjectBareByUsername(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-adm", "", "adm-user", "local://u-adm"),
 	}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "adm-user"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "adm-user"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-adm", got.UserID)
 	assert.Equal(t, "local://u-adm", got.Principal)
@@ -386,7 +405,7 @@ func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
 		userObj("u-aaa", "dev", "aaa", "local://u-aaa"),
 		userObj("u-bbb", "", "dev", "local://u-bbb"),
 	}}
-	_, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "dev"})
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "dev"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -399,7 +418,7 @@ func TestResolveSubjectBareSameUserBothFields(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-ops", "ops", "ops", "local://u-ops"),
 	}}
-	got, err := ResolveSubject(context.Background(), fakeFactory{c}, Subject{Kind: SubjectUser, Bare: "ops"})
+	got, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "ops"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-ops", got.UserID)
 	assert.Equal(t, "local://u-ops", got.Principal)
@@ -425,11 +444,34 @@ func TestResolveSubjectErrorPassthrough(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveSubject(context.Background(), fakeFactory{tt.c}, tt.sub)
+			got, err := ResolveSubject(context.Background(), fakeFactory{c: tt.c}, tt.sub)
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeRBAC, ce.Code, "non-NOT_FOUND errors return unchanged")
 			assert.False(t, got.Provision)
 		})
 	}
+}
+
+// TestNearCandidatesEmptyDisplayNameHay verifies that nearCandidates searches
+// both displayName and username independently. A user whose displayName is set
+// to a different value must still be findable by username, and a user with an
+// empty displayName must be findable by username without the username appearing
+// twice in the haystack and causing false positives.
+func TestNearCandidatesEmptyDisplayNameHay(t *testing.T) {
+	users := []*unstructured.Unstructured{
+		// displayName "Alice", username "bob" — needle "bob" must match via username.
+		{Object: userObj("u-abc", "Alice", "bob", "local://u-abc")},
+		// empty displayName, username "charlie" — needle "charlie" must match.
+		{Object: userObj("u-def", "", "charlie", "local://u-def")},
+		// control: must not appear for either needle.
+		{Object: userObj("u-xyz", "Zed", "zed", "local://u-xyz")},
+	}
+	got := nearCandidates("bob", users)
+	require.Len(t, got, 1, "only u-abc matches 'bob' via username")
+	assert.Equal(t, "u-abc", got[0].ID)
+
+	got2 := nearCandidates("charlie", users)
+	require.Len(t, got2, 1, "only u-def matches 'charlie' via username")
+	assert.Equal(t, "u-def", got2[0].ID)
 }

@@ -1,4 +1,4 @@
-package rbac_test
+package rbac
 
 import (
 	"context"
@@ -8,9 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -34,15 +32,6 @@ func planDeleteUser(t *testing.T, cmd runtime.Command, in runtime.Input) (safety
 	return eff, err
 }
 
-// userObj returns a minimal management.cattle.io/v3 User object.
-func userObj(name string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "management.cattle.io/v3",
-		"kind":       "User",
-		"metadata":   map[string]any{"name": name, "resourceVersion": "1"},
-	}}
-}
-
 // selfUserObj returns a SelfUser probe result with the given userID.
 func selfUserObj(userID string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
@@ -52,69 +41,35 @@ func selfUserObj(userID string) *unstructured.Unstructured {
 	}}
 }
 
-// duClient is a dual-purpose client for deleteuser tests. Create calls for
-// selfuser.GVR return a SelfUser with the configured identity; all other calls
-// delegate to the stub user object.
-type duClient struct {
-	selfUserID string
-	obj        *unstructured.Unstructured
-	getErr     error
-}
-
-func (c *duClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, _ string) (*unstructured.Unstructured, error) {
-	if c.getErr != nil {
-		return nil, c.getErr
+// selfUserCreate returns a createFn that answers selfuser.GVR probes with
+// a SelfUser carrying userID, and errors for any other GVR.
+func selfUserCreate(userID string) func(schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+	return func(gvr schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+		if gvr == selfuser.GVR {
+			return selfUserObj(userID), nil
+		}
+		return nil, errors.New("unexpected Create")
 	}
-	return c.obj, nil
 }
-func (c *duClient) List(_ context.Context, _ schema.GroupVersionResource, _ string, _ string) (*unstructured.UnstructuredList, error) {
-	return &unstructured.UnstructuredList{}, nil
-}
-func (c *duClient) Logs(_ context.Context, _ string, _ string, _ engine.LogOptions) (string, error) {
-	return "", nil
-}
-func (c *duClient) Create(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ bool) (*unstructured.Unstructured, error) {
-	if gvr == selfuser.GVR {
-		return selfUserObj(c.selfUserID), nil
+
+// probeErrCreate returns a createFn that returns err for selfuser.GVR probes.
+func probeErrCreate(err error) func(schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+	return func(gvr schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+		if gvr == selfuser.GVR {
+			return nil, err
+		}
+		return nil, errors.New("unexpected Create")
 	}
-	return obj, nil
-}
-func (c *duClient) Update(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ bool) (*unstructured.Unstructured, error) {
-	return obj, nil
-}
-func (c *duClient) Delete(_ context.Context, _ schema.GroupVersionResource, _ string, _ string, _ string, _ bool) error {
-	return nil
 }
 
-var _ engine.ClusterClient = (*duClient)(nil)
-
-type duFactory struct {
-	client engine.ClusterClient
+// delUserObj returns a minimal management.cattle.io/v3 User object for delete tests.
+func delUserObj(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "User",
+		"metadata":   map[string]any{"name": name, "resourceVersion": "1"},
+	}}
 }
-
-func (f *duFactory) Cluster(_ context.Context, _ string) (engine.ClusterClient, error) {
-	if f.client == nil {
-		return &duClient{obj: &unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "x", "resourceVersion": "1"},
-		}}}, nil
-	}
-	return f.client, nil
-}
-func (f *duFactory) ContextCluster() (string, error)                            { return "", nil }
-func (f *duFactory) ContextProject() (string, error)                            { return "", nil }
-func (f *duFactory) ResolveCluster(_ context.Context, s string) (string, error) { return s, nil }
-
-var _ engine.ClusterClientFactory = (*duFactory)(nil)
-
-type duInput struct {
-	args []string
-}
-
-func (i duInput) String(string) string    { return "" }
-func (i duInput) Bool(string) bool        { return false }
-func (i duInput) Strings(string) []string { return nil }
-func (i duInput) IsSet(string) bool       { return false }
-func (i duInput) Args() []string          { return i.args }
 
 // TestDeleteUserDescribeMatchesGenericDelete verifies that the override's
 // Descriptor mirrors the generic delete command's Descriptor (same Name,
@@ -122,7 +77,7 @@ func (i duInput) Args() []string          { return i.args }
 func TestDeleteUserDescribeMatchesGenericDelete(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	cmd := rbac.NewDeleteUser(k, &duFactory{})
+	cmd := NewDeleteUser(k, fakeFactory{c: &fakeClient{}})
 	d := cmd.Describe()
 	assert.Equal(t, "delete user", d.Name)
 	assert.Equal(t, runtime.Mutating, d.CommandType)
@@ -133,14 +88,14 @@ func TestDeleteUserDescribeMatchesGenericDelete(t *testing.T) {
 func TestDeleteUserPlanAppendsCascadeWarning(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	client := &duClient{
-		selfUserID: "u-current",
-		obj:        userObj("u-other"),
+	c := &fakeClient{
+		createFn:    selfUserCreate("u-current"),
+		gets:        map[string]*unstructured.Unstructured{"/u-other": delUserObj("u-other")},
+		allowDelete: true,
 	}
-	fac := &duFactory{client: client}
-	cmd := rbac.NewDeleteUser(k, fac)
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
 
-	eff, err := planDeleteUser(t, cmd, duInput{args: []string{"u-other"}})
+	eff, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-other"}})
 	require.NoError(t, err)
 	require.NotEmpty(t, eff.Warnings, "cascade warning must be appended")
 	found := false
@@ -158,79 +113,128 @@ func TestDeleteUserPlanAppendsCascadeWarning(t *testing.T) {
 func TestDeleteUserSelfDeleteRefused(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	client := &duClient{
-		selfUserID: "u-self",
-		obj:        userObj("u-self"),
+	c := &fakeClient{
+		createFn:    selfUserCreate("u-self"),
+		gets:        map[string]*unstructured.Unstructured{"/u-self": delUserObj("u-self")},
+		allowDelete: true,
 	}
-	fac := &duFactory{client: client}
-	cmd := rbac.NewDeleteUser(k, fac)
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
 
-	_, err := planDeleteUser(t, cmd, duInput{args: []string{"u-self"}})
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-self"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a *clierr.Error, got %v (%T)", err, err)
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "u-self")
 	assert.Contains(t, ce.Hint, "admin")
 }
 
-// TestDeleteUserSelfDeleteProbeFailPassesThrough verifies that a SelfUser
-// probe failure is non-blocking: the guard skips and the inner Plan proceeds.
-func TestDeleteUserSelfDeleteProbeFailPassesThrough(t *testing.T) {
+// TestDeleteUserGenericProbeErrorRefuses verifies that a non-NotFound
+// SelfUser probe failure refuses with a retryable GENERIC error to prevent
+// inadvertent lockout on transient infrastructure issues.
+func TestDeleteUserGenericProbeErrorRefuses(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	// probeErrClient returns an error for selfuser.GVR creates.
-	probeErrClient := &probeFailClient{obj: userObj("u-self")}
-	fac := &duFactory{client: probeErrClient}
-	cmd := rbac.NewDeleteUser(k, fac)
+	c := &fakeClient{
+		createFn:    probeErrCreate(errors.New("identity probe unavailable")),
+		gets:        map[string]*unstructured.Unstructured{"/u-self": delUserObj("u-self")},
+		allowDelete: true,
+	}
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
 
-	eff, err := planDeleteUser(t, cmd, duInput{args: []string{"u-self"}})
-	require.NoError(t, err, "probe failure must not block deletion")
-	assert.NotEmpty(t, eff.Warnings, "cascade warning must still be appended when probe fails")
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-self"}})
+	require.Error(t, err, "generic probe failure must refuse the delete")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.True(t, ce.Retryable)
+	assert.Contains(t, ce.Hint, "retry")
 }
 
-// TestDeleteUserSelfDeleteEmptyIDPassesThrough verifies that an empty
-// identity from the probe is non-blocking.
-func TestDeleteUserSelfDeleteEmptyIDPassesThrough(t *testing.T) {
+// TestDeleteUserProbeNotFoundSkips verifies that a NOT_FOUND probe error
+// (ext.cattle.io endpoint absent on older Rancher) skips the guard and
+// allows the delete to proceed.
+func TestDeleteUserProbeNotFoundSkips(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	client := &duClient{
-		selfUserID: "", // empty → no match possible
-		obj:        userObj("u-self"),
+	c := &fakeClient{
+		createFn:    probeErrCreate(clierr.New(clierr.CodeNotFound, "selfusers.ext.cattle.io not found")),
+		gets:        map[string]*unstructured.Unstructured{"/u-self": delUserObj("u-self")},
+		allowDelete: true,
 	}
-	fac := &duFactory{client: client}
-	cmd := rbac.NewDeleteUser(k, fac)
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
 
-	eff, err := planDeleteUser(t, cmd, duInput{args: []string{"u-self"}})
-	require.NoError(t, err, "empty probe ID must not block deletion")
-	assert.NotEmpty(t, eff.Warnings)
-}
-
-// probeFailClient returns an error when Create is called for selfuser.GVR.
-type probeFailClient struct {
-	obj *unstructured.Unstructured
+	eff, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-self"}})
+	require.NoError(t, err, "NOT_FOUND probe (endpoint absent) must not block deletion")
+	assert.NotEmpty(t, eff.Warnings, "cascade warning must still be appended")
 }
 
-func (c *probeFailClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, _ string) (*unstructured.Unstructured, error) {
-	return c.obj, nil
+// TestDeleteUserClusterErrorRefuses verifies that a Cluster() lookup failure
+// prevents deletion. After the post-Plan guard reordering the error surfaces
+// from inner.Plan (not the guard), so it propagates as-is rather than being
+// wrapped as a retryable GENERIC error.
+func TestDeleteUserClusterErrorRefuses(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	connErr := errors.New("connection refused")
+	cmd := NewDeleteUser(k, fakeFactory{cErr: connErr})
+
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-other"}})
+	require.Error(t, err, "Cluster() failure must prevent deletion")
+	assert.ErrorIs(t, err, connErr)
 }
-func (c *probeFailClient) List(_ context.Context, _ schema.GroupVersionResource, _ string, _ string) (*unstructured.UnstructuredList, error) {
-	return &unstructured.UnstructuredList{}, nil
+
+// TestDeleteUserCancellation verifies that a cancelled context propagates
+// through the guard rather than being silently swallowed.
+func TestDeleteUserCancellation(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel
+	cmd := NewDeleteUser(k, fakeFactory{c: &fakeClient{}, ctxAware: true})
+	mc := cmd.(runtime.MutatingCommand)
+	_, _, err := mc.Plan(ctx, stubInput{args: []string{"u-self"}})
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
 }
-func (c *probeFailClient) Logs(_ context.Context, _ string, _ string, _ engine.LogOptions) (string, error) {
-	return "", nil
-}
-func (c *probeFailClient) Create(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ bool) (*unstructured.Unstructured, error) {
-	if gvr == selfuser.GVR {
-		return nil, errors.New("identity probe unavailable")
+
+// TestDeleteUserNonexistentFailsBeforeProbe verifies that after the post-Plan
+// guard reordering a nonexistent target returns NOT_FOUND from the inner Plan
+// without the self-delete probe firing.
+func TestDeleteUserNonexistentFailsBeforeProbe(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	c := &fakeClient{
+		createFn: selfUserCreate("u-current"), // probe would fire if called
+		// no user in gets or users → Get returns NOT_FOUND
 	}
-	return obj, nil
-}
-func (c *probeFailClient) Update(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, _ bool) (*unstructured.Unstructured, error) {
-	return obj, nil
-}
-func (c *probeFailClient) Delete(_ context.Context, _ schema.GroupVersionResource, _ string, _ string, _ string, _ bool) error {
-	return nil
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
+
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-missing"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code, "nonexistent target must fail NOT_FOUND from inner Plan")
+	assert.Zero(t, c.createCalls, "self-delete probe must not fire before target existence is confirmed")
 }
 
-var _ engine.ClusterClient = (*probeFailClient)(nil)
+// TestDeleteUserEmptyProbeIDRefuses verifies that an empty identity returned
+// by the SelfUser probe is refused retryably: an unverifiable identity must
+// cost a retry rather than risk a lockout.
+func TestDeleteUserEmptyProbeIDRefuses(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	c := &fakeClient{
+		createFn:    selfUserCreate(""), // probe succeeds but returns no userID
+		gets:        map[string]*unstructured.Unstructured{"/u-self": delUserObj("u-self")},
+		allowDelete: true,
+	}
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
+
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-self"}})
+	require.Error(t, err, "empty probe ID must refuse the delete")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.True(t, ce.Retryable)
+}

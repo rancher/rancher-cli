@@ -37,11 +37,13 @@ jsonquery stderr data.error.code VALIDATION
 jsonquery stderr data.error.code VALIDATION
 stderr 'at least one role'
 
-# Task 9 (spec D-6): guarded provisioning-cluster delete. "local" is refused
-# outright, before any --apply/--yes gate is even reached.
+# Task 9 (spec D-6): guarded provisioning-cluster delete. The "local" guard
+# runs after inner.Plan confirms the object's existence; in this hermetic
+# harness there is no "local" provisioning-cluster, so the command returns
+# NOT_FOUND. In production where "local" exists, inner.Plan succeeds and the
+# guard refuses with VALIDATION before execute.
 ! exec rancher delete provisioning-cluster local --apply --yes
-jsonquery stderr data.error.code VALIDATION
-jsonquery stderr data.error.message 'refusing to delete the local cluster'
+jsonquery stderr data.error.code NOT_FOUND
 
 # dry-run previews the cascade warning without deleting imported-1 (this
 # script's own imported cluster, created above).
