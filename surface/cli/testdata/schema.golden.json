@@ -2120,6 +2120,45 @@
     },
     {
       "aliases": [
+        "users"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "public",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "delete",
+      "name": "delete user",
+      "network": true,
+      "stability": "stable",
+      "toolset": "core",
+      "usage": "Delete the user"
+    },
+    {
+      "aliases": [
         "vmwarevsphereconfigs"
       ],
       "args": [
@@ -8183,6 +8222,7 @@
         "delete persistentvolumeclaim",
         "delete serviceaccount",
         "delete gitrepo",
+        "delete user",
         "delete globalrolebinding",
         "delete clusterroletemplatebinding",
         "delete projectroletemplatebinding",
@@ -8975,6 +9015,7 @@
       "aliases": [
         "users"
       ],
+      "completable": true,
       "group": "management.cattle.io",
       "key": "user",
       "name": "user",
@@ -8984,8 +9025,9 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "identity record; managed through Rancher user administration",
-          "state": "absent"
+          "contract": "public",
+          "stability": "stable",
+          "state": "available"
         },
         "get": {
           "contract": "public",

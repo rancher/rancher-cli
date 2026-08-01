@@ -308,9 +308,8 @@ var table = []Kind{
 	{
 		Key: "user", Name: "user", Aliases: []string{"users"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
-		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "identity record; managed through Rancher user administration",
-		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: true, Completable: true, Sensitive: true,
+		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 	},
 	{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},

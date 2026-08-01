@@ -1,0 +1,39 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a user fixture: Sensitive-kind creates need --apply --yes.
+exec rancher create resource -f user.yaml --apply --yes
+
+# Verify the seeded user is visible.
+exec rancher get user u-e2e -o json
+jsonquery stdout data.metadata.name u-e2e
+jsonquery stdout data.displayName e2euser
+
+# Dry-run: the envelope carries the cascade warning (role bindings cascade);
+# the envtest harness has no SelfUser store so the self-delete guard probe
+# fails gracefully and is skipped — the inner Plan proceeds.
+exec rancher delete user u-e2e --dry-run -o json
+jsonquery stdout data.action delete
+stdout bindings
+
+# Gate: --apply alone is refused because delete is destructive (needs --yes).
+! exec rancher delete user u-e2e --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr data.error.hint 're-run with: --yes'
+
+# Gate passes with --apply --yes; the user is deleted.
+exec rancher delete user u-e2e --apply --yes
+
+# Gone: get by name returns NOT_FOUND.
+! exec rancher get user u-e2e -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+-- user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-e2e
+displayName: e2euser
+username: e2euser
+principalIds:
+  - local://u-e2e

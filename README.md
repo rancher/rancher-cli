@@ -203,9 +203,9 @@ nodes join with:
 
 <!-- conformance:surface-counts -->
 Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
-(48), `delete <kind>` (29 — 28 deletable kinds, including the RBAC binding
-kinds, `token`, `kubeconfig`, and `management-token`, plus a `provisioning-cluster` override) —
-125 generated commands, 168 total together with the fixed commands above. The authoritative, always-current list is
+(48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
+kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
+126 generated commands, 169 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 
@@ -254,10 +254,13 @@ call can reach.
   read-only.
 - `delete` exists only where removal is a sane operator action.
   Controller-owned objects (Fleet bundles, CAPI machines), server config
-  (`setting`, `feature`), identity (`user`), and role definitions
-  (`roletemplate`, `globalrole`) are not deletable — delete the owning
-  source object instead. The management `cluster` kind is not deletable
-  either; cluster removal goes through `delete provisioning-cluster`.
+  (`setting`, `feature`), and role definitions (`roletemplate`, `globalrole`)
+  are not deletable — delete the owning source object instead. The management
+  `cluster` kind is not deletable either; cluster removal goes through
+  `delete provisioning-cluster`. `delete user` is destructive (requires
+  `--yes`): deleting a user removes the identity record and Rancher's
+  controllers cascade-remove the user's role bindings (cluster memberships,
+  project memberships, global role bindings) with it.
 - `create` is bespoke per kind where a real creation UX exists (`project`,
   `namespace`, `secret`, `token`, `kubeconfig`, `cluster`); `create
   resource -f` covers any supported kind from a manifest.

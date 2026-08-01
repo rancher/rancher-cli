@@ -169,6 +169,13 @@ var kindOverrideTable = map[string]kindOverride{
 		},
 		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
 	},
+	// user: delete adds a cascade warning (Rancher controllers remove the
+	// user's role bindings when the user goes) and a self-delete guard that
+	// refuses deletion when the target matches the authenticated caller's own
+	// user ID (SelfUser probe via the local cluster client).
+	"user": {
+		del: func(k kinds.Kind, d runDeps) runtime.Command { return rbac.NewDeleteUser(k, d.clients) },
+	},
 	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
 	// diff/redaction/RV-precondition behavior — only an advisory etcd-quorum
 	// preview is added, via the EffectEnricher seam, never a gate.

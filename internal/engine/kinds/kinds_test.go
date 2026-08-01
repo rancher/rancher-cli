@@ -267,6 +267,18 @@ func TestValidateKindsRejectsEmptyK8sKind(t *testing.T) {
 	assert.Contains(t, err.Error(), "K8sKind")
 }
 
+// TestUserRowDeletableAndCompletable pins the user kind row's flags: the row
+// must be Deletable and Completable after the grant-cleanup slice, and must
+// carry no NoDeleteReason (that field belongs to non-deletable kinds only).
+func TestUserRowDeletableAndCompletable(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("user")
+	require.True(t, ok)
+	assert.True(t, k.Deletable, "user row must be Deletable")
+	assert.True(t, k.Completable, "user row must be Completable")
+	assert.Empty(t, k.NoDeleteReason, "Deletable row must not carry a NoDeleteReason")
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

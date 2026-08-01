@@ -259,7 +259,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - `rancher revoke <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) [--role <r>]` —
   revoke role binding(s). Omitting --role revokes every role at the scope
   (destructive, needs `--yes`). Partial failures leave already-removed
-  bindings gone.
+  bindings gone. Revoke removes the binding only; an auto-provisioned user
+  is removed with `rancher delete user <id> --apply --yes` (destructive,
+  cascades role bindings).
 - `rancher get roletemplates -o json` — filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or

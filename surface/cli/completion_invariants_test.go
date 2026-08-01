@@ -234,7 +234,7 @@ func TestAC25SecretNotCompletable(t *testing.T) {
 	assert.False(t, k.Completable, "AC-25: secret must not be completable")
 }
 
-func TestAC25CompletableAllowlistIsExactlySevenKinds(t *testing.T) {
+func TestAC25CompletableAllowlistIsExactlyEightKinds(t *testing.T) {
 	t.Parallel()
 	var completable []string
 	for _, k := range kinds.All() {
@@ -244,8 +244,8 @@ func TestAC25CompletableAllowlistIsExactlySevenKinds(t *testing.T) {
 	}
 	sort.Strings(completable)
 	assert.Equal(t,
-		[]string{"cluster", "deployment", "namespace", "node", "nodedriver", "pod", "project"},
-		completable, "AC-25/AC-15: allowlist must be exactly the six spec'd kinds plus nodedriver (the node-driver discovery slice)")
+		[]string{"cluster", "deployment", "namespace", "node", "nodedriver", "pod", "project", "user"},
+		completable, "AC-25/AC-15: allowlist must be exactly the six spec'd kinds plus nodedriver (node-driver discovery slice) plus user (grant-cleanup slice)")
 }
 
 // AC-28: Full-callback tests for the five live-completion flag-value sites

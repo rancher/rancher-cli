@@ -611,6 +611,11 @@ func livePositionalCandidates(
 				return nil
 			}
 			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
+		case "user":
+			// Management user list: same token boundary as nodedriver. Candidates
+			// mirror the grant/revoke subject source: id union username, system
+			// accounts filtered via isSystemUserItem/engine.IsSystemPrincipal.
+			return fetchUsers(ctx, hc, cap)
 		default:
 			// Other management kinds: no generic downstream path applies.
 			return nil

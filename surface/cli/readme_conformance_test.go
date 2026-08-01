@@ -261,7 +261,7 @@ func TestReadmeKindClaimsMatchTable(t *testing.T) {
 		"setting":                    false,
 		"feature":                    false,
 		"nodedriver":                 false,
-		"user":                       false,
+		"user":                       true,
 		"roletemplate":               false,
 		"globalrole":                 false,
 	}
