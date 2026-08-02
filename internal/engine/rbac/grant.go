@@ -258,8 +258,14 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	if perr != nil {
 		return perr
 	}
+	cands := nearFilter(role, pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
+	if len(cands) == 0 {
+		// A needle too far from every role still deserves the valid options —
+		// mirror of the wrong-scope branch's reasoning.
+		cands = nearFilter("", pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
+	}
 	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
-		WithCandidates(nearFilter(role, pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)).
+		WithCandidates(cands).
 		WithHint(hint)
 }
 

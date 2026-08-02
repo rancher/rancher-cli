@@ -633,6 +633,78 @@ func TestGrantBadRoleAtGlobalScope(t *testing.T) {
 	assert.Contains(t, ids, "admin")
 }
 
+func TestGrantNoNearMatchRoleFallsBackToPool(t *testing.T) {
+	t.Parallel()
+	// "lx-no-such-role" shares no substring with any seeded role name, so
+	// nearFilter returns zero candidates. The fallback must return the capped
+	// at-scope pool so both role-error shapes always name valid options.
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"roletemplates": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-member"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "lx-no-such-role"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "lx-no-such-role")
+	// No substring overlap with any role → fallback to the full at-scope pool.
+	require.NotEmpty(t, ce.Candidates, "zero near-matches must fall back to the at-scope pool")
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	// Both cluster-context roles appear.
+	assert.Contains(t, ids, "cluster-owner")
+	assert.Contains(t, ids, "cluster-member")
+	// project-context role excluded at cluster scope.
+	assert.NotContains(t, ids, "project-member")
+}
+
+func TestGrantBadRoleTypoKeepsNarrowedCandidates(t *testing.T) {
+	t.Parallel()
+	// "cluster-owne" IS a substring of "cluster-owner" → nearFilter finds it;
+	// the fallback must NOT replace the narrowed list with the full pool.
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"roletemplates": {Items: []unstructured.Unstructured{
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-member"}, "context": "cluster"}},
+				{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+			}},
+		},
+	}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	_, _, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "cluster-owne"},
+		args:    []string{"u-abc"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	require.NotEmpty(t, ce.Candidates)
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	// Typo-match narrows to the role whose name contains "cluster-owne".
+	assert.Contains(t, ids, "cluster-owner")
+	// "cluster-member" does not contain "cluster-owne".
+	assert.NotContains(t, ids, "cluster-member")
+}
+
 func TestGrantRoleReadDegraded(t *testing.T) {
 	t.Parallel()
 	// A non-NotFound, non-cancellation error on the role Get must not block
