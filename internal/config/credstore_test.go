@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -634,4 +635,253 @@ func TestCanonicalServerHostHTTPEquivalentSpellings(t *testing.T) {
 	for _, s := range spellings {
 		assert.Equal(t, want, canonicalServerHost(s), "spelling %q must canonicalize to %q", s, want)
 	}
+}
+
+// TestFileStoreCacheLockPreventsLostUpdate is the cross-instance lost-update
+// regression test for the token-cache.yaml flock. It simulates two kubectl
+// processes (two separate fileStore instances sharing the same dir — each has
+// its own mu, so they do NOT contend on mu) writing to the cache concurrently.
+// setCachedLock fires while G1 holds the flock (after its read, before its
+// write). G2 tries to acquire the flock and blocks. When G1 releases, G2 reads
+// the updated file and writes its own entry — both keys must survive.
+// No t.Parallel(): uses the package-level setCachedLock hook.
+func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir)
+	store2 := NewFileStore(dir)
+
+	inRead := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	var signalOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+
+	setCachedLock = func() {
+		signalOnce.Do(func() { close(inRead) }) // signal on first caller (G1) only
+		<-release                               // both callers hold until test unblocks
+	}
+	t.Cleanup(func() {
+		setCachedLock = nil
+		unblock() // ensure we never leak the goroutines on test failure
+	})
+
+	err1 := make(chan error, 1)
+	go func() {
+		err1 <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "")
+	}()
+
+	select {
+	case <-inRead:
+	case e := <-err1:
+		t.Fatalf("store1 finished before reaching the lock hook: %v", e)
+	case <-time.After(10 * time.Second):
+		t.Fatal("store1 never reached the lock hook")
+	}
+
+	// G1 is now holding the flock (inside the hook). Start G2 — it must block
+	// on the flock until G1 releases.
+	err2 := make(chan error, 1)
+	go func() {
+		err2 <- store2.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "")
+	}()
+
+	// Unblock G1: it writes key-a and releases the flock.
+	// G2 then acquires the flock, reads the file (which now has key-a), and writes key-b.
+	unblock()
+
+	require.NoError(t, <-err1, "store1.SetCachedCred must succeed")
+	require.NoError(t, <-err2, "store2.SetCachedCred must succeed")
+
+	// Both keys must survive — no lost update.
+	_, _, errA := store1.GetCachedCred("key-a")
+	assert.NoError(t, errA, "key-a must survive after concurrent write")
+	_, _, errB := store1.GetCachedCred("key-b")
+	assert.NoError(t, errB, "key-b must survive after concurrent write")
+}
+
+// TestFileStoreCacheLockPreventsLostUpdateOnExpiry pins the reviewer's exact
+// interleaving: SetCachedCred (A, adding key-a) races GetCachedCred (B,
+// pruning an expired key-b). Without the fix, B reads the cache before A's
+// write, then prunes and writes a snapshot that does not include key-a — a
+// lost update. With the fix, B re-reads under the flock after A releases it
+// and therefore includes key-a in its written snapshot.
+// No t.Parallel(): uses the package-level setCachedLock and getCachedPruneHook.
+func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir)
+	store2 := NewFileStore(dir)
+
+	// Pre-seed: key-b already expired, key-c valid.
+	require.NoError(t, store1.SetCachedCred("key-b", "tok-b", time.Now().Add(-time.Hour), "b", "r.ex", ""))
+	require.NoError(t, store1.SetCachedCred("key-c", "tok-c", time.Now().Add(time.Hour), "c", "r.ex", ""))
+
+	inRead := make(chan struct{})
+	release := make(chan struct{})
+	bReady := make(chan struct{})
+	var aOnce, bOnce sync.Once
+
+	setCachedLock = func() {
+		aOnce.Do(func() { close(inRead) }) // A signals it holds the flock
+		<-release                          // A waits until test unblocks it
+	}
+	getCachedPruneHook = func() {
+		bOnce.Do(func() { close(bReady) }) // B signals it is about to acquire the flock
+	}
+	t.Cleanup(func() {
+		setCachedLock = nil
+		getCachedPruneHook = nil
+		// Ensure goroutines are never leaked on test failure.
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	errA := make(chan error, 1)
+	go func() {
+		errA <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "")
+	}()
+
+	select {
+	case <-inRead:
+	case e := <-errA:
+		t.Fatalf("store1 finished before the lock hook: %v", e)
+	case <-time.After(10 * time.Second):
+		t.Fatal("store1 never reached the lock hook")
+	}
+
+	// A holds the flock. Start B (GetCachedCred on the expired key-b).
+	errB := make(chan error, 1)
+	go func() {
+		_, _, err := store2.GetCachedCred("key-b")
+		if errors.Is(err, ErrNoToken) {
+			err = nil // expected: the expired entry is pruned
+		}
+		errB <- err
+	}()
+
+	// Wait for B to complete its lock-free read and reach the prune hook,
+	// confirming it is about to call withCacheLock (and will block on A's flock).
+	select {
+	case <-bReady:
+	case <-time.After(10 * time.Second):
+		t.Fatal("store2 GetCachedCred never reached the prune hook")
+	}
+
+	// Unblock A: it writes {key-b(expired), key-c, key-a} and releases the flock.
+	// B then acquires the flock, re-reads that snapshot, prunes key-b, and
+	// writes {key-c, key-a} — both effects survive.
+	close(release)
+
+	require.NoError(t, <-errA, "store1.SetCachedCred must succeed")
+	require.NoError(t, <-errB, "store2.GetCachedCred (expired entry) must succeed")
+
+	// A's effect: key-a must be present.
+	_, _, errGet := store1.GetCachedCred("key-a")
+	assert.NoError(t, errGet, "key-a (SetCachedCred effect) must survive concurrent GetCachedCred prune")
+
+	// B's effect: key-b must be pruned.
+	_, _, errGet = store1.GetCachedCred("key-b")
+	assert.ErrorIs(t, errGet, ErrNoToken, "expired key-b must be pruned by GetCachedCred")
+
+	// Unrelated key-c must be unaffected.
+	_, _, errGet = store1.GetCachedCred("key-c")
+	assert.NoError(t, errGet, "key-c must survive unaffected")
+}
+
+// TestFileStoreCacheGetServesConcurrentlyRefreshedKey pins the same-key
+// interleaving of the prune race: GetCachedCred finds the key expired in its
+// lock-free read; before it acquires the flock, a concurrent SetCachedCred
+// (a re-auth for the same server+cluster+user in another process) refreshes
+// the SAME key with a valid credential. The lock-held re-read must detect the
+// refresh, keep the entry, and serve the fresh credential — not delete the
+// just-minted token and return ErrNoToken.
+// No t.Parallel(): uses the package-level getCachedPruneHook.
+func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir)
+	store2 := NewFileStore(dir)
+
+	expiry := time.Now().Add(time.Hour)
+	require.NoError(t, store1.SetCachedCred("key-a", "tok-stale", time.Now().Add(-time.Hour), "a", "r.ex", ""))
+
+	// The hook fires after the lock-free read (which saw key-a expired) and
+	// before the flock is acquired: refresh key-a synchronously from here.
+	getCachedPruneHook = func() {
+		getCachedPruneHook = nil // fire once
+		require.NoError(t, store2.SetCachedCred("key-a", "tok-fresh", expiry, "a", "r.ex", ""))
+	}
+	t.Cleanup(func() { getCachedPruneHook = nil })
+
+	tok, gotExpiry, err := store1.GetCachedCred("key-a")
+	require.NoError(t, err, "a concurrently refreshed key must be served, not pruned")
+	assert.Equal(t, "tok-fresh", tok)
+	assert.WithinDuration(t, expiry, gotExpiry, time.Second)
+
+	// The refreshed entry must survive on disk for the next invocation.
+	tok, _, err = store1.GetCachedCred("key-a")
+	require.NoError(t, err, "the refreshed entry must not have been deleted")
+	assert.Equal(t, "tok-fresh", tok)
+}
+
+// TestDeleteAllCachedCredsHonorsCacheLock pins the round-8 wipe race:
+// DeleteAllCachedCreds must block on the flock while a concurrent
+// SetCachedCred's read-modify-write is in flight. Without the lock, the
+// Remove lands mid-write and the writer's write-back silently resurrects
+// the "deleted" entries — no error surfaced to either process.
+// No t.Parallel(): uses the package-level setCachedLock hook.
+func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir)
+	store2 := NewFileStore(dir)
+
+	require.NoError(t, store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", ""))
+
+	inWrite := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	setCachedLock = func() {
+		once.Do(func() { close(inWrite) }) // the concurrent writer holds the flock
+		<-release
+	}
+	t.Cleanup(func() {
+		setCachedLock = nil
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	errSet := make(chan error, 1)
+	go func() {
+		errSet <- store1.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "")
+	}()
+	select {
+	case <-inWrite:
+	case e := <-errSet:
+		t.Fatalf("SetCachedCred finished before the lock hook: %v", e)
+	case <-time.After(10 * time.Second):
+		t.Fatal("SetCachedCred never reached the lock hook")
+	}
+
+	// The writer holds the flock (mid read-modify-write). Start the wipe —
+	// it must wait for the write-back, then remove everything, so neither
+	// the pre-seeded key-a nor the concurrently written key-b survives.
+	errDel := make(chan error, 1)
+	go func() { errDel <- store2.DeleteAllCachedCreds() }()
+
+	// Let the wipe reach the flock before releasing the writer. (If it gets
+	// there later it still queues behind the writer — same final order.)
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	require.NoError(t, <-errSet, "SetCachedCred must succeed")
+	require.NoError(t, <-errDel, "DeleteAllCachedCreds must succeed")
+
+	_, _, err := store1.GetCachedCred("key-a")
+	assert.ErrorIs(t, err, ErrNoToken, "key-a must stay wiped, not be resurrected by the concurrent write-back")
+	_, _, err = store1.GetCachedCred("key-b")
+	assert.ErrorIs(t, err, ErrNoToken, "key-b (written before the wipe acquired the lock) must be wiped too")
 }

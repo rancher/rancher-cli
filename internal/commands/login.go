@@ -45,7 +45,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
 			{Name: "context", Type: "string", Desc: "initial scope `cluster[:project]` for the new context"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
-			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{"RANCHER_CLI_OAUTH_AUTH_FLOW"}},
+			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 		},
 		Examples: []string{
@@ -67,6 +67,17 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 				"--context at the root scopes server operations, not config writes").
 				WithHint("pass --context explicitly: rancher auth login --context <cluster[:project]>")
 		}
+	}
+
+	// The "legacy:" prefix is reserved for the legacy token shim's cache
+	// slots. A server entry with that name would win the shim's exact-name
+	// stored-login tier and defeat its documented server-ranking guarantee,
+	// so reject it here — before any interactive auth runs — the same way
+	// auth get-token rejects it as a --name.
+	if config.IsLegacyCacheSlot(in.String("name")) {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
+			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
 	}
 
 	// Defense-in-depth: the pipeline's validateInput normally rejects a missing

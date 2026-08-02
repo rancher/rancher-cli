@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
@@ -19,6 +21,21 @@ import (
 
 // ErrNoToken indicates no credential is stored for the server.
 var ErrNoToken = errors.New("no stored token")
+
+// LegacyCachePrefix is the reserved exec-credential cache-slot prefix written
+// by the legacy token shim (`rancher token`). The prefix is defined here so
+// every site that needs it — internal/token/token.go (native rejection guard),
+// internal/token/shim.go (slot construction), surface/cli/completion_token.go
+// (AC-6 ambiguity filter) — shares one constant; a future rename or second
+// reserved namespace compiles instead of silently diverging.
+const LegacyCachePrefix = "legacy:"
+
+// IsLegacyCacheSlot reports whether name was written by the legacy token shim
+// (i.e. it begins with LegacyCachePrefix). Used to exclude shim slots from
+// native --name validation and from the AC-6 completion ambiguity count.
+func IsLegacyCacheSlot(name string) bool {
+	return strings.HasPrefix(name, LegacyCachePrefix)
+}
 
 const keyringService = "rancher-cli"
 
@@ -85,16 +102,54 @@ func CacheKey(name, serverHost, cluster string) string {
 
 // fileStore keeps tokens in a 0600 YAML map file.
 type fileStore struct {
-	path      string
-	cachePath string
-	mu        sync.Mutex
+	path          string
+	cachePath     string
+	cacheLockPath string
+	mu            sync.Mutex
 }
 
 func NewFileStore(dir string) CredStore {
 	return &fileStore{
-		path:      filepath.Join(dir, "credentials.yaml"),
-		cachePath: filepath.Join(dir, "token-cache.yaml"),
+		path:          filepath.Join(dir, "credentials.yaml"),
+		cachePath:     filepath.Join(dir, "token-cache.yaml"),
+		cacheLockPath: filepath.Join(dir, "token-cache.lock"),
 	}
+}
+
+// setCachedLock is a test-only synchronization point, invoked (when non-nil)
+// while the token-cache.yaml flock is HELD, after the read and before the
+// write. Lets tests pin an exact interleaving of concurrent SetCachedCred
+// calls against different fileStore instances (as kubectl would produce).
+// Nil in production.
+var setCachedLock func()
+
+// getCachedPruneHook is a test-only synchronization point, invoked (when
+// non-nil) inside GetCachedCred's expiry-prune branch, after the lock-free
+// read confirms expiry and before withCacheLock is acquired. Lets tests pin
+// the exact GetCachedCred-prune vs SetCachedCred interleaving. Nil in
+// production.
+var getCachedPruneHook func()
+
+// withCacheLock acquires the cross-process lock for token-cache.yaml, runs fn
+// holding it, then releases. The caller must hold f.mu over the entire call so
+// that same-process goroutines never contend on the flock; the flock then
+// serializes across different fileStore instances (separate processes).
+// Plain reads stay lock-free — atomic-rename writes keep them consistent. The
+// lock is required for every read-modify-write, which covers SetCachedCred,
+// DeleteCachedCred, and the prune branches of GetCachedCred and ListCachedCreds.
+func (f *fileStore) withCacheLock(fn func() error) error {
+	if err := os.MkdirAll(filepath.Dir(f.cacheLockPath), 0o700); err != nil {
+		return err
+	}
+	fl := flock.New(f.cacheLockPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ok, err := fl.TryLockContext(ctx, 50*time.Millisecond)
+	if err != nil || !ok {
+		return fmt.Errorf("locking token-cache.yaml (another rancher process may be writing): %v", err)
+	}
+	defer func() { _ = fl.Unlock() }()
+	return fn()
 }
 
 // warnedLoosePerm dedupes the loose-permission warning: read paths run on every
@@ -109,10 +164,19 @@ var warnedLoosePerm sync.Map // path -> struct{}
 // file) — the owner-only DACL set by hardenACL at write time is the
 // guarantee on that platform.
 func warnLoosePerm(path string) {
+	if fi, err := os.Stat(path); err == nil {
+		warnLoosePermFI(path, fi)
+	}
+}
+
+// warnLoosePermFI is warnLoosePerm's core: checks fi's permissions and warns
+// at most once per path. Split out so callers that already hold an os.FileInfo
+// (e.g. after os.Open + handle.Stat()) avoid a second syscall.
+func warnLoosePermFI(path string, fi os.FileInfo) {
 	if !permCheckApplicable() {
 		return
 	}
-	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o077 != 0 {
+	if fi.Mode().Perm()&0o077 != 0 {
 		if _, seen := warnedLoosePerm.LoadOrStore(path, struct{}{}); !seen {
 			logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
 		}
@@ -206,6 +270,8 @@ func (f *fileStore) writeCache(m map[string]cachedCred) error {
 func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Lock-free read: no flock needed for a pure read — atomic-rename writes
+	// keep reads consistent.
 	m, err := f.readCache()
 	if err != nil {
 		return "", time.Time{}, err
@@ -214,61 +280,106 @@ func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	if !ok {
 		return "", time.Time{}, ErrNoToken
 	}
-	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-		delete(m, key)
-		if werr := f.writeCache(m); werr != nil {
-			return "", time.Time{}, werr
-		}
-		return "", time.Time{}, ErrNoToken
+	if cred.Expiry.IsZero() || !time.Now().After(cred.Expiry) {
+		return cred.Token, cred.Expiry, nil
 	}
-	return cred.Token, cred.Expiry, nil
+	// Expired: prune under the flock. Re-read under the lock so the written
+	// snapshot includes any concurrent SetCachedCred writes that landed since
+	// the lock-free read above — without the re-read, pruning without the lock
+	// is a read-modify-write that clobbers concurrent writes (lost-update).
+	// Re-check the entry itself in the re-read (mirroring ListCachedCreds's
+	// prune): the key that was expired at the lock-free read may have been
+	// refreshed by a concurrent SetCachedCred for the same slot and must not
+	// be deleted — serve the fresh credential instead.
+	if getCachedPruneHook != nil {
+		getCachedPruneHook()
+	}
+	var refreshed *cachedCred
+	if werr := f.withCacheLock(func() error {
+		m2, rerr := f.readCache()
+		if rerr != nil {
+			return rerr
+		}
+		c, ok := m2[key]
+		if !ok {
+			return nil
+		}
+		if c.Expiry.IsZero() || !time.Now().After(c.Expiry) {
+			refreshed = &c
+			return nil
+		}
+		delete(m2, key)
+		return f.writeCache(m2)
+	}); werr != nil {
+		return "", time.Time{}, werr
+	}
+	if refreshed != nil {
+		return refreshed.Token, refreshed.Expiry, nil
+	}
+	return "", time.Time{}, ErrNoToken
 }
 
 func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	m, err := f.readCache()
-	if err != nil {
-		return err
-	}
-	m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster}
-	return f.writeCache(m)
+	return f.withCacheLock(func() error {
+		m, err := f.readCache()
+		if err != nil {
+			return err
+		}
+		if setCachedLock != nil {
+			setCachedLock()
+		}
+		m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster}
+		return f.writeCache(m)
+	})
 }
 
 func (f *fileStore) DeleteCachedCred(key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	m, err := f.readCache()
-	if err != nil {
-		return err
-	}
-	delete(m, key)
-	return f.writeCache(m)
+	return f.withCacheLock(func() error {
+		m, err := f.readCache()
+		if err != nil {
+			return err
+		}
+		delete(m, key)
+		return f.writeCache(m)
+	})
 }
 
 func (f *fileStore) DeleteAllCachedCreds() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	err := os.Remove(f.cachePath)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
+	// The wipe honors the same cross-process lock as every other
+	// token-cache.yaml write: an unlocked Remove can interleave with a
+	// concurrent flock-held read-modify-write, whose write-back then
+	// silently resurrects the "deleted" entries — the lost-update class the
+	// flock exists to close. The lock file is separate from the data file,
+	// so removing the data file under the lock is safe.
+	return f.withCacheLock(func() error {
+		err := os.Remove(f.cachePath)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	})
 }
 
 func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Lock-free read: no flock needed for a pure read — atomic-rename writes
+	// keep reads consistent.
 	m, err := f.readCache()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]CachedCredInfo, 0, len(m))
-	pruned := false
+	var expiredKeys []string
 	for key, cred := range m {
 		if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-			delete(m, key)
-			pruned = true
+			expiredKeys = append(expiredKeys, key)
 			continue
 		}
 		info := CachedCredInfo{
@@ -284,10 +395,31 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 		}
 		out = append(out, info)
 	}
-	if pruned {
-		// Best-effort prune: expired entries are already excluded from out; a failed
-		// write-back just leaves them on disk for a later pass. Never fail a list for it.
-		_ = f.writeCache(m)
+	if len(expiredKeys) > 0 {
+		// Prune under the flock. Re-read under the lock so the written snapshot
+		// includes any entries from concurrent SetCachedCred calls that landed
+		// since the lock-free read above. Re-check expiry in the re-read: a key
+		// that was expired at scan time may have been refreshed by a concurrent
+		// write and must not be deleted. Best-effort: a failed write leaves
+		// expired entries on disk for the next pass; never fail the list for it.
+		_ = f.withCacheLock(func() error {
+			m2, rerr := f.readCache()
+			if rerr != nil {
+				return rerr
+			}
+			now := time.Now()
+			changed := false
+			for _, key := range expiredKeys {
+				if c, ok := m2[key]; ok && !c.Expiry.IsZero() && now.After(c.Expiry) {
+					delete(m2, key)
+					changed = true
+				}
+			}
+			if !changed {
+				return nil
+			}
+			return f.writeCache(m2)
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name != out[j].Name {

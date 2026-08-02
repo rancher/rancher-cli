@@ -44,11 +44,31 @@ type callbackResult struct {
 	err   error
 }
 
-func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
-	if input.authFlow == "" {
-		input.authFlow = os.Getenv(config.EnvOAuthAuthFlow)
+// firstNonEmptyEnv returns the value of the primary env var when non-empty,
+// otherwise the value of the legacy env var. Used for the "modern spelling,
+// then legacy CATTLE_* fallback" pattern that both resolveAuthFlow and
+// getCallbackPort share.
+func firstNonEmptyEnv(primary, legacy string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
 	}
-	input.authFlow = strings.ToLower(input.authFlow)
+	return os.Getenv(legacy)
+}
+
+// resolveAuthFlow returns the effective OAuth auth-flow: the flag value wins
+// when non-empty; otherwise RANCHER_CLI_OAUTH_AUTH_FLOW; otherwise
+// CATTLE_OAUTH_AUTH_FLOW (legacy spelling). This is the single source of truth
+// for both the native get-token path and the legacy token shim — both funnel
+// through oauthAuth, so the env resolution lives here once.
+func resolveAuthFlow(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	return firstNonEmptyEnv(config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow)
+}
+
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
+	input.authFlow = strings.ToLower(resolveAuthFlow(input.authFlow))
 
 	if p.NoInput() {
 		return nil, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
@@ -66,7 +86,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 }
 
 func getCallbackPort(p iruntime.Prompter) (int, error) {
-	env := os.Getenv(config.EnvOAuthCallbackPort)
+	env := firstNonEmptyEnv(config.EnvOAuthCallbackPort, config.EnvLegacyOAuthCallbackPort)
 	if env == "" {
 		return 0, nil
 	}

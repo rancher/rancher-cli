@@ -14,6 +14,21 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
+// TestTokenEntryIsMarkedBare pins that the top-level "token" entry has
+// bare: true, so adaptEntry never calls resolveDeps before legacyTokenCmd.Execute
+// and a broken config.yaml cannot block a warm exec-credential cache hit.
+func TestTokenEntryIsMarkedBare(t *testing.T) {
+	t.Parallel()
+	for _, e := range buildEntries() {
+		d := e.make(runDeps{}).Describe()
+		if d.Name == "token" {
+			assert.True(t, e.bare, "the 'token' entry must have bare: true")
+			return
+		}
+	}
+	t.Fatal("'token' entry not found in buildEntries")
+}
+
 // TestSkillEntriesAreMarkedBare pins that every entry in the "skill" group has
 // bare: true, so adaptEntry never calls resolveDeps on their action path.
 func TestSkillEntriesAreMarkedBare(t *testing.T) {

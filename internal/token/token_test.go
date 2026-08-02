@@ -456,6 +456,46 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 	assert.Contains(t, notices.String(), "not caching")
 }
 
+// TestZeroExpiryCachedWhenAllowed mirrors TestGetTokenSkipsCacheWhenMintCarriesNoExpiry
+// but runs as the legacy shim (legacyShim, the field that opts into zero-expiry
+// caching). The credential must be written to the store (zero expiry =
+// never-expiring on the legacy path), and the emitted ExecCredential must
+// carry no ExpirationTimestamp.
+func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := tokenCmd{dir: dir, store: store}
+	res, err := cmd.runWithParams(context.Background(), runParams{
+		Server:     srv.URL,
+		Name:       "prod",
+		legacyShim: true,
+	}, ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "ext/minted:secret", cred.Status.Token)
+	assert.Nil(t, cred.Status.ExpirationTimestamp, "zero expiry must not set ExpirationTimestamp")
+
+	tok, exp, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
+	require.NoError(t, cerr, "zero-expiry credential must be cached on the legacy shim path")
+	assert.Equal(t, "ext/minted:secret", tok)
+	assert.True(t, exp.IsZero(), "cached expiry must be zero")
+}
+
 // TestGetTokenMintScopesToCluster is the round-2 repro for finding 2:
 // --cluster must be threaded into the mint request as spec.clusterName, so
 // two different --cluster values produce two distinct scoped mints.
@@ -628,6 +668,186 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an ambiguous cluster must never reach the mint call")
 }
 
+// TestGetTokenRejectsLegacyPrefixName is the fix-3 failing test: the native
+// get-token command must reject --name values starting with "legacy:" (they
+// are reserved for the legacy token shim's cache slots). Without fix 3 this
+// test fails because no such validation exists.
+func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
+		ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Error(), "legacy:")
+}
+
+// TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup verifies that the
+// reserved-prefix rejection happens BEFORE any cache read: a warm legacy:-slot
+// entry must not be served — the VALIDATION error must surface even when the
+// cache holds a valid token for that key. Without the run()-level guard this
+// test fails because probeFlagCache returns a cache hit before runWithParams
+// ever checks IsLegacyCacheSlot.
+func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	serverID := config.CanonicalServerIdentity("https://r.ex")
+	key := config.CacheKey("legacy:foo", serverID, "")
+	require.NoError(t, store.SetCachedCred(key, "warm-tok", time.Now().Add(time.Hour), "legacy:foo", serverID, ""))
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(),
+		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
+		ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce, "must fail with a VALIDATION error")
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Error(), "legacy:")
+
+	// The cache entry must be untouched — it was never served.
+	tok, _, cerr := store.GetCachedCred(key)
+	require.NoError(t, cerr, "cache entry must still be present")
+	assert.Equal(t, "warm-tok", tok, "cache entry must be untouched")
+}
+
+// errCacheStore wraps a CredStore but returns a fixed error from GetCachedCred,
+// so fix-4's double-notice test can inject a repeatable store failure without
+// corrupting any other store method.
+type errCacheStore struct {
+	config.CredStore
+	cacheErr error
+}
+
+func (s *errCacheStore) GetCachedCred(key string) (string, time.Time, error) {
+	return "", time.Time{}, s.cacheErr
+}
+
+// TestCacheReadErrorNoticedOnce verifies that a single get-token invocation
+// with a store that errors on GetCachedCred produces the "cache read failed"
+// notice exactly once — even when the resolved cache key differs from the
+// fast-path probed key (which happens whenever the current context fills in a
+// non-empty cluster). The original fix-4 fixture had no current-context
+// cluster, so flagKey == cacheKey; the sub-test below exercises the masked
+// gap the re-review identified.
+func TestCacheReadErrorNoticedOnce(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 404 everywhere: looks like legacy Rancher (no ext.cattle.io).
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	t.Run("equal flag key and resolved key (no context cluster)", func(t *testing.T) {
+		dir := t.TempDir()
+		base := config.NewFileStore(dir)
+		require.NoError(t, base.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+		cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		store := &errCacheStore{CredStore: base, cacheErr: errors.New("disk failure")}
+		var notices bytes.Buffer
+		cmd := &tokenCmd{dir: dir, store: store}
+		_, err := cmd.Execute(context.Background(),
+			tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+			ui.New(&notices, strings.NewReader(""), true, false))
+		require.NoError(t, err, "a cache read error must not block the full auth path")
+		count := strings.Count(notices.String(), "cache read failed")
+		assert.Equal(t, 1, count, "cache read error must produce exactly one notice per invocation, not two")
+	})
+
+	t.Run("differing flag key and resolved key (context fills a cluster)", func(t *testing.T) {
+		// This is the gap the re-reviewer found: when the current context has a
+		// non-empty cluster, resolveConn fills clusterID so cacheKey != flagKey.
+		// Before the quiet-mode fix the second cachedResultQ call noticed the store
+		// error a second time even though the fast-path probe already did.
+		// Use "local" as the context cluster: resolveMintClusterID short-circuits
+		// for "local" (no cluster-list HTTP round-trip needed), keeping the
+		// server stub minimal while still exercising the differing-key path.
+		dir := t.TempDir()
+		base := config.NewFileStore(dir)
+		require.NoError(t, base.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "prod", Cluster: "local"}},
+			Servers:        map[string]config.Server{"prod": {URL: srv.URL}},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		store := &errCacheStore{CredStore: base, cacheErr: errors.New("disk failure")}
+		var notices bytes.Buffer
+		cmd := &tokenCmd{dir: dir, store: store}
+		// --cluster is intentionally omitted so resolveConn fills it from
+		// the context ("local"), producing a resolved key that differs from
+		// the fast-path probed key (which has no cluster).
+		_, err := cmd.Execute(context.Background(),
+			tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+			ui.New(&notices, strings.NewReader(""), true, false))
+		require.NoError(t, err, "a cache read error must not block the full auth path")
+		count := strings.Count(notices.String(), "cache read failed")
+		assert.Equal(t, 1, count, "cache read error must produce exactly one notice even when flag key != resolved key")
+	})
+
+	t.Run("clean miss on flag key, real error on resolved key (notice-zero)", func(t *testing.T) {
+		// When the flag-only probe gets a clean miss (ErrNoToken) and the
+		// resolved key (cluster filled from context) encounters a REAL error,
+		// exactly ONE notice must fire — on the resolved key, not on the flag
+		// key. ProbedNoticed=false (clean miss, no notice) means quiet=false for
+		// the resolved-key re-check, so the resolved error IS noticed. The old
+		// code used quiet := params.ProbedKey != "" which would have silenced it.
+		dir := t.TempDir()
+		base := config.NewFileStore(dir)
+		require.NoError(t, base.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "prod", Cluster: "local"}},
+			Servers:        map[string]config.Server{"prod": {URL: srv.URL}},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		// flag key: name@server/ (no cluster) → clean miss (ErrNoToken)
+		// resolved key: name@server/local (cluster from context) → real disk error
+		serverID := config.CanonicalServerIdentity(srv.URL)
+		flagKey := config.CacheKey("prod", serverID, "")
+		resolvedKey := config.CacheKey("prod", serverID, "local")
+		store := &perKeyErrStore{
+			CredStore: base,
+			errKeys: map[string]error{
+				flagKey:     config.ErrNoToken,
+				resolvedKey: errors.New("disk failure"),
+			},
+		}
+		var notices bytes.Buffer
+		cmd := &tokenCmd{dir: dir, store: store}
+		_, err := cmd.Execute(context.Background(),
+			tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+			ui.New(&notices, strings.NewReader(""), true, false))
+		require.NoError(t, err, "a cache read error on the resolved key must not block the auth path")
+		count := strings.Count(notices.String(), "cache read failed")
+		assert.Equal(t, 1, count, "notice-zero: clean miss on flag key must not suppress the real error on the resolved key")
+	})
+}
+
+// perKeyErrStore wraps a CredStore and returns a configured error from
+// GetCachedCred for specific keys, letting tests inject precise per-key
+// failures without touching other methods.
+type perKeyErrStore struct {
+	config.CredStore
+	errKeys map[string]error
+}
+
+func (s *perKeyErrStore) GetCachedCred(key string) (string, time.Time, error) {
+	if err, bad := s.errKeys[key]; bad {
+		return "", time.Time{}, err
+	}
+	return s.CredStore.GetCachedCred(key)
+}
+
 // candidateIDsToken extracts candidate ids for an ElementsMatch assertion
 // (mirrors the candidateIDs helper already used elsewhere in this package
 // for a different type's Candidates field).
@@ -656,7 +876,7 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 	}
 
 	var notices bytes.Buffer
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", ui.New(&notices, strings.NewReader(""), true, false))
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", false, ui.New(&notices, strings.NewReader(""), true, false))
 	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-a", name)
@@ -745,7 +965,7 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	}
 
 	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
-		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 		require.NoError(t, serr)
 		require.True(t, ok)
 		assert.Equal(t, "prod-a", name)
@@ -755,7 +975,7 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	t.Run("the current context's server wins the tie, regardless of name order", func(t *testing.T) {
 		cfg.CurrentContext = "ctx-b"
 		cfg.Contexts = map[string]config.Context{"ctx-b": {Server: "prod-b"}}
-		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 		require.NoError(t, serr)
 		require.True(t, ok)
 		assert.Equal(t, "prod-b", name)
@@ -777,7 +997,7 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", ui.Discard())
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok, "a tokenless top-ranked candidate must not short-circuit the search")
 	assert.Equal(t, "prod-b", name)
@@ -797,11 +1017,35 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", ui.Discard())
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-b", name, "--name must win over the lexicographic default")
 	assert.Equal(t, "tok-b", tok)
+}
+
+// TestStoredTokenForServerNoAmbientIgnoresLegacyNamedEntry is the round-7
+// finding-3 repro: a config.yaml entry literally named "legacy:<user>" (a
+// hand-edited file, or one written before auth login rejected the prefix)
+// must NOT win the exact-name tier for a shim call. Under noAmbientContext,
+// wantName is a cache-slot label with no entry-name preference, so selection
+// follows sorted order alone — "aaa" here, not the exact-name match, which
+// sorts after it.
+func TestStoredTokenForServerNoAmbientIgnoresLegacyNamedEntry(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "legacy:zed"}, "tok-legacy"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "aaa"}, "tok-aaa"))
+	cfg := &config.Config{
+		Servers: map[string]config.Server{
+			"legacy:zed": {URL: "https://r.ex"},
+			"aaa":        {URL: "https://r.ex"},
+		},
+	}
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "legacy:zed", true, ui.Discard())
+	require.NoError(t, serr)
+	require.True(t, ok)
+	assert.Equal(t, "aaa", name, "sorted order must win; wantName carries no preference under noAmbientContext")
+	assert.Equal(t, "tok-aaa", tok)
 }
 
 // TestStoredTokenForServerMatchesEquivalentURLSpellings is the impl-review
@@ -813,7 +1057,7 @@ func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "tok"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: "https://host"}}}
 
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", ui.Discard())
+	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok, "an equivalent URL spelling must still match the configured server")
 	assert.Equal(t, "prod", name)
@@ -928,7 +1172,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	cmd := tokenCmd{dir: dir, store: store}
 
 	t.Run("no flags sources from config", func(t *testing.T) {
-		server, ca, cluster, err := cmd.resolveConn(tin{})
+		server, ca, cluster, err := cmd.resolveConn("", "", "", false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://config.example", server)
 		assert.Equal(t, "local", cluster)
@@ -936,7 +1180,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	})
 
 	t.Run("explicit --server matching another configured entry uses that entry's CA, not the current context's", func(t *testing.T) {
-		server, ca, cluster, err := cmd.resolveConn(tin{s: map[string]string{"server": "https://other.example"}})
+		server, ca, cluster, err := cmd.resolveConn("https://other.example", "", "", false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://other.example", server)
 		assert.Equal(t, "local", cluster, "cluster still from config")
@@ -944,7 +1188,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	})
 
 	t.Run("explicit --server matching no configured entry gets no custom CA", func(t *testing.T) {
-		server, ca, cluster, err := cmd.resolveConn(tin{s: map[string]string{"server": "https://flag.example"}})
+		server, ca, cluster, err := cmd.resolveConn("https://flag.example", "", "", false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://flag.example", server)
 		assert.Equal(t, "local", cluster, "cluster still from config")
@@ -1734,4 +1978,224 @@ func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
 		ui.Discard())
 	require.Error(t, err, "https://:443 must not address a cache entry")
 	assert.Contains(t, err.Error(), emptyHost, "error must name the invalid resolved server")
+}
+
+// TestBasicAuthUsernameDefault verifies that a non-empty UsernameDefault on
+// runParams (threaded through loginInput) causes the username prompt to show
+// the default in brackets, and that an empty answer resolves to that default
+// in the login POST body.
+func TestBasicAuthUsernameDefault(t *testing.T) {
+	t.Parallel()
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			gotBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"test-tok"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	var errBuf strings.Builder
+	// Empty username answer → the default "alice" must be substituted.
+	p := ui.New(&errBuf, newLineReader("", "secret"), false, true)
+
+	input := &loginInput{
+		server:          srv.URL,
+		authProvider:    "localProvider",
+		usernameDefault: "alice",
+	}
+	tok, err := basicAuth(context.Background(), http.DefaultClient, input, p)
+	require.NoError(t, err)
+
+	assert.Contains(t, errBuf.String(), "[alice]", "prompt label must include the default in brackets")
+	assert.Equal(t, "alice", gjson.GetBytes(gotBody, "username").String(), "empty answer must fall back to the default")
+	assert.Equal(t, "test-tok", tok.Token)
+}
+
+// TestBasicAuthTrimsPaddedUsername is the round-7 finding-4 repro: a
+// non-blank answer with incidental padding (a paste with a trailing newline,
+// an autocomplete artifact) must be trimmed before it is sent — previously
+// TrimSpace was used only for the emptiness check and the raw " bob " went
+// into the login POST body.
+func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
+	t.Parallel()
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			gotBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"test-tok"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	var errBuf strings.Builder
+	p := ui.New(&errBuf, newLineReader("  bob  ", "secret"), false, true)
+
+	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
+	_, err := basicAuth(context.Background(), http.DefaultClient, input, p)
+	require.NoError(t, err)
+	assert.Equal(t, "bob", gjson.GetBytes(gotBody, "username").String(), "padding must be trimmed from the sent username")
+}
+
+// TestCaForServerDeterministicWithMultipleMatches is the round-3 repro for
+// finding 2: when multiple cfg.Servers entries share a host, caForServer must
+// return the same CA on every call regardless of Go's non-deterministic map
+// iteration order. Current-context server wins; otherwise the
+// lexicographically first entry name wins.
+func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
+	t.Parallel()
+	caAlpha := "-----BEGIN CERTIFICATE-----\nMIICalpha\n-----END CERTIFICATE-----\n"
+	caZeta := "-----BEGIN CERTIFICATE-----\nMIICzeta\n-----END CERTIFICATE-----\n"
+
+	t.Run("sorted name wins when no current context", func(t *testing.T) {
+		t.Parallel()
+		cfg := &config.Config{
+			Servers: map[string]config.Server{
+				"alpha": {URL: "https://shared.example", CA: caAlpha},
+				"zeta":  {URL: "https://shared.example", CA: caZeta},
+			},
+		}
+		// Run many times: map iteration order varies, so nondeterminism surfaces.
+		for i := 0; i < 20; i++ {
+			got := caForServer(cfg, "https://shared.example", false)
+			assert.Equal(t, caAlpha, got, "alpha < zeta: caAlpha must win on every call (iteration %d)", i)
+		}
+	})
+
+	t.Run("current-context server wins over sorted order", func(t *testing.T) {
+		t.Parallel()
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "zeta"}},
+			Servers: map[string]config.Server{
+				"alpha": {URL: "https://shared.example", CA: caAlpha},
+				"zeta":  {URL: "https://shared.example", CA: caZeta},
+			},
+		}
+		got := caForServer(cfg, "https://shared.example", false)
+		assert.Equal(t, caZeta, got, "current-context server zeta must win over sorted alpha")
+	})
+
+	t.Run("noAmbientContext=true ignores current-context preference", func(t *testing.T) {
+		t.Parallel()
+		// Same config as "current-context server wins" but with noAmbientContext=true:
+		// even though the current context names "zeta", sorted order (alpha) must win.
+		cfg := &config.Config{
+			CurrentContext: "ctx",
+			Contexts:       map[string]config.Context{"ctx": {Server: "zeta"}},
+			Servers: map[string]config.Server{
+				"alpha": {URL: "https://shared.example", CA: caAlpha},
+				"zeta":  {URL: "https://shared.example", CA: caZeta},
+			},
+		}
+		got := caForServer(cfg, "https://shared.example", true)
+		assert.Equal(t, caAlpha, got, "noAmbientContext=true: current-context zeta must be ignored; sorted alpha wins")
+	})
+}
+
+// TestNeedsEffGateEachDisjunct is the structural pin for the needsEff gate in
+// resolveConn. For each combination of inputs where ALL three disjuncts are
+// false, cfg.Effective (and its GetToken call) must not fire. errGetTokenStore
+// errors on GetToken for "ambient" — if Effective is called unexpectedly,
+// resolveConn returns an error and the test fails.
+//
+//   - Disjunct 1: server == ""
+//   - Disjunct 2: cluster == "" && !noAmbientContext
+//   - Disjunct 3: caIn == "" && !explicitServer
+//
+// All three negations hold in each case below, so needsEff=false.
+func TestNeedsEffGateEachDisjunct(t *testing.T) {
+	const inlinePEM = "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----"
+
+	cases := []struct {
+		name             string
+		server           string
+		cluster          string
+		caIn             string
+		noAmbientContext bool
+	}{
+		{
+			// All three flags explicit, noAmbientContext=false:
+			// server!="" (1 false), cluster!="" (2 false), caIn!="" (3 false).
+			name:   "all explicit flags noAmbientContext false",
+			server: "https://test.example.com", cluster: "c-1", caIn: inlinePEM,
+			noAmbientContext: false,
+		},
+		{
+			// All three flags explicit, noAmbientContext=true:
+			// same logic; noAmbientContext irrelevant when cluster is set.
+			name:   "all explicit flags noAmbientContext true",
+			server: "https://test.example.com", cluster: "c-1", caIn: inlinePEM,
+			noAmbientContext: true,
+		},
+		{
+			// Shim's common case: explicit server + noAmbientContext=true, caIn="".
+			// Disjunct 1: server!="" → false.
+			// Disjunct 2: cluster="" but noAmbientContext=true → false.
+			// Disjunct 3: caIn="" but explicitServer=true → false.
+			// Config is loaded (outer if: caIn==""), but Effective must not run.
+			name:   "noAmbientContext true empty cluster and caIn",
+			server: "https://test.example.com", cluster: "", caIn: "",
+			noAmbientContext: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			// Write a config with a current context that points at "ambient".
+			// If Effective is called, GetToken for "ambient" errors → resolveConn
+			// propagates the error and the test catches it.
+			cfg := &config.Config{
+				CurrentContext: "ctx",
+				Contexts:       map[string]config.Context{"ctx": {Server: "ambient"}},
+				Servers:        map[string]config.Server{"ambient": {URL: "https://ambient.example.com"}},
+			}
+			cfg.SetPath(config.FilePath(dir))
+			require.NoError(t, cfg.Write())
+
+			base := config.NewFileStore(dir)
+			store := &errGetTokenStore{CredStore: base, errName: "ambient"}
+			cmd := tokenCmd{dir: dir, store: store}
+
+			_, _, _, err := cmd.resolveConn(tc.server, tc.cluster, tc.caIn, tc.noAmbientContext)
+			require.NoError(t, err,
+				"resolveConn must not call cfg.Effective when needsEff=false (case %q)", tc.name)
+		})
+	}
+}
+
+// TestResolveConnNoAmbientRequiresServer pins the resolveConn side of the
+// blank---server class: a noAmbientContext caller with no server must get the
+// "--server is required" validation error without cfg.Effective ever running —
+// never the ambient current-context URL. errGetTokenStore errors on GetToken
+// for "ambient", so an unexpected Effective call would surface as a different
+// error and fail the assertions below.
+func TestResolveConnNoAmbientRequiresServer(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "ambient"}},
+		Servers:        map[string]config.Server{"ambient": {URL: "https://ambient.example.com"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	base := config.NewFileStore(dir)
+	store := &errGetTokenStore{CredStore: base, errName: "ambient"}
+	cmd := tokenCmd{dir: dir, store: store}
+
+	_, _, _, err := cmd.resolveConn("", "", "", true)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Error(), "--server is required")
 }

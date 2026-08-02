@@ -79,6 +79,8 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse commands that make changes"},
 		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
+		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_AUTH_FLOW"},
+		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_CALLBACK_PORT"},
 		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config location"},
 		{Name: "VISUAL", Desc: "preferred editor for config edit"},
 		{Name: "EDITOR", Desc: "fallback editor for config edit"},

@@ -108,6 +108,17 @@ func schemaCommandBinding(t *testing.T, op string) (contract, stability string, 
 	return "", "", false
 }
 
+// TestLegacyTokenShimBindingIsInternalDeprecated pins the shim's position in
+// the public-API contract: the top-level "token" command is internal
+// (auth machinery, no backing kind row) and deprecated by design (it exists
+// only for Rancher-generated kubeconfigs during migration).
+func TestLegacyTokenShimBindingIsInternalDeprecated(t *testing.T) {
+	contract, stability, found := schemaCommandBinding(t, "token")
+	require.True(t, found, "the token shim must be registered")
+	assert.Equal(t, "internal", contract)
+	assert.Equal(t, "deprecated", stability)
+}
+
 // TestDeleteProvisioningClusterBindingTracksKindRow pins Finding 5's fix:
 // "delete provisioning-cluster" has no generic binding (kinds.Bindings()
 // skips it — the row is Deletable: false), so BuildRoot must compose an

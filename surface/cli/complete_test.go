@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -313,6 +314,74 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 
 	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	assert.Equal(t, want, got, "schema --verb <TAB> must surface exactly the enum candidates")
+}
+
+// TestAuthGetTokenAuthFlowCompletionSurfaces drives `auth get-token --auth-flow <TAB>`
+// through the real Adapt-installed ShellComplete callback: the flag-value site
+// must surface the descriptor's --auth-flow enum offline, sorted, exactly the
+// enum set. Hermetic: no config file, network gate off, file credential store.
+func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	scriptArgs := []string{"--rancher-completion-proto=2", "auth", "get-token", "--auth-flow",
+		"--rancher-completion-cur=", "--generate-shell-completion"}
+	CaptureArgv(scriptArgs)
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+
+	var want []string
+	for _, f := range token.NewTokenCommand(t.TempDir(), nil).Describe().Flags {
+		if f.Name == "auth-flow" {
+			want = append(want, f.Enum...)
+		}
+	}
+	require.NotEmpty(t, want, "auth get-token's --auth-flow flag must carry an enum")
+	sort.Strings(want)
+
+	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	assert.Equal(t, want, got, "auth get-token --auth-flow <TAB> must surface exactly the enum candidates")
+}
+
+// TestTokenShimAuthFlowCompletionSurfaces drives `token --auth-flow <TAB>`
+// through the real Adapt-installed ShellComplete callback: the flag-value site
+// must surface the shim descriptor's --auth-flow enum offline, sorted, exactly
+// the enum set. Hermetic: no config file, network gate off, file credential store.
+func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	scriptArgs := []string{"--rancher-completion-proto=2", "token", "--auth-flow",
+		"--rancher-completion-cur=", "--generate-shell-completion"}
+	CaptureArgv(scriptArgs)
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+
+	var want []string
+	for _, f := range token.NewLegacyTokenCommand(t.TempDir(), nil).Describe().Flags {
+		if f.Name == "auth-flow" {
+			want = append(want, f.Enum...)
+		}
+	}
+	require.NotEmpty(t, want, "token shim's --auth-flow flag must carry an enum")
+	sort.Strings(want)
+
+	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	assert.Equal(t, want, got, "token --auth-flow <TAB> must surface exactly the enum candidates")
 }
 
 // Finding 4: unit-test the generic GVR path builders directly. A synthetic

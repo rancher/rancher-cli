@@ -124,7 +124,7 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 	if csErr != nil {
 		return TokenCapability{}
 	}
-	if scheme, _, ok := strings.Cut(canonServerURL, "://"); !ok || (scheme != "http" && scheme != "https") {
+	if !config.IsSupportedScheme(canonServerURL) {
 		return TokenCapability{}
 	}
 
@@ -156,11 +156,28 @@ func resolveCompletionToken(argTail []string, clusterID string) TokenCapability 
 	// Finding 8: use WithTokens variant to propagate the token through the
 	// first file read; avoids a second parse of token-cache.yaml.
 	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID)
-	if err != nil || len(entries) != 1 {
+	if err != nil {
+		return TokenCapability{}
+	}
+	// Exclude legacy:-prefixed cache entries before the single-entry ambiguity
+	// check (AC-6a). Shim slots (written by `rancher token` for ACE kubeconfigs)
+	// are never completion candidates — a user never selects them via --name, and
+	// the native get-token command explicitly rejects them. Filtering here
+	// preserves AC-6a's fail-closed semantics for genuinely ambiguous NATIVE
+	// entries: shim + one native → native resolves; shim only → no candidates.
+	// config.IsLegacyCacheSlot is the single source for this predicate so a
+	// future prefix rename compiles instead of silently diverging.
+	var native []config.CachedCredEntry
+	for _, e := range entries {
+		if !config.IsLegacyCacheSlot(e.Name) {
+			native = append(native, e)
+		}
+	}
+	if len(native) != 1 {
 		// Missing, error, or ambiguous (AC-6a: multiple principals → skip).
 		return TokenCapability{}
 	}
-	tok := entries[0].Token
+	tok := native[0].Token
 	if tok == "" {
 		return TokenCapability{}
 	}

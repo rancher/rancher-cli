@@ -136,6 +136,71 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 	}
 }
 
+// TestResolveCompletionTokenShimEntryPlusNativeResolvesNative is the failing-
+// first test for round-4 finding 1 (AC-6 collision). A shim cache entry for
+// the same server+cluster as a native entry must be excluded from the
+// single-entry candidacy count so completion still resolves from the native
+// entry (shim + 1 native → native).
+func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
+	// NOT parallel: mutates storedConfig package global and env.
+	t.Setenv(config.EnvToken, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Native entry ("ctx-native").
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("ctx-native", "https://rancher.example.com", "c-abc"),
+		"native-tok", time.Now().Add(time.Hour),
+		"ctx-native", "https://rancher.example.com", "c-abc",
+	))
+	// Shim entry ("legacy:x") for the same server+cluster.
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("legacy:x", "https://rancher.example.com", "c-abc"),
+		"shim-tok", time.Now().Add(time.Hour),
+		"legacy:x", "https://rancher.example.com", "c-abc",
+	))
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	setStoredConfig(cfg, dir)
+	cap := resolveCompletionToken(nil, "c-abc")
+	assert.Equal(t, "native-tok", cap.Token,
+		"shim entry must be excluded; native entry must resolve as the sole candidate")
+	assert.True(t, cap.IDOnly)
+}
+
+// TestResolveCompletionTokenShimOnlyYieldsEmpty verifies the shim-only case:
+// when only a legacy:-prefixed cache entry exists for a server+cluster, AC-6
+// must yield an empty capability — the slot is kubectl's, not the operator's.
+func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
+	// NOT parallel: mutates storedConfig package global and env.
+	t.Setenv(config.EnvToken, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	// Only a shim entry — no native entry.
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("legacy:y", "https://rancher.example.com", "c-def"),
+		"shim-only-tok", time.Now().Add(time.Hour),
+		"legacy:y", "https://rancher.example.com", "c-def",
+	))
+	cfg := &config.Config{
+		CurrentContext: "ctx",
+		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
+		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	setStoredConfig(cfg, dir)
+	cap := resolveCompletionToken(nil, "c-def")
+	assert.Empty(t, cap.Token,
+		"shim-only entry must yield empty capability (not a completion candidate)")
+}
+
 // TestFileStoreTokenCrossServerURLOverride proves round-2 finding 3:
 // RANCHER_CLI_URL pointing at server B must not send server A's token to B.
 func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {

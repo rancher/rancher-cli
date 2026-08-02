@@ -96,16 +96,27 @@ type Effective struct {
 	Project    string
 }
 
-// isSupportedSchemeURL reports whether rawURL canonicalizes to an http or
+// IsSupportedSchemeURL reports whether rawURL canonicalizes to an http or
 // https identity. The credential store is read ONLY when this returns true;
 // for an exec store that means the helper binary is never invoked for an
 // unsupported or malformed server URL, so it acts as a pre-read guard.
-func isSupportedSchemeURL(rawURL string) bool {
+// Exported so internal/token and surface/cli can share the same predicate
+// without duplicating the canonicalization + scheme-check logic.
+func IsSupportedSchemeURL(rawURL string) bool {
 	cu, err := credhelper.CanonicalServerURL(rawURL)
 	if err != nil {
 		return false
 	}
-	scheme, _, ok := strings.Cut(cu, "://")
+	return IsSupportedScheme(cu)
+}
+
+// IsSupportedScheme reports whether canonicalURL — a value already produced
+// by credhelper.CanonicalServerURL — carries an http or https scheme. Cheap
+// sibling of IsSupportedSchemeURL for callers that canonicalized (and paid
+// that parse) one line earlier; raw, unvalidated input goes through
+// IsSupportedSchemeURL instead.
+func IsSupportedScheme(canonicalURL string) bool {
+	scheme, _, ok := strings.Cut(canonicalURL, "://")
 	return ok && (scheme == "http" || scheme == "https")
 }
 
@@ -142,7 +153,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	// server it was stored for.
 	if v := os.Getenv(EnvToken); v != "" {
 		eff.Token = v
-	} else if serverErr == nil && SameServerURL(eff.URL, s.URL) && isSupportedSchemeURL(s.URL) {
+	} else if serverErr == nil && SameServerURL(eff.URL, s.URL) && IsSupportedSchemeURL(s.URL) {
 		tok, terr := store.GetToken(ServerRef{Name: name, URL: s.URL})
 		switch {
 		case terr == nil:

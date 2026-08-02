@@ -26,6 +26,11 @@ func NewResolver() map[string]safety.Binding {
 		// list, 2026-07-30.
 		"grant":  {Contract: safety.ContractPublic, Stability: safety.Stable},
 		"revoke": {Contract: safety.ContractPublic, Stability: safety.Stable},
+		// token is the legacy exec-credential compat shim: deprecated by
+		// design (it exists for Rancher-generated kubeconfigs during
+		// migration and retires with them), internal (auth machinery, no
+		// backing kind row, not a Public API resource).
+		"token": {Contract: safety.ContractInternal, Stability: safety.Deprecated},
 		// create resource takes any kind; create machine-config spans the
 		// five machine-config kinds — no single row for either.
 		"create resource":       {Contract: safety.ContractInternal, Stability: safety.Beta},

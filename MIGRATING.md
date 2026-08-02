@@ -60,7 +60,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `settings get` | → `rancher get setting <name>` |
 | `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
 | `ssh <node>` | DROPPED — RKE1/node-driver only, Norman-only; keep the legacy binary for this |
-| `token` | → `rancher auth get-token` (already the exec-credential plugin; the legacy command is named `token`). Server-side token management is now `rancher get tokens` / `create token` / `delete token` (this branch) — distinct from the local exec-credential cache `auth list-tokens`/`auth delete-token` manage. |
+| `token` | Existing Rancher-generated kubeconfigs that call `rancher token` keep working after a binary swap — the shim delegates to `auth get-token` machinery. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
 | `token delete` | → `rancher auth delete-token` |
 | `up -f compose.yml` | DROPPED — compose-era, no replacement |
 | `wait <type> <id>` | → `rancher get <kind> <name> --wait` |

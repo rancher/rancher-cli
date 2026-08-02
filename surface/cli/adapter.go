@@ -210,22 +210,18 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 // resolveDeps resolves the config dir from --config (flag > env > XDG) and
 // opens the credential store per the config's policy. This is THE single
 // place dir/store are resolved, so --config always takes effect.
+// config.LoadAndStore encapsulates the Load + NewLazyStore pairing. The store
+// is LAZY: policy-name validation happens here (fail fast on every
+// resolveDeps-backed command), but the auto probe / credstore-pin write /
+// config-dir creation defer to the first credential call — an invocation
+// that never touches credentials leaves no store-init side effects
+// (spec LS-1; Windows acceptance FAIL 2).
 func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
 	dir, err := config.ResolveDir(c.String("config"))
 	if err != nil {
 		return "", nil, err
 	}
-	cfg, err := config.Load(config.FilePath(dir))
-	if err != nil {
-		return "", nil, err
-	}
-	// Load first so the declared policy drives store selection. The store
-	// is LAZY: policy-name validation happens here (fail fast on every
-	// resolveDeps-backed command), but the auto probe / credstore-pin
-	// write / config-dir creation defer to the first credential call — an
-	// invocation that never touches credentials leaves no store-init
-	// side effects (spec LS-1; Windows acceptance FAIL 2).
-	store, err := config.NewLazyStore(cfg.CredentialStore, dir)
+	_, store, err := config.LoadAndStore(dir)
 	if err != nil {
 		return "", nil, err
 	}

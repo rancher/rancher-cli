@@ -33,11 +33,14 @@ import (
 // with no per-shape adapter or wiring switch.
 type entry struct {
 	group string
-	// bare marks commands that need no Rancher config, credential store, or
-	// client factory — only runDeps.version. When true, adaptEntry skips
-	// resolveDeps/newClientFactory/newFileSource entirely and constructs the
-	// command with only version set. Schema, completion, and wireEntry
-	// validation are unaffected.
+	// bare marks commands adaptEntry constructs with only runDeps.version set:
+	// it skips resolveDeps/newClientFactory/newFileSource entirely. Two usages
+	// exist: commands that need no Rancher config, credential store, or client
+	// factory at all (the skill entries), and commands that resolve config/store
+	// themselves, lazily, inside Execute on their own schedule (the token shim,
+	// which must not let a broken config.yaml block a warm cache hit). bare can
+	// never supply a client factory — a command needing one cannot be bare.
+	// Schema, completion, and wireEntry validation are unaffected.
 	bare bool
 	make func(runDeps) runtime.Command
 }
@@ -84,6 +87,10 @@ func buildEntries() []entry {
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewRevoke(d.clients) }},
+		// Bare entries are invoked with zero runDeps (adaptEntry never calls
+		// resolveDeps for them), so dir/store are passed explicitly zero here:
+		// the shim resolves both lazily in Execute.
+		{group: "", bare: true, make: func(runDeps) runtime.Command { return token.NewLegacyTokenCommand("", nil) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return commands.NewKubeconfig(d.dir, d.store, d.clients) }},

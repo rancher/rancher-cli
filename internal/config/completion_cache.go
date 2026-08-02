@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,7 +18,13 @@ func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
 }
 
 // loadCacheMap reads and unmarshals token-cache.yaml at path. A missing
-// file is an empty cache, not an error. Never writes to disk.
+// file is an empty cache, not an error. Never writes to disk. Deliberately
+// SILENT on loose permissions: completion paths read through here, and any
+// stderr output would appear as a TAB candidate (the same rationale as
+// ReadFileTokenSilent) — the shim's fast-path reader warns instead. The
+// remaining readCache parity is intentional: no in-process mu (read-only),
+// no expiry pruning (documented on ReadOnlyCachedCred), no cross-process
+// flock (read-only; atomic-rename writes keep reads consistent).
 func loadCacheMap(path string) (map[string]cachedCred, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -71,6 +78,56 @@ func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
 	return collectCacheEntries(path, func(info CachedCredInfo, _ string) CachedCredInfo {
 		return info
 	})
+}
+
+// ReadOnlyCachedCred returns the token and expiry for a single cache entry by
+// key, reading token-cache.yaml directly without loading config.yaml and
+// without pruning expired entries. Returns ErrNoToken when the entry is absent
+// or expired. Used by the legacy token shim's fast-path probe so that a broken
+// config.yaml can never block a warm cache hit.
+//
+// Expired shim slots are pruned only by store-backed readers (ListCachedCreds
+// and the list-tokens/completion path) — a deliberate bounded-growth tradeoff
+// for the config-free fast path: the shim's dominant invocation is a warm
+// cache hit, and pruning requires a config.yaml read (for the store policy)
+// that the fast path exists specifically to avoid.
+func ReadOnlyCachedCred(dir, key string) (string, time.Time, error) {
+	path := filepath.Join(dir, "token-cache.yaml")
+	// Open once and use handle.Stat() for the permission warning so this
+	// fast path — a fresh OS process on every kubectl exec-credential
+	// refresh — pays a single syscall instead of two (os.ReadFile + os.Stat).
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", time.Time{}, ErrNoToken
+		}
+		return "", time.Time{}, err
+	}
+	defer func() { _ = f.Close() }()
+
+	// Warn on loose permissions like fileStore.readCache does — this is the
+	// shim's dominant read path, and unlike the completion readers sharing
+	// loadCacheMap, its stderr is not TAB-completion output.
+	if fi, serr := f.Stat(); serr == nil {
+		warnLoosePermFI(path, fi)
+	}
+
+	b, rerr := io.ReadAll(f)
+	if rerr != nil {
+		return "", time.Time{}, rerr
+	}
+	var m map[string]cachedCred
+	if uerr := yaml.Unmarshal(b, &m); uerr != nil {
+		return "", time.Time{}, uerr
+	}
+	cred, ok := m[key]
+	if !ok {
+		return "", time.Time{}, ErrNoToken
+	}
+	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
+		return "", time.Time{}, ErrNoToken
+	}
+	return cred.Token, cred.Expiry, nil
 }
 
 // ReadFileTokenSilent reads the login token for serverName from credentials.yaml

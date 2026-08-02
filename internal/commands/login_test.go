@@ -123,6 +123,28 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 	assert.True(t, ok, "config written exactly as on success")
 }
 
+// TestLoginRejectsLegacyPrefixedName is the round-7 finding-3 repro: a
+// "legacy:"-prefixed --name must be rejected before any auth or config write —
+// such a server entry would win the token shim's exact-name stored-login tier
+// and defeat its documented server-ranking guarantee.
+func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := &loginCmd{dir: dir, store: store}
+	_, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "https://r.ex", "name": config.LegacyCachePrefix + "alice"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:secret"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Error(), "reserved")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers[config.LegacyCachePrefix+"alice"]
+	assert.False(t, ok, "the reserved name must never reach the config")
+}
+
 func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)

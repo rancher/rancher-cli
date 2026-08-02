@@ -133,6 +133,24 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
+// LoadAndStore parses config.yaml at dir and returns the loaded Config and
+// a lazy credential store for it. It encapsulates the Load + NewLazyStore
+// pairing used by both the CLI adapter (surface/cli resolveDeps) and the
+// legacy token shim's cache-miss branch, so a future change to either step
+// (a migration check, an extra Config field driving store selection) applies
+// in one place rather than two.
+func LoadAndStore(dir string) (*Config, CredStore, error) {
+	cfg, err := Load(FilePath(dir))
+	if err != nil {
+		return nil, nil, err
+	}
+	store, err := NewLazyStore(cfg.CredentialStore, dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cfg, store, nil
+}
+
 // Write persists the config as 0600 YAML, creating the dir at 0700.
 func (c *Config) Write() error {
 	if c.path == "" {

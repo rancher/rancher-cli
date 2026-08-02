@@ -12,4 +12,12 @@ const (
 	EnvReadOnly          = "RANCHER_CLI_READONLY"
 	EnvOAuthAuthFlow     = "RANCHER_CLI_OAUTH_AUTH_FLOW"
 	EnvOAuthCallbackPort = "RANCHER_CLI_OAUTH_CALLBACK_PORT"
+
+	// EnvLegacyOAuthAuthFlow/EnvLegacyOAuthCallbackPort are the legacy
+	// CLI's spellings honored by the OAuth flow (both the native get-token
+	// path and the `token` compat shim share a single resolver), so
+	// legacy-generated environments keep working. Precedence:
+	// flag, then RANCHER_CLI_*, then CATTLE_*.
+	EnvLegacyOAuthAuthFlow     = "CATTLE_OAUTH_AUTH_FLOW"
+	EnvLegacyOAuthCallbackPort = "CATTLE_OAUTH_CALLBACK_PORT"
 )

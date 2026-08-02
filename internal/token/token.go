@@ -69,11 +69,51 @@ var supportedAuthProviders = map[string]bool{
 }
 
 type loginInput struct {
-	server       string
-	clusterID    string
-	authProvider string
-	skipVerify   bool
-	authFlow     string
+	server          string
+	clusterID       string
+	authProvider    string
+	skipVerify      bool
+	authFlow        string
+	usernameDefault string
+}
+
+// runParams carries the resolved flag values for a get-token invocation.
+// tokenCmd.run builds it from the Input's flag reads; the legacy token shim
+// builds it directly, bypassing the flag layer.
+//
+// ProbedKey records the cache key already probed by the caller's fast path
+// (run's flag-only probe or the shim's pre-probe). runWithParams skips its
+// own cache check when its resolved key equals ProbedKey, preventing a double
+// "cache read failed" notice on a real store error.
+// ProbedNoticed is true when the fast-path probe fired a "cache read failed"
+// notice — a real (non-ErrNoToken) store error. When true, the resolved-key
+// re-check is quiet so the notice fires exactly once (not zero times: a clean
+// miss on the flag key does NOT suppress a distinct error on the resolved key).
+//
+// legacyShim marks the caller as the legacy token shim — the one structural
+// fact behind every shim-only behavior, folded into a single field so a
+// caller cannot compile with some of the behaviors and not the others. Only
+// shim.go (same package) sets it. It drives:
+//   - no ambient context (forwarded as the noAmbientContext parameter of
+//     resolveConn/caForServer/storedTokenForServer), the gate for the shim's
+//     "driven purely by the flags Rancher's kubeconfig template supplies"
+//     principle: an absent --server is rejected rather than filled from the
+//     current context, an empty --cluster stays unscoped, CA selection among
+//     same-host Servers entries follows sorted order instead of preferring
+//     the current-context entry, and stored-login selection ignores both
+//     wantName (the shim's Name is a cache-slot label, not an entry-name
+//     preference) and the current-context tier.
+//   - zero-expiry caching: a minted token that carries no expiry is cached
+//     (never-expiring on the legacy path); the native path refuses to.
+//   - legacy cache slots: a config.LegacyCachePrefix Name passes
+//     runWithParams's reservation guard; every other caller is blocked.
+type runParams struct {
+	Server, Name, Cluster, AuthProvider, AuthFlow, CACert string
+	SkipVerify                                            bool
+	UsernameDefault                                       string
+	ProbedKey                                             string
+	ProbedNoticed                                         bool
+	legacyShim                                            bool
 }
 
 type typedProvider interface {
@@ -99,7 +139,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to mint the exec-credential token for (defaults to the current context)"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
-			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{"RANCHER_CLI_OAUTH_AUTH_FLOW"}},
+			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
 		},
@@ -117,33 +157,51 @@ func (t tokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
 	name := in.String("name")
+	// Reject the reserved prefix before any cache read so a warm legacy:-slot
+	// entry is never served by the native command. The runWithParams guard
+	// below covers callers that bypass run() (e.g. future direct callers).
+	if config.IsLegacyCacheSlot(name) {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
+			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
+	}
 
-	// Fast path: when --server is given, build the cache key from flags alone and
-	// serve a warm hit WITHOUT reading config, so a broken config.yaml never
-	// blocks a cached credential.
-	//
-	// Normalize the flag value with the same default-https rule resolveConn
-	// applies, so both paths share one scheme policy. If the normalized value
-	// still does not yield a valid absolute canonical URL (contains "://"), skip
-	// the fast path entirely — never probe a legacy host-only key from the flag
-	// path, because its scheme is unknowable.
 	flagServer := in.String("server")
-	flagKey := ""
-	if name != "" && flagServer != "" {
-		normalized := applyDefaultScheme(flagServer)
-		if cu, err := credhelper.CanonicalServerURL(normalized); err == nil {
-			if scheme, _, ok := strings.Cut(cu, "://"); ok && (scheme == "https" || scheme == "http") {
-				flagKey = config.CacheKey(name, cu, in.String("cluster"))
-				if r, hit := t.cachedResult(flagKey, p); hit {
-					return r, nil
-				}
-			}
-		}
+	flagKey, noticed, r, hit := t.probeFlagCache(name, flagServer, in.String("cluster"), p)
+	if hit {
+		return r, nil
+	}
+
+	return t.runWithParams(ctx, runParams{
+		Server:        flagServer,
+		Name:          name,
+		Cluster:       in.String("cluster"),
+		AuthProvider:  in.String("auth-provider"),
+		AuthFlow:      in.String("auth-flow"),
+		CACert:        in.String("cacert"),
+		SkipVerify:    in.Bool("skip-verify"),
+		ProbedKey:     flagKey,
+		ProbedNoticed: noticed,
+	}, p)
+}
+
+// runWithParams runs the full get-token flow (config resolution, cache,
+// auth) from an already-populated runParams. tokenCmd.run calls it after the
+// flag fast path; the legacy token shim calls it directly.
+func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime.Prompter) (runtime.Result, error) {
+	// Reject any --name starting with the legacy prefix unless the caller is
+	// the shim (legacyShim, an unexported field only shim.go sets). This
+	// guard lives here — not just in run() — so every runWithParams caller is
+	// protected, not only the CLI-flag path.
+	if config.IsLegacyCacheSlot(params.Name) && !params.legacyShim {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
+			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
 	}
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
-	server, caPEM, clusterID, err := t.resolveConn(in)
+	server, caPEM, clusterID, err := t.resolveConn(params.Server, params.Cluster, params.CACert, params.legacyShim)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -154,29 +212,39 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("resolved server %q is not a valid URL: %v", server, cerr))
 	}
-	if scheme, _, ok := strings.Cut(serverID, "://"); !ok || (scheme != "https" && scheme != "http") {
+	if !config.IsSupportedScheme(serverID) {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("resolved server %q: unsupported scheme (only http and https are supported)", server))
 	}
-	cacheKey := config.CacheKey(name, serverID, clusterID)
+	cacheKey := config.CacheKey(params.Name, serverID, clusterID)
 
-	switch {
-	case name == "":
+	switch params.Name {
+	case "":
 		p.Notice("caching disabled: no --name; each call re-authenticates")
-	case cacheKey != flagKey:
-		// The flag fast path either did not run or used a different key (e.g.
-		// cluster sourced from config) — check the resolved key now.
-		if r, hit := t.cachedResult(cacheKey, p); hit {
-			return r, nil
+	default:
+		// Skip the re-check when the caller already probed this exact key (run's
+		// flag fast path or the shim's pre-probe): probing the same key twice would
+		// double any "cache read failed" notice on a real store error.
+		// When the keys differ (e.g. cluster sourced from config, not from flags),
+		// this is the first probe for the resolved key. quiet is set only when the
+		// fast-path probe NOTICED a real store error (ProbedNoticed) — a clean miss
+		// on the flag key must NOT suppress a distinct error on the resolved key,
+		// which would degrade the invariant from "exactly once" to "zero notices".
+		if cacheKey != params.ProbedKey {
+			quiet := params.ProbedNoticed
+			if r, hit := t.cachedResultQ(cacheKey, quiet, p); hit {
+				return r, nil
+			}
 		}
 	}
 
 	input := &loginInput{
-		server:       server,
-		clusterID:    clusterID,
-		authProvider: in.String("auth-provider"),
-		skipVerify:   in.Bool("skip-verify"),
-		authFlow:     in.String("auth-flow"),
+		server:          server,
+		clusterID:       clusterID,
+		authProvider:    params.AuthProvider,
+		skipVerify:      params.SkipVerify,
+		authFlow:        params.AuthFlow,
+		usernameDefault: params.UsernameDefault,
 	}
 
 	client, err := httpx.New(httpx.Options{CACert: caPEM, Insecure: input.skipVerify})
@@ -184,7 +252,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, err
 	}
 
-	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, name, p)
+	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	switch {
 	case errors.Is(err, errNoStoredCredential):
 		rancherToken, err = loginAndGenerateCred(ctx, client, input, p)
@@ -207,19 +275,22 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		}
 	}
 
-	if name != "" {
+	if params.Name != "" {
 		switch {
-		case tokenExpiry.IsZero():
+		case tokenExpiry.IsZero() && !params.legacyShim:
 			// A zero expiry would be cached and read back as never-expiring
 			// (GetCachedCred only evicts a past, non-zero expiry) — never
-			// cache an immortal stale token.
+			// cache an immortal stale token on the native path. The legacy
+			// `token` shim opts in: the legacy CLI cached these
+			// indefinitely, and the read path already treats zero expiry
+			// as never-expiring.
 			p.Notice("not caching: the minted token carried no expiry")
 		case rancherToken.noDiskCache:
 			// A credential-helper short-lived token served through the legacy
 			// fallback is memory-only by contract — never write it to disk.
 			p.Notice("not caching: the credential helper serves this token from memory only")
 		default:
-			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, name, serverID, clusterID); cacheErr != nil {
+			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, params.Name, serverID, clusterID); cacheErr != nil {
 				p.Notice("cache write failed: " + cacheErr.Error())
 			}
 		}
@@ -228,17 +299,80 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
 }
 
-// cachedResult returns an ExecCredential result for a warm cache entry and
-// whether it hit. A non-ErrNoToken read failure is noticed but treated as a miss.
-func (t tokenCmd) cachedResult(key string, p runtime.Prompter) (runtime.Result, bool) {
+// cachedResultQ returns an ExecCredential result for a warm cache entry and
+// whether it hit. When quiet is true a real
+// store error is silently treated as a miss rather than noticed. Used when the
+// caller's fast-path probe already noticed the error for this invocation so the
+// resolved-key re-check does not fire the notice a second time.
+func (t tokenCmd) cachedResultQ(key string, quiet bool, p runtime.Prompter) (runtime.Result, bool) {
 	tok, expiry, err := t.store.GetCachedCred(key)
 	if err == nil {
 		return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}, true
 	}
-	if !errors.Is(err, config.ErrNoToken) {
+	if !errors.Is(err, config.ErrNoToken) && !quiet {
 		p.Notice("cache read failed: " + err.Error())
 	}
 	return runtime.Result{}, false
+}
+
+// computeCacheProbeKey validates and normalizes name, server, and cluster into
+// the cache-key string that both probeFlagCache and shimProbeFlagCache use.
+// Keeping this logic here means future scheme, normalization, or CacheKey-shape
+// changes need only be applied once — the "fast-path probed key == slow-path
+// resolved key" invariant and the notice-once suppression both depend on the two
+// probes producing identical keys. Returns ("", false) when the probe is
+// impossible: a required field is empty, the URL is not parseable, or the scheme
+// is not http/https.
+func computeCacheProbeKey(name, server, cluster string) (string, bool) {
+	if name == "" || server == "" {
+		return "", false
+	}
+	normalized := applyDefaultScheme(server)
+	cu, err := credhelper.CanonicalServerURL(normalized)
+	if err != nil {
+		return "", false
+	}
+	if !config.IsSupportedScheme(cu) {
+		return "", false
+	}
+	return config.CacheKey(name, cu, cluster), true
+}
+
+// probeFlagCache attempts a flag-only cache probe when name and server are both
+// given — the same fast-path logic run uses, factored out so the legacy token
+// shim can call it before runWithParams. Returns (key, noticed, result, hit).
+// A miss or any condition that makes the probe impossible returns ("", false, {}, false).
+// The key is returned even on a miss so the caller can set ProbedKey; noticed
+// is true when the probe fired a "cache read failed" notice (a real, non-ErrNoToken
+// error). ProbedNoticed in runParams uses this flag to distinguish a clean miss
+// (do NOT suppress the resolved-key notice) from a noticed error (suppress).
+//
+// The probe itself is probeCacheWith (shared with shimProbeFlagCache),
+// parameterized on the store-backed read.
+func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
+	return probeCacheWith(name, server, cluster, t.store.GetCachedCred, p)
+}
+
+// probeCacheWith is the one flag-only cache probe: compute the key via
+// computeCacheProbeKey, read through read, and classify the outcome. Shared
+// by probeFlagCache (store-backed) and shimProbeFlagCache (direct read-only
+// file probe) so hit construction and the notice-once/notice-zero
+// classification — noticed is true only for a real, non-ErrNoToken error —
+// cannot drift between the two paths.
+func probeCacheWith(name, server, cluster string, read func(string) (string, time.Time, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
+	key, ok := computeCacheProbeKey(name, server, cluster)
+	if !ok {
+		return "", false, runtime.Result{}, false
+	}
+	tok, expiry, err := read(key)
+	if err == nil {
+		return key, false, runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}, true
+	}
+	noticed = !errors.Is(err, config.ErrNoToken)
+	if noticed {
+		p.Notice("cache read failed: " + err.Error())
+	}
+	return key, noticed, runtime.Result{}, false
 }
 
 type deleteTokenCmd struct {
@@ -398,13 +532,24 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 }
 
 func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
-	username, err := p.Prompt(ctx, "Enter username: ")
+	label := "Enter username: "
+	if def := input.usernameDefault; def != "" {
+		label = "Enter username [" + def + "]: "
+	}
+	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
 			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
 				WithHint("run in a terminal, or use a cached --name")
 		}
 		return Token{}, err
+	}
+	// Trim before both the emptiness check and the request: incidental
+	// padding (a paste with a trailing newline) must not reach the auth
+	// provider as part of the username.
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = input.usernameDefault
 	}
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
@@ -697,10 +842,17 @@ func generateKey() (string, error) {
 // belongs to whatever server the context happens to point at, which may differ
 // from the server just named; instead it borrows the CA of the configured
 // server entry whose URL actually matches (see caForServer).
-func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, err error) {
-	server = in.String("server")
-	cluster = in.String("cluster")
-	caIn := in.String("cacert")
+// When noAmbientContext is true both the cluster fallback and caForServer's
+// current-context CA preference are suppressed: an empty --cluster stays
+// unscoped, and among same-host CA candidates sorted order wins instead of the
+// current-context entry — both driven purely by the flags, never by ambient
+// interactive-session state.
+// resolveConn accepts the three flag values that drive connection resolution
+// as plain strings rather than a runtime.Input, so callers (runWithParams)
+// can pass runParams fields directly without an adapter wrapper.
+func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientContext bool) (server, caPEM, cluster string, err error) {
+	server = flagServer
+	cluster = flagCluster
 	explicitServer := server != ""
 	// Normalize the flag value's scheme here, once: it must happen before
 	// caForServer below, and a config-sourced server (from eff.URL) is always
@@ -712,24 +864,52 @@ func (t tokenCmd) resolveConn(in runtime.Input) (server, caPEM, cluster string, 
 		server = applyDefaultScheme(server)
 	}
 
+	// A noAmbientContext caller is flag-driven by definition: an absent
+	// --server must fail here, never be filled from the config's current
+	// context below. This also keeps the needsEff gate honest — past this
+	// point server == "" implies !noAmbientContext.
+	if server == "" && noAmbientContext {
+		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
+			WithHint("pass --server")
+	}
+
 	if server == "" || cluster == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
 		if cerr != nil {
 			return "", "", "", cerr
 		}
-		eff, cerr := cfg.Effective(t.store)
-		if cerr != nil {
-			return "", "", "", cerr
+		// cfg.Effective reads the ambient current-context server's credential from
+		// the store — GetToken for a server that may be entirely unrelated to the
+		// --server the caller wants. Call it only when a field actually needs it:
+		// URL from config (server == ""), context-cluster fill-in
+		// (cluster == "" && !noAmbientContext), or CA from the current context
+		// (!explicitServer). With an explicit --server and noAmbientContext (every
+		// shim call), config.yaml may still be needed for caForServer, but
+		// Effective must not run — a hard store error for an unrelated server must
+		// never abort an otherwise healthy mint.
+		// needsEff mirrors the three Effective fields consumed below:
+		//   - eff.URL    when server == ""
+		//   - eff.Cluster when cluster == "" && !noAmbientContext
+		//   - eff.CA     when caIn == "" && !explicitServer
+		// If a new Effective-sourced field is added below, add its condition here.
+		needsEff := server == "" || (cluster == "" && !noAmbientContext) || (caIn == "" && !explicitServer)
+		var eff config.Effective
+		if needsEff {
+			var effErr error
+			eff, effErr = cfg.Effective(t.store)
+			if effErr != nil {
+				return "", "", "", effErr
+			}
 		}
 		if server == "" {
 			server = eff.URL
 		}
-		if cluster == "" {
+		if cluster == "" && !noAmbientContext {
 			cluster = eff.Cluster
 		}
 		if caIn == "" {
 			if explicitServer {
-				caIn = caForServer(cfg, server)
+				caIn = caForServer(cfg, server, noAmbientContext)
 			} else {
 				caIn = eff.CA
 			}
@@ -841,6 +1021,22 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	}
 }
 
+// matchingServerNames returns the names of the cfg.Servers entries whose URL
+// matches server (compared by scheme+host via config.SameServerURL), sorted
+// for determinism. caForServer and storedTokenForServer both select from this
+// one candidate set, so a change to the matching policy cannot apply to one
+// and silently diverge in the other.
+func matchingServerNames(cfg *config.Config, server string) []string {
+	var names []string
+	for n, s := range cfg.Servers {
+		if config.SameServerURL(s.URL, server) {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // errNoStoredCredential is storedCredToken's sentinel for "try the
 // interactive provider flow instead" — no usable stored credential exists,
 // or the mint was rejected as an invalid/insufficient credential
@@ -875,9 +1071,9 @@ func serverCandidateRank(name, wantName, curServer string) int {
 
 // storedTokenForServer finds the configured server entry whose URL matches
 // server (compared by scheme+host via kube.BaseURL) and has a stored login
-// token, and returns that name and token. Mirrors caForServer's
-// server-matching, but resolves the credential store's token instead of the
-// config's CA. Multiple Servers entries can share a BaseURL (e.g. re-login
+// token, and returns that name and token. Selects from the same
+// matchingServerNames candidate set caForServer uses, but resolves the
+// credential store's token instead of the config's CA. Multiple Servers entries can share a BaseURL (e.g. re-login
 // under a new --name against the same host); serverCandidateRank orders
 // them deterministically, and every candidate in that order is tried in
 // turn — the first one with an actual stored token wins, so a
@@ -886,21 +1082,35 @@ func serverCandidateRank(name, wantName, curServer string) int {
 // WINNING RANK had a stored token — an exact --name match (rank 0) winning
 // outright is a certainty, not a tie-break, even if some unrelated
 // lower-ranked server also happens to have a stale token.
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, p runtime.Prompter) (name, tok string, ref config.ServerRef, ok bool, err error) {
-	var candidates []string
-	for n, s := range cfg.Servers {
-		if config.SameServerURL(s.URL, server) {
-			candidates = append(candidates, n)
-		}
-	}
+// noAmbientContext gates every non-sorted tier: wantName is forced to ""
+// (the shim's name is a cache-slot label, never an entry-name preference, so
+// ranks 0 and 1 must not fire even against a hand-edited "legacy:"-named
+// entry) and curServer is forced to "" (rank 2, the operator's
+// interactive-session state) — stored-login selection falls directly to
+// rank-3 (deterministic sorted order), consistent with how noAmbientContext
+// gates the cluster and CA fallbacks in resolveConn/caForServer.
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, noAmbientContext bool, p runtime.Prompter) (name, tok string, ref config.ServerRef, ok bool, err error) {
+	candidates := matchingServerNames(cfg, server)
 	if len(candidates) == 0 {
 		return "", "", config.ServerRef{}, false, nil
 	}
-	sort.Strings(candidates)
 
+	// A noAmbientContext caller's wantName is a cache-slot label
+	// ("legacy:<user>"), not a principal or entry-name preference:
+	// stored-login selection must follow server-ranking alone, so the
+	// name-driven tiers (ranks 0 and 1) are suppressed the same way rank 2's
+	// current-context tier is below. A hand-edited config.yaml can contain a
+	// literally "legacy:"-prefixed entry name (auth login rejects the prefix,
+	// but nothing rewrites existing files), so this cannot rely on the
+	// entry-name namespace staying clean.
+	if noAmbientContext {
+		wantName = ""
+	}
 	curServer := ""
-	if cur := cfg.CurrentContext; cur != "" {
-		curServer = cfg.Contexts[cur].Server
+	if !noAmbientContext {
+		if cur := cfg.CurrentContext; cur != "" {
+			curServer = cfg.Contexts[cur].Server
+		}
 	}
 	rankOf := func(n string) int { return serverCandidateRank(n, wantName, curServer) }
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -1021,13 +1231,15 @@ const legacyMintTTL = 15 * time.Minute
 // —no-input residue in the package's fix history). Any other non-nil error
 // is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
 // the caller must surface directly.
-func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, p runtime.Prompter) (Token, error) {
+// noAmbientContext is forwarded to storedTokenForServer to gate rank-2
+// (current-context server preference) — see runParams.legacyShim.
+func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, noAmbientContext bool, p runtime.Prompter) (Token, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v — skipping stored-credential mint", err))
 		return Token{}, errNoStoredCredential
 	}
-	name, stored, ref, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, p)
+	name, stored, ref, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, noAmbientContext, p)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
@@ -1083,15 +1295,30 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	return Token{Token: bearer, ExpiresAt: expiresAt}, nil
 }
 
-// caForServer returns the CA of the configured server entry whose URL
-// matches server (compared by scheme+host via kube.BaseURL), or "" if none
-// matches — so an explicit --server with no --cacert never silently borrows
-// a different server's trust root.
-func caForServer(cfg *config.Config, server string) string {
-	for _, s := range cfg.Servers {
-		if config.SameServerURL(s.URL, server) {
-			return s.CA
+// caForServer returns the CA of the configured server entry whose URL matches
+// server (compared by scheme+host via SameServerURL), or "" if none matches —
+// an explicit --server with no --cacert never silently borrows a different
+// server's trust root. When multiple entries share a host and noAmbientContext
+// is false, the current-context server wins; ties are broken by sorted entry
+// name (the same determinism storedTokenForServer uses at ranks 2 and 3), so
+// repeated calls with the same config always return the same CA regardless of
+// map-iteration order. When noAmbientContext is true the current-context
+// preference is suppressed and sorted order alone determines the winner —
+// consistent with how noAmbientContext gates the cluster and rank-2 fallbacks.
+func caForServer(cfg *config.Config, server string, noAmbientContext bool) string {
+	matches := matchingServerNames(cfg, server)
+	if len(matches) == 0 {
+		return ""
+	}
+	if !noAmbientContext {
+		curName, _, err := cfg.CurrentServer()
+		if err == nil {
+			for _, n := range matches {
+				if n == curName {
+					return cfg.Servers[n].CA
+				}
+			}
 		}
 	}
-	return ""
+	return cfg.Servers[matches[0]].CA
 }
