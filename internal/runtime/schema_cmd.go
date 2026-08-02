@@ -34,6 +34,7 @@ func (s *schemaCmd) Describe() Descriptor {
 	return Descriptor{
 		Name:  "schema",
 		Usage: "Print the capability manifest, optionally filtered to one command",
+		Desc:  "Multi-word command names (\"get pod\") work as a single selector — pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
 		Flags: []ArgSpec{
 			{Name: "kind", Type: "bool",

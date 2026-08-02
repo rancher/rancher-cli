@@ -7,11 +7,17 @@ jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
 jsonquery schema.json 'data.errorCodes.#' 10
 
-# CW-2: per-command filter
+# CW-2: per-command filter (unquoted multi-word selector)
 exec rancher schema get pod -o json
 cp stdout one.json
 jsonquery one.json 'data.commands.#' 1
 jsonquery one.json data.commands.0.name 'get pod'
+
+# CW-2b: quoted single-token selector — one argv token must behave like
+# two unquoted tokens; the schema command joins args before matching.
+exec rancher schema 'get pod' -o json
+jsonquery stdout 'data.commands.#' 1
+jsonquery stdout data.commands.0.name 'get pod'
 
 ! exec rancher schema get nonsense -o json
 jsonquery stderr data.error.code VALIDATION

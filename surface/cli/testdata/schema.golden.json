@@ -7553,6 +7553,7 @@
       ],
       "auth": false,
       "commandType": "readOnly",
+      "desc": "Multi-word command names (\"get pod\") work as a single selector — pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
       "examples": [
         "rancher schema -o json",
         "rancher schema get pod -o json"
