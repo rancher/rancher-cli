@@ -386,6 +386,60 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	assert.Equal(t, []string{""}, listAll.listNS, "empty --cluster lists across all clusters")
 }
 
+// TestGetNamedNotFoundCurated pins the curated NOT_FOUND shape for a named get:
+// the raw apiserver message becomes "<kind> not found: <name>" with a hint
+// naming the list command, and the code stays NOT_FOUND.
+func TestGetNamedNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	client := &memClient{} // empty items → Get returns NOT_FOUND
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "user not found: u-xxx", ce.Message)
+	assert.Equal(t, "list with: rancher get users", ce.Hint)
+}
+
+// TestGetNamedNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// client reaches the caller unchanged (code, message) without re-wrapping.
+func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
+	t.Parallel()
+	rbacErr := clierr.New(clierr.CodeRBAC, "forbidden")
+	client := &errClient{getErr: rbacErr}
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "forbidden", ce.Message)
+}
+
+// errClient is a ClusterClient stub that returns a canned error from Get and
+// succeeds on every other method.
+type errClient struct {
+	getErr error
+}
+
+func (e *errClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+	return nil, e.getErr
+}
+func (e *errClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+func (e *errClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
+	return "", nil
+}
+func (e *errClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (e *errClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (e *errClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	return nil
+}
+
 // TestRoutePolicyMatrix pins the routing contract for every NamespacePolicy:
 // which cluster serves the client, which namespace reaches the API, and which
 // inputs are VALIDATION errors. Route is shared by get, delete, and (branch 2)

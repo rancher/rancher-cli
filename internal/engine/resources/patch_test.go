@@ -216,6 +216,42 @@ func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 	assert.True(t, sawAdd, "a move must show the destination added, got %+v", eff.Diff)
 }
 
+// TestPatchNotFoundCurated pins the curated NOT_FOUND shape for a named patch:
+// the raw apiserver message becomes "<kind> not found: <name>" with a hint
+// naming the list command, and the code stays NOT_FOUND.
+func TestPatchNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	client := &patchClient{getErr: clierr.New(clierr.CodeNotFound, `deployments "web" not found`)}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planPatch(t, NewPatch(mustKind(t, "deployment"), fac, nil),
+		input{args: []string{"web"}, s: map[string]string{
+			"cluster": "prod", "namespace": "ns1",
+			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+		}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "deployment not found: web", ce.Message)
+	assert.Equal(t, "list with: rancher get deployments", ce.Hint)
+}
+
+// TestPatchNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// client (e.g. RBAC) reaches the caller unchanged without re-wrapping.
+func TestPatchNonNotFoundPassesThrough(t *testing.T) {
+	t.Parallel()
+	client := &patchClient{getErr: clierr.New(clierr.CodeRBAC, "forbidden")}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planPatch(t, NewPatch(mustKind(t, "deployment"), fac, nil),
+		input{args: []string{"web"}, s: map[string]string{
+			"cluster": "prod", "namespace": "ns1",
+			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+		}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "forbidden", ce.Message)
+}
+
 // TestPatchClusterResolvesDisplayName is the round-2 repro for finding 3:
 // patch must resolve a cluster's positional name the same way get does —
 // id hit, display hit, ambiguous, and miss — so the two commands agree on

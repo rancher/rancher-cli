@@ -25,9 +25,11 @@ jsonquery stderr data.error.hint 're-run with: --yes'
 # Gate passes with --apply --yes; the user is deleted.
 exec rancher delete user u-e2e --apply --yes
 
-# Gone: get by name returns NOT_FOUND.
+# Gone: get by name returns NOT_FOUND with the curated message and list hint.
 ! exec rancher get user u-e2e -o json
 jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'user not found: u-e2e'
+jsonquery stderr data.error.hint 'list with: rancher get users'
 
 -- user.yaml --
 apiVersion: management.cattle.io/v3

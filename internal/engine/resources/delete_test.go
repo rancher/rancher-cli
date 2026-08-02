@@ -146,6 +146,35 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
+// TestDeleteNotFoundCurated pins the curated NOT_FOUND shape: the raw apiserver
+// message becomes "<kind> not found: <name>" with a hint naming the list command.
+func TestDeleteNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	client := &delClient{getErr: clierr.New(clierr.CodeNotFound, `pods "web" not found`)}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac),
+		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "pod not found: web", ce.Message)
+	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+}
+
+// TestDeleteNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// client (e.g. RBAC) reaches the caller unchanged without re-wrapping.
+func TestDeleteNonNotFoundPassesThrough(t *testing.T) {
+	t.Parallel()
+	client := &delClient{getErr: clierr.New(clierr.CodeRBAC, "forbidden")}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac),
+		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "forbidden", ce.Message)
+}
+
 func TestDeleteDownstreamNamespacedRequiresNamespace(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "pod")

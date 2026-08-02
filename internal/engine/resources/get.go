@@ -57,6 +57,23 @@ func isVowel(b byte) bool {
 	return false
 }
 
+// getNamed fetches one object by name, curating the NOT_FOUND shape:
+// the raw apiserver text ("users.management.cattle.io \"u-x\" not
+// found") becomes "<kind> not found: <name>" with a hint naming the
+// list command — the same plain-English styling the cluster and role
+// lookups already use. Every other error passes through unchanged.
+func getNamed(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string) (*unstructured.Unstructured, error) {
+	obj, err := client.Get(ctx, k.GVR, ns, name)
+	if err != nil {
+		if clierr.IsNotFound(err) {
+			return nil, clierr.New(clierr.CodeNotFound, k.Name+" not found: "+name).
+				WithHint("list with: rancher get " + plural(k.Name))
+		}
+		return nil, err
+	}
+	return obj, nil
+}
+
 type getCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
@@ -186,7 +203,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 			}
 		} else {
-			one, err = client.Get(ctx, c.k.GVR, ns, name)
+			one, err = getNamed(ctx, client, c.k, ns, name)
 		}
 		if err != nil {
 			return runtime.Result{}, err

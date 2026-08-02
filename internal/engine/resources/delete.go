@@ -80,7 +80,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	obj, err := client.Get(ctx, c.k.GVR, ns, name)
+	obj, err := getNamed(ctx, client, c.k, ns, name)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
