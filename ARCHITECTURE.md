@@ -292,8 +292,11 @@ the probe fails, a `"creatorId not stamped"` warning is emitted and the create p
 unstamped — rancher-webhook may then deny the dry-run, but a real `--apply` create is
 still expected to succeed (the mutator stamps identity server-side on real creates).
 These are the two deliberate network writes during Plan — `create cluster` uses the SelfUser
-probe for creatorId stamping, and `delete user` uses it for the self-delete guard. All other
-writes are deferred into the exec closure and run only after the `--apply` gate.
+probe for creatorId stamping, and `delete user` uses it for the self-delete guard. The
+`delete user` guard runs pre-Plan (before the server-side dry-run): Rancher's own users
+webhook refuses a self-delete dry-run before a post-Plan guard could fire, surfacing raw
+webhook text; running the guard first ensures the curated lockout refusal with its hint wins.
+All other writes are deferred into the exec closure and run only after the `--apply` gate.
 
 **Read flow** (`ReadCommand`, e.g. `get pod`): `validateInput` → `Execute(ctx, in,
 prompter)` → render. `--dry-run` on a read command is rejected with

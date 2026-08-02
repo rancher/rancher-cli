@@ -109,7 +109,9 @@ func TestDeleteUserPlanAppendsCascadeWarning(t *testing.T) {
 }
 
 // TestDeleteUserSelfDeleteRefused verifies that attempting to delete the
-// currently authenticated user is refused with a VALIDATION error.
+// currently authenticated user is refused with a VALIDATION error. With
+// pre-Plan guard timing the curated refusal fires before the inner Plan's
+// server-side dry-run — the inner dry-run must not execute on refusal.
 func TestDeleteUserSelfDeleteRefused(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
@@ -127,6 +129,7 @@ func TestDeleteUserSelfDeleteRefused(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "u-self")
 	assert.Contains(t, ce.Hint, "admin")
+	assert.Empty(t, c.deleteDryRuns, "inner dry-run must not fire on self-delete refusal")
 }
 
 // TestDeleteUserGenericProbeErrorRefuses verifies that a non-NotFound
@@ -170,9 +173,9 @@ func TestDeleteUserProbeNotFoundSkips(t *testing.T) {
 }
 
 // TestDeleteUserClusterErrorRefuses verifies that a Cluster() lookup failure
-// prevents deletion. After the post-Plan guard reordering the error surfaces
-// from inner.Plan (not the guard), so it propagates as-is rather than being
-// wrapped as a retryable GENERIC error.
+// prevents deletion. With pre-Plan guard timing the failure surfaces from the
+// guard itself (before inner.Plan) and is wrapped as a retryable GENERIC error
+// — an unverifiable identity must cost a retry rather than risk a lockout.
 func TestDeleteUserClusterErrorRefuses(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
@@ -181,7 +184,10 @@ func TestDeleteUserClusterErrorRefuses(t *testing.T) {
 
 	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-other"}})
 	require.Error(t, err, "Cluster() failure must prevent deletion")
-	assert.ErrorIs(t, err, connErr)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.True(t, ce.Retryable)
 }
 
 // TestDeleteUserCancellation verifies that a cancelled context propagates
@@ -198,14 +204,16 @@ func TestDeleteUserCancellation(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-// TestDeleteUserNonexistentFailsBeforeProbe verifies that after the post-Plan
-// guard reordering a nonexistent target returns NOT_FOUND from the inner Plan
-// without the self-delete probe firing.
-func TestDeleteUserNonexistentFailsBeforeProbe(t *testing.T) {
+// TestDeleteUserNonexistentProbesBeforeNotFound verifies that with pre-Plan
+// guard timing the self-delete probe fires before inner.Plan — so a mistyped
+// target name triggers one identity probe before the 404. Accepted tradeoff:
+// a curated lockout refusal with a hint beats raw webhook text on a real
+// server; the extra probe on mistyped targets is a cheap read-equivalent call.
+func TestDeleteUserNonexistentProbesBeforeNotFound(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
 	c := &fakeClient{
-		createFn: selfUserCreate("u-current"), // probe would fire if called
+		createFn: selfUserCreate("u-current"), // probe fires with pre-Plan timing
 		// no user in gets or users → Get returns NOT_FOUND
 	}
 	cmd := NewDeleteUser(k, fakeFactory{c: c})
@@ -214,8 +222,8 @@ func TestDeleteUserNonexistentFailsBeforeProbe(t *testing.T) {
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code, "nonexistent target must fail NOT_FOUND from inner Plan")
-	assert.Zero(t, c.createCalls, "self-delete probe must not fire before target existence is confirmed")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code, "nonexistent target must still fail NOT_FOUND from inner Plan")
+	assert.Equal(t, 1, c.createCalls, "self-delete probe fires once before inner.Plan (pre-Plan timing); accepted tradeoff vs. raw webhook text")
 }
 
 // TestDeleteUserEmptyProbeIDRefuses verifies that an empty identity returned

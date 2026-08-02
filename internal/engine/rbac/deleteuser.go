@@ -1,16 +1,22 @@
 // deleteuser.go implements the delete override for the user kind row: the
 // row becomes Deletable and the generic delete provides the full dry-run/
 // apply/--yes gating; this wrapper adds a cascade warning and a self-delete
-// guard. The guard runs after inner.Plan confirms the target's existence,
-// using the ext.cattle.io SelfUser probe to resolve the current user's ID
-// and refusing deletion when the target matches the authenticated caller's
-// own record. A probe that returns NOT_FOUND (the ext.cattle.io group absent
-// on older Rancher) skips the guard as a legitimately unsupported endpoint.
-// A probe that returns an empty identity (success, but no userID field)
-// refuses retryably — an unverifiable identity must cost a retry rather than
-// risk a lockout, same as any other probe failure. Any other probe or Cluster
-// failure refuses with a retryable GENERIC error: for an irreversible identity
-// deletion a transient failure must cost a retry, not risk a lockout.
+// guard. The guard runs before inner.Plan (PrePlan timing), using the
+// ext.cattle.io SelfUser probe to resolve the current user's ID and refusing
+// deletion when the target matches the authenticated caller's own record.
+// PrePlan timing is required here: on a real Rancher server the users webhook
+// denies a self-delete dry-run before the PostPlan guard could fire, surfacing
+// raw webhook text with no hint. Running the guard first ensures the curated
+// lockout refusal ("deleting your own user record locks this CLI out" + hint)
+// always wins over the webhook — a curated refusal beats raw webhook text, and
+// the extra identity probe on mistyped targets is a cheap read-equivalent call.
+// A probe that returns NOT_FOUND (the ext.cattle.io group absent on older
+// Rancher) skips the guard as a legitimately unsupported endpoint. A probe
+// that returns an empty identity (success, but no userID field) refuses
+// retryably — an unverifiable identity must cost a retry rather than risk a
+// lockout, same as any other probe failure. Any other probe or Cluster failure
+// refuses with a retryable GENERIC error: for an irreversible identity deletion
+// a transient failure must cost a retry, not risk a lockout.
 package rbac
 
 import (
@@ -32,11 +38,13 @@ import (
 const userCascadeWarning = "deleting this user removes the identity record; Rancher's controllers remove the user's role bindings (cluster memberships, project memberships, global role bindings) with it"
 
 // NewDeleteUser builds the delete override for the user kind row. clients is
-// passed straight through to resources.NewGuardedDelete, which runs the inner
-// Plan choreography (Route/Get/rv/dry-run/exec) first and then runs the
-// self-delete guard and appends the cascade warning to the resulting Effect.
+// passed straight through to resources.NewGuardedDeletePrePlan, which runs the
+// self-delete guard before the inner Plan choreography (Route/Get/rv/dry-run/
+// exec) so the curated lockout refusal fires before the server's own webhook
+// can refuse the dry-run with raw text. The cascade warning is appended to the
+// resulting Effect on success.
 func NewDeleteUser(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
-	return resources.NewGuardedDelete(k, clients, func(ctx context.Context, in runtime.Input) error {
+	return resources.NewGuardedDeletePrePlan(k, clients, func(ctx context.Context, in runtime.Input) error {
 		return guardSelfDelete(ctx, clients, in)
 	}, userCascadeWarning)
 }
