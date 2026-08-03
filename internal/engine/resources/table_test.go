@@ -164,7 +164,7 @@ func TestTableMarshalJSONRedactsListItems(t *testing.T) {
 	assert.NotContains(t, decoded[1], "token", "token must be absent from item 1")
 }
 
-// TestTableMarshalJSONDoesNotMutateOriginal verifies that scrubPaths does not
+// TestTableMarshalJSONDoesNotMutateOriginal verifies that engine.ScrubPaths does not
 // mutate the original unstructured object (important: a command may hold the
 // object in memory after serialization).
 func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
@@ -182,7 +182,7 @@ func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
 	_, err := tab.MarshalJSON()
 	require.NoError(t, err)
 	assert.Equal(t, "must-survive-in-original", obj.Object["secret"],
-		"the original unstructured object must not be mutated by scrubPaths")
+		"the original unstructured object must not be mutated by engine.ScrubPaths")
 }
 
 // TestRedactKindPathsBlanksDiffEntries verifies that redactKindPaths replaces
