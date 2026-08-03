@@ -694,3 +694,29 @@ func TestLoginVersionProbeUnreachableServerNeverFailsLogin(t *testing.T) {
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
 }
+
+// TestLoginCanonicalizesStoredURL pins the live-exercise friction-6 finding:
+// a non-canonical --server (host case, explicit default port) must be
+// canonicalized ONCE at login and used consistently — the config.yaml server
+// entry, the credential-store ref, and the success echo must all carry the
+// canonical form the credential helper is keyed by, never the raw spelling.
+func TestLoginCanonicalizesStoredURL(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := &loginCmd{dir: dir, store: store}
+	res, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "HTTPS://Rancher2.Example.Local:443", "name": "canon"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:secret"))
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]string)
+	assert.Equal(t, "https://rancher2.example.local", data["url"], "echo must show the canonical form")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://rancher2.example.local", cfg.Servers["canon"].URL, "config must persist the canonical form")
+
+	tok, err := store.GetToken(config.ServerRef{Name: "canon", URL: "https://rancher2.example.local"})
+	require.NoError(t, err)
+	assert.Equal(t, "id:secret", tok, "credential must be stored under the canonical ref")
+}

@@ -137,6 +137,7 @@ graph TD
     commands --> runtime
     commands --> completions
     commands --> config
+    commands --> credhelper
     commands --> provider
     commands --> engine
     commands --> extres

@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/url"
 	"strings"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -87,16 +87,21 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server is required").
 			WithHint("pass --server <url>")
 	}
-	u, err := url.ParseRequestURI(server)
-	if err != nil {
+	// Canonicalize once (scheme://host only — lowercase scheme/host, default
+	// port stripped) and use the canonical form everywhere below —
+	// config.yaml, the credential-store ref, and the echoed result — so the
+	// persisted spelling always matches the identity credential helpers key
+	// by. CanonicalServerURL discards path, query, fragment, AND userinfo;
+	// dropping userinfo is a security requirement: https://admin:secret@host
+	// must not persist credentials into config.yaml (secrets live only in
+	// the credential store). It also rejects a schemeless or hostless value,
+	// so it is the sole validation this input needs.
+	serverURL, cerr := credhelper.CanonicalServerURL(server)
+	if cerr != nil {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "invalid server URL: "+server)
 	}
-	// Keep only scheme://host — drop path, query, fragment, AND userinfo. Dropping
-	// User is a security requirement: https://admin:secret@host must not persist
-	// credentials into config.yaml (secrets live only in the credential store).
-	u.Path, u.RawQuery, u.Fragment, u.User = "", "", "", nil
 
-	token, err := resolveLoginToken(ctx, u.String(), in, p)
+	token, err := resolveLoginToken(ctx, serverURL, in, p)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -116,7 +121,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	cfg.Servers[name] = config.Server{URL: u.String(), CA: in.String("cacert")}
+	cfg.Servers[name] = config.Server{URL: serverURL, CA: in.String("cacert")}
 
 	var cluster, project string
 	if c := in.String("context"); c != "" {
@@ -132,7 +137,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, err
 	}
 	var warnings []string
-	if err := store.SetToken(config.ServerRef{Name: name, URL: u.String()}, token); err != nil {
+	if err := store.SetToken(config.ServerRef{Name: name, URL: serverURL}, token); err != nil {
 		if !errors.Is(err, config.ErrTokenStoreUnsupported) {
 			return runtime.Result{}, err
 		}
@@ -146,10 +151,10 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	}
 
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]string{
-		"server": name, "url": u.String(), "context": name,
+		"server": name, "url": serverURL, "context": name,
 	}}
 	res.Warnings = warnings
-	versionEff := config.Effective{ServerName: name, URL: u.String(), CA: in.String("cacert"), Token: token}
+	versionEff := config.Effective{ServerName: name, URL: serverURL, CA: in.String("cacert"), Token: token}
 	if warning := l.warnBelowMinVersion(ctx, versionEff); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
 	}
