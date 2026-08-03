@@ -305,8 +305,11 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   security boundary, and a read-only RBAC token can't `--dry-run` a mutation
   either (dry-run still needs write verbs server-side), so read-only mode
   refuses those outright too.
-- **`config path` / `config edit`:** `config path` prints the resolved
-  config file path — point other tooling at it. `config edit` opens the
+- **`config path` / `config info` / `config edit`:** `config path` prints the
+  resolved config file path — point other tooling at it. `config info` adds
+  the effective credential store and its source (env > config > auto default,
+  plus the probed pin) — the answer to "which store am I actually using",
+  which config.yaml alone cannot give when the store comes from env. `config edit` opens the
   config in `$VISUAL`/`$EDITOR` on a temp copy, validating referential
   integrity before writing back — reach for it over several individual
   `set-context`/`use-server` calls when reshaping multiple contexts/servers

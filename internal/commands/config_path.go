@@ -32,14 +32,25 @@ func (configPathCmd) Describe() runtime.Descriptor {
 
 func (c configPathCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	path := config.FilePath(c.dir)
-	_, statErr := os.Stat(path)
+	exists, err := configFileExists(path)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	return pathResult(path, exists), nil
+}
+
+// configFileExists is the one existence probe config path and config info
+// share, so a future refinement (e.g. distinguishing permission-denied)
+// lands in both.
+func configFileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
 	switch {
-	case statErr == nil:
-		return pathResult(path, true), nil
-	case os.IsNotExist(statErr):
-		return pathResult(path, false), nil
+	case err == nil:
+		return true, nil
+	case os.IsNotExist(err):
+		return false, nil
 	default:
-		return runtime.Result{}, statErr
+		return false, err
 	}
 }
 

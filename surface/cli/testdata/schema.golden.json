@@ -281,6 +281,19 @@
     {
       "auth": false,
       "commandType": "local",
+      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present.",
+      "examples": [
+        "rancher config info"
+      ],
+      "group": "config",
+      "name": "config info",
+      "network": false,
+      "toolset": "core",
+      "usage": "Print config diagnostics: file path and effective credential store"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
       "examples": [
         "rancher config path"
       ],
@@ -8117,6 +8130,7 @@
         "config use-server",
         "config delete-server",
         "config path",
+        "config info",
         "config edit",
         "config set-completion"
       ],

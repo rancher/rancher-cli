@@ -148,6 +148,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `config use-server [name]` | Switch the active server |
 | `config delete-server <name>` | Remove a configured server, every context that targets it, and drain its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
 | `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
+| `config info` | Print config diagnostics: the file path and the effective credential store with its source (env, config, or the auto default), plus the probed pin under auto |
 | `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
 | `config set-completion [--network true\|false] [--timeout <budget>]` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 | `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — dry-run/apply |
@@ -206,7 +207,7 @@ nodes join with:
 Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
 (48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
-126 generated commands, 170 total together with the fixed commands above. The authoritative, always-current list is
+126 generated commands, 171 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema -o json`.
 <!-- /conformance:surface-counts -->
 
