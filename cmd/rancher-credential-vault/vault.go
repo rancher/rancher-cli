@@ -91,6 +91,55 @@ func (h *vaultHandler) do(method, url string, body any) (int, []byte, error) {
 	return resp.StatusCode, out, err
 }
 
+// httpError builds the error for a non-2xx Vault response: the verb, the
+// status, Vault's own error reason from the response body (the {"errors":
+// [...]} envelope, or raw text for a non-JSON body), and — on 403 only —
+// a parenthetical policy hint naming the capabilities the verb needs. The
+// body must lead: a 403 can be an invalid/expired token just as well as a
+// missing policy capability, and Vault's body says which (live-exercise
+// S-12: a canned policy hint alone misdirects token problems).
+func httpError(verb string, code int, body []byte, policyHint string) error {
+	msg := fmt.Sprintf("vault %s: HTTP %d", verb, code)
+	if reason := vaultErrors(body); reason != "" {
+		msg += ": " + reason
+	}
+	if code == http.StatusForbidden && policyHint != "" {
+		msg += " (" + policyHint + ")"
+	}
+	return fmt.Errorf("%s", msg)
+}
+
+// vaultErrors extracts Vault's error reasons from a response body, joined
+// and whitespace-collapsed to one line; a non-JSON body falls back to its
+// trimmed raw text.
+func vaultErrors(body []byte) string {
+	var e struct {
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &e); err == nil {
+		// Keep only entries that still say something after whitespace
+		// collapse: a redacting proxy can blank any subset of the array,
+		// and joining blanks first would fabricate a bare ";" reason that
+		// blocks the raw-body fallback below.
+		var parts []string
+		for _, msg := range e.Errors {
+			if f := strings.Join(strings.Fields(msg), " "); f != "" {
+				parts = append(parts, f)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "; ")
+		}
+	}
+	return strings.Join(strings.Fields(string(body)), " ")
+}
+
+// policyHint names the capability a 403 for a VALID token points at — one
+// template for every verb, so a wording change lands once.
+func (h *vaultHandler) policyHint(capability, kind string) string {
+	return fmt.Sprintf("if the token is valid, the policy needs %s on %s/%s/%s/*", capability, h.mount, kind, h.path)
+}
+
 func (h *vaultHandler) Get(serverURL, name string) (*credhelper.Credentials, error) {
 	code, body, err := h.do(http.MethodGet, h.url("data", serverURL, name), nil)
 	if err != nil {
@@ -100,7 +149,7 @@ func (h *vaultHandler) Get(serverURL, name string) (*credhelper.Credentials, err
 		return nil, nil
 	}
 	if code != http.StatusOK {
-		return nil, fmt.Errorf("vault get: HTTP %d", code)
+		return nil, httpError("get", code, body, h.policyHint("read", "data"))
 	}
 	var envelope struct {
 		Data struct {
@@ -123,26 +172,38 @@ func (h *vaultHandler) Get(serverURL, name string) (*credhelper.Credentials, err
 }
 
 func (h *vaultHandler) Store(serverURL, name, token string) error {
-	code, _, err := h.do(http.MethodPost, h.url("data", serverURL, name), map[string]any{
+	code, body, err := h.do(http.MethodPost, h.url("data", serverURL, name), map[string]any{
 		"data": map[string]string{"token": token, "serverURL": serverURL, "name": name},
 	})
 	if err != nil {
 		return err
 	}
 	if code != http.StatusOK && code != http.StatusNoContent {
-		return fmt.Errorf("vault store: HTTP %d (policy needs create+update+read on %s/data/%s/*)", code, h.mount, h.path)
+		return httpError("store", code, body, h.policyHint("create+update+read", "data"))
 	}
 	return nil
 }
 
-func (h *vaultHandler) Erase(serverURL, name string) error {
-	code, _, err := h.do(http.MethodDelete, h.url("metadata", serverURL, name), nil)
-	if err != nil {
-		return err
-	}
-	// 404 = already gone = success (idempotent).
-	if code != http.StatusNoContent && code != http.StatusOK && code != http.StatusNotFound {
-		return fmt.Errorf("vault erase: HTTP %d (policy needs delete on %s/metadata/%s/*)", code, h.mount, h.path)
-	}
-	return nil
+func (h *vaultHandler) Erase(serverURL, name string) (credhelper.EraseOutcome, error) {
+	// Vault's metadata DELETE is idempotent and does not say whether
+	// anything existed, so ProbeErase answers through h.Get — presence here
+	// can never diverge from what a get would say (a soft-deleted latest
+	// version, an empty token, or a mismatched identity all read as absent
+	// in both). A policy without read on the data path (a delete-only
+	// service account) gets a denied read in Vault's audit log and an
+	// "unknown" outcome — never a failure. Best-effort under concurrent
+	// stores; see ProbeErase's doc.
+	return credhelper.ProbeErase(
+		func() (*credhelper.Credentials, error) { return h.Get(serverURL, name) },
+		func() error {
+			code, body, err := h.do(http.MethodDelete, h.url("metadata", serverURL, name), nil)
+			if err != nil {
+				return err
+			}
+			// 404 = already gone = success (idempotent).
+			if code != http.StatusNoContent && code != http.StatusOK && code != http.StatusNotFound {
+				return httpError("erase", code, body, h.policyHint("delete", "metadata"))
+			}
+			return nil
+		})
 }

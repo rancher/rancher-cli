@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,7 +63,14 @@ func (f *fakeVault) handler(t *testing.T) http.Handler {
 }
 
 func newTestHandler(t *testing.T, fv *fakeVault) *vaultHandler {
-	srv := httptest.NewServer(fv.handler(t))
+	return newTestHandlerFor(t, fv.handler(t))
+}
+
+// newTestHandlerFor is the one place a test vaultHandler is built over an
+// httptest server; every fixture (fakeVault, errBodyVault, routeVault)
+// funnels through it.
+func newTestHandlerFor(t *testing.T, h http.Handler) *vaultHandler {
+	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return &vaultHandler{addr: srv.URL, token: "test-token", mount: "secret", path: "rancher-cli", client: srv.Client()}
 }
@@ -79,12 +87,16 @@ func TestVaultStoreGetErase(t *testing.T) {
 	require.NotNil(t, creds)
 	assert.Equal(t, "id:secret", creds.Token)
 
-	require.NoError(t, h.Erase(u, n))
+	outcome, eerr := h.Erase(u, n)
+	require.NoError(t, eerr)
+	assert.Equal(t, credhelper.EraseDeleted, outcome, "erase of a stored credential reports a deletion")
 	creds, err = h.Get(u, n)
 	require.NoError(t, err)
 	assert.Nil(t, creds, "erased credential reads as not-found")
-	// erase idempotent on missing
-	require.NoError(t, h.Erase(u, n))
+	// erase idempotent on missing — and it says so
+	outcome, eerr = h.Erase(u, n)
+	require.NoError(t, eerr)
+	assert.Equal(t, credhelper.EraseNothingStored, outcome, "erase of a missing credential reports a no-op")
 	// exact endpoint: metadata delete, never data soft-delete
 	joined := strings.Join(fv.paths, "\n")
 	assert.Contains(t, joined, "DELETE /v1/secret/metadata/rancher-cli/")
@@ -137,4 +149,143 @@ func TestVaultStoreTwiceSameIdentity(t *testing.T) {
 	c, err := h.Get("https://a.example.com", "prod")
 	require.NoError(t, err)
 	assert.Equal(t, "tok-2", c.Token)
+}
+
+// errBodyVault returns the given status and a Vault-shaped error body for
+// every request, mimicking Vault's real {"errors":[...]} envelope.
+func errBodyVault(t *testing.T, status int, errs ...string) *vaultHandler {
+	return newTestHandlerFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"errors": errs})
+	}))
+}
+
+// TestVaultErrorsSurfaceResponseBody pins the live-exercise S-12 finding:
+// the helper must surface Vault's own error reason (e.g. "invalid token"),
+// not substitute one canned policy hint for every non-2xx. The policy hint
+// stays, but only on 403 and only as a parenthetical after the real cause.
+func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
+	t.Run("store 403 invalid token names the real cause", func(t *testing.T) {
+		h := errBodyVault(t, http.StatusForbidden, "2 errors occurred:\n\t* permission denied\n\t* invalid token\n\n")
+		err := h.Store("https://r.ex", "prod", "tok")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid token", "Vault's own reason must surface")
+		assert.Contains(t, err.Error(), "HTTP 403")
+		assert.Contains(t, err.Error(), "create+update+read", "policy hint stays on 403")
+	})
+
+	t.Run("store non-403 carries no policy hint", func(t *testing.T) {
+		h := errBodyVault(t, http.StatusInternalServerError, "internal error")
+		err := h.Store("https://r.ex", "prod", "tok")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP 500")
+		assert.Contains(t, err.Error(), "internal error")
+		assert.NotContains(t, err.Error(), "policy", "a 500 is not a policy problem")
+	})
+
+	t.Run("erase 403 surfaces cause with delete hint", func(t *testing.T) {
+		h := errBodyVault(t, http.StatusForbidden, "permission denied")
+		_, err := h.Erase("https://r.ex", "prod")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "permission denied")
+		assert.Contains(t, err.Error(), "delete", "erase's policy hint names the delete capability")
+	})
+
+	t.Run("get non-200 surfaces cause", func(t *testing.T) {
+		h := errBodyVault(t, http.StatusForbidden, "permission denied")
+		_, err := h.Get("https://r.ex", "prod")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("non-JSON body falls back to trimmed raw text", func(t *testing.T) {
+		h := newTestHandlerFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("<html>upstream broke</html>\n"))
+		}))
+		err := h.Store("https://r.ex", "prod", "tok")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream broke")
+	})
+
+	t.Run("whitespace-only errors array falls back to the raw body", func(t *testing.T) {
+		// One, two, and three blank entries: 2+ is the round-5 repro, where
+		// joining blanks first fabricated a bare ";" reason that blocked
+		// the raw-body fallback.
+		for _, errs := range [][]string{{"   "}, {"", ""}, {"", "", ""}} {
+			h := errBodyVault(t, http.StatusForbidden, errs...)
+			err := h.Store("https://r.ex", "prod", "tok")
+			require.Error(t, err, "entries=%q", errs)
+			assert.Contains(t, err.Error(), "errors", "the raw body must surface when the errors array is blank (entries=%q)", errs)
+			assert.NotContains(t, err.Error(), "403: ;", "a fabricated bare-';' reason must never appear (entries=%q)", errs)
+		}
+	})
+
+	t.Run("blank entries are dropped, real ones kept", func(t *testing.T) {
+		h := errBodyVault(t, http.StatusForbidden, "", "invalid token", "  ")
+		err := h.Store("https://r.ex", "prod", "tok")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP 403: invalid token", "the surviving real entry must be the reason, unpolluted by blanks")
+	})
+}
+
+// routeVault serves per-route status/body pairs so mixed-capability policies
+// (e.g. delete allowed, read denied) can be modeled — unlike errBodyVault,
+// which fails every request identically.
+func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *vaultHandler {
+	return newTestHandlerFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + strings.SplitN(strings.TrimPrefix(r.URL.Path, "/v1/secret/"), "/", 2)[0]
+		route, ok := routes[key]
+		require.True(t, ok, "unexpected request %s %s", r.Method, r.URL.Path)
+		route(w)
+	}))
+}
+
+// TestVaultEraseOutcomeClassification pins round-2 findings 3 and 4: the
+// erase's presence read shares Get's semantics (a 200 whose data is
+// null/empty reads as absent, exactly as a get would), and a denied read
+// under a delete-only policy yields an UNKNOWN outcome with a successful
+// erase — never a failure, never a fabricated deletion.
+func TestVaultEraseOutcomeClassification(t *testing.T) {
+	t.Run("delete-only policy: probe denied, erase succeeds, outcome unknown", func(t *testing.T) {
+		h := routeVault(t, map[string]func(http.ResponseWriter){
+			"GET data": func(w http.ResponseWriter) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"errors":["permission denied"]}`))
+			},
+			"DELETE metadata": func(w http.ResponseWriter) { w.WriteHeader(http.StatusNoContent) },
+		})
+		outcome, err := h.Erase("https://r.ex", "prod")
+		require.NoError(t, err, "a denied presence read must never fail the erase")
+		assert.Equal(t, credhelper.EraseUnknown, outcome)
+	})
+
+	t.Run("soft-deleted latest version: 200 with null data reads as nothing stored", func(t *testing.T) {
+		h := routeVault(t, map[string]func(http.ResponseWriter){
+			"GET data": func(w http.ResponseWriter) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"data":null}}`))
+			},
+			"DELETE metadata": func(w http.ResponseWriter) { w.WriteHeader(http.StatusNoContent) },
+		})
+		outcome, err := h.Erase("https://r.ex", "prod")
+		require.NoError(t, err)
+		assert.Equal(t, credhelper.EraseNothingStored, outcome,
+			"a value Get would report absent must not be reported as a deletion")
+	})
+}
+
+// TestVaultGetEmptyDataIsNotFound pins the Get side of the same class: a
+// 200 response with null/empty data (a soft-deleted latest version) is a
+// clean not-found, not an error and not a credential.
+func TestVaultGetEmptyDataIsNotFound(t *testing.T) {
+	h := routeVault(t, map[string]func(http.ResponseWriter){
+		"GET data": func(w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"data":null}}`))
+		},
+	})
+	creds, err := h.Get("https://r.ex", "prod")
+	require.NoError(t, err)
+	assert.Nil(t, creds)
 }

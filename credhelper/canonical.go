@@ -18,7 +18,7 @@ func ValidHelperName(name string) bool { return helperNameRE.MatchString(name) }
 // CanonicalServerURL reduces a server URL to its canonical scheme://host form:
 // scheme and host lowercased, an explicit default port (443 for https, 80 for
 // http) dropped, path/query/fragment/userinfo discarded. This single function
-// defines server identity for the helper wire protocol, provenance records,
+// defines server identity for the helper wire protocol, helper records,
 // and the CLI's own same-server comparison.
 func CanonicalServerURL(raw string) (string, error) {
 	u, err := url.Parse(raw)

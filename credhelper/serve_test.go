@@ -32,7 +32,14 @@ func (m *mapHandler) Store(u, n, tok string) error {
 	m.creds[key(u, n)] = tok
 	return nil
 }
-func (m *mapHandler) Erase(u, n string) error { delete(m.creds, key(u, n)); return nil }
+func (m *mapHandler) Erase(u, n string) (EraseOutcome, error) {
+	outcome := EraseNothingStored
+	if _, ok := m.creds[key(u, n)]; ok {
+		outcome = EraseDeleted
+	}
+	delete(m.creds, key(u, n))
+	return outcome, nil
+}
 
 func run(t *testing.T, h Handler, verb string, req Request) (int, Response, string) {
 	t.Helper()
@@ -115,7 +122,7 @@ func TestServeExpiry(t *testing.T) {
 type handlerFunc struct {
 	get   func(u, n string) (*Credentials, error)
 	store func(u, n, tok string) error
-	erase func(u, n string) error
+	erase func(u, n string) (EraseOutcome, error)
 }
 
 func (h handlerFunc) Get(u, n string) (*Credentials, error) {
@@ -130,9 +137,9 @@ func (h handlerFunc) Store(u, n, tok string) error {
 	}
 	return h.store(u, n, tok)
 }
-func (h handlerFunc) Erase(u, n string) error {
+func (h handlerFunc) Erase(u, n string) (EraseOutcome, error) {
 	if h.erase == nil {
-		return nil
+		return EraseUnknown, nil
 	}
 	return h.erase(u, n)
 }

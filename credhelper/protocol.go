@@ -26,10 +26,26 @@ type Request struct {
 // Response is the JSON object a helper writes to stdout on success. A get
 // response without a token means "no credential" (not an error). ExpiresAt,
 // when set, is RFC 3339 and marks the token short-lived. Unsupported is a
-// store response declaring the helper read-only.
+// store response declaring the helper read-only. Erased, on an erase
+// response, reports whether a stored credential actually existed and was
+// removed: true = deleted, false = nothing was stored, absent = the helper
+// cannot tell (the CLI then reports the erase as a deletion — the safe,
+// over-reporting direction).
 type Response struct {
 	ProtocolVersion int    `json:"protocolVersion"`
 	Token           string `json:"token,omitempty"`
 	ExpiresAt       string `json:"expiresAt,omitempty"`
 	Unsupported     bool   `json:"unsupported,omitempty"`
+	Erased          *bool  `json:"erased,omitempty"`
 }
+
+// EraseOutcome is a Handler's answer to Erase: was a credential actually
+// deleted? EraseUnknown is the zero value — a helper that cannot tell
+// returns it and the response simply omits the erased field.
+type EraseOutcome int
+
+const (
+	EraseUnknown       EraseOutcome = iota // cannot tell — reported as deleted downstream
+	EraseDeleted                           // a stored credential existed and is gone
+	EraseNothingStored                     // nothing was stored; the erase was a no-op
+)

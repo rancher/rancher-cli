@@ -59,7 +59,15 @@ short-lived credentials rather than store long-lived ones.
 persisted.
 
 `erase` → exit 0; erasing a credential that does not exist is success
-(erase is idempotent).
+(erase is idempotent). A helper that can tell whether a credential was
+actually deleted says so with the optional `erased` field —
+`{"protocolVersion":1,"erased":true}` for a real deletion, `"erased":false`
+for a no-op. When the field is absent the CLI reports the erase as a
+deletion (the safe direction); `rancher auth logout` uses it to keep its
+`deletedFrom` report honest. The field is best-effort: a helper whose
+backend has no atomic delete-and-report operation may answer from a read
+that a concurrent store immediately staled — prefer `erased` over silence,
+but do not treat it as a transactional guarantee.
 
 ### Compatibility rules
 
@@ -97,10 +105,21 @@ func (s *memory) Get(u, n string) (*credhelper.Credentials, error) {
 	return nil, nil // not found: NOT an error
 }
 func (s *memory) Store(u, n, tok string) error { s.m[key(u, n)] = tok; return nil }
-func (s *memory) Erase(u, n string) error      { delete(s.m, key(u, n)); return nil }
+func (s *memory) Erase(u, n string) (credhelper.EraseOutcome, error) {
+	if _, ok := s.m[key(u, n)]; !ok {
+		return credhelper.EraseNothingStored, nil
+	}
+	delete(s.m, key(u, n))
+	return credhelper.EraseDeleted, nil // EraseUnknown is always a safe answer
+}
 
 func main() { credhelper.Serve(&memory{m: map[string]string{}}) }
 ```
+
+For a backend with no atomic delete-and-report operation, build `Erase` on
+`credhelper.ProbeErase(probe, erase)` — it probes through your own `Get`,
+treats a denied read as unknown (never a failure), and always runs the
+delete; the vault helper is the reference caller.
 
 `credhelper.Serve` handles verbs, JSON, versioning, and exit codes. Return
 `credhelper.ErrStoreUnsupported` from `Store` to declare a read-only helper.

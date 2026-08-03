@@ -21,11 +21,37 @@ type Credentials struct {
 
 // Handler is what a helper author implements; Serve handles verb dispatch,
 // JSON codec, versioning, and exit codes. Get returns (nil, nil) when no
-// credential exists. Erase of a missing credential returns nil (idempotent).
+// credential exists. Erase of a missing credential is success (idempotent);
+// its EraseOutcome says whether a credential was actually deleted, and
+// EraseUnknown is always a safe answer.
 type Handler interface {
 	Get(serverURL, name string) (*Credentials, error)
 	Store(serverURL, name, token string) error
-	Erase(serverURL, name string) error
+	Erase(serverURL, name string) (EraseOutcome, error)
+}
+
+// ProbeErase is the erase shape for a backend with no atomic
+// delete-and-report operation (Vault's metadata delete, most cloud secret
+// stores): probe presence via the helper's own get semantics, then run the
+// delete REGARDLESS of what the probe said. Any probe error — including a
+// denied read under a delete-only policy — reads as EraseUnknown, never a
+// failure; only the delete itself can fail the erase. Best-effort by
+// nature: a store committing between probe and delete stales the outcome
+// (see CREDENTIAL_HELPERS.md). Backends that know their own state should
+// answer directly instead of using this.
+func ProbeErase(probe func() (*Credentials, error), erase func() error) (EraseOutcome, error) {
+	outcome := EraseUnknown
+	if creds, err := probe(); err == nil {
+		if creds == nil {
+			outcome = EraseNothingStored
+		} else {
+			outcome = EraseDeleted
+		}
+	}
+	if err := erase(); err != nil {
+		return EraseUnknown, err
+	}
+	return outcome, nil
 }
 
 // Serve runs one helper invocation from os.Args/stdio and exits.
@@ -84,8 +110,17 @@ func serve(h Handler, args []string, stdin io.Reader, stdout, stderr io.Writer) 
 			return fail("store: %v", err)
 		}
 	case VerbErase:
-		if err := h.Erase(req.ServerURL, req.Name); err != nil {
+		outcome, err := h.Erase(req.ServerURL, req.Name)
+		if err != nil {
 			return fail("erase: %v", err)
+		}
+		switch outcome {
+		case EraseDeleted:
+			v := true
+			resp.Erased = &v
+		case EraseNothingStored:
+			v := false
+			resp.Erased = &v
 		}
 	}
 	if err := json.NewEncoder(stdout).Encode(resp); err != nil {
