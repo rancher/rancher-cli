@@ -112,7 +112,7 @@ func TestDrainExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
 }
 
 func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
-	// Login stored via exec:fake (records provenance); drain runs with
+	// Login stored via exec:fake (records the helper record); drain runs with
 	// policy "auto" (env-free logout) and must STILL erase via the helper.
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
@@ -127,13 +127,13 @@ func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 
 	_, gerr := st.GetToken(execRef())
 	assert.ErrorIs(t, gerr, ErrNoToken, "helper credential must be gone")
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		assert.Empty(t, s.forServer("prod"), "provenance entry cleared")
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		assert.Empty(t, s.forServer("prod"), "helper record cleared")
 		return nil
 	}))
 }
 
-func TestDrainLoginTokenFailedEraseKeepsProvenance(t *testing.T) {
+func TestDrainLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
@@ -146,8 +146,8 @@ func TestDrainLoginTokenFailedEraseKeepsProvenance(t *testing.T) {
 	t.Setenv("FAKEHELPER_MODE", "fail")
 	_, derr := DrainLoginToken(dir, ref, "exec:fake")
 	require.Error(t, derr)
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the provenance entry")
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the helper record")
 		return nil
 	}))
 
@@ -156,7 +156,7 @@ func TestDrainLoginTokenFailedEraseKeepsProvenance(t *testing.T) {
 	from, derr := DrainLoginToken(dir, ref, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"))
 		return nil
 	}))
@@ -173,14 +173,14 @@ func TestDrainSameNameTwoURLsErasesBoth(t *testing.T) {
 	require.NoError(t, st.SetToken(ServerRef{Name: "prod", URL: "https://b.example.com"}, "tok-b"))
 
 	// Drain with only the CURRENT URL: the recorded old identity must be
-	// erased too — replayed verbatim from provenance, not reconstructed.
+	// erased too — replayed verbatim from the helper records, not reconstructed.
 	from, derr := DrainLoginToken(dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 
 	assert.Empty(t, fakeHelperCreds(t, statePath), "both identities (old and current URL) erased")
 
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "all entries cleared after full success")
 		return nil
 	}))
@@ -207,7 +207,7 @@ func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	_, derr := DrainLoginToken(dir, ref, "auto")
 	require.Error(t, derr)
 
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		entries := s.forServer("prod")
 		require.Len(t, entries, 1, "successful removal persisted despite the joined error")
 		assert.Equal(t, "fake2", entries[0].Helper)
@@ -222,34 +222,54 @@ func TestDrainLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 
 	// "exec:../evil" passes the "exec:" prefix check but fails ValidHelperName:
 	// DrainLoginToken must error (not silently skip) and must not attempt to
-	// exec anything. The provenance file is empty, so file/keychain drains also
+	// exec anything. The helper-records file is empty, so file/keychain drains also
 	// report nothing — only the validation error is returned.
 	_, err := DrainLoginToken(dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "../evil", "error must name the invalid helper")
 }
 
-func TestDrainCrashResidueErasesRecordedIdentity(t *testing.T) {
+func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	// Crash boundary through the REQUIRED path: an intent was recorded but
 	// the process died before store ran. A later policy-independent drain
-	// must discover the residue via provenance, replay the recorded
+	// must discover the leftover record, replay the recorded
 	// identity to the helper (idempotent erase of a never-stored credential
 	// succeeds), and clear the entry.
 	keyring.MockInit()
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		s.add(ProvenanceEntry{Helper: "fake", Name: "prod", CanonicalURL: "https://rancher.example.com"})
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		s.add(HelperRecord{Helper: "fake", Name: "prod", CanonicalURL: "https://rancher.example.com"})
 		return nil
 	}))
 
 	from, err := DrainLoginToken(dir, execRef(), "auto") // policy-independent: "auto" names no helper
-	require.NoError(t, err, "crash residue drains as success")
-	assert.Contains(t, from, "helper:fake")
+	require.NoError(t, err, "a leftover crash record drains as success")
+	// Nothing was ever stored, so the no-op erase is not reported as a
+	// deletion (friction-4 semantics) — the replay and the cleanup below
+	// are the crash-boundary guarantees this test pins.
+	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
 		"the helper saw exactly the recorded identity")
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		assert.Empty(t, s.forServer("prod"), "residue entry cleared")
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		assert.Empty(t, s.forServer("prod"), "leftover record cleared")
 		return nil
 	}))
+}
+
+// TestDrainLoginTokenNoOpEraseNotReported pins live-exercise friction 4:
+// when the helper holds no credential for the identity, the drain still runs
+// the idempotent erase, but must NOT report the helper in deletedFrom — the
+// output could not distinguish a no-op from an actual deletion. The policy
+// names the helper, so the identity is a drain target even with no
+// helper record and nothing stored.
+func TestDrainLoginTokenNoOpEraseNotReported(t *testing.T) {
+	keyring.MockInit()
+	useFakeHelper(t, "ok")
+	dir := t.TempDir()
+
+	from, err := DrainLoginToken(dir, execRef(), "exec:fake")
+	require.NoError(t, err)
+	assert.NotContains(t, from, "helper:fake", "a no-op erase is not a deletion")
+	assert.Empty(t, from)
 }

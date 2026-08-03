@@ -237,12 +237,12 @@ func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
 	assert.Empty(t, helperCreds(t, statePath), "--all erases every helper-held credential")
 }
 
-// TestLogoutAllDrainsProvenanceResidueForUnconfiguredServer is the impl-review
-// finding-2 repro: a helper credential recorded in provenance for a server
-// name absent from config.yaml (a crash/failed-write residue) is unreachable
+// TestLogoutAllDrainsOrphanedHelperCredential is the impl-review
+// finding-2 repro: a helper credential recorded for a server
+// name absent from config.yaml (left behind by a crash/failed write) is unreachable
 // from the per-server logout loop, so `logout --all` must drain it via the
-// provenance residue path and report it.
-func TestLogoutAllDrainsProvenanceResidueForUnconfiguredServer(t *testing.T) {
+// orphaned-record path and report it.
+func TestLogoutAllDrainsOrphanedHelperCredential(t *testing.T) {
 	t.Setenv("PATH", buildCommandsFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKEHELPER_MODE", "ok")
 	statePath := filepath.Join(t.TempDir(), "state.json")
@@ -258,29 +258,29 @@ func TestLogoutAllDrainsProvenanceResidueForUnconfiguredServer(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	// Store a helper credential + provenance for a name that never made it
+	// Store a helper credential + its record for a name that never made it
 	// into config.yaml.
 	store, err := config.OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
-	require.NotEmpty(t, helperCreds(t, statePath), "precondition: helper holds the residue credential")
+	require.NotEmpty(t, helperCreds(t, statePath), "precondition: helper holds the orphaned credential")
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 
 	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
-	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the drained residue under its server name")
-	assert.Empty(t, helperCreds(t, statePath), "the residue helper credential must be erased")
+	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the drained orphan under its server name")
+	assert.Empty(t, helperCreds(t, statePath), "the orphaned helper credential must be erased")
 
-	residue, err := config.DrainProvenanceResidue(dir)
+	residue, err := config.DrainOrphanedHelperCredentials(dir)
 	require.NoError(t, err)
 	assert.Empty(t, residue, "provenance must be fully drained")
 }
 
 // TestLogoutAllDrainsResidueAfterFailedConfigWrite is finding-2's review-
 // requested scenario: a login whose helper store succeeds but whose config
-// write then fails strands a live helper credential + provenance entry for a
+// write then fails strands a live helper credential + helper record for a
 // server never persisted to config.yaml. `logout --all` must still clean it.
 func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
 	if goruntime.GOOS == "windows" {
@@ -319,7 +319,7 @@ func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded residue")
 
-	residue, err := config.DrainProvenanceResidue(dir)
+	residue, err := config.DrainOrphanedHelperCredentials(dir)
 	require.NoError(t, err)
 	assert.Empty(t, residue)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -172,18 +171,16 @@ func (l logoutCmd) drainAll(cfg *config.Config, targets []string, policy string)
 
 	// Reach helper credentials whose server name never made it into
 	// config.yaml (a crash or failed config write between a successful helper
-	// store and cfg.Write): no per-server drain above could see them. Their
-	// provenance identifiers read "helper:<helper>@<server-name>"; merge each
-	// into deletedFrom under that server name so the envelope stays stable.
-	residue, rerr := config.DrainProvenanceResidue(l.dir)
-	for _, id := range residue {
-		if at := strings.LastIndex(id, "@"); at >= 0 {
-			deletedFrom[id[at+1:]] = append(deletedFrom[id[at+1:]], id[:at])
-		}
+	// store and cfg.Write): no per-server drain above could see them. Merge
+	// each drained record into deletedFrom under its server name so the
+	// envelope stays stable.
+	orphans, rerr := config.DrainOrphanedHelperCredentials(l.dir)
+	for _, e := range orphans {
+		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
 	}
 	if rerr != nil {
 		return nil, nil, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("failed to drain credential-helper residue: %v", rerr)).
+			fmt.Sprintf("failed to drain orphaned helper credentials: %v", rerr)).
 			WithHint(fmt.Sprintf("already logged out: %v", done))
 	}
 	return deletedFrom, deletedCache, nil

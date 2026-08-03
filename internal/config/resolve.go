@@ -74,7 +74,7 @@ func ResolveCA(s string) (string, error) {
 
 // SameServerURL reports whether a and b address the same server. Defined as
 // equality of credhelper.CanonicalServerURL outputs — the one server-identity
-// algorithm, shared with the helper wire protocol and provenance records.
+// algorithm, shared with the helper wire protocol and helper records.
 // Falls back to exact string equality when either side fails to canonicalize,
 // so a malformed value never spuriously counts as a match.
 func SameServerURL(a, b string) bool {

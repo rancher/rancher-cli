@@ -38,16 +38,20 @@ func envVal(suffix string) string {
 }
 
 func main() {
-	// lockhold <dir> <duration>: acquire the provenance lock, announce it on
-	// stdout AFTER acquisition, hold for the duration. Used by the
-	// cross-process lock tests (contention, bounded wait, death).
+	// lockhold <lockpath> <duration>: acquire the flock at lockpath, announce
+	// it on stdout AFTER acquisition, hold for the duration. Used by the
+	// cross-process lock tests (contention, bounded wait, death). The caller
+	// supplies the full lock-file path so the file name has exactly one
+	// definition (helperRecordsLockName in internal/config) — a hardcoded
+	// copy here would silently turn the contention tests into false passes
+	// if the real name ever changed.
 	if len(os.Args) >= 4 && os.Args[1] == "lockhold" {
 		d, err := time.ParseDuration(os.Args[3])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "lockhold:", err)
 			os.Exit(1)
 		}
-		fl := flock.New(filepath.Join(os.Args[2], "credhelper-provenance.lock"))
+		fl := flock.New(os.Args[2])
 		if err := fl.Lock(); err != nil {
 			fmt.Fprintln(os.Stderr, "lockhold:", err)
 			os.Exit(1)
@@ -148,12 +152,16 @@ func (h handler) Store(u, n, tok string) error {
 	return h.save(s)
 }
 
-func (h handler) Erase(u, n string) error {
+func (h handler) Erase(u, n string) (credhelper.EraseOutcome, error) {
 	s, err := h.load()
 	if err != nil {
-		return err
+		return credhelper.EraseUnknown, err
 	}
 	h.log(s, "erase", u, n)
+	outcome := credhelper.EraseNothingStored
+	if _, ok := s.Creds[u+"\n"+n]; ok {
+		outcome = credhelper.EraseDeleted
+	}
 	delete(s.Creds, u+"\n"+n)
-	return h.save(s)
+	return outcome, h.save(s)
 }

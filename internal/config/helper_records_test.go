@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -12,29 +13,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProvenanceAddRemove(t *testing.T) {
+func TestHelperRecordsAddRemove(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	e := ProvenanceEntry{Helper: "vault", Name: "prod", CanonicalURL: "https://r.example.com"}
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	e := HelperRecord{Helper: "vault", Name: "prod", CanonicalURL: "https://r.example.com"}
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		s.add(e)
 		return nil
 	}))
 	// Re-read in a fresh lock scope: entry persisted.
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		got := s.forServer("prod")
 		require.Len(t, got, 1)
 		assert.Equal(t, e, got[0])
 		s.remove(e)
 		return nil
 	}))
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"))
 		return nil
 	}))
 }
 
-func TestProvenanceConcurrentAddsLoseNothing(t *testing.T) {
+func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	var wg sync.WaitGroup
@@ -42,13 +43,13 @@ func TestProvenanceConcurrentAddsLoseNothing(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			e := ProvenanceEntry{Helper: "vault", Name: fmt.Sprintf("s%d", i), CanonicalURL: "https://r.example.com"}
-			_ = withProvenanceLock(dir, func(s *provenanceState) error { s.add(e); return nil })
+			e := HelperRecord{Helper: "vault", Name: fmt.Sprintf("s%d", i), CanonicalURL: "https://r.example.com"}
+			_ = withHelperRecordsLock(dir, func(s *helperRecords) error { s.add(e); return nil })
 		}(i)
 	}
 	wg.Wait()
 	total := 0
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		for i := 0; i < 20; i++ {
 			total += len(s.forServer(fmt.Sprintf("s%d", i)))
 		}
@@ -58,46 +59,47 @@ func TestProvenanceConcurrentAddsLoseNothing(t *testing.T) {
 }
 
 // Cross-PROCESS lock tests: goroutine tests cannot prove flock semantics.
-// The fake helper's lockhold mode (Task 7's main.go) acquires the provenance
+// The fake helper's lockhold mode (Task 7's main.go) acquires the flock at a
+// caller-supplied path; the tests build it from helperRecordsLockName so the
 // lock and prints "locked" AFTER acquisition; waitForLocked (fixtures file)
 // blocks on that stdout line, so the parent can never race the child to the
 // lock. Real compiled-binary runs — actual OS lock behavior on every
 // platform including Windows LockFileEx.
 
-func TestProvenanceLockCrossProcessContention(t *testing.T) {
+func TestHelperRecordsLockCrossProcessContention(t *testing.T) {
 	dir := t.TempDir()
-	child := exec.Command(fakeHelperBin(t), "lockhold", dir, "2s")
+	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "2s")
 	waitForLocked(t, child) // child provably owns the lock now
 
 	start := time.Now()
-	err := withProvenanceLock(dir, func(s *provenanceState) error {
-		s.add(ProvenanceEntry{Helper: "vault", Name: "p", CanonicalURL: "https://x"})
+	err := withHelperRecordsLock(dir, func(s *helperRecords) error {
+		s.add(HelperRecord{Helper: "vault", Name: "p", CanonicalURL: "https://x"})
 		return nil
 	})
 	require.NoError(t, err, "blocked acquisition must succeed once the child releases")
 	assert.Greater(t, time.Since(start), 500*time.Millisecond, "must actually have waited on the child's lock")
 }
 
-func TestProvenanceLockBoundedWait(t *testing.T) {
+func TestHelperRecordsLockBoundedWait(t *testing.T) {
 	restore := SetExecHelperTimeoutForTest(200 * time.Millisecond) // wait bound = 2×
 	defer restore()
 	dir := t.TempDir()
-	child := exec.Command(fakeHelperBin(t), "lockhold", dir, "30s")
+	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "30s")
 	waitForLocked(t, child)
 
-	err := withProvenanceLock(dir, func(*provenanceState) error { return nil })
+	err := withHelperRecordsLock(dir, func(*helperRecords) error { return nil })
 	require.Error(t, err, "acquisition must give up after the bounded wait")
 	assert.Contains(t, err.Error(), "another rancher process")
 }
 
-func TestProvenanceLockReleasedOnProcessDeath(t *testing.T) {
+func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
 	dir := t.TempDir()
-	child := exec.Command(fakeHelperBin(t), "lockhold", dir, "30s")
+	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "30s")
 	waitForLocked(t, child) // owns the lock…
 	require.NoError(t, child.Process.Kill(), "…and dies holding it")
 	_, _ = child.Process.Wait()
 
-	err := withProvenanceLock(dir, func(s *provenanceState) error { return nil })
+	err := withHelperRecordsLock(dir, func(s *helperRecords) error { return nil })
 	assert.NoError(t, err, "OS must release a dead process's lock — no stale-lock recovery")
 }
 
@@ -108,7 +110,7 @@ func TestExecStoreSetTokenWritesIntentBeforeStore(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	require.Error(t, err)
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "write-ahead intent must survive a failed store")
 		return nil
 	}))
@@ -121,7 +123,7 @@ func TestExecStoreSetTokenUnsupportedRemovesIntent(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	assert.ErrorIs(t, err, ErrTokenStoreUnsupported)
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "unsupported store recorded nothing")
 		return nil
 	}))
@@ -137,12 +139,12 @@ func TestExecStoreUnsupportedPersistFailureIsHardError(t *testing.T) {
 	require.NoError(t, err)
 	// Fail the SECOND persist (intent write succeeds, removal write fails).
 	calls := 0
-	restore := setProvenancePersistForTest(func(dir string, s *provenanceState) error {
+	restore := setHelperRecordsPersistForTest(func(dir string, s *helperRecords) error {
 		calls++
 		if calls >= 2 {
 			return fmt.Errorf("disk full")
 		}
-		return persistProvenanceToDisk(dir, s)
+		return persistHelperRecordsToDisk(dir, s)
 	})
 	defer restore()
 	err = st.SetToken(execRef(), "id:s")
@@ -151,20 +153,20 @@ func TestExecStoreUnsupportedPersistFailureIsHardError(t *testing.T) {
 		"a hard persistence failure must not read as clean read-only success")
 }
 
-func TestExecStoreDeleteTokenClearsProvenance(t *testing.T) {
+func TestExecStoreDeleteTokenClearsHelperRecord(t *testing.T) {
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 	st, err := OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 	require.NoError(t, st.DeleteToken(execRef()))
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		assert.Empty(t, s.forServer("prod"), "a direct DeleteToken clears its provenance entry")
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		assert.Empty(t, s.forServer("prod"), "a direct DeleteToken clears its helper record")
 		return nil
 	}))
 }
 
-func TestExecStoreDeleteTokenFailureKeepsProvenance(t *testing.T) {
+func TestExecStoreDeleteTokenFailureKeepsHelperRecord(t *testing.T) {
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 	st, err := OpenStore("exec:fake", dir)
@@ -172,7 +174,7 @@ func TestExecStoreDeleteTokenFailureKeepsProvenance(t *testing.T) {
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 	t.Setenv("FAKEHELPER_MODE", "fail")
 	require.Error(t, st.DeleteToken(execRef()))
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the entry for retry")
 		return nil
 	}))
@@ -185,7 +187,7 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 	// never invoked — no remote credential without a cleanup record.
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
-	restore := setProvenancePersistForTest(func(string, *provenanceState) error {
+	restore := setHelperRecordsPersistForTest(func(string, *helperRecords) error {
 		return fmt.Errorf("disk full")
 	})
 	defer restore()
@@ -200,10 +202,10 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 }
 
 // Deterministic interleaving tests: execStoreLockedHook fires while the
-// provenance lock is HELD, so the test can pin exactly which operation owns
+// helper-records lock is HELD, so the test can pin exactly which operation owns
 // the lock first, start the competitor (which must block on the lock), then
 // release — both orders proven, both operations required to succeed, exact
-// final helper/provenance state asserted. Not parallel (package-level hook).
+// final helper/record state asserted. Not parallel (package-level hook).
 
 func TestExecStoreStoreThenEraseInterleaving(t *testing.T) {
 	statePath := useFakeHelper(t, "ok")
@@ -239,8 +241,8 @@ func TestExecStoreStoreThenEraseInterleaving(t *testing.T) {
 	require.NoError(t, <-storeErr)
 	require.NoError(t, <-eraseErr)
 	assert.Empty(t, fakeHelperCreds(t, statePath), "store→erase: no credential survives")
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
-		assert.Empty(t, s.forServer("prod"), "store→erase: no provenance entry survives")
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+		assert.Empty(t, s.forServer("prod"), "store→erase: no helper record survives")
 		return nil
 	}))
 }
@@ -281,9 +283,9 @@ func TestExecStoreEraseThenStoreInterleaving(t *testing.T) {
 	require.NoError(t, <-storeErr)
 	creds := fakeHelperCreds(t, statePath)
 	require.Len(t, creds, 1, "erase→store: the re-stored credential is live")
-	require.NoError(t, withProvenanceLock(dir, func(s *provenanceState) error {
+	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1,
-			"erase→store: the live credential has its provenance record")
+			"erase→store: the live credential has its helper record")
 		return nil
 	}))
 }

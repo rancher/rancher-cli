@@ -586,10 +586,10 @@ func DrainToken(dir string, ref ServerRef, policy string) (fromBackends, drained
 }
 
 // DrainLoginToken deletes a server's login token from the keychain, file
-// store, and every recorded exec-helper provenance entry for the server.
-// The exec union covers: the current policy's helper (with the current
-// identity) and every older provenance entry — so a policy change between
-// login and logout never strands a helper credential. Used directly by
+// store, and every helper the records file says was asked to store a
+// credential for the server. The exec union covers: the current policy's
+// helper (with the current identity) and every older record — so a policy
+// change between login and logout never strands a helper credential. Used directly by
 // DrainToken (single-server logout) and by `logout --all` (which drains
 // every configured server's token this way, then wipes the exec-credential
 // cache once via DrainAllExecCache instead of per server).
@@ -627,39 +627,67 @@ func DrainLoginToken(dir string, ref ServerRef, policy string) ([]string, error)
 	}
 
 	// Exec helpers: erase through the union of the current policy's helper
-	// (with the current identity) and every recorded provenance entry for
-	// this server — a policy change between login and logout must not strand
-	// a helper credential. The provenance lock spans erase + unrecord.
-	targets := map[ProvenanceEntry]struct{}{}
+	// (with the current identity) and every recorded entry for this server —
+	// a policy change between login and logout must not strand a helper
+	// credential. The records lock spans erase + unrecord.
+	// One deduplicated target list, in a stable order: the policy's helper
+	// (when any) first, then the recorded entries as stored. Dedup is
+	// helperRecords.add — the same append-if-absent every record write
+	// uses — on a throwaway in-memory list (its dirty flag is never read
+	// here), so the package has exactly one dedup implementation.
+	var targets helperRecords
 	if name, ok := execHelperName(policy); ok {
 		if !credhelper.ValidHelperName(name) {
 			errs = append(errs, fmt.Errorf("invalid credential helper name %q in effective policy; refusing to execute it", name))
 		} else if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
-			targets[ProvenanceEntry{Helper: name, Name: ref.Name, CanonicalURL: cu}] = struct{}{}
+			targets.add(HelperRecord{Helper: name, Name: ref.Name, CanonicalURL: cu})
 		} else if ref.URL != "" {
 			errs = append(errs, fmt.Errorf("credential helper drain: %w", cerr))
 		}
 	}
-	lerr := withProvenanceLock(dir, func(st *provenanceState) error {
+	lerr := withHelperRecordsLock(dir, func(st *helperRecords) error {
 		for _, e := range st.forServer(ref.Name) {
-			targets[e] = struct{}{}
+			targets.add(e)
 		}
-		var eerrs []error
-		for e := range targets {
-			es := newExecStore(e.Helper, dir)
-			if _, ierr := es.invoke(credhelper.VerbErase, credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name}); ierr != nil {
-				eerrs = append(eerrs, fmt.Errorf("credential helper %q erase: %w", e.Helper, ierr))
-				continue // entry stays for retry
-			}
-			st.remove(ProvenanceEntry{Helper: e.Helper, Name: e.Name, CanonicalURL: e.CanonicalURL})
+		return drainHelperRecords(dir, targets.Entries, st, func(e HelperRecord) {
 			from = append(from, "helper:"+e.Helper)
-		}
-		return errors.Join(eerrs...)
+		})
 	})
 	if lerr != nil {
 		errs = append(errs, lerr)
 	}
 	return from, errors.Join(errs...)
+}
+
+// drainHelperRecords erases every record through eraseHelperCredential:
+// a successfully erased record is removed from st (a failed one stays for
+// retry, its error joined), and deleted is called for each record whose
+// credential actually existed. The one loop behind DrainLoginToken's
+// per-server drain and DrainOrphanedHelperCredentials' sweep, so a fix to
+// either path cannot land on only one copy.
+func drainHelperRecords(dir string, records []HelperRecord, st *helperRecords, deleted func(HelperRecord)) error {
+	var errs []error
+	for _, e := range records {
+		wasDeleted, err := eraseHelperCredential(dir, e)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("credential helper %q erase: %w", e.Helper, err))
+			continue // record stays for retry
+		}
+		st.remove(e)
+		if wasDeleted {
+			deleted(e)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// eraseHelperCredential asks e.Helper to erase the recorded credential and
+// reports whether a stored credential was actually deleted. Used by the
+// drain paths, which span records for potentially different helpers and so
+// construct a store per record; a caller that already holds the right
+// execStore (DeleteToken) uses eraseCredential on it directly.
+func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error) {
+	return newExecStore(e.Helper, dir).eraseCredential(credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name})
 }
 
 // DrainAllExecCache wipes the ENTIRE exec-credential cache file in one
