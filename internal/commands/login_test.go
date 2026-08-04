@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -738,8 +739,12 @@ func TestLoginCanonicalizesStoredURL(t *testing.T) {
 // a credentialStore policy change committed while login waits for the
 // config lock must be honored — the token lands in the backend the NEW
 // policy names, not the dependency-resolution snapshot's.
+//
+// Sequence: install a lock hook, start login (it parks on the hook),
+// THEN rewrite config.yaml to the new policy, THEN release.  This proves
+// the factory is called after the fn-load, not before the lock is
+// acquired — a pre-lock snapshot would still see "file".
 func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
-	// Seed config with credentialStore: file.
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CredentialStore: "file",
@@ -749,30 +754,18 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	// Goroutine acquires and holds the config write lock.
-	lockHeld := make(chan struct{})
+	// Hook fires inside WithLock, before fn. Login parks here so the config
+	// still reads "file" at hook time. We rewrite to "exec:fake" then release:
+	// fn loads the rewritten config and calls the factory with the new policy.
+	loginParked := make(chan struct{})
 	release := make(chan struct{})
-	go func() {
-		_ = config.WithLock(dir, func() error {
-			close(lockHeld)
-			<-release
-			return nil
-		})
-	}()
-	<-lockHeld
+	var once sync.Once
+	restore := config.SetLockHookForTest(func() {
+		once.Do(func() { close(loginParked) })
+		<-release
+	})
+	defer restore()
 
-	// Rewrite the config to credentialStore: exec:fake while the lock is held.
-	newCfg := &config.Config{
-		CredentialStore: "exec:fake",
-		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
-	}
-	newCfg.SetPath(config.FilePath(dir))
-	b, err := json.Marshal(newCfg)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(config.FilePath(dir), b, 0600))
-
-	// Start login; it will park on the lock because the goroutine holds it.
 	var calledWith string
 	factory := func(policy, d string) (config.CredStore, error) {
 		calledWith = policy
@@ -787,13 +780,27 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 		loginDone <- lerr
 	}()
 
-	// Give login time to park on the lock, then release.
-	time.Sleep(50 * time.Millisecond)
-	close(release)
+	// Wait for login to park on the hook (config still "file" at this point),
+	// then rewrite the policy before releasing.
+	select {
+	case <-loginParked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("login never acquired the config lock")
+	}
+	newCfg := &config.Config{
+		CredentialStore: "exec:fake",
+		Servers:         map[string]config.Server{},
+		Contexts:        map[string]config.Context{},
+	}
+	newCfg.SetPath(config.FilePath(dir))
+	b, err := json.Marshal(newCfg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(config.FilePath(dir), b, 0600))
 
+	close(release)
 	require.NoError(t, <-loginDone)
 	assert.Equal(t, "exec:fake", calledWith,
-		"factory must be called with the policy from the config loaded under the lock, not the pre-lock snapshot")
+		"factory must be called with the policy from the config loaded under the lock, not before")
 }
 
 // TestLoginSerializedUnderConfigLock exercises the boundary-test harness

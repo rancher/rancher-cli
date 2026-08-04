@@ -50,32 +50,31 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 			WithHint("rancher auth logout <name>  OR  rancher auth logout --all")
 	}
 
-	cfg, err := config.Load(config.FilePath(l.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
-	targets, err := logoutTargets(cfg, all, name)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
-	policy := config.EffectivePolicy(cfg.CredentialStore)
-
 	var (
+		targets      []string
 		deletedFrom  map[string][]string
 		deletedCache []string
 	)
-	if all {
-		deletedFrom, deletedCache, err = l.drainAll(cfg, targets, policy)
-	} else {
-		deletedFrom, deletedCache, err = l.drainTargets(cfg, targets, policy)
-	}
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
-	if err := clearCurrentContext(cfg, all, targets); err != nil {
+	if err := config.WithLock(l.dir, func() error {
+		cfg, err := config.Load(config.FilePath(l.dir))
+		if err != nil {
+			return err
+		}
+		targets, err = logoutTargets(cfg, all, name)
+		if err != nil {
+			return err
+		}
+		policy := config.EffectivePolicy(cfg.CredentialStore)
+		if all {
+			deletedFrom, deletedCache, err = l.drainAll(cfg, targets, policy)
+		} else {
+			deletedFrom, deletedCache, err = l.drainTargets(cfg, targets, policy)
+		}
+		if err != nil {
+			return err
+		}
+		return clearCurrentContext(cfg, all, targets)
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 

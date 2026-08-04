@@ -72,31 +72,39 @@ func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 			"provide --cluster and/or --project").
 			WithHint("run: rancher config set-context --current --cluster <c> [--project <p>]")
 	}
-	cfg, err := config.Load(config.FilePath(c.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	if cfg.CurrentContext == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "no current context").
-			WithHint(config.LoginHint)
-	}
-	ctx, ok := cfg.Contexts[cfg.CurrentContext]
-	if !ok {
-		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "current context \""+cfg.CurrentContext+"\" not found").
-			WithHint("run: rancher config use-context <name> or rancher auth login")
-	}
-	if cluster != "" {
-		ctx.Cluster = cluster
-	}
-	if project != "" {
-		ctx.Project = project
-	}
-	cfg.Contexts[cfg.CurrentContext] = ctx
-	if err := cfg.Write(); err != nil {
+	var (
+		ctxName string
+		ctx     config.Context
+	)
+	if err := config.WithLock(c.dir, func() error {
+		cfg, err := config.Load(config.FilePath(c.dir))
+		if err != nil {
+			return err
+		}
+		if cfg.CurrentContext == "" {
+			return clierr.New(clierr.CodeContextNotSet, "no current context").
+				WithHint(config.LoginHint)
+		}
+		ctxName = cfg.CurrentContext
+		var ok bool
+		ctx, ok = cfg.Contexts[ctxName]
+		if !ok {
+			return clierr.New(clierr.CodeContextNotSet, "current context \""+ctxName+"\" not found").
+				WithHint("run: rancher config use-context <name> or rancher auth login")
+		}
+		if cluster != "" {
+			ctx.Cluster = cluster
+		}
+		if project != "" {
+			ctx.Project = project
+		}
+		cfg.Contexts[ctxName] = ctx
+		return cfg.Write()
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "Context", Data: map[string]string{
-		"name": cfg.CurrentContext, "cluster": ctx.Cluster, "project": ctx.Project,
+		"name": ctxName, "cluster": ctx.Cluster, "project": ctx.Project,
 	}}, nil
 }
 
@@ -121,21 +129,23 @@ func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "argument <name> is required").
 			WithHint("provide <name>")
 	}
-	cfg, err := config.Load(config.FilePath(c.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
 	name := in.Args()[0]
-	if _, ok := cfg.Contexts[name]; !ok {
-		cands := make([]clierr.Candidate, 0, len(cfg.Contexts))
-		for cn := range cfg.Contexts {
-			cands = append(cands, clierr.Candidate{ID: cn, Name: cn})
+	if err := config.WithLock(c.dir, func() error {
+		cfg, err := config.Load(config.FilePath(c.dir))
+		if err != nil {
+			return err
 		}
-		return runtime.Result{}, clierr.New(clierr.CodeNotFound, "context not found: "+name).
-			WithCandidates(cands)
-	}
-	cfg.CurrentContext = name
-	if err := cfg.Write(); err != nil {
+		if _, ok := cfg.Contexts[name]; !ok {
+			cands := make([]clierr.Candidate, 0, len(cfg.Contexts))
+			for cn := range cfg.Contexts {
+				cands = append(cands, clierr.Candidate{ID: cn, Name: cn})
+			}
+			return clierr.New(clierr.CodeNotFound, "context not found: "+name).
+				WithCandidates(cands)
+		}
+		cfg.CurrentContext = name
+		return cfg.Write()
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "Context", Data: map[string]string{"current": name}}, nil

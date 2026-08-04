@@ -77,38 +77,45 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 	}
 }
 func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	cfg, err := config.Load(config.FilePath(s.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	if len(in.Args()) == 0 {
-		cands := make([]clierr.Candidate, 0, len(cfg.Servers))
-		for n := range cfg.Servers {
-			cands = append(cands, clierr.Candidate{ID: n, Name: n})
+	var (
+		name     string
+		ctxName  string
+		warnings []string
+	)
+	if err := config.WithLock(s.dir, func() error {
+		cfg, err := config.Load(config.FilePath(s.dir))
+		if err != nil {
+			return err
 		}
-		return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection, "server name required").
-			WithCandidates(cands).WithHint("rancher config use-server <name>")
-	}
-	name := in.Args()[0]
-	if _, ok := cfg.Servers[name]; !ok {
-		return runtime.Result{}, clierr.New(clierr.CodeNotFound, "server not found: "+name)
-	}
-	ctxName, matches := resolveContextForServer(cfg, name)
-	if ctxName == "" {
-		ctxName = name
-		cfg.Contexts[ctxName] = config.Context{Server: name}
-	}
-	// When several contexts target this server, the choice is not obvious — surface
-	// it instead of silently emitting a switch-looking success. (Selecting a
-	// specific context among them is a config edit / `config set-context`.)
-	var warnings []string
-	if len(matches) > 1 {
-		warnings = append(warnings, fmt.Sprintf(
-			"multiple contexts target server %q (%s); activated %q — run `rancher config use-context <name>` to pick a different one",
-			name, strings.Join(matches, ", "), ctxName))
-	}
-	cfg.CurrentContext = ctxName
-	if err := cfg.Write(); err != nil {
+		if len(in.Args()) == 0 {
+			cands := make([]clierr.Candidate, 0, len(cfg.Servers))
+			for n := range cfg.Servers {
+				cands = append(cands, clierr.Candidate{ID: n, Name: n})
+			}
+			return clierr.New(clierr.CodeAmbiguousSelection, "server name required").
+				WithCandidates(cands).WithHint("rancher config use-server <name>")
+		}
+		name = in.Args()[0]
+		if _, ok := cfg.Servers[name]; !ok {
+			return clierr.New(clierr.CodeNotFound, "server not found: "+name)
+		}
+		var matches []string
+		ctxName, matches = resolveContextForServer(cfg, name)
+		if ctxName == "" {
+			ctxName = name
+			cfg.Contexts[ctxName] = config.Context{Server: name}
+		}
+		// When several contexts target this server, the choice is not obvious — surface
+		// it instead of silently emitting a switch-looking success. (Selecting a
+		// specific context among them is a config edit / `config set-context`.)
+		if len(matches) > 1 {
+			warnings = append(warnings, fmt.Sprintf(
+				"multiple contexts target server %q (%s); activated %q — run `rancher config use-context <name>` to pick a different one",
+				name, strings.Join(matches, ", "), ctxName))
+		}
+		cfg.CurrentContext = ctxName
+		return cfg.Write()
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "ServerSwitch", Warnings: warnings,

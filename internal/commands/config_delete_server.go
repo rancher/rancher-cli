@@ -50,48 +50,50 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
 
-	cfg, err := config.Load(config.FilePath(d.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
-	srv, ok := cfg.Servers[name]
-	if !ok {
-		return runtime.Result{}, serverNotFoundWithCandidates(cfg, name)
-	}
-
-	policy := config.EffectivePolicy(cfg.CredentialStore)
-	deletedFrom, deletedCache, err := d.drain(d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
-	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("failed to drain credentials for %q; server config left untouched: %v", name, err))
-	}
-
-	var removedContexts []string
-	for cn, cctx := range cfg.Contexts {
-		if cctx.Server == name {
-			removedContexts = append(removedContexts, cn)
+	var (
+		srv             config.Server
+		removedContexts []string
+		currentCleared  bool
+		deletedFrom     []string
+		deletedCache    []string
+	)
+	if err := config.WithLock(d.dir, func() error {
+		cfg, err := config.Load(config.FilePath(d.dir))
+		if err != nil {
+			return err
 		}
-	}
-	sort.Strings(removedContexts)
-
-	currentCleared := false
-	for _, cn := range removedContexts {
-		if cn == cfg.CurrentContext {
-			currentCleared = true
-			break
+		var ok bool
+		srv, ok = cfg.Servers[name]
+		if !ok {
+			return serverNotFoundWithCandidates(cfg, name)
 		}
-	}
-
-	for _, cn := range removedContexts {
-		delete(cfg.Contexts, cn)
-	}
-	delete(cfg.Servers, name)
-	if currentCleared {
-		cfg.CurrentContext = ""
-	}
-
-	if err := cfg.Write(); err != nil {
+		policy := config.EffectivePolicy(cfg.CredentialStore)
+		deletedFrom, deletedCache, err = d.drain(d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
+		if err != nil {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("failed to drain credentials for %q; server config left untouched: %v", name, err))
+		}
+		for cn, cctx := range cfg.Contexts {
+			if cctx.Server == name {
+				removedContexts = append(removedContexts, cn)
+			}
+		}
+		sort.Strings(removedContexts)
+		for _, cn := range removedContexts {
+			if cn == cfg.CurrentContext {
+				currentCleared = true
+				break
+			}
+		}
+		for _, cn := range removedContexts {
+			delete(cfg.Contexts, cn)
+		}
+		delete(cfg.Servers, name)
+		if currentCleared {
+			cfg.CurrentContext = ""
+		}
+		return cfg.Write()
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 

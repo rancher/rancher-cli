@@ -46,11 +46,6 @@ func (setCompletionCmd) Describe() runtime.Descriptor {
 }
 
 func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	cfg, err := config.Load(config.FilePath(c.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-
 	networkStr := in.String("network")
 	timeoutStr := in.String("timeout")
 	if networkStr == "" && timeoutStr == "" {
@@ -58,19 +53,14 @@ func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime
 			"provide --network and/or --timeout").
 			WithHint("run: rancher config set-completion --network=true [--timeout=500ms]")
 	}
-
-	if networkStr != "" {
-		switch networkStr {
-		case "true":
-			cfg.Completion.Network = true
-		case "false":
-			cfg.Completion.Network = false
-		default:
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--network=%q is not valid; use true or false", networkStr))
-		}
+	if networkStr != "" && networkStr != "true" && networkStr != "false" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--network=%q is not valid; use true or false", networkStr))
 	}
 
+	// Parse and clamp the timeout before taking the lock — validation errors
+	// should not require the lock.
+	var parsedTimeout time.Duration
 	if timeoutStr != "" {
 		d, err := time.ParseDuration(timeoutStr)
 		if err != nil {
@@ -81,28 +71,51 @@ func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime
 		if d > completionTimeoutMax {
 			d = completionTimeoutMax
 		}
+		parsedTimeout = d
+	}
+
+	var (
+		result map[string]any
+		note   string
+	)
+	if err := config.WithLock(c.dir, func() error {
+		cfg, err := config.Load(config.FilePath(c.dir))
+		if err != nil {
+			return err
+		}
+		switch networkStr {
+		case "true":
+			cfg.Completion.Network = true
+		case "false":
+			cfg.Completion.Network = false
+		}
 		// Store as a plain-text duration string; EffectiveCompletionTimeout
 		// parses and clamps at use (hand-edited values outside [1ms,2s] are clamped
 		// when consumed, not rejected at write).
-		cfg.Completion.Timeout = d.String()
-	}
-
-	if err := cfg.Write(); err != nil {
+		if timeoutStr != "" {
+			cfg.Completion.Timeout = parsedTimeout.String()
+		}
+		if err := cfg.Write(); err != nil {
+			return err
+		}
+		result = map[string]any{
+			"network": cfg.Completion.Network,
+			"timeout": cfg.Completion.Timeout,
+		}
+		// The capability note accompanies ENABLING network completion in this
+		// invocation, not every later timeout tweak while it happens to be on.
+		if networkStr == "true" {
+			note = completionCapabilityNote(c.dir, cfg)
+		}
+		return nil
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 
-	result := map[string]any{
-		"network": cfg.Completion.Network,
-		"timeout": cfg.Completion.Timeout,
-	}
-	// The capability note accompanies ENABLING network completion in this
-	// invocation, not every later timeout tweak while it happens to be on.
 	text := ""
-	if networkStr == "true" {
-		if note := completionCapabilityNote(c.dir, cfg); note != "" {
-			result["note"] = note
-			text = "# " + note + "\n"
-		}
+	if note != "" {
+		result["note"] = note
+		text = "# " + note + "\n"
 	}
 	return runtime.Result{Kind: "CompletionConfig", Data: result, Text: text}, nil
 }
