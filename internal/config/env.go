@@ -20,4 +20,9 @@ const (
 	// flag, then RANCHER_CLI_*, then CATTLE_*.
 	EnvLegacyOAuthAuthFlow     = "CATTLE_OAUTH_AUTH_FLOW"
 	EnvLegacyOAuthCallbackPort = "CATTLE_OAUTH_CALLBACK_PORT"
+
+	// EnvConfigNoLock, when non-empty, disables the cross-process config
+	// write lock (the in-process serialization stays). Escape hatch for
+	// filesystems with broken advisory locking.
+	EnvConfigNoLock = "RANCHER_CLI_CONFIG_NO_LOCK"
 )
