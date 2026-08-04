@@ -14,8 +14,7 @@ import (
 )
 
 type loginCmd struct {
-	dir   string
-	store config.CredStore
+	dir string
 	// rancherVersion reads the server-version Setting for the PS-8 floor
 	// check, injectable for tests; defaults to provider.ServerVersionSetting
 	// — the same PS-8 read `auth check` already uses (finding 7), rather
@@ -26,11 +25,19 @@ type loginCmd struct {
 	// already has everything an Effective needs by this point (the server
 	// URL, --cacert, and the just-resolved/stored token).
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
+	// newStore resolves the credential store FROM THE POLICY READ UNDER
+	// THE LOCK. Production wiring uses config.OpenStore; tests inject a
+	// factory returning their fake store. Replaces the removed store field
+	// (the dependency-resolution store snapshot this race was about).
+	newStore func(policy, dir string) (config.CredStore, error)
 }
 
-// NewLogin builds the `auth login` command (local).
-func NewLogin(dir string, store config.CredStore) runtime.Command {
-	return &loginCmd{dir: dir, store: store, rancherVersion: provider.ServerVersionSetting}
+// NewLogin builds the `auth login` command (local). The store is resolved
+// inside Execute from the config loaded under the config write lock — never
+// from the dependency-resolution snapshot, which can predate a concurrent
+// policy change (config-write-lock plan, review issue 2).
+func NewLogin(dir string) runtime.Command {
+	return &loginCmd{dir: dir, newStore: config.OpenStore, rancherVersion: provider.ServerVersionSetting}
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -101,6 +108,9 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "invalid server URL: "+server)
 	}
 
+	// Auth is outside the lock: interactive/network flows must not hold the
+	// config write lock while waiting for user input or a network response —
+	// that would starve every concurrent command.
 	token, err := resolveLoginToken(ctx, serverURL, in, p)
 	if err != nil {
 		return runtime.Result{}, err
@@ -117,36 +127,46 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		name = "default"
 	}
 
-	cfg, err := config.Load(config.FilePath(l.dir))
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	cfg.Servers[name] = config.Server{URL: serverURL, CA: in.String("cacert")}
-
 	var cluster, project string
 	if c := in.String("context"); c != "" {
 		cluster, project, _ = config.SplitContext(c)
 	}
-	cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
-	cfg.CurrentContext = name
 
-	// Login is the one place auto may re-probe and upgrade a stale "file" pin
-	// to the keychain; the returned store is the one to write into.
-	store, err := config.RepinForLogin(l.dir, cfg.CredentialStore, l.store)
-	if err != nil {
-		return runtime.Result{}, err
-	}
+	// Load → decide → write under the config write lock. The store is
+	// resolved from the policy read HERE, not from the dependency-resolution
+	// snapshot, which can predate a concurrent policy change
+	// (config-write-lock plan, review issue 2).
 	var warnings []string
-	if err := store.SetToken(config.ServerRef{Name: name, URL: serverURL}, token); err != nil {
-		if !errors.Is(err, config.ErrTokenStoreUnsupported) {
-			return runtime.Result{}, err
+	if err := config.WithLock(l.dir, func() error {
+		cfg, err := config.Load(config.FilePath(l.dir))
+		if err != nil {
+			return err
 		}
-		// Read-only helper: a declared, expected outcome — proceed exactly as
-		// on success, but say the token was not persisted.
-		warnings = append(warnings,
-			"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
-	}
-	if err := cfg.Write(); err != nil {
+		cfg.Servers[name] = config.Server{URL: serverURL, CA: in.String("cacert")}
+		cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
+		cfg.CurrentContext = name
+
+		rawStore, err := l.newStore(cfg.CredentialStore, l.dir)
+		if err != nil {
+			return err
+		}
+		// Login is the one place auto may re-probe and upgrade a stale "file" pin
+		// to the keychain; the returned store is the one to write into.
+		store, err := config.RepinForLogin(l.dir, cfg.CredentialStore, rawStore)
+		if err != nil {
+			return err
+		}
+		if err := store.SetToken(config.ServerRef{Name: name, URL: serverURL}, token); err != nil {
+			if !errors.Is(err, config.ErrTokenStoreUnsupported) {
+				return err
+			}
+			// Read-only helper: a declared, expected outcome — proceed exactly as
+			// on success, but say the token was not persisted.
+			warnings = append(warnings,
+				"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
+		}
+		return cfg.Write()
+	}); err != nil {
 		return runtime.Result{}, err
 	}
 

@@ -51,7 +51,7 @@ type entry struct {
 // kind).
 func buildEntries() []entry {
 	entries := []entry{
-		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogin(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogin(d.dir) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogout(d.dir) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewAuthCheck(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store) }},
