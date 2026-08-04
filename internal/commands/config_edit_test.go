@@ -213,3 +213,105 @@ func writesContent(content string) func(bin string, args []string, tempPath stri
 		return os.WriteFile(tempPath, []byte(content), 0600)
 	}
 }
+
+// TestConfigEditCleanWriteRemovesTemp proves that a successful write-back
+// removes the temp file.
+func TestConfigEditCleanWriteRemovesTemp(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	var capturedTemp string
+	launch := func(bin string, launchArgs []string, tempPath string) error {
+		capturedTemp = tempPath
+		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+	}
+
+	cmd := &configEditCmd{dir: dir, launchEditor: launch}
+	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(capturedTemp)
+	assert.True(t, os.IsNotExist(statErr), "temp file must be removed on clean write-back")
+}
+
+// TestConfigEditConflictPreservesTemp proves that when the real config
+// changes while the editor is open the write-back errors, preserves the
+// temp file, and leaves the concurrent content in the real file.
+func TestConfigEditConflictPreservesTemp(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	const concurrentContent = "currentContext: concurrent\n" +
+		"servers:\n  concurrent:\n    url: https://concurrent.ex\n" +
+		"contexts:\n  concurrent:\n    server: concurrent\n"
+
+	var capturedTemp string
+	launch := func(bin string, launchArgs []string, tempPath string) error {
+		capturedTemp = tempPath
+		// Simulate a concurrent write while the editor runs.
+		require.NoError(t, os.WriteFile(config.FilePath(dir), []byte(concurrentContent), 0600))
+		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+	}
+
+	cmd := &configEditCmd{dir: dir, launchEditor: launch}
+	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "changed while you were editing")
+	assert.Contains(t, ce.Message, capturedTemp, "error message must name the preserved temp path")
+
+	_, statErr := os.Stat(capturedTemp)
+	require.NoError(t, statErr, "temp file must be preserved when conflict is detected")
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.Equal(t, concurrentContent, string(got), "concurrent write must survive in the real file")
+}
+
+// TestConfigEditAbsentFileBaseline covers both absent-file baseline
+// directions: still-absent is a clean write; created-meanwhile is a conflict.
+func TestConfigEditAbsentFileBaseline(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+
+	t.Run("still absent is clean write", func(t *testing.T) {
+		dir := t.TempDir()
+		cmd := &configEditCmd{dir: dir, launchEditor: writesContent(validConfigYAML)}
+		_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+		require.NoError(t, err)
+		got, readErr := os.ReadFile(config.FilePath(dir))
+		require.NoError(t, readErr)
+		assert.Equal(t, validConfigYAML, string(got))
+	})
+
+	t.Run("created meanwhile is conflict", func(t *testing.T) {
+		dir := t.TempDir()
+		const concurrentContent = "currentContext: created\n" +
+			"servers:\n  created:\n    url: https://created.ex\n" +
+			"contexts:\n  created:\n    server: created\n"
+
+		var capturedTemp string
+		launch := func(bin string, launchArgs []string, tempPath string) error {
+			capturedTemp = tempPath
+			// Concurrently create the config file.
+			require.NoError(t, os.WriteFile(config.FilePath(dir), []byte(concurrentContent), 0600))
+			return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+		}
+
+		cmd := &configEditCmd{dir: dir, launchEditor: launch}
+		_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "changed while you were editing")
+
+		_, statErr := os.Stat(capturedTemp)
+		require.NoError(t, statErr, "temp file must be preserved on conflict")
+
+		got, readErr := os.ReadFile(config.FilePath(dir))
+		require.NoError(t, readErr)
+		assert.Equal(t, concurrentContent, string(got), "concurrent content must survive")
+	})
+}

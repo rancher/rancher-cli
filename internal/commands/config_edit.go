@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -74,7 +76,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 			fmt.Sprintf("config edit needs $VISUAL or $EDITOR set to launch an editor — edit %s directly", realPath))
 	}
 
-	tempPath, err := newTempCopy(realPath)
+	tempPath, baseline, existed, err := newTempCopy(realPath)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -111,9 +113,36 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 			continue
 		}
 
-		if werr := config.WriteRawConfig(realPath, raw); werr != nil {
+		// Write back under the config lock with a compare-and-write check: if
+		// the real file changed (bytes differ or existence changed) while the
+		// editor was open, conflict — the user's edits are preserved at tempPath.
+		writeErr := config.WithLock(c.dir, func() error {
+			current, readErr := os.ReadFile(realPath)
+			currentExisted := true
+			if os.IsNotExist(readErr) {
+				current = nil
+				currentExisted = false
+				readErr = nil
+			}
+			if readErr != nil {
+				return readErr
+			}
+			if currentExisted != existed || !bytes.Equal(current, baseline) {
+				return clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("the configuration changed while you were editing; your edits are preserved at %s", tempPath))
+			}
+			return config.WriteRawConfig(realPath, raw)
+		})
+		if writeErr != nil {
+			// Both the conflict clierr and I/O errors preserve tempPath — in
+			// the conflict case the brief requires it; for I/O failures the
+			// user's work must not be lost.
+			var ce *clierr.Error
+			if errors.As(writeErr, &ce) {
+				return runtime.Result{}, writeErr
+			}
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("writing config failed; your edits are preserved at %s: %v", tempPath, werr))
+				fmt.Sprintf("writing config failed; your edits are preserved at %s: %v", tempPath, writeErr))
 		}
 		_ = os.Remove(tempPath)
 		return runtime.Result{Kind: "ConfigEdit", Data: map[string]any{"path": realPath}}, nil
@@ -163,48 +192,51 @@ func execEditor(bin string, args []string, tempPath string) error {
 	return cmd.Run()
 }
 
-// newTempCopy copies the current config file (or a commented empty skeleton
-// when none exists) into a new 0600 temp file in the SAME DIRECTORY as
-// realPath — required for atomic rename semantics (a cross-device rename
-// fails), and it also means a preserved buffer sits right next to the file
-// it would have replaced.
-func newTempCopy(realPath string) (string, error) {
+// newTempCopy writes the editing copy and returns the temp path plus the
+// exact baseline it was created from: the real file's bytes and whether
+// the file existed (an absent file is baseline (nil, false), distinct
+// from an empty file). The write-back compares against this baseline
+// under the config lock.
+func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool, err error) {
 	dir := filepath.Dir(realPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
+		return "", nil, false, err
 	}
 
-	content, err := os.ReadFile(realPath)
+	content, readErr := os.ReadFile(realPath)
 	switch {
-	case err == nil:
-	case os.IsNotExist(err):
+	case readErr == nil:
+		baseline = content
+		existed = true
+	case os.IsNotExist(readErr):
 		content = []byte(configEditSkeleton)
+		// baseline = nil, existed = false
 	default:
-		return "", err
+		return "", nil, false, readErr
 	}
 
 	tmp, err := os.CreateTemp(dir, ".rancher-config-edit-*.yaml")
 	if err != nil {
-		return "", err
+		return "", nil, false, err
 	}
-	tmpPath := tmp.Name()
+	tmpPath = tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpPath) }
 
 	if err := tmp.Chmod(0600); err != nil {
 		cleanup()
-		return "", err
+		return "", nil, false, err
 	}
 	if err := config.HardenTempFileACL(tmpPath); err != nil {
 		cleanup()
-		return "", err
+		return "", nil, false, err
 	}
 	if _, err := tmp.Write(content); err != nil {
 		cleanup()
-		return "", err
+		return "", nil, false, err
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
-		return "", err
+		return "", nil, false, err
 	}
-	return tmpPath, nil
+	return tmpPath, baseline, existed, nil
 }
