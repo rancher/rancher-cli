@@ -17,6 +17,7 @@ import (
 	"github.com/gofrs/flock"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/config"
 )
 
 // envPrefix lets one binary serve as two distinct helpers: a copy named
@@ -58,6 +59,71 @@ func main() {
 		}
 		fmt.Println("locked")
 		time.Sleep(d)
+		os.Exit(0)
+	}
+
+	// configwrite [-nolock] <dir> <server-name>: load config.yaml, announce
+	// "loaded" on stdout, wait for <dir>/release, add the named server entry,
+	// write, announce "done". With -nolock the entire sequence runs without
+	// calling config.WithLock; without -nolock it runs inside WithLock. The
+	// ready/start/loaded/release/done barrier protocol lets the parent
+	// synchronize two children so that both have loaded before either writes,
+	// which deterministically exposes the lost-update bug the lock closes.
+	if len(os.Args) >= 4 && os.Args[1] == "configwrite" {
+		nolock := false
+		args := os.Args[2:]
+		if args[0] == "-nolock" {
+			nolock = true
+			args = args[1:]
+		}
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "configwrite: usage: configwrite [-nolock] <dir> <server-name>")
+			os.Exit(1)
+		}
+		dir, serverName := args[0], args[1]
+
+		pollFor := func(phase, path string) {
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				if _, err := os.Stat(path); err == nil {
+					return
+				}
+				if time.Now().After(deadline) {
+					fmt.Fprintf(os.Stderr, "configwrite: timed out waiting for %s\n", phase)
+					os.Exit(1)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+
+		fmt.Println("ready")
+		pollFor("start", filepath.Join(dir, "start"))
+
+		doWork := func() error {
+			cfg, err := config.Load(config.FilePath(dir))
+			if err != nil {
+				return err
+			}
+			fmt.Println("loaded")
+			pollFor("release", filepath.Join(dir, "release"))
+			if cfg.Servers == nil {
+				cfg.Servers = map[string]config.Server{}
+			}
+			cfg.Servers[serverName] = config.Server{URL: "https://" + serverName + ".example"}
+			return cfg.Write()
+		}
+
+		var err error
+		if nolock {
+			err = doWork()
+		} else {
+			err = config.WithLock(dir, doWork)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "configwrite:", err)
+			os.Exit(1)
+		}
+		fmt.Println("done")
 		os.Exit(0)
 	}
 

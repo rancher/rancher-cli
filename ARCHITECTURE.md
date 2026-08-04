@@ -244,6 +244,7 @@ graph TD
     config --> credhelper
 
     fakehelper --> credhelper
+    fakehelper --> config
 
     output --> clierr
 
