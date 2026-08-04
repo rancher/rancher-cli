@@ -885,3 +885,144 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	_, _, err = store1.GetCachedCred("key-b")
 	assert.ErrorIs(t, err, ErrNoToken, "key-b (written before the wipe acquired the lock) must be wiped too")
 }
+
+// TestSetTokenLostUpdateWithoutConfigLock pins the stale-snapshot bug class
+// for credentials.yaml: two fileStore instances (each with its own mu,
+// modelling two separate processes) both read the file, both update their
+// in-memory map, and both write — the second write overwrites the first.
+// The test PASSES by asserting that loss; it documents the bug class that
+// wrapping SetToken calls in WithLock closes.
+// No t.Parallel(): uses the package-level setTokenHook.
+func TestSetTokenLostUpdateWithoutConfigLock(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir).(*fileStore)
+	store2 := NewFileStore(dir).(*fileStore)
+
+	// Buffer size 2 so both goroutines can signal without blocking on each
+	// other. Each sends once, then blocks on release.
+	hookCalls := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	setTokenHook = func() {
+		hookCalls <- struct{}{}
+		<-release
+	}
+	t.Cleanup(func() {
+		setTokenHook = nil
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	err1 := make(chan error, 1)
+	go func() { err1 <- store1.SetToken(ServerRef{Name: "alpha"}, "token-alpha") }()
+
+	err2 := make(chan error, 1)
+	go func() { err2 <- store2.SetToken(ServerRef{Name: "beta"}, "token-beta") }()
+
+	// Wait for both goroutines to reach the hook (both have read, neither
+	// has written). They now hold stale in-memory snapshots of the same
+	// empty file.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-hookCalls:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("goroutine %d never reached setTokenHook", i+1)
+		}
+	}
+
+	// Release both simultaneously. Each writes a 1-entry map; the second
+	// write atomically overwrites the first.
+	close(release)
+
+	require.NoError(t, <-err1)
+	require.NoError(t, <-err2)
+
+	// Exactly one token survives. The assertion documents the bug class:
+	// without an outer lock, concurrent SetToken calls on separate store
+	// instances produce a deterministic lost update.
+	alpha, errA := store1.GetToken(ServerRef{Name: "alpha"})
+	beta, errB := store1.GetToken(ServerRef{Name: "beta"})
+	bothPresent := (errA == nil && errB == nil)
+	assert.False(t, bothPresent,
+		"both tokens must NOT survive: without WithLock, one write clobbers the other (alpha=%q errA=%v, beta=%q errB=%v)",
+		alpha, errA, beta, errB)
+}
+
+// TestWithLockSerializesSetToken proves that wrapping SetToken calls in
+// WithLock eliminates the lost update: the second caller blocks on the
+// process mutex until the first completes its write, so the second's read
+// sees the already-written state and both tokens survive.
+// No t.Parallel(): uses the package-level setTokenHook.
+func TestWithLockSerializesSetToken(t *testing.T) {
+	dir := t.TempDir()
+	store1 := NewFileStore(dir).(*fileStore)
+	store2 := NewFileStore(dir).(*fileStore)
+
+	g1InHook := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+
+	setTokenHook = func() {
+		once.Do(func() { close(g1InHook) }) // fires on the first caller only
+		<-release
+	}
+	t.Cleanup(func() {
+		setTokenHook = nil
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	err1 := make(chan error, 1)
+	go func() {
+		err1 <- WithLock(dir, func() error {
+			return store1.SetToken(ServerRef{Name: "alpha"}, "token-alpha")
+		})
+	}()
+
+	// Wait for G1 to reach setTokenHook — it holds WithLock's process
+	// mutex and has read credentials.yaml but not yet written.
+	select {
+	case <-g1InHook:
+	case <-time.After(10 * time.Second):
+		t.Fatal("G1 never reached setTokenHook")
+	}
+
+	// G2 attempts WithLock; it must block on the process mutex since G1
+	// still holds it via the hook.
+	err2 := make(chan error, 1)
+	go func() {
+		err2 <- WithLock(dir, func() error {
+			return store2.SetToken(ServerRef{Name: "beta"}, "token-beta")
+		})
+	}()
+
+	// 300ms contention window: G2 must not complete before G1 releases.
+	select {
+	case e := <-err2:
+		t.Fatalf("G2 completed before G1 released WithLock: %v", e)
+	case <-time.After(300 * time.Millisecond):
+		// expected: G2 is blocked on the process mutex
+	}
+
+	// Release G1. It writes token-alpha and exits WithLock. G2 then
+	// acquires the lock, reads the updated file (which now has alpha), and
+	// writes beta alongside it.
+	close(release)
+
+	require.NoError(t, <-err1, "store1 SetToken must succeed")
+	require.NoError(t, <-err2, "store2 SetToken must succeed")
+
+	// Both tokens must survive — no lost update.
+	tok, err := store1.GetToken(ServerRef{Name: "alpha"})
+	require.NoError(t, err)
+	assert.Equal(t, "token-alpha", tok)
+	tok, err = store1.GetToken(ServerRef{Name: "beta"})
+	require.NoError(t, err)
+	assert.Equal(t, "token-beta", tok)
+}

@@ -116,6 +116,12 @@ func NewFileStore(dir string) CredStore {
 	}
 }
 
+// setTokenHook is a test-only synchronization point, invoked (when non-nil)
+// between SetToken's read and write. Lets tests pin the exact stale-snapshot
+// interleaving of two fileStore instances (two processes' worth of state).
+// Nil in production.
+var setTokenHook func()
+
 // setCachedLock is a test-only synchronization point, invoked (when non-nil)
 // while the token-cache.yaml flock is HELD, after the read and before the
 // write. Lets tests pin an exact interleaving of concurrent SetCachedCred
@@ -229,6 +235,9 @@ func (f *fileStore) SetToken(ref ServerRef, token string) error {
 		return err
 	}
 	m[ref.Name] = token
+	if setTokenHook != nil {
+		setTokenHook()
+	}
 	return f.write(m)
 }
 
