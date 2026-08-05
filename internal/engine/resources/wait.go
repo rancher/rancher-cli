@@ -82,6 +82,18 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 				msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
 				return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
 			}
+			// Stalled=True is the kstatus abort convention (Fleet sets it on a
+			// failed GitRepo clone while still reporting Ready=True), so it
+			// fails the wait even when the target condition reads satisfied —
+			// unless Stalled itself is what the caller is waiting for.
+			if cond.kind != "condition" || cond.name != "Stalled" {
+				if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
+					if msg == "" {
+						msg = "condition Stalled=True"
+					}
+					return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, engine.Printable(msg)))
+				}
+			}
 			if waitSatisfied(obj, cond) {
 				return obj, nil
 			}

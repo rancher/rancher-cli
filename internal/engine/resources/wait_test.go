@@ -472,3 +472,88 @@ func TestConditionStatusFirstMatchWins(t *testing.T) {
 	assert.Equal(t, "False", status, "first matching condition wins, not the last")
 	assert.Equal(t, "first", message)
 }
+
+// multiConditionObj builds an object carrying several status.conditions
+// entries, each given as [type, status, message].
+func multiConditionObj(conds ...[3]string) *unstructured.Unstructured {
+	list := make([]any, 0, len(conds))
+	for _, c := range conds {
+		list = append(list, map[string]any{"type": c[0], "status": c[1], "message": c[2]})
+	}
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "x"},
+		"status":   map[string]any{"conditions": list},
+	}}
+}
+
+// TestWaitForFailsFastOnStalled pins the Fleet GitRepo shape from live
+// exercise 8: a failed clone leaves Ready=True AND Stalled=True, and the
+// wait must fail with the Stalled message instead of declaring the Ready
+// condition satisfied.
+func TestWaitForFailsFastOnStalled(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		multiConditionObj(
+			[3]string{"Ready", "True", ""},
+			[3]string{"Stalled", "True", "authentication required: Repository not found."},
+		),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "x stalled: authentication required")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.False(t, ce.Retryable)
+}
+
+func TestWaitForStalledFalseDoesNotTrip(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		multiConditionObj(
+			[3]string{"Ready", "True", ""},
+			[3]string{"Stalled", "False", ""},
+		),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+}
+
+func TestWaitForExplicitStalledTargetStillWaitable(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		multiConditionObj([3]string{"Stalled", "True", "boom"}),
+	}}
+	cond := waitCond{kind: "condition", name: "Stalled", status: "True"}
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	require.NoError(t, err, "waiting FOR Stalled must not be aborted by the Stalled fail-fast")
+	require.NotNil(t, got)
+}
+
+func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	client := &seqClient{objs: []*unstructured.Unstructured{
+		multiConditionObj(
+			[3]string{"Ready", "True", ""},
+			[3]string{"Stalled", "True", ""},
+		),
+	}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "x stalled: condition Stalled=True")
+}
