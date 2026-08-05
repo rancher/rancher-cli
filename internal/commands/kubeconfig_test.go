@@ -56,7 +56,7 @@ func writeTestConfig(t *testing.T, ca string) string {
 	return dir
 }
 
-func TestKubeconfigEmitsExecStanza(t *testing.T) {
+func TestKubeconfigEmitsExecSection(t *testing.T) {
 	t.Parallel()
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, caPEM)

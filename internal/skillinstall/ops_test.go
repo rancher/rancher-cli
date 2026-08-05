@@ -111,7 +111,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 	assert.Equal(t, VerdictInSync, v)
 }
 
-// A symlinked SKILL.md is the privileged provenance path — it must never
+// A symlinked SKILL.md is the privileged install record path — it must never
 // be followed. The linked-to file contains VALID owner-marked content: if
 // the link were followed the verdict would be in-sync; foreign proves the
 // outside bytes were never read.
@@ -220,7 +220,7 @@ func TestCrashBetweenRemoveAndRenameLeavesAbsent(t *testing.T) {
 	assert.Equal(t, VerdictInSync, v)
 }
 
-// Staging sweep buckets: empty dir removed (pre-marker crash residue),
+// Staging sweep buckets: empty dir removed (pre-marker crash leftover),
 // complete-marker dir removed (ours), non-empty unmarked dir — including
 // the truncated-SKILL.md crash shape — kept AND warned.
 func TestStagingSweepBuckets(t *testing.T) {
@@ -259,11 +259,11 @@ func TestStagingSweepBuckets(t *testing.T) {
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(empty)
-	assert.True(t, os.IsNotExist(statErr), "empty staging residue must be removed")
+	assert.True(t, os.IsNotExist(statErr), "empty leftover staging entry must be removed")
 	_, statErr = os.Stat(marked)
-	assert.True(t, os.IsNotExist(statErr), "marker-complete staging residue must be removed")
+	assert.True(t, os.IsNotExist(statErr), "marker-complete leftover staging entry must be removed")
 	_, statErr = os.Stat(unmarked)
-	assert.NoError(t, statErr, "unmarked non-empty residue must remain")
+	assert.NoError(t, statErr, "unmarked non-empty leftover must remain")
 	_, statErr = os.Stat(strayTmp)
 	assert.True(t, os.IsNotExist(statErr), "stray marker temp file must be removed")
 	_, statErr = os.Stat(strayProbe)
@@ -300,7 +300,7 @@ func TestStagedValidationFailureLeavesTargetUntouched(t *testing.T) {
 
 // Population failure mid-staging: primary error surfaces, staging is
 // cleaned, and nothing foreign-looking is stranded in the parent.
-func TestStagingPopulationFailureLeavesNoResidue(t *testing.T) {
+func TestStagingPopulationFailureLeavesNoLeftovers(t *testing.T) {
 	SetSource(testSource(t))
 	tg := targetIn(t)
 
@@ -323,7 +323,7 @@ func TestStagingPopulationFailureLeavesNoResidue(t *testing.T) {
 	require.NoError(t, err)
 	for _, e := range entries {
 		assert.False(t, strings.HasPrefix(e.Name(), ".rancher-skill-staging-"),
-			"staging residue stranded: %s", e.Name())
+			"leftover staging entry stranded: %s", e.Name())
 	}
 }
 

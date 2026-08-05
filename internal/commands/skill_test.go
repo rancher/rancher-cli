@@ -145,12 +145,12 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	home := skillHome(t, ".agents", ".claude")
 	skillinstall.SetSource(skillTestSource(t))
 
-	// foreign-looking (non-empty, unmarked) staging residue next to the
+	// foreign-looking (non-empty, unmarked) leftover staging entry next to the
 	// claude target: sweep must report it, and the report must survive
 	// the partial-failure error
-	residue := filepath.Join(home, ".claude", "skills", ".rancher-skill-staging-cafe")
-	require.NoError(t, os.MkdirAll(residue, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(residue, "junk.md"), []byte("junk\n"), 0o644))
+	leftover := filepath.Join(home, ".claude", "skills", ".rancher-skill-staging-cafe")
+	require.NoError(t, os.MkdirAll(leftover, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(leftover, "junk.md"), []byte("junk\n"), 0o644))
 
 	calls := 0
 	skillinstall.SetRenameHookForTest(func() error {

@@ -28,27 +28,27 @@ token), not an error condition; don't treat it as one. If it fails with
 - Interactive: `rancher auth login --server <url> --name <alias>` — no UI trip
   needed. With no piped/pasted token, it offers a choice: paste an existing
   API token, or sign in via an identity provider (`--auth-provider`,
-  `--auth-flow devicecode|authcode` skip the prompt). The provider path mints
+  `--auth-flow devicecode|authcode` skip the prompt). The provider path creates
   its own purpose-made, individually revocable token behind the scenes (see
   the token taxonomy below).
 - Scripted/CI: pipe the token — `rancher auth login --server <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
-  plugin drives them automatically; that path mints cached exec credentials,
+  plugin drives them automatically; that path creates cached exec credentials,
   not a stored login session.
 
-**Token taxonomy** — three distinct things called "token", each minted by a
+**Three kinds of token** — three distinct things called "token", each created by a
 different actor for a different purpose:
 
-1. `auth login` — takes a token you already have (pasted, piped, or minted by
-   its own provider path above) and stores it in config. It never mints a
+1. `auth login` — takes a token you already have (pasted, piped, or created by
+   its own provider path above) and stores it in config. It never creates a
    token itself; Rancher does.
 2. `auth get-token` — drives the identity-provider flow via `/v1-public`;
-   RANCHER mints the session token (`spec.kind: "session"`). The kubeconfig
+   RANCHER creates the session token (`spec.kind: "session"`). The kubeconfig
    exec plugin drives this automatically and caches the result.
 3. `create token` — an existing authenticated session asks the ext Token
-   store to mint a DERIVED token (`spec.kind` empty), individually revocable
+   store to create a DERIVED token (`spec.kind` empty), individually revocable
    and visible in `get tokens`.
 
 ### 2. Discover, don't guess
@@ -201,7 +201,7 @@ Grammar: `state=<value>` or `condition=<Type>[=<Status>]` (default Status
 `True`). JSONPath is deliberately unsupported — for that, use `kubectl wait`
 via `rancher kubeconfig`. Waits fail fast when Rancher marks the object
 `transitioning=error` (non-retryable, with the server's message) instead of
-burning the timeout. On success the `-o json`/`-o yaml` envelope carries a
+using up the timeout. On success the `-o json`/`-o yaml` envelope carries a
 one-line `summary` (`wait: condition=Ready satisfied after 53s`) so pass/fail
 needs no object parsing; default/table format prints the same summary as its
 own stdout line above the table header. When only the verdict matters, the
@@ -221,7 +221,7 @@ One call each, with graceful degradation (missing metrics/logs become
 
 ### 8. kubectl interop
 
-For anything the CLI does not cover, mint a kubeconfig and use kubectl:
+For anything the CLI does not cover, generate a kubeconfig and use kubectl:
 
 ```
 rancher kubeconfig --cluster <name-or-id> > kc.yaml
@@ -332,14 +332,14 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   |---|---|---|
   | `auth list-tokens` / `auth delete-token` | local | the exec-credential cache (`token-cache.yaml`) |
   | `get tokens` / `get token <name>` | server | `ext.Token` objects |
-  | `create token` | server | mints a derived `ext.Token` |
+  | `create token` | server | creates a derived `ext.Token` |
   | `delete token <name>` | server | revokes an `ext.Token` |
 
   They are not interchangeable — deleting a cache entry does not revoke the
   server-side token, and vice versa.
 - **`kubeconfig` vs. `create kubeconfig`:** `kubeconfig` renders a LOCAL
   exec-credential kubeconfig from config alone (no server call, no embedded
-  secret) — the interactive default. `create kubeconfig` mints a
+  secret) — the interactive default. `create kubeconfig` generates a
   SERVER-SIDE, embedded, revocable kubeconfig via the ext Kubeconfig store —
   for CI/handoff where an exec plugin isn't usable. Every ext.cattle.io
   operation here is also plain Kubernetes API — `kubectl get/create

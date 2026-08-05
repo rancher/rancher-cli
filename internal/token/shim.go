@@ -76,7 +76,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	user := strings.TrimSpace(in.String("user"))
 	if user == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--user must not be empty").
-			WithHint("the kubeconfig exec-credential stanza should supply the user name")
+			WithHint("the kubeconfig exec-credential section should supply the user name")
 	}
 	name := config.LegacyCachePrefix + user
 	// Same whitespace-passes-Required gap as --user: a blank --server must
@@ -85,7 +85,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	server := strings.TrimSpace(in.String("server"))
 	if server == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server must not be empty").
-			WithHint("the kubeconfig exec-credential stanza should supply the server URL")
+			WithHint("the kubeconfig exec-credential section should supply the server URL")
 	}
 	cluster := strings.TrimSpace(in.String("cluster"))
 

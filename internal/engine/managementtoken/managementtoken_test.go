@@ -169,7 +169,7 @@ func TestDeleteGuardGetErrorPropagates(t *testing.T) {
 
 // TestDeleteGuardPassesThroughNonSessionToken verifies that a token whose
 // name does NOT match the active session ID passes through to the inner
-// generic delete (which will proceed with its own choreography).
+// generic delete (which will proceed with its own sequence).
 func TestDeleteGuardPassesThroughNonSessionToken(t *testing.T) {
 	t.Parallel()
 	k := managementTokenKind(t)

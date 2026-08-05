@@ -40,7 +40,7 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 			{Name: "description", Type: "string", Desc: "note attached to the kubeconfig for identification"},
 			// A bool flag cannot distinguish omitted from false; the server
 			// field is a *bool defaulting true, so tri-state is a string enum.
-			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}, Desc: "include the Rancher server's own entry (server default true; pass false, with --clusters, to mint a cluster-only kubeconfig)"},
+			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}, Desc: "include the Rancher server's own entry (server default true; pass false, with --clusters, to generate a cluster-only kubeconfig)"},
 		},
 		Examples: []string{
 			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml",

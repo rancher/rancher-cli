@@ -1,5 +1,5 @@
 // Package skillinstall installs the embedded rancher agents skill into
-// coding-agent harness skill directories, with provenance and integrity
+// coding-agent harness skill directories, with install records and integrity
 // checks.
 package skillinstall
 

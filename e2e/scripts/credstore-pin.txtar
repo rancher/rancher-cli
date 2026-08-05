@@ -14,7 +14,7 @@ env RANCHER_CLI_CREDENTIAL_STORE=
 # plaintext-fallback notice — NOT the usable-branch "pinned credential store:
 # keychain" notice, which needs a real keychain session no CI/container has.
 # The usable branch's coverage is the unit test
-# TestLoginChoreographyFreshAutoUsableKeychain plus interactive macOS use.
+# TestLoginSequenceFreshAutoUsableKeychain plus interactive macOS use.
 # (First-ever execution of this script — Linux acceptance 2026-07-13 — found
 # it asserting the usable-branch notice; adjudication gist 6252584.)
 stdin token.txt

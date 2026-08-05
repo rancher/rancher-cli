@@ -2,7 +2,7 @@
 // row: `delete provisioning-cluster` ships even though the row stays
 // Deletable: false (spec D-R1-3 — the row's Deletable flag governs generic
 // verb GENERATION, not whether a bespoke command may exist for the kind).
-// The command wraps resources.NewGuardedDelete's Plan choreography (Route ->
+// The command wraps resources.NewGuardedDelete's Plan sequence (Route ->
 // Get -> rv capture -> dry-run delete -> Effect) unchanged, adding exactly
 // two things after it: a literal-name refusal for "local", and a cascade
 // warning appended to the resulting Effect. The guard runs post-inner-Plan,
@@ -40,7 +40,7 @@ const localClusterName = "local"
 
 // NewDeleteProvisioningCluster builds the delete override for the
 // provisioningcluster row. clients is passed straight through to
-// resources.NewGuardedDelete, which performs the entire real choreography
+// resources.NewGuardedDelete, which performs the entire real sequence
 // (Route/Get/rv/dry-run/exec) unmodified; this command only wraps that
 // Plan with the local-refusal check and the cascade warning.
 func NewDeleteProvisioningCluster(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {

@@ -26,7 +26,7 @@ func mustGitRepoKind(t *testing.T) kinds.Kind {
 // TestDeleteGitRepoCarriesCascadeWarning pins the S-10 exercise fix: a
 // gitrepo delete's Effect carries the cascade statement in Warnings — the
 // same advisory treatment delete provisioning-cluster gives its blast
-// radius — while the generic choreography (Destructive, RV precondition)
+// radius — while the generic sequence (Destructive, RV precondition)
 // stays untouched.
 func TestDeleteGitRepoCarriesCascadeWarning(t *testing.T) {
 	t.Parallel()

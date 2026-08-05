@@ -24,7 +24,7 @@ type delRecCall struct {
 }
 
 // delRecClient is a recording engine.ClusterClient fake for the delete
-// choreography: Get is counted (so the local-refusal test can assert it was
+// sequence: Get is counted (so the local-refusal test can assert it was
 // never called) and can fail; Delete records every call (dry-run and real)
 // so tests can assert the rv precondition on both.
 type delRecClient struct {
@@ -137,7 +137,7 @@ func TestDeleteProvisioningClusterCarriesCascadeWarning(t *testing.T) {
 // TestDeleteProvisioningClusterRVPreconditionMirrorsGeneric pins that the
 // wrapped delete's rv-precondition behavior (dry-run preview, then a real
 // delete gated on the SAME captured resourceVersion) is unchanged from
-// resources.NewDelete's own choreography, and that a dry-run admission
+// resources.NewDelete's own sequence, and that a dry-run admission
 // failure aborts Plan with the mapped error exactly as it does generically.
 func TestDeleteProvisioningClusterRVPreconditionMirrorsGeneric(t *testing.T) {
 	t.Parallel()

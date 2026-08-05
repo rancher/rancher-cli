@@ -63,7 +63,7 @@ type deleteGuardCmd struct {
 //   - NOT_FOUND: falls through to the inner Plan's own NOT_FOUND
 //
 // When the target does not match (or namer is nil), the inner Plan runs with
-// its standard Route/Get/rv/dry-run choreography.
+// its standard Route/Get/rv/dry-run sequence.
 //
 // namer may be nil (zero runDeps for wireEntry validation); Plan skips the
 // guard and delegates to the inner command in that case.

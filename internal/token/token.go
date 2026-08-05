@@ -136,7 +136,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to mint the exec-credential token for (defaults to the current context)"},
+			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to create the exec-credential token for (defaults to the current context)"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
@@ -284,7 +284,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			// `token` shim opts in: the legacy CLI cached these
 			// indefinitely, and the read path already treats zero expiry
 			// as never-expiring.
-			p.Notice("not caching: the minted token carried no expiry")
+			p.Notice("not caching: the new token has no expiry")
 		case rancherToken.noDiskCache:
 			// A credential-helper short-lived token served through the legacy
 			// fallback is memory-only by contract — never write it to disk.
@@ -962,7 +962,7 @@ var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
 // itself is invalid or insufficient, as opposed to a network/TLS failure or
 // a server error — the two classes need different handling by the caller
 // (fall back to interactive vs. surface the real failure).
-var errMintDenied = errors.New("mint rejected: invalid or insufficient credential")
+var errMintDenied = errors.New("token create rejected: invalid or insufficient credential")
 
 // MintDerivedToken asks the ext Token store to mint a purpose-made derived
 // token (bearer bearerToken), scoped to clusterID when set (spec.clusterName,
@@ -991,18 +991,18 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	}
 	body, err := json.Marshal(map[string]any{"spec": spec})
 	if err != nil {
-		return "", "", fmt.Errorf("building mint request: %w", err)
+		return "", "", fmt.Errorf("building the token create request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+MintTokensPath, bytes.NewReader(body))
 	if err != nil {
-		return "", "", fmt.Errorf("building mint request: %w", err)
+		return "", "", fmt.Errorf("building the token create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+bearerToken)
 
 	resp, respBody, err := httpx.Do(client, req)
 	if err != nil {
-		return "", "", clierr.New(clierr.CodeGeneric, "minting derived token: "+err.Error())
+		return "", "", clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error())
 	}
 	switch resp.StatusCode {
 	case http.StatusNotFound:
@@ -1012,12 +1012,12 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	case http.StatusOK, http.StatusCreated:
 		bearer = gjson.GetBytes(respBody, "status.bearerToken").String()
 		if bearer == "" {
-			return "", "", clierr.New(clierr.CodeGeneric, "mint response carried no bearer token")
+			return "", "", clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
 		}
 		return bearer, gjson.GetBytes(respBody, "status.expiresAt").String(), nil
 	default:
 		return "", "", clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("minting derived token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+			fmt.Sprintf("creating derived token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 }
 
@@ -1228,7 +1228,7 @@ const legacyMintTTL = 15 * time.Minute
 // an invalid/insufficient credential. An unreadable config.yaml is noticed
 // and also falls through to errNoStoredCredential (the config load failure
 // itself is never returned as a hard error here — see the doc on the
-// —no-input residue in the package's fix history). Any other non-nil error
+// —no-input leftovers in the package's fix history). Any other non-nil error
 // is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
 // the caller must surface directly.
 // noAmbientContext is forwarded to storedTokenForServer to gate rank-2
@@ -1236,7 +1236,7 @@ const legacyMintTTL = 15 * time.Minute
 func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, noAmbientContext bool, p runtime.Prompter) (Token, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
-		p.Notice(fmt.Sprintf("config unreadable: %v — skipping stored-credential mint", err))
+		p.Notice(fmt.Sprintf("config unreadable: %v — skipping token creation from the stored credential", err))
 		return Token{}, errNoStoredCredential
 	}
 	name, stored, ref, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, noAmbientContext, p)
@@ -1286,7 +1286,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			}
 			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
 		case errors.Is(err, errMintDenied):
-			p.Notice(fmt.Sprintf("minting from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
+			p.Notice(fmt.Sprintf("creating a token from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
 			return Token{}, errNoStoredCredential
 		default:
 			return Token{}, err

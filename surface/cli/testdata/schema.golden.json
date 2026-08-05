@@ -55,7 +55,7 @@
           "type": "string"
         },
         {
-          "desc": "cluster `id|name` to mint the exec-credential token for (defaults to the current context)",
+          "desc": "cluster `id|name` to create the exec-credential token for (defaults to the current context)",
           "name": "cluster",
           "type": "string"
         },
@@ -506,7 +506,7 @@
           "type": "string"
         },
         {
-          "desc": "include the Rancher server's own entry (server default true; pass false, with --clusters, to mint a cluster-only kubeconfig)",
+          "desc": "include the Rancher server's own entry (server default true; pass false, with --clusters, to generate a cluster-only kubeconfig)",
           "enum": [
             "true",
             "false"

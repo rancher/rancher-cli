@@ -177,7 +177,7 @@ var kindOverrideTable = map[string]kindOverride{
 		},
 		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
 	},
-	// gitrepo: delete keeps the generic choreography (no guard) but carries
+	// gitrepo: delete keeps the generic sequence (no guard) but carries
 	// a cascade warning — the blast radius matches provisioning-cluster's
 	// treatment: removing the GitRepo takes the deployed workloads with it.
 	"gitrepo": {

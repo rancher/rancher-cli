@@ -275,16 +275,16 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the deleted orphan under its server name")
 	assert.Empty(t, helperCreds(t, statePath), "the orphaned helper credential must be erased")
 
-	residue, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
+	leftovers, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
-	assert.Empty(t, residue, "provenance must be fully deleted")
+	assert.Empty(t, leftovers, "helper records must be fully deleted")
 }
 
-// TestLogoutAllDeletesResidueAfterFailedConfigWrite is finding-2's review-
+// TestLogoutAllDeletesLeftoversAfterFailedConfigWrite is finding-2's review-
 // requested scenario: a login whose helper store succeeds but whose config
 // write then fails strands a live helper credential + helper record for a
 // server never persisted to config.yaml. `logout --all` must still clean it.
-func TestLogoutAllDeletesResidueAfterFailedConfigWrite(t *testing.T) {
+func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("symlink-based config-write failure needs POSIX symlink semantics")
 	}
@@ -319,11 +319,11 @@ func TestLogoutAllDeletesResidueAfterFailedConfigWrite(t *testing.T) {
 	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
-	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded residue")
+	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded helper records")
 
-	residue, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
+	leftovers, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
-	assert.Empty(t, residue)
+	assert.Empty(t, leftovers)
 }
 
 func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {

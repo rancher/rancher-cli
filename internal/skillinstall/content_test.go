@@ -32,15 +32,15 @@ func frontmatterBytes(t *testing.T, skillMD []byte) []byte {
 	return fm
 }
 
-func TestRenderedStampsProvenance(t *testing.T) {
+func TestRenderedStampsInstallRecord(t *testing.T) {
 	SetSource(testSource(t))
 	files, err := Rendered("v1.2.3")
 	require.NoError(t, err)
-	prov, ok := ReadProvenance(files["SKILL.md"])
+	rec, ok := ReadInstallRecord(files["SKILL.md"])
 	require.True(t, ok)
-	assert.Equal(t, "skill-install/v1", prov.Owner)
-	assert.Equal(t, "v1.2.3", prov.CLIVersion)
-	assert.Len(t, prov.ContentDigest, 64)
+	assert.Equal(t, "skill-install/v1", rec.Owner)
+	assert.Equal(t, "v1.2.3", rec.CLIVersion)
+	assert.Len(t, rec.ContentDigest, 64)
 	assert.Equal(t, []byte("reference\n"), files["ref.md"])
 	assert.Equal(t, []byte("skill-install/v1\n"), files[OwnerMarkerFile])
 }
@@ -70,20 +70,20 @@ func TestDigestRoundTrip(t *testing.T) {
 	SetSource(testSource(t))
 	files, err := Rendered("v1.2.3")
 	require.NoError(t, err)
-	prov, _ := ReadProvenance(files["SKILL.md"])
+	rec, _ := ReadInstallRecord(files["SKILL.md"])
 	got, err := DigestTree(files)
 	require.NoError(t, err)
-	assert.Equal(t, prov.ContentDigest, got)
+	assert.Equal(t, rec.ContentDigest, got)
 }
 
 func TestDigestDetectsBodyEdit(t *testing.T) {
 	SetSource(testSource(t))
 	files, _ := Rendered("v1.2.3")
-	prov, _ := ReadProvenance(files["SKILL.md"])
+	rec, _ := ReadInstallRecord(files["SKILL.md"])
 	files["ref.md"] = []byte("tampered\n")
 	got, err := DigestTree(files)
 	require.NoError(t, err)
-	assert.NotEqual(t, prov.ContentDigest, got)
+	assert.NotEqual(t, rec.ContentDigest, got)
 }
 
 func TestDigestGolden(t *testing.T) {
@@ -101,9 +101,9 @@ func TestDigestGolden(t *testing.T) {
 	assert.Equal(t, string(want), got)
 }
 
-func TestReadProvenanceForeign(t *testing.T) {
+func TestReadInstallRecordForeign(t *testing.T) {
 	t.Parallel()
-	_, ok := ReadProvenance([]byte("---\nname: other\n---\nbody"))
+	_, ok := ReadInstallRecord([]byte("---\nname: other\n---\nbody"))
 	assert.False(t, ok)
 }
 

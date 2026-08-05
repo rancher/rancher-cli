@@ -142,27 +142,27 @@ func refuseSymlink(dir string) error {
 // OwnerValue match in SKILL.md metadata. SKILL.md itself is Lstat-checked
 // first — a symlinked or otherwise non-regular SKILL.md is NEVER followed
 // and can prove nothing, so the target is foreign until a user decides.
-func owned(dir string) (bool, Provenance, error) {
+func owned(dir string) (bool, InstallRecord, error) {
 	p := filepath.Join(dir, "SKILL.md")
 	info, err := os.Lstat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, Provenance{}, nil
+			return false, InstallRecord{}, nil
 		}
-		return false, Provenance{}, err
+		return false, InstallRecord{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return false, Provenance{}, nil
+		return false, InstallRecord{}, nil
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return false, Provenance{}, err
+		return false, InstallRecord{}, err
 	}
-	prov, ok := ReadProvenance(b)
-	if !ok || prov.Owner != OwnerValue {
-		return false, Provenance{}, nil
+	rec, ok := ReadInstallRecord(b)
+	if !ok || rec.Owner != OwnerValue {
+		return false, InstallRecord{}, nil
 	}
-	return true, prov, nil
+	return true, rec, nil
 }
 
 // validateTarget is the per-target preflight shared by Acquire: symlink
@@ -192,7 +192,7 @@ func validateTarget(t Target, verb string, force bool) error {
 }
 
 // probeWritable proves the parent accepts writes while we hold its lock.
-// The temp file uses probePrefix so a later sweepStaging call can reclaim
+// The temp file uses probePrefix so a later cleanStaging call can reclaim
 // it if os.Remove fails (e.g. a transient permission lock on Windows).
 func probeWritable(parent string) error {
 	f, err := os.CreateTemp(parent, probePrefix+"*")
@@ -282,13 +282,13 @@ func markerComplete(dir string) (bool, error) {
 	return string(b) == OwnerValue+"\n", nil
 }
 
-// sweepStaging classifies residue in crash-safe buckets: stray marker TMP
+// cleanStaging classifies leftovers in crash-safe buckets: stray marker TMP
 // FILES in our namespace → removed; EMPTY staging dir (crash before the
 // marker landed — carries no data) → removed; complete-marker staging dir
 // (ours) → removed; anything else → warned, never removed. A
-// removal/inspection failure is an error — installing next to residue we
+// removal/inspection failure is an error — installing next to leftovers we
 // cannot clear risks compounding partial state.
-func sweepStaging(parent string) (warnings []string, err error) {
+func cleanStaging(parent string) (warnings []string, err error) {
 	entries, err := os.ReadDir(parent)
 	if err != nil {
 		return nil, err
@@ -296,13 +296,13 @@ func sweepStaging(parent string) (warnings []string, err error) {
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasPrefix(e.Name(), markerTmpPrefix) && strings.HasSuffix(e.Name(), ".tmp") {
 			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
-				return nil, fmt.Errorf("removing marker temp residue %s: %w", e.Name(), rmErr)
+				return nil, fmt.Errorf("removing leftover marker temp file %s: %w", e.Name(), rmErr)
 			}
 			continue
 		}
 		if !e.IsDir() && strings.HasPrefix(e.Name(), probePrefix) {
 			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
-				return nil, fmt.Errorf("removing probe residue %s: %w", e.Name(), rmErr)
+				return nil, fmt.Errorf("removing leftover probe file %s: %w", e.Name(), rmErr)
 			}
 			continue
 		}
@@ -312,23 +312,23 @@ func sweepStaging(parent string) (warnings []string, err error) {
 		dir := filepath.Join(parent, e.Name())
 		inner, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, fmt.Errorf("inspecting staging residue %s: %w", dir, err)
+			return nil, fmt.Errorf("inspecting leftover staging entry %s: %w", dir, err)
 		}
 		remove := len(inner) == 0
 		if !remove {
 			ours, err := markerComplete(dir)
 			if err != nil {
-				return nil, fmt.Errorf("inspecting staging residue %s: %w", dir, err)
+				return nil, fmt.Errorf("inspecting leftover staging entry %s: %w", dir, err)
 			}
 			remove = ours
 		}
 		if remove {
 			if rmErr := os.RemoveAll(dir); rmErr != nil {
-				return nil, fmt.Errorf("removing staging residue %s: %w", dir, rmErr)
+				return nil, fmt.Errorf("removing leftover staging entry %s: %w", dir, rmErr)
 			}
 			continue
 		}
-		warnings = append(warnings, fmt.Sprintf("unrecognized staging residue left in place: %s", dir))
+		warnings = append(warnings, fmt.Sprintf("unrecognized leftover staging entry left in place: %s", dir))
 	}
 	return warnings, nil
 }
@@ -342,7 +342,7 @@ var (
 )
 
 // validateStaged proves the completed staged tree is exactly what will be
-// advertised: complete owner marker, our provenance, and a canonical
+// advertised: complete owner marker, our install record, and a canonical
 // digest that matches the stamped value.
 func validateStaged(staging string) error {
 	ours, err := markerComplete(staging)
@@ -357,7 +357,7 @@ func validateStaged(staging string) error {
 		return err
 	}
 	if !isOurs {
-		return fmt.Errorf("staged SKILL.md does not carry our provenance")
+		return fmt.Errorf("staged SKILL.md does not carry our install record")
 	}
 	tree, err := ReadTree(staging)
 	if err != nil {
@@ -378,12 +378,12 @@ func validateStaged(staging string) error {
 // remove and rename leaves the target absent, repaired by re-running.
 // Every pre-rename failure removes the staging dir; a cleanup failure is
 // reported alongside the primary error, never swallowed. SKILL.md is
-// written FIRST so staging residue is owner-marked from its first file —
-// an interrupted population can never strand foreign-looking residue.
+// written FIRST so the leftover staging entry is owner-marked from its first file —
+// an interrupted population can never strand foreign-looking leftovers.
 func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	t := l.target
 	parent := filepath.Dir(t.Dir)
-	warnings, err := sweepStaging(parent)
+	warnings, err := cleanStaging(parent)
 	if err != nil {
 		return warnings, err
 	}
@@ -409,7 +409,7 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	// parent, our marker-tmp namespace), then renamed into the still-EMPTY
 	// staging dir. The rename is atomic, so staging transitions
 	// empty→marked with no intermediate non-empty-unmarked state: every
-	// crash shape is a sweepable bucket (stray marker tmp file, empty
+	// crash shape is a removable bucket (stray marker tmp file, empty
 	// staging dir, or marker-complete staging dir).
 	if stageHook != nil {
 		if err := stageHook(OwnerMarkerFile); err != nil {
@@ -451,7 +451,7 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 		}
 	}
 	// Validate the COMPLETED on-disk staged tree before touching the
-	// target: ownership marker, provenance, and recomputed canonical
+	// target: ownership marker, install record, and recomputed canonical
 	// digest must all hold, or the target stays exactly as it was.
 	if err := validateStaged(staging); err != nil {
 		return warnings, cleanup(fmt.Errorf("staged tree failed validation: %w", err))
@@ -498,7 +498,7 @@ func StatusTarget(t Target, cliVersion string) (Verdict, string, error) {
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
 		return VerdictAbsent, "", nil
 	}
-	isOurs, prov, err := owned(t.Dir)
+	isOurs, rec, err := owned(t.Dir)
 	if err != nil {
 		return "", "", err
 	}
@@ -510,7 +510,7 @@ func StatusTarget(t Target, cliVersion string) (Verdict, string, error) {
 		if errors.Is(err, ErrNonRegular) {
 			// A non-regular entry inside an owned tree IS a modification;
 			// nothing was read through it (ReadTree rejects before reading).
-			return VerdictModified, prov.CLIVersion, nil
+			return VerdictModified, rec.CLIVersion, nil
 		}
 		return "", "", err
 	}
@@ -518,11 +518,11 @@ func StatusTarget(t Target, cliVersion string) (Verdict, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if digest != prov.ContentDigest {
-		return VerdictModified, prov.CLIVersion, nil
+	if digest != rec.ContentDigest {
+		return VerdictModified, rec.CLIVersion, nil
 	}
-	if prov.CLIVersion != cliVersion {
-		return VerdictSkew, prov.CLIVersion, nil
+	if rec.CLIVersion != cliVersion {
+		return VerdictSkew, rec.CLIVersion, nil
 	}
-	return VerdictInSync, prov.CLIVersion, nil
+	return VerdictInSync, rec.CLIVersion, nil
 }

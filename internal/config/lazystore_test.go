@@ -100,13 +100,13 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "construction must not create the config dir or pin")
 }
 
-// TestLoginChoreographyFreshAutoUsableKeychain drives login's store
+// TestLoginSequenceFreshAutoUsableKeychain drives login's store
 // sequence (NewLazyStore → RepinForLogin → SetToken) on a fresh auto
 // profile with a usable keychain: exactly one probe, keychain pin,
 // exactly one first-pin notice, token in the keychain and no plaintext
 // file — the lazy store never resolves (RepinForLogin returned the
 // concrete upgraded store).
-func TestLoginChoreographyFreshAutoUsableKeychain(t *testing.T) {
+func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()
 	resetKeyringUsableCache()
@@ -136,13 +136,13 @@ func TestLoginChoreographyFreshAutoUsableKeychain(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "usable keychain must not produce a plaintext file")
 }
 
-// TestLoginChoreographyFreshAutoUnusableKeychain: same sequence with an
+// TestLoginSequenceFreshAutoUnusableKeychain: same sequence with an
 // unusable keychain. RepinForLogin returns the lazy store unchanged;
 // SetToken resolves it — file pin, exactly one plaintext notice, no
 // first-pin-keychain notice, token in credentials.yaml. The single
 // probe count proves keyringUsableOnce's memo is shared between
 // RepinForLogin and the deferred resolution.
-func TestLoginChoreographyFreshAutoUnusableKeychain(t *testing.T) {
+func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()
 	resetKeyringUsableCache()

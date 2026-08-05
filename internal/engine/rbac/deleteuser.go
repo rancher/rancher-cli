@@ -28,7 +28,7 @@ const userCascadeWarning = "deleting this user removes the identity record; Ranc
 
 // NewDeleteUser builds the delete override for the user kind row. clients is
 // passed straight through to resources.NewGuardedDeletePrePlan, which runs the
-// self-delete guard before the inner Plan choreography (Route/Get/rv/dry-run/
+// self-delete guard before the inner Plan sequence (Route/Get/rv/dry-run/
 // exec) so the curated lockout refusal fires before the server's own webhook
 // can refuse the dry-run with raw text. The cascade warning is appended to the
 // resulting Effect on success.

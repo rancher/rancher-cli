@@ -24,7 +24,7 @@ const (
 	skillFile = "SKILL.md"
 
 	// OwnerMarkerFile is a rendered tree member (digested like any other
-	// file): one line of OwnerValue. Staging residue classification reads
+	// file): one line of OwnerValue. Leftover staging classification reads
 	// THIS file — complete-or-absent by construction when written via
 	// temp+rename — never the truncatable SKILL.md frontmatter.
 	OwnerMarkerFile = ".rancher-skill-owner"
@@ -45,8 +45,8 @@ var source fs.FS
 // directive (embed paths cannot climb out of the package directory).
 func SetSource(fsys fs.FS) { source = fsys }
 
-// Provenance is the metadata block of an installed SKILL.md.
-type Provenance struct {
+// InstallRecord is the metadata block of an installed SKILL.md.
+type InstallRecord struct {
 	Owner         string `yaml:"rancherCliInstaller"`
 	CLIVersion    string `yaml:"cliVersion"`
 	ContentDigest string `yaml:"contentDigest"`
@@ -221,28 +221,28 @@ func DigestTree(files map[string][]byte) (string, error) {
 // replaceDigestValue swaps the contentDigest scalar for repl; ok=false when
 // no stamped digest exists (pre-render canonical view hashes as-is).
 func replaceDigestValue(skillMD []byte, repl string) ([]byte, bool) {
-	prov, ok := ReadProvenance(skillMD)
-	if !ok || prov.ContentDigest == "" {
+	rec, ok := ReadInstallRecord(skillMD)
+	if !ok || rec.ContentDigest == "" {
 		return skillMD, false
 	}
-	return bytes.Replace(skillMD, []byte(prov.ContentDigest), []byte(repl), 1), true
+	return bytes.Replace(skillMD, []byte(rec.ContentDigest), []byte(repl), 1), true
 }
 
-// ReadProvenance parses the metadata block of an installed SKILL.md.
+// ReadInstallRecord parses the metadata block of an installed SKILL.md.
 // ok=false means no parseable frontmatter metadata — a foreign file.
-func ReadProvenance(skillMD []byte) (Provenance, bool) {
+func ReadInstallRecord(skillMD []byte) (InstallRecord, bool) {
 	fm, _, err := splitSkillMD(skillMD)
 	if err != nil {
-		return Provenance{}, false
+		return InstallRecord{}, false
 	}
 	var doc struct {
-		Metadata Provenance `yaml:"metadata"`
+		Metadata InstallRecord `yaml:"metadata"`
 	}
 	if err := yaml.Unmarshal(fm, &doc); err != nil {
-		return Provenance{}, false
+		return InstallRecord{}, false
 	}
 	if doc.Metadata.Owner == "" {
-		return Provenance{}, false
+		return InstallRecord{}, false
 	}
 	return doc.Metadata, true
 }
