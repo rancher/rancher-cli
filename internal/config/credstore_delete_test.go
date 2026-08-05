@@ -12,9 +12,9 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// TestDrainExecCacheForServerHTTPLegacyHostDrains verifies that a legacy cache
-// record stored with an HTTP host:port spelling (HOST:80) is drained when the
-// logout target is http://host. The drain must interpret the stored host using
+// TestDeleteExecCacheForServerHTTPLegacyHostDeletes verifies that a legacy cache
+// record stored with an HTTP host:port spelling (HOST:80) is deleted when the
+// logout target is http://host. The delete must interpret the stored host using
 // the TARGET's scheme to strip its default port, not always https.
 // TestHTTPAndHTTPSServersHaveDistinctCacheIdentity is the P1 regression test
 // for the scheme-collapse finding: credentials cached for http://host and
@@ -22,11 +22,11 @@ import (
 //
 // (a) CanonicalServerIdentity produces two distinct values.
 // (b) The two entries are stored under different keys.
-// (c) Draining http://host removes only its entry; draining https://host
+// (c) Deleting http://host removes only its entry; deleting https://host
 //
 //	removes only its entry.
 //
-// (d) A legacy host-only record (no scheme) still drains when either scheme
+// (d) A legacy host-only record (no scheme) still deletes when either scheme
 //
 //	is targeted.
 func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
@@ -53,69 +53,69 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 	require.NoError(t, fs.SetCachedCred(httpKey, "tok-http", time.Now().Add(time.Hour), "prod", httpID, "c-1"))
 	require.NoError(t, fs.SetCachedCred(httpsKey, "tok-https", time.Now().Add(time.Hour), "prod", httpsID, "c-1"))
 
-	// (d) Pre-seed a legacy host-only record (no scheme) to verify it drains.
+	// (d) Pre-seed a legacy host-only record (no scheme) to verify it deletes.
 	legacyKey := CacheKey("prod", "SAMEHOST:80", "c-1")
 	require.NoError(t, fs.SetCachedCred(legacyKey, "tok-legacy", time.Now().Add(time.Hour), "prod", "SAMEHOST:80", "c-1"))
 
-	// (c) Draining http://samehost removes only the HTTP entry (and the legacy).
-	deleted, err := DrainExecCacheForServer(fs, "http://samehost")
+	// (c) Deleting http://samehost removes only the HTTP entry (and the legacy).
+	deleted, err := DeleteExecCacheForServer(fs, "http://samehost")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{httpKey, legacyKey}, deleted,
-		"http drain must remove the http entry and the legacy record")
+		"http delete must remove the http entry and the legacy record")
 
 	_, _, err = fs.GetCachedCred(httpKey)
-	assert.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http drain")
+	assert.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http delete")
 
 	tok, _, err := fs.GetCachedCred(httpsKey)
 	require.NoError(t, err)
-	assert.Equal(t, "tok-https", tok, "https entry must survive the http drain")
+	assert.Equal(t, "tok-https", tok, "https entry must survive the http delete")
 
-	// (c) Draining https://samehost now removes only the HTTPS entry.
-	deleted, err = DrainExecCacheForServer(fs, "https://samehost")
+	// (c) Deleting https://samehost now removes only the HTTPS entry.
+	deleted, err = DeleteExecCacheForServer(fs, "https://samehost")
 	require.NoError(t, err)
 	assert.Equal(t, []string{httpsKey}, deleted,
-		"https drain must remove only the https entry")
+		"https delete must remove only the https entry")
 
 	_, _, err = fs.GetCachedCred(httpsKey)
-	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https drain")
+	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https delete")
 }
 
-func TestDrainExecCacheForServerHTTPLegacyHostDrains(t *testing.T) {
+func TestDeleteExecCacheForServerHTTPLegacyHostDeletes(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
 	legacyKey := CacheKey("kubeuser", "HOST:80", "c-1")
 	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:80", "c-1"))
 
-	deleted, err := DrainExecCacheForServer(fs, "http://host")
+	deleted, err := DeleteExecCacheForServer(fs, "http://host")
 	require.NoError(t, err)
-	assert.Equal(t, []string{legacyKey}, deleted, "HOST:80 record must drain for http://host target")
+	assert.Equal(t, []string{legacyKey}, deleted, "HOST:80 record must delete for http://host target")
 
 	_, _, gerr := fs.GetCachedCred(legacyKey)
 	assert.ErrorIs(t, gerr, ErrNoToken, "the HOST:80 cache entry must be gone")
 }
 
-// TestDrainExecCacheForServerNormalizesLegacyHostSpelling is the impl-review
+// TestDeleteExecCacheForServerNormalizesLegacyHostSpelling is the impl-review
 // finding-4 repro: a cache record whose Server host was stored with a
 // different-but-equivalent spelling (uppercase, explicit default port) must
-// still be drained on logout, since the drain now compares canonical hosts
+// still be deleted on logout, since the delete now compares canonical hosts
 // rather than raw bytes.
-func TestDrainExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
+func TestDeleteExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
 	// Pre-seed a legacy-cased/ported record: Server field spelled "HOST:443".
 	legacyKey := CacheKey("kubeuser", "HOST:443", "c-1")
 	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:443", "c-1"))
 
-	deleted, err := DrainExecCacheForServer(fs, "https://host")
+	deleted, err := DeleteExecCacheForServer(fs, "https://host")
 	require.NoError(t, err)
-	assert.Equal(t, []string{legacyKey}, deleted, "an equivalent host spelling must still drain the legacy record")
+	assert.Equal(t, []string{legacyKey}, deleted, "an equivalent host spelling must still delete the legacy record")
 
 	_, _, gerr := fs.GetCachedCred(legacyKey)
 	assert.ErrorIs(t, gerr, ErrNoToken, "the legacy-cased cache entry must be gone")
 }
 
-func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
-	// Login stored via exec:fake (records the helper record); drain runs with
+func TestDeleteLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
+	// Login stored via exec:fake (records the helper record); delete runs with
 	// policy "auto" (env-free logout) and must STILL erase via the helper.
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
@@ -124,7 +124,7 @@ func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 
-	from, err := DrainLoginToken(context.Background(), dir, execRef(), "auto")
+	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "auto")
 	require.NoError(t, err)
 	assert.Contains(t, from, "helper:fake")
 
@@ -136,7 +136,7 @@ func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	}))
 }
 
-func TestDrainLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
+func TestDeleteLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
@@ -145,18 +145,18 @@ func TestDrainLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(ref, "id:s"))
 
-	// Helper now fails: drain must error and RETAIN the entry for retry.
+	// Helper now fails: delete must error and RETAIN the entry for retry.
 	t.Setenv("FAKEHELPER_MODE", "fail")
-	_, derr := DrainLoginToken(context.Background(), dir, ref, "exec:fake")
+	_, derr := DeleteLoginToken(context.Background(), dir, ref, "exec:fake")
 	require.Error(t, derr)
 	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the helper record")
 		return nil
 	}))
 
-	// Helper heals: retry drains and clears.
+	// Helper heals: retry deletes and clears.
 	t.Setenv("FAKEHELPER_MODE", "ok")
-	from, derr := DrainLoginToken(context.Background(), dir, ref, "exec:fake")
+	from, derr := DeleteLoginToken(context.Background(), dir, ref, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
@@ -165,7 +165,7 @@ func TestDrainLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 	}))
 }
 
-func TestDrainSameNameTwoURLsErasesBoth(t *testing.T) {
+func TestDeleteSameNameTwoURLsErasesBoth(t *testing.T) {
 	keyring.MockInit()
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
@@ -175,9 +175,9 @@ func TestDrainSameNameTwoURLsErasesBoth(t *testing.T) {
 	require.NoError(t, st.SetToken(ServerRef{Name: "prod", URL: "https://a.example.com"}, "tok-a"))
 	require.NoError(t, st.SetToken(ServerRef{Name: "prod", URL: "https://b.example.com"}, "tok-b"))
 
-	// Drain with only the CURRENT URL: the recorded old identity must be
+	// Delete with only the CURRENT URL: the recorded old identity must be
 	// erased too — replayed verbatim from the helper records, not reconstructed.
-	from, derr := DrainLoginToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
+	from, derr := DeleteLoginToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 
@@ -189,11 +189,11 @@ func TestDrainSameNameTwoURLsErasesBoth(t *testing.T) {
 	}))
 }
 
-func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
+func TestDeleteMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	// Two helpers recorded for one server. buildFakeHelper ships
 	// rancher-credential-fake2 (byte-identical copy) which reads
 	// FAKEHELPER2_* env vars, falling back to FAKEHELPER_* — so fake2 can
-	// fail while fake succeeds. Drain then errors, fake's entry is removed
+	// fail while fake succeeds. Delete then errors, fake's entry is removed
 	// AND PERSISTED, fake2's entry survives on disk for retry.
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
@@ -207,7 +207,7 @@ func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	require.NoError(t, st2.SetToken(ref, "id:s"))
 
 	t.Setenv("FAKEHELPER2_MODE", "fail")
-	_, derr := DrainLoginToken(context.Background(), dir, ref, "auto")
+	_, derr := DeleteLoginToken(context.Background(), dir, ref, "auto")
 	require.Error(t, derr)
 
 	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
@@ -218,23 +218,23 @@ func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	}))
 }
 
-func TestDrainLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
+func TestDeleteLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	t.Parallel()
 	keyring.MockInit()
 	dir := t.TempDir()
 
 	// "exec:../evil" passes the "exec:" prefix check but fails ValidHelperName:
-	// DrainLoginToken must error (not silently skip) and must not attempt to
-	// exec anything. The helper-records file is empty, so file/keychain drains also
+	// DeleteLoginToken must error (not silently skip) and must not attempt to
+	// exec anything. The helper-records file is empty, so file/keychain deletes also
 	// report nothing — only the validation error is returned.
-	_, err := DrainLoginToken(context.Background(), dir, execRef(), "exec:../evil")
+	_, err := DeleteLoginToken(context.Background(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "../evil", "error must name the invalid helper")
 }
 
-func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
+func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	// Crash boundary through the REQUIRED path: an intent was recorded but
-	// the process died before store ran. A later policy-independent drain
+	// the process died before store ran. A later policy-independent delete
 	// must discover the leftover record, replay the recorded
 	// identity to the helper (idempotent erase of a never-stored credential
 	// succeeds), and clear the entry.
@@ -246,8 +246,8 @@ func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 		return nil
 	}))
 
-	from, err := DrainLoginToken(context.Background(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
-	require.NoError(t, err, "a leftover crash record drains as success")
+	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
+	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
 	// deletion (friction-4 semantics) — the replay and the cleanup below
 	// are the crash-boundary guarantees this test pins.
@@ -260,30 +260,30 @@ func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	}))
 }
 
-// TestDrainLoginTokenNoOpEraseNotReported pins live-exercise friction 4:
-// when the helper holds no credential for the identity, the drain still runs
+// TestDeleteLoginTokenNoOpEraseNotReported pins live-exercise friction 4:
+// when the helper holds no credential for the identity, the delete still runs
 // the idempotent erase, but must NOT report the helper in deletedFrom — the
 // output could not distinguish a no-op from an actual deletion. The policy
-// names the helper, so the identity is a drain target even with no
+// names the helper, so the identity is a delete target even with no
 // helper record and nothing stored.
-func TestDrainLoginTokenNoOpEraseNotReported(t *testing.T) {
+func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 
-	from, err := DrainLoginToken(context.Background(), dir, execRef(), "exec:fake")
+	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "exec:fake")
 	require.NoError(t, err)
 	assert.NotContains(t, from, "helper:fake", "a no-op erase is not a deletion")
 	assert.Empty(t, from)
 }
 
-// TestDrainLoginTokenCancellableWhileRecordsLockHeld pins the third-review
-// P1: a drain waiting on a contended helper-records lock must be
+// TestDeleteLoginTokenCancellableWhileRecordsLockHeld pins the third-review
+// P1: a delete waiting on a contended helper-records lock must be
 // interruptible by the caller's context — before this, the wait was built
 // from context.Background() and Ctrl-C during logout could not reach it
 // (while the command also held the config write lock, blocking every other
 // invocation on the machine).
-func TestDrainLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
+func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	keyring.MockInit()
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
@@ -297,10 +297,10 @@ func TestDrainLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		_, derr := DrainLoginToken(ctx, dir, execRef(), "exec:fake")
+		_, derr := DeleteLoginToken(ctx, dir, execRef(), "exec:fake")
 		done <- derr
 	}()
-	time.Sleep(200 * time.Millisecond) // let the drain reach the records-lock wait
+	time.Sleep(200 * time.Millisecond) // let the delete reach the records-lock wait
 	cancel()
 	select {
 	case derr := <-done:

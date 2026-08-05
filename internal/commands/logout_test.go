@@ -23,7 +23,7 @@ import (
 // and stores a token per server. Returns dir + store.
 func seedLogout(t *testing.T, current string, servers ...string) (string, config.CredStore) {
 	t.Helper()
-	keyring.MockInit() // in-memory keychain: DrainToken now drains both backends unconditionally
+	keyring.MockInit() // in-memory keychain: DeleteTokenEverywhere now deletes both backends unconditionally
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
@@ -51,7 +51,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	require.True(t, isMap, "Result data is a map")
 	df, isDF := data["deletedFrom"].(map[string][]string)
 	require.True(t, isDF, "Result carries per-server deletedFrom")
-	assert.Equal(t, []string{"file"}, df["acme"], "mock keychain is empty, so only the file backend reports a drain")
+	assert.Equal(t, []string{"file"}, df["acme"], "mock keychain is empty, so only the file backend reports a delete")
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -104,7 +104,7 @@ func TestLogoutAll(t *testing.T) {
 	assert.Equal(t, "", cfg.CurrentContext)
 }
 
-func TestLogoutDrainsMatchingExecCache(t *testing.T) {
+func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	// acme.ex and other.ex per seedLogout; cache two entries, one per host,
 	// plus a legacy bare entry (no Server) that must never be touched.
@@ -121,14 +121,14 @@ func TestLogoutDrainsMatchingExecCache(t *testing.T) {
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, deletedCache)
 
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
-	assert.ErrorIs(t, err, config.ErrNoToken, "matching entry drained")
+	assert.ErrorIs(t, err, config.ErrNoToken, "matching entry deleted")
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"))
 	require.NoError(t, err, "non-matching entry kept")
 	_, _, err = store.GetCachedCred("legacy-bare")
 	require.NoError(t, err, "legacy bare entry (no Server) kept")
 }
 
-func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
+func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
@@ -149,9 +149,9 @@ func TestLogoutAllDrainsWholeExecCache(t *testing.T) {
 	assert.Empty(t, creds, "--all clears the whole cache")
 }
 
-// Round-3 repro: --all's per-server host-scoped drain (round 2) missed a
+// Round-3 repro: --all's per-server host-scoped delete (round 2) missed a
 // legacy bare entry (no Server field) and an entry cached against a server
-// no longer in config.yaml — neither is reachable by any per-server drain.
+// no longer in config.yaml — neither is reachable by any per-server delete.
 // --all must catch both via the full-cache wipe.
 func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme")
@@ -171,7 +171,7 @@ func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 		config.CacheKey("kubeuser", "acme.ex", "c-1"),
 		"legacy-bare",
 		config.CacheKey("kubeuser", "removed.ex", "c-1"),
-	}, deletedCache, "--all must catch orphaned entries no per-server drain can reach")
+	}, deletedCache, "--all must catch orphaned entries no per-server delete can reach")
 
 	creds, err := store.ListCachedCreds()
 	require.NoError(t, err)
@@ -239,12 +239,12 @@ func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
 	assert.Empty(t, helperCreds(t, statePath), "--all erases every helper-held credential")
 }
 
-// TestLogoutAllDrainsOrphanedHelperCredential is the impl-review
+// TestLogoutAllDeletesOrphanedHelperCredential is the impl-review
 // finding-2 repro: a helper credential recorded for a server
 // name absent from config.yaml (left behind by a crash/failed write) is unreachable
-// from the per-server logout loop, so `logout --all` must drain it via the
+// from the per-server logout loop, so `logout --all` must delete it via the
 // orphaned-record path and report it.
-func TestLogoutAllDrainsOrphanedHelperCredential(t *testing.T) {
+func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	t.Setenv("PATH", buildCommandsFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKEHELPER_MODE", "ok")
 	statePath := filepath.Join(t.TempDir(), "state.json")
@@ -272,19 +272,19 @@ func TestLogoutAllDrainsOrphanedHelperCredential(t *testing.T) {
 	require.NoError(t, err)
 
 	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
-	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the drained orphan under its server name")
+	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the deleted orphan under its server name")
 	assert.Empty(t, helperCreds(t, statePath), "the orphaned helper credential must be erased")
 
-	residue, err := config.DrainOrphanedHelperCredentials(context.Background(), dir)
+	residue, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
-	assert.Empty(t, residue, "provenance must be fully drained")
+	assert.Empty(t, residue, "provenance must be fully deleted")
 }
 
-// TestLogoutAllDrainsResidueAfterFailedConfigWrite is finding-2's review-
+// TestLogoutAllDeletesResidueAfterFailedConfigWrite is finding-2's review-
 // requested scenario: a login whose helper store succeeds but whose config
 // write then fails strands a live helper credential + helper record for a
 // server never persisted to config.yaml. `logout --all` must still clean it.
-func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
+func TestLogoutAllDeletesResidueAfterFailedConfigWrite(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("symlink-based config-write failure needs POSIX symlink semantics")
 	}
@@ -315,13 +315,13 @@ func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
 	require.NotEmpty(t, helperCreds(t, statePath), "the helper stored the credential before the config write failed")
 
 	// logout --all reads the unchanged config (ghost is absent from it) yet
-	// must still drain the stranded helper credential via provenance.
+	// must still delete the stranded helper credential via provenance.
 	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded residue")
 
-	residue, err := config.DrainOrphanedHelperCredentials(context.Background(), dir)
+	residue, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
 	assert.Empty(t, residue)
 }
@@ -347,34 +347,34 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	assert.Equal(t, "", cfgAfter.CurrentContext)
 }
 
-// TestDrainFailureCancellationPassesThrough pins the fourth-review P1: a
-// drain interrupted by the caller's own cancellation must surface as
+// TestDeleteFailureCancellationPassesThrough pins the fourth-review P1: a
+// delete interrupted by the caller's own cancellation must surface as
 // context.Canceled through logout's failure shaping — never rewrapped into
 // the generic "failed to log out" clierr, which severs the errors.Is chain
 // and reads as a helper fault.
-func TestDrainFailureCancellationPassesThrough(t *testing.T) {
+func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	t.Parallel()
 	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
-	err := drainFailure("failed to log out \"prod\"", wrapped, []string{"a"})
+	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"})
 	assert.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
-	assert.False(t, errors.As(err, &ce), "cancellation must not be dressed as a clierr drain failure")
+	assert.False(t, errors.As(err, &ce), "cancellation must not be dressed as a clierr delete failure")
 
-	real := drainFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"})
+	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"})
 	require.ErrorAs(t, real, &ce)
 	assert.Contains(t, ce.Hint, "already logged out")
 }
 
-// TestDrainFailurePreservesLockTimeout pins the exercise-8/9-fixes review
+// TestDeleteFailurePreservesLockTimeout pins the exercise-8/9-fixes review
 // finding: a LOCK_TIMEOUT surfacing from the token-cache or helper-records
-// lock inside the drain must keep its code and retryability through logout's
+// lock inside the delete must keep its code and retryability through logout's
 // failure shaping — flattening it to GENERIC hides exit 8 and the retry
 // signal from scripted callers.
-func TestDrainFailurePreservesLockTimeout(t *testing.T) {
+func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	t.Parallel()
 	inner := clierr.Retryable(clierr.CodeLockTimeout,
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")
-	err := drainFailure("failed to log out \"prod\"", inner, []string{"a"})
+	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)

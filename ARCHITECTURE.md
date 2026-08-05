@@ -381,29 +381,29 @@ plaintext. A pinned-but-unusable backend is a **hard error** with a remediation 
 (`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
 fallback. `auth check` surfaces `credentialStore: {policy, pinned}`.
 
-**Keyring read-through and logout drain.** With the keychain backend, `GetToken` falls
+**Keyring read-through and logout delete.** With the keychain backend, `GetToken` falls
 through to the file store on a keychain miss, so tokens written before an upgrade re-pin
-keep working. `config.DrainLoginToken` drains a server's login token from **both**
+keep working. `config.DeleteLoginToken` deletes a server's login token from **both**
 backends unconditionally — because read-through makes the file store part of the
 effective read path under every policy — aggregating per-backend errors with
-`errors.Join` and reporting which backends were drained.
+`errors.Join` and reporting which backends were deleted.
 
 Logout has two paths, not one, because they need different completeness/cost tradeoffs:
-- **Single-server** (`auth logout <name>`) calls `config.DrainToken`, which wraps
-  `DrainLoginToken` and additionally drains every exec-credential cache entry whose
-  `Server` matches THAT server's host (reported as `deletedCache`). Draining by HOST
+- **Single-server** (`auth logout <name>`) calls `config.DeleteTokenEverywhere`, which wraps
+  `DeleteLoginToken` and additionally deletes every exec-credential cache entry whose
+  `Server` matches THAT server's host (reported as `deletedCache`). Deleting by HOST
   rather than by config-entry name is deliberate fail-safe behavior, not an oversight: a
   cache entry embeds the entry name only by kubeconfig naming convention (structurally
-  unreliable to match on), while over-draining a neighbor account on the same host costs
+  unreliable to match on), while over-deleting a neighbor account on the same host costs
   it one silent re-auth on next use (the exec plugin re-mints transparently) —
-  under-draining leaves a live credential behind after the user asked to log out.
-- **`--all`** calls `DrainLoginToken` per configured server (never `DrainToken` — a
-  per-server host-scoped cache drain, looped over every server, would cost
-  O(servers × cache entries) of the same file) and then `config.DrainAllExecCache`
+  under-deleting leaves a live credential behind after the user asked to log out.
+- **`--all`** calls `DeleteLoginToken` per configured server (never `DeleteTokenEverywhere` — a
+  per-server host-scoped cache delete, looped over every server, would cost
+  O(servers × cache entries) of the same file) and then `config.DeleteAllExecCache`
   **once**, which wipes the whole cache file in one operation. This is not merely
   cheaper: it is the only path that reaches an orphaned cache entry — a legacy bare
   entry with no `Server` field, or one cached against a server since removed from
-  `config.yaml` — that no per-server, host-scoped drain could ever match. Both fixes
+  `config.yaml` — that no per-server, host-scoped delete could ever match. Both fixes
   are required for the "no orphaned live tokens" guarantee to hold for `--all`; keep
   both. `auth delete-token` remains available for clearing cache entries outside a
   logout.
@@ -583,7 +583,7 @@ files that must change together atomically — `config.yaml` and `credentials.ya
 share `config.lock` because login/logout must keep the server registration and its
 credential in agreement, while the exec-credential cache and the helper records
 evolve independently and each get their own lock. Cancellation (Ctrl-C) covers
-lock acquisition end to end and the drains' helper-records waits; the
+lock acquisition end to end and the deletes' helper-records waits; the
 store-interface paths reachable inside a locked span — credential-helper
 subprocess calls and cache-lock waits — remain bounded by their own timeouts but
 are not interruptible, because `CredStore` carries no context parameter.

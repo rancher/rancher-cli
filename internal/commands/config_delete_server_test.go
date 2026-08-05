@@ -43,16 +43,16 @@ func seedDeleteServer(t *testing.T, current string, servers []string, contexts m
 	return dir, store
 }
 
-func TestConfigDeleteServerDrainFailureAbortsBeforeAnyWrite(t *testing.T) {
+func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme", "other"}, map[string]string{"acme": "acme", "other": "other"})
 	path := config.FilePath(dir)
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
-	drainErr := errors.New("keychain locked")
-	cmd.drain = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
-		return nil, nil, drainErr
+	deleteErr := errors.New("keychain locked")
+	cmd.delete = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
+		return nil, nil, deleteErr
 	}
 
 	_, err = cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
@@ -61,12 +61,12 @@ func TestConfigDeleteServerDrainFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Equal(t, before, after, "config file must be byte-identical when drain fails — the write must never be reached")
+	assert.Equal(t, before, after, "config file must be byte-identical when delete fails — the write must never be reached")
 
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	_, ok := cfg.Servers["acme"]
-	assert.True(t, ok, "server entry must still be present after a failed drain (benign failure direction: creds gone, server still configured — never the reverse)")
+	assert.True(t, ok, "server entry must still be present after a failed delete (benign failure direction: creds gone, server still configured — never the reverse)")
 	assert.Equal(t, "acme", cfg.CurrentContext, "current context must be untouched too")
 }
 
@@ -87,7 +87,7 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	assert.Equal(t, "https://acme.ex", data["url"])
 	assert.ElementsMatch(t, []string{"acme", "weird-alias"}, data["contexts"], "both contexts field-matching server acme are removed, key-equal and aliased alike")
 	assert.False(t, data["currentContextCleared"].(bool), "current context (\"other\") targets a different server and is untouched")
-	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"], "mock keychain is empty, so only the file backend reports a drain")
+	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"], "mock keychain is empty, so only the file backend reports a delete")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	assert.Equal(t, "other", cfg.CurrentContext)
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken, "token drained")
+	assert.ErrorIs(t, err, config.ErrNoToken, "token deleted")
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	require.NoError(t, err, "unrelated server's token kept")
 }
@@ -138,7 +138,7 @@ func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 	assert.Contains(t, ids, "acme")
 }
 
-func TestConfigDeleteServerDrainsExecCredentialCache(t *testing.T) {
+func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	dir, store := seedDeleteServer(t, "", []string{"acme"}, map[string]string{"acme": "acme"})
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 
@@ -152,7 +152,7 @@ func TestConfigDeleteServerDrainsExecCredentialCache(t *testing.T) {
 }
 
 // TestConfigDeleteServerWritesNoCredstorePin is SUPPLEMENTARY coverage of
-// the drain's own store-independence (spec R2-1): it bypasses resolveDeps
+// the delete's own store-independence (spec R2-1): it bypasses resolveDeps
 // by construction, so it passes before AND after the adapter swap — the
 // real resolveDeps regression lives in surface/cli's through-the-root
 // tests (Task 3 Step 0). This one pins that the command itself never
@@ -166,7 +166,7 @@ func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(config.PinPath(dir))
-	assert.True(t, os.IsNotExist(statErr), "drain must not write a credstore pin")
+	assert.True(t, os.IsNotExist(statErr), "delete must not write a credstore pin")
 }
 
 func TestConfigDeleteServerErasesThroughHelper(t *testing.T) {
@@ -178,7 +178,7 @@ func TestConfigDeleteServerErasesThroughHelper(t *testing.T) {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	_, ok := cfg.Servers["acme"]
-	assert.False(t, ok, "server entry removed after a successful drain")
+	assert.False(t, ok, "server entry removed after a successful delete")
 }
 
 func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
@@ -191,7 +191,7 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	_, ok := cfg.Servers["acme"]
-	assert.True(t, ok, "failed drain leaves the server config untouched")
+	assert.True(t, ok, "failed delete leaves the server config untouched")
 }
 
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
@@ -205,15 +205,15 @@ func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 }
 
 // TestDeleteServerCancellationPassesThrough pins the fourth-review P1 for
-// config delete-server: a cancellation surfacing from the drain must pass
-// through unchanged, not be rewrapped as a generic drain failure.
+// config delete-server: a cancellation surfacing from the delete must pass
+// through unchanged, not be rewrapped as a generic delete failure.
 func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{Servers: map[string]config.Server{"acme": {URL: "https://acme.ex"}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := &configDeleteServerCmd{dir: dir, drain: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
 		return nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
 	}}
 	_, err := cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
@@ -224,18 +224,18 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	cfgAfter, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
 	_, ok := cfgAfter.Servers["acme"]
-	assert.True(t, ok, "the server entry must be untouched after a cancelled drain")
+	assert.True(t, ok, "the server entry must be untouched after a cancelled delete")
 }
 
-// TestConfigDeleteServerDrainLockTimeoutSurvives pins the exercise-8/9-fixes
-// review finding for this command: a classified LOCK_TIMEOUT from the drain
+// TestConfigDeleteServerDeleteLockTimeoutSurvives pins the exercise-8/9-fixes
+// review finding for this command: a classified LOCK_TIMEOUT from the delete
 // keeps its code, retryability, and exit status through the
 // "server config left untouched" wrap.
-func TestConfigDeleteServerDrainLockTimeoutSurvives(t *testing.T) {
+func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme"}, map[string]string{"acme": "acme"})
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
-	cmd.drain = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
 		return nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
 			"locking the credential-helper records (another rancher process may be logging in/out): context deadline exceeded")
 	}

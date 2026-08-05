@@ -292,12 +292,12 @@ func TestKeyringGetTokenReadsThroughToFile(t *testing.T) {
 	}
 }
 
-func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
+func TestDeleteTokenEverywhereRemovesFromBothBackends(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
 	_ = NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file")
-	from, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	from, _, err := DeleteTokenEverywhere(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,47 +312,47 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	}
 }
 
-func TestDrainTokenAlsoDrainsExecCache(t *testing.T) {
+func TestDeleteTokenEverywhereAlsoDeletesExecCache(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
 
-	_, drainedCache, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, deletedCache, err := DeleteTokenEverywhere(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err)
-	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, drainedCache)
+	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
 
 	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"))
-	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single drain point must also drain the exec-credential cache")
+	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single delete point must also delete the exec-credential cache")
 }
 
-func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
+func TestDeleteTokenEverywhereFailsOnUnreadableFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	// corrupt credentials.yaml: GetToken returns a non-ErrNoToken error
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, _, err := DeleteTokenEverywhere(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err == nil {
-		t.Fatal("DrainToken must fail, not report success, when the file store is unreadable (a live token may remain)")
+		t.Fatal("DeleteTokenEverywhere must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
 }
 
-func TestDrainExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
+func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
 
-	deleted, err := DrainExecCacheForServer(store, "https://acme.ex")
+	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
 	require.NoError(t, err)
 	assert.Equal(t, []string{CacheKey("kubeuser", "acme.ex", "c-1")}, deleted)
 
 	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"))
-	assert.ErrorIs(t, err, ErrNoToken, "matching entry must be drained")
+	assert.ErrorIs(t, err, ErrNoToken, "matching entry must be deleted")
 	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"))
 	assert.NoError(t, err, "non-matching entry must be kept")
 	_, _, err = store.GetCachedCred("legacy-bare")
@@ -361,22 +361,22 @@ func TestDrainExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 
 // Round-2 pin: two config entries with different --name values ("acme-admin",
 // "acme-viewer") that both point at the same host each cache their own
-// exec-credential entry. Logging out one drains BOTH — deliberately, not a
+// exec-credential entry. Logging out one deletes BOTH — deliberately, not a
 // bug: matching by config-entry name is structurally unreliable (a cache
 // entry embeds the name only by kubeconfig naming convention), so
-// host-wide drain is the safe direction. See DrainToken's doc comment.
-func TestDrainExecCacheForServerDrainsAllNamesSharingOneHost(t *testing.T) {
+// host-wide delete is the safe direction. See DeleteTokenEverywhere's doc comment.
+func TestDeleteExecCacheForServerDeletesAllNamesSharingOneHost(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), "tok-admin", time.Time{}, "acme-admin", "acme.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), "tok-viewer", time.Time{}, "acme-viewer", "acme.ex", "c-1"))
 
-	deleted, err := DrainExecCacheForServer(store, "https://acme.ex")
+	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{
 		CacheKey("acme-admin", "acme.ex", "c-1"),
 		CacheKey("acme-viewer", "acme.ex", "c-1"),
-	}, deleted, "both names sharing one host must be drained together")
+	}, deleted, "both names sharing one host must be deleted together")
 
 	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"))
 	assert.ErrorIs(t, err, ErrNoToken)
@@ -384,12 +384,12 @@ func TestDrainExecCacheForServerDrainsAllNamesSharingOneHost(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoToken)
 }
 
-func TestDrainExecCacheForServerEmptyHostIsNoop(t *testing.T) {
+func TestDeleteExecCacheForServerEmptyHostIsNoop(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred("legacy-bare", "tok", time.Time{}, "", "", ""))
 
-	deleted, err := DrainExecCacheForServer(store, "")
+	deleted, err := DeleteExecCacheForServer(store, "")
 	require.NoError(t, err)
 	assert.Nil(t, deleted)
 
@@ -397,7 +397,7 @@ func TestDrainExecCacheForServerEmptyHostIsNoop(t *testing.T) {
 	assert.NoError(t, err, "empty host must not touch the cache")
 }
 
-func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
+func TestKeyringDeleteTokenDeletesFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	// Token lives only in the file store (e.g. written under an earlier file pin).
@@ -405,14 +405,14 @@ func TestKeyringDeleteTokenDrainsFileStore(t *testing.T) {
 	s := newPinnedKeyringStore(dir, false)
 	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
 	_, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
-	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also drain the file store")
+	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also delete the file store")
 }
 
-// TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile: DrainLoginToken
+// TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile: DeleteLoginToken
 // now shares keyringStore.DeleteToken's XP-6 degrade — an unreachable
 // keychain warns rather than turning `auth logout` into a hard failure,
-// as long as the file store drains cleanly.
-func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
+// as long as the file store deletes cleanly.
+func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain boom"))
 	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
 	dir := t.TempDir()
@@ -423,9 +423,9 @@ func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
 	logrus.SetOutput(&buf)
 	defer logrus.SetOutput(orig)
 
-	from, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store drains")
-	assert.Contains(t, from, "file", "file backend must still be drained")
+	from, _, err := DeleteTokenEverywhere(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store deletes")
+	assert.Contains(t, from, "file", "file backend must still be deleted")
 	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
 	assert.Contains(t, buf.String(), "keychain unreachable", "the unreachable keychain must still be visibly warned about")
@@ -494,13 +494,13 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "file credential store")
 }
 
-// TestKeyringUnreachableDeleteDrainsFile: delete under an unreachable
-// keychain still drains the file store and reports success (spec XP-6:
-// same as a miss; logout's DrainLoginToken independently surfaces
+// TestKeyringUnreachableDeleteDeletesFile: delete under an unreachable
+// keychain still deletes the file store and reports success (spec XP-6:
+// same as a miss; logout's DeleteLoginToken independently surfaces
 // keyring errors) — and WARNS visibly, naming the unreachable keychain
-// and the file-only drain, so the undeletable keychain copy (if any) is
+// and the file-only delete, so the undeletable keychain copy (if any) is
 // never silent.
-func TestKeyringUnreachableDeleteDrainsFile(t *testing.T) {
+func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
 	require.NoError(t, fs.SetToken(ServerRef{Name: "prod"}, "file-token"))

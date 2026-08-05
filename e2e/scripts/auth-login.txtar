@@ -9,7 +9,7 @@ exec rancher auth check -o json
 jsonquery stdout data.ok true
 jsonquery stdout data.server e2e
 
-# logout drains the matching exec-credential cache entry alongside the login token
+# logout deletes the matching exec-credential cache entry alongside the login token
 seedexeccache e2e-c-test c-test
 exec rancher auth logout e2e -o json
 jsonquery stdout 'data.deletedCache.#' 1

@@ -105,7 +105,7 @@ func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
 }
 
 func TestExecStoreSetTokenWritesIntentBeforeStore(t *testing.T) {
-	useFakeHelper(t, "fail") // store fails; intent must survive for a later drain
+	useFakeHelper(t, "fail") // store fails; intent must survive for a later delete
 	dir := t.TempDir()
 	st, err := OpenStore("exec:fake", dir)
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestExecStoreSetTokenUnsupportedRemovesIntent(t *testing.T) {
 func TestExecStoreUnsupportedPersistFailureIsHardError(t *testing.T) {
 	// The unsupported sentinel may ONLY be returned once its intent removal
 	// is durably persisted — otherwise login would warn-and-succeed while a
-	// stale intent keeps a nothing-storing helper on every future drain.
+	// stale intent keeps a nothing-storing helper on every future delete.
 	useFakeHelper(t, "unsupported")
 	dir := t.TempDir()
 	st, err := OpenStore("exec:fake", dir)

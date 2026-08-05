@@ -253,7 +253,7 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 			// BEFORE returning the sentinel: were the removal to fail, the
 			// joined result must read as a hard error, never as clean
 			// read-only success (login would warn-and-succeed while a stale
-			// intent re-runs this helper on every future drain).
+			// intent re-runs this helper on every future delete).
 			st.remove(entry)
 			if perr := persistHelperRecords(s.dir, st); perr != nil {
 				return fmt.Errorf("credential helper %s reported unsupported store, but recording that failed: %v", s.binary(), perr)
@@ -280,7 +280,7 @@ func (s *execStore) eraseCredential(req credhelper.Request) (deleted bool, err e
 // DeleteToken erases through the helper and clears the matching helper record
 // entry under the same operation-level lock; a helper or persistence failure
 // retains the entry (retry keeps its target). Direct DeleteToken callers get
-// the same guarantee the drain path has.
+// the same guarantee the delete path has.
 func (s *execStore) DeleteToken(ref ServerRef) error {
 	req, err := wireRequest(ref)
 	if err != nil {

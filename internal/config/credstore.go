@@ -542,12 +542,12 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 	}
 	err := keyring.Delete(keyringService, ref.Name)
 	if keyringUnreachable(err) {
-		// XP-6: treat unreachable like a miss — drain the file store below
+		// XP-6: treat unreachable like a miss — delete the file store below
 		// (removing plaintext is strictly safe) — but say so: the keychain
-		// copy, if any, could not be checked. auth logout's DrainLoginToken
+		// copy, if any, could not be checked. auth logout's DeleteLoginToken
 		// independently surfaces keyring errors, so nothing is silently
 		// left behind on that path.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only%s", ref.Name, err, k.pinHint)
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint)
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).
@@ -567,51 +567,51 @@ func (k *keyringStore) DeleteCachedCred(key string) error          { return k.ca
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
 
-// DrainToken is single-server logout's drain point (ARCHITECTURE.md): it
+// DeleteTokenEverywhere is single-server logout's delete point (ARCHITECTURE.md): it
 // deletes a server's login token from BOTH backends, unconditionally and
 // independently of policy — read-through made the file store part of the
-// effective read path under every policy, so every logout must drain it, and
+// effective read path under every policy, so every logout must delete it, and
 // the keychain may still hold a token from before a backend flip — AND
-// drains every exec-credential cache entry cached against serverURL's host
+// deletes every exec-credential cache entry cached against serverURL's host
 // (the cache is file-backed regardless of policy, CS-5). No backend's
 // failure short-circuits another; per-backend errors are joined so a live
 // token/cache entry is never left behind unreported. fromBackends lists the
-// login-token backends actually drained; drainedCache lists the cache keys
+// login-token backends actually deleted; deletedCache lists the cache keys
 // actually removed.
 //
-// Draining the WHOLE host's cache (not just entries matching server's own
+// Deleting the WHOLE host's cache (not just entries matching server's own
 // name) is deliberate fail-safe behavior, not an oversight: a cache entry
 // embeds the config-entry name only by kubeconfig naming convention, so
-// matching by name is structurally unreliable, while over-draining a
+// matching by name is structurally unreliable, while over-deleting a
 // neighbor account on the same host costs it one silent re-auth on next use
-// (the exec plugin re-mints transparently) — under-draining leaves a live
+// (the exec plugin re-mints transparently) — under-deleting leaves a live
 // credential behind after the user asked to log out, the exact failure this
 // function exists to prevent.
 //
-// `logout --all` does NOT loop this per server: draining N servers' worth of
+// `logout --all` does NOT loop this per server: deleting N servers' worth of
 // host-scoped cache entries one at a time costs O(servers × cache entries)
 // of the same file, and — unlike a single-server logout, which has no other
 // way to reach a cache entry cached against a server no longer configured —
 // still misses orphaned/bare entries that match no configured server. See
-// DrainAllExecCache, which `--all` calls once instead.
-func DrainToken(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, drainedCache []string, err error) {
-	fromBackends, err = DrainLoginToken(ctx, dir, ref, policy)
-	drainedCache, cerr := DrainExecCacheForServer(NewFileStore(dir), ref.URL)
+// DeleteAllExecCache, which `--all` calls once instead.
+func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, deletedCache []string, err error) {
+	fromBackends, err = DeleteLoginToken(ctx, dir, ref, policy)
+	deletedCache, cerr := DeleteExecCacheForServer(NewFileStore(dir), ref.URL)
 	if cerr != nil {
 		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
 	}
-	return fromBackends, drainedCache, err
+	return fromBackends, deletedCache, err
 }
 
-// DrainLoginToken deletes a server's login token from the keychain, file
+// DeleteLoginToken deletes a server's login token from the keychain, file
 // store, and every helper the records file says was asked to store a
 // credential for the server. The exec union covers: the current policy's
 // helper (with the current identity) and every older record — so a policy
 // change between login and logout never strands a helper credential. Used directly by
-// DrainToken (single-server logout) and by `logout --all` (which drains
+// DeleteTokenEverywhere (single-server logout) and by `logout --all` (which deletes
 // every configured server's token this way, then wipes the exec-credential
-// cache once via DrainAllExecCache instead of per server).
-func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) ([]string, error) {
+// cache once via DeleteAllExecCache instead of per server).
+func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) ([]string, error) {
 	var (
 		from []string
 		errs []error
@@ -623,8 +623,8 @@ func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy stri
 	} else if keyringUnreachable(kerr) {
 		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
 		// keychain must not turn `auth logout` into a hard failure when
-		// the file store still drains cleanly.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, drained the file store only", ref.Name, kerr)
+		// the file store still deletes cleanly.
+		logrus.Warnf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr)
 	} else {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}
@@ -639,7 +639,7 @@ func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy stri
 	case errors.Is(terr, ErrNoToken):
 		// nothing stored in the file backend — fine
 	default:
-		// NEVER report a successful drain when the file store is
+		// NEVER report a successful delete when the file store is
 		// unreadable/corrupt: a live plaintext token may remain.
 		errs = append(errs, fmt.Errorf("file credential store: %w", terr))
 	}
@@ -660,14 +660,14 @@ func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy stri
 		} else if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
 			targets.add(HelperRecord{Helper: name, Name: ref.Name, CanonicalURL: cu})
 		} else if ref.URL != "" {
-			errs = append(errs, fmt.Errorf("credential helper drain: %w", cerr))
+			errs = append(errs, fmt.Errorf("credential helper delete: %w", cerr))
 		}
 	}
 	lerr := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
 		for _, e := range st.forServer(ref.Name) {
 			targets.add(e)
 		}
-		return drainHelperRecords(dir, targets.Entries, st, func(e HelperRecord) {
+		return deleteHelperRecords(dir, targets.Entries, st, func(e HelperRecord) {
 			from = append(from, "helper:"+e.Helper)
 		})
 	})
@@ -677,13 +677,13 @@ func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy stri
 	return from, errors.Join(errs...)
 }
 
-// drainHelperRecords erases every record through eraseHelperCredential:
+// deleteHelperRecords erases every record through eraseHelperCredential:
 // a successfully erased record is removed from st (a failed one stays for
 // retry, its error joined), and deleted is called for each record whose
-// credential actually existed. The one loop behind DrainLoginToken's
-// per-server drain and DrainOrphanedHelperCredentials' sweep, so a fix to
+// credential actually existed. The one loop behind DeleteLoginToken's
+// per-server delete and DeleteOrphanedHelperCredentials' sweep, so a fix to
 // either path cannot land on only one copy.
-func drainHelperRecords(dir string, records []HelperRecord, st *helperRecords, deleted func(HelperRecord)) error {
+func deleteHelperRecords(dir string, records []HelperRecord, st *helperRecords, deleted func(HelperRecord)) error {
 	var errs []error
 	for _, e := range records {
 		wasDeleted, err := eraseHelperCredential(dir, e)
@@ -701,23 +701,23 @@ func drainHelperRecords(dir string, records []HelperRecord, st *helperRecords, d
 
 // eraseHelperCredential asks e.Helper to erase the recorded credential and
 // reports whether a stored credential was actually deleted. Used by the
-// drain paths, which span records for potentially different helpers and so
+// delete paths, which span records for potentially different helpers and so
 // construct a store per record; a caller that already holds the right
 // execStore (DeleteToken) uses eraseCredential on it directly.
 func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error) {
 	return newExecStore(e.Helper, dir).eraseCredential(credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name})
 }
 
-// DrainAllExecCache wipes the ENTIRE exec-credential cache file in one
+// DeleteAllExecCache wipes the ENTIRE exec-credential cache file in one
 // operation and returns the keys it removed — the cheap, complete
-// counterpart to DrainToken's per-server host-scoped drain, used by `logout
+// counterpart to DeleteTokenEverywhere's per-server host-scoped delete, used by `logout
 // --all`. A single full-file wipe, rather than N per-server host-scoped
-// drains, is both cheaper (one read-and-truncate instead of
+// deletes, is both cheaper (one read-and-truncate instead of
 // O(servers × cache entries)) and more complete: it also catches orphaned
 // entries (a legacy bare entry with no Server field, or one cached against a
-// server later removed from config.yaml) that no per-server drain — keyed to
+// server later removed from config.yaml) that no per-server delete — keyed to
 // a currently-configured server's host — could ever reach.
-func DrainAllExecCache(dir string) ([]string, error) {
+func DeleteAllExecCache(dir string) ([]string, error) {
 	fs := NewFileStore(dir)
 	cached, err := fs.ListCachedCreds()
 	if err != nil {
@@ -733,7 +733,7 @@ func DrainAllExecCache(dir string) ([]string, error) {
 	return keys, nil
 }
 
-// DrainExecCacheForServer deletes every exec-credential cache entry whose
+// DeleteExecCacheForServer deletes every exec-credential cache entry whose
 // Server matches serverURL's canonical identity and returns the deleted
 // entries' keys. Entries cached against a different server are left alone.
 //
@@ -743,11 +743,11 @@ func DrainAllExecCache(dir string) ([]string, error) {
 // check against the target identity — http://host and https://host are
 // therefore distinct. For legacy records whose Server carries only a host
 // (no scheme), the record is normalized using the target's scheme and
-// compared by canonical host; HOST:80 drains for http://host and HOST:443
-// drains for https://host. A legacy record matches either scheme's drain
+// compared by canonical host; HOST:80 deletes for http://host and HOST:443
+// deletes for https://host. A legacy record matches either scheme's delete
 // for the same host (unavoidable — the record carries no scheme; failing
-// to drain is worse than over-draining).
-func DrainExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
+// to delete is worse than over-deleting).
+func DeleteExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
 	identity := CanonicalServerIdentity(serverURL)
 	if identity == "" {
 		return nil, nil
@@ -807,7 +807,7 @@ func CanonicalServerIdentity(rawURL string) string {
 // server URL: the host lowercased and stripped of its scheme's default port
 // (443 for https, 80 for http). Falls back to a lowercased ServerHost when
 // the URL cannot be canonicalized, so callers always get a non-empty string
-// for a non-empty URL. Used internally by DrainExecCacheForServer for legacy
+// for a non-empty URL. Used internally by DeleteExecCacheForServer for legacy
 // record normalization; use ServerHost for non-cache identity (e.g. kubeconfig
 // entry names).
 func canonicalServerHost(rawURL string) string {

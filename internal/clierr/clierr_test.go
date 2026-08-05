@@ -84,10 +84,10 @@ func TestErrorDetailsSerialization(t *testing.T) {
 func TestWrapPreservesClassification(t *testing.T) {
 	t.Run("classified error keeps code and retryability under the new message", func(t *testing.T) {
 		inner := Retryable(CodeLockTimeout, "locking token-cache.yaml: context deadline exceeded")
-		got := Wrap(inner, "failed to drain: boom")
+		got := Wrap(inner, "failed to delete: boom")
 		assert.Equal(t, CodeLockTimeout, got.Code)
 		assert.True(t, got.Retryable)
-		assert.Equal(t, "failed to drain: boom", got.Message)
+		assert.Equal(t, "failed to delete: boom", got.Message)
 		assert.Equal(t, 8, got.ExitCode())
 	})
 

@@ -1,6 +1,6 @@
 # RANCHER_CLI_CREDENTIAL_STORE=file is already Setup's default (headless CI has
 # no keyring; deliberately why there is no `logout` txtar either) — pinned
-# here explicitly too since delete-server drains a real credential store.
+# here explicitly too since delete-server deletes a real credential store.
 env RANCHER_CLI_CREDENTIAL_STORE=file
 
 # config path: prints the resolved path whether or not the file exists yet.
@@ -32,7 +32,7 @@ jsonquery stderr data.error.candidates.0.id acme
 
 # config delete-server end-to-end: removes the server, its field-matched
 # context, clears the current context that pointed at it, and reports the
-# drain (file backend; no stored token here, so deletedFrom is empty) —
+# delete (file backend; no stored token here, so deletedFrom is empty) —
 # does NOT revoke the server-side token.
 exec rancher config delete-server acme -o json
 jsonquery stdout data.server acme

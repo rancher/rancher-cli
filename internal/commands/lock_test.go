@@ -74,7 +74,7 @@ func writeSentinelServer(t *testing.T, dir string) {
 
 // seedTwoServerConfig writes a config with servers "acme" and "acme2" (file
 // credential store, currentContext "acme"). keyring.MockInit is called so
-// drain operations never touch the real OS keychain.
+// delete operations never touch the real OS keychain.
 func seedTwoServerConfig(t *testing.T) string {
 	t.Helper()
 	keyring.MockInit()
@@ -121,11 +121,11 @@ func runLogout(t *testing.T, dir, name string) {
 	assert.NoError(t, err)
 }
 
-// runDeleteServer runs `config delete-server <name>` with the production drain.
+// runDeleteServer runs `config delete-server <name>` with the production delete.
 // Errors are reported via assert.
 func runDeleteServer(t *testing.T, dir, name string) {
 	t.Helper()
-	cmd := &configDeleteServerCmd{dir: dir, drain: config.DrainToken}
+	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
 	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }
@@ -194,13 +194,13 @@ func TestLogoutSerializedUnderConfigLock(t *testing.T) {
 	_, ok := cfg.Servers["sentinel"]
 	assert.True(t, ok, "sentinel committed by mutateWhileHeld must survive both logouts")
 	_, ok = cfg.Servers["acme"]
-	assert.True(t, ok, "server config entry for acme must survive logout (only token is drained)")
+	assert.True(t, ok, "server config entry for acme must survive logout (only token is deleted)")
 	_, ok = cfg.Servers["acme2"]
-	assert.True(t, ok, "server config entry for acme2 must survive logout (only token is drained)")
+	assert.True(t, ok, "server config entry for acme2 must survive logout (only token is deleted)")
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken, "acme token must be drained by logout")
+	assert.ErrorIs(t, err, config.ErrNoToken, "acme token must be deleted by logout")
 	_, err = store.GetToken(config.ServerRef{Name: "acme2"})
-	assert.ErrorIs(t, err, config.ErrNoToken, "acme2 token must be drained by logout")
+	assert.ErrorIs(t, err, config.ErrNoToken, "acme2 token must be deleted by logout")
 }
 
 func TestDeleteServerSerializedUnderConfigLock(t *testing.T) {

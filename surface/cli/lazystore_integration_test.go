@@ -12,10 +12,10 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// seedDrainConfig writes a minimal config with one server/context and a
+// seedDeleteConfig writes a minimal config with one server/context and a
 // file-store token, returning the config dir. Auto policy (env scrubbed
 // by TestMain, empty config policy), NO pin — the fresh-profile shape.
-func seedDrainConfig(t *testing.T) string {
+func seedDeleteConfig(t *testing.T) string {
 	t.Helper()
 	keyring.MockInit()
 	dir := t.TempDir()
@@ -28,11 +28,11 @@ func seedDrainConfig(t *testing.T) string {
 
 // TestConfigDeleteServerThroughRootWritesNoPin pins the actual FAIL-2
 // regression at the resolveDeps level: running the real CLI's
-// delete-server on a fresh auto profile must drain the token WITHOUT
+// delete-server on a fresh auto profile must delete the token WITHOUT
 // probing or writing a credstore pin. RED before the lazy-store swap
 // (eager OpenStore pins on every command), GREEN after.
 func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
-	dir := seedDrainConfig(t)
+	dir := seedDeleteConfig(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -41,13 +41,13 @@ func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "delete-server must not write a credstore pin")
 	_, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be drained")
+	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be deleted")
 }
 
 // TestAuthLogoutThroughRootWritesNoPin: same contract for auth logout
-// (spec R2-1 names both drain commands).
+// (spec R2-1 names both delete commands).
 func TestAuthLogoutThroughRootWritesNoPin(t *testing.T) {
-	dir := seedDrainConfig(t)
+	dir := seedDeleteConfig(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -56,5 +56,5 @@ func TestAuthLogoutThroughRootWritesNoPin(t *testing.T) {
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "logout must not write a credstore pin")
 	_, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be drained")
+	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be deleted")
 }

@@ -16,7 +16,7 @@ import (
 // startConfigWrite launches the fakehelper binary in "configwrite" mode for
 // the given dir and server name. It returns a channel that receives stdout
 // lines and a channel that receives the process exit error. The process is
-// killed in t.Cleanup so goroutines always drain.
+// killed in t.Cleanup so goroutines always delete.
 func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan string, <-chan error) {
 	t.Helper()
 	args := []string{"configwrite"}

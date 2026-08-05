@@ -12,20 +12,20 @@ import (
 
 type configDeleteServerCmd struct {
 	dir string
-	// drain is the credential/exec-cache drain, injectable for tests
+	// delete is the credential/exec-cache delete, injectable for tests
 	// (the authcheck preflight-seam pattern, authcheck.go); defaults to
-	// config.DrainToken — the single drain point (ARCHITECTURE.md), whose
+	// config.DeleteTokenEverywhere — the single delete point (ARCHITECTURE.md), whose
 	// only other caller is auth logout.
-	drain func(ctx context.Context, dir string, ref config.ServerRef, policy string) (fromBackends, drainedCache []string, err error)
+	delete func(ctx context.Context, dir string, ref config.ServerRef, policy string) (fromBackends, deletedCache []string, err error)
 }
 
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
-// a configured server, every context field-matching it, and drains its
+// a configured server, every context field-matching it, and deletes its
 // stored credentials — the orphaned-creds cleanup nothing else performs
 // today. It does NOT revoke the server-side token (that is `auth logout
 // --revoke`, ledgered/out of scope).
 func NewConfigDeleteServer(dir string) runtime.Command {
-	return &configDeleteServerCmd{dir: dir, drain: config.DrainToken}
+	return &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
 }
 
 func (configDeleteServerCmd) Describe() runtime.Descriptor {
@@ -38,12 +38,12 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// Execute's ordering is safety-critical and pinned: drain credentials FIRST,
-// and abort on drain failure before touching cfg or writing anything — the
+// Execute's ordering is safety-critical and pinned: delete credentials FIRST,
+// and abort on delete failure before touching cfg or writing anything — the
 // config file stays byte-identical to before the call. Only after a
-// successful drain does the single config write (server + field-matched
+// successful delete does the single config write (server + field-matched
 // contexts removed, current context cleared if it was among them) happen.
-// A drain failure must never leave a live orphaned token behind a
+// A delete failure must never leave a live orphaned token behind a
 // disappeared server entry — the exact bug this command exists to kill; the
 // benign failure direction is creds gone + server still configured, never
 // the reverse.
@@ -68,11 +68,11 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 			return serverNotFoundWithCandidates(cfg, name)
 		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
-		deletedFrom, deletedCache, err = d.drain(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
+		deletedFrom, deletedCache, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 		if err != nil {
 			return wrapUnlessCanceled(err, func(err error) error {
 				return clierr.Wrap(err,
-					fmt.Sprintf("failed to drain credentials for %q; server config left untouched: %v", name, err))
+					fmt.Sprintf("failed to delete credentials for %q; server config left untouched: %v", name, err))
 			})
 		}
 		for cn, cctx := range cfg.Contexts {

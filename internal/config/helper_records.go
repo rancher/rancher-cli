@@ -15,7 +15,7 @@ import (
 )
 
 // The helper-records file remembers which exec helpers were asked to store
-// which credential identities, so a later drain can erase through every
+// which credential identities, so a later delete can erase through every
 // helper that may hold a token — regardless of what the credential-store
 // policy says by then. Machine-local state (like the credstore pin), never
 // portable config. Records are written BEFORE the helper store runs
@@ -87,7 +87,7 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	// ctx is the caller's context where one exists (the drains, so Ctrl-C
+	// ctx is the caller's context where one exists (the deletes, so Ctrl-C
 	// interrupts a contended wait even while the config lock is held);
 	// interface-bound store paths pass context.Background() and stay
 	// bounded by the timeout alone.
@@ -120,7 +120,7 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 		}
 	}
 
-	// Run fn, then persist dirty mutations EVEN WHEN fn errored: a drain that
+	// Run fn, then persist dirty mutations EVEN WHEN fn errored: a delete that
 	// erased three targets and failed a fourth must persist the three
 	// removals (failed entries stay for retry), and SetToken's unsupported
 	// path must persist its intent removal while returning the sentinel.
@@ -134,29 +134,29 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 	return fnErr
 }
 
-// DrainOrphanedHelperCredentials erases EVERY remaining recorded helper credential,
+// DeleteOrphanedHelperCredentials erases EVERY remaining recorded helper credential,
 // independently of what config.yaml still lists. `logout --all` calls it after
-// draining the configured servers so a credential whose server name never
+// deleting the configured servers so a credential whose server name never
 // reached config.yaml — a crash (or failed config write) between a successful
 // helper store and the config write leaves the helper holding a live token
 // plus a helper record no configured-server logout can reach — is still
-// drained. Runs under the helper-records lock; each entry's helper name has
+// deleted. Runs under the helper-records lock; each entry's helper name has
 // already passed ValidHelperName in the lock loader. Entries whose erase
 // succeeds are removed; failures are retained for a later retry and their
 // errors joined. Returns the records whose credential was actually deleted —
 // structured, so callers never re-parse a name that may itself contain any
 // separator character.
-func DrainOrphanedHelperCredentials(ctx context.Context, dir string) ([]HelperRecord, error) {
-	var drained []HelperRecord
+func DeleteOrphanedHelperCredentials(ctx context.Context, dir string) ([]HelperRecord, error) {
+	var deleted []HelperRecord
 	lerr := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
 		// Snapshot the entries: st.remove mutates st.Entries mid-loop.
 		remaining := make([]HelperRecord, len(st.Entries))
 		copy(remaining, st.Entries)
-		return drainHelperRecords(dir, remaining, st, func(e HelperRecord) {
-			drained = append(drained, e)
+		return deleteHelperRecords(dir, remaining, st, func(e HelperRecord) {
+			deleted = append(deleted, e)
 		})
 	})
-	return drained, lerr
+	return deleted, lerr
 }
 
 // persistHelperRecords is a swappable seam over persistHelperRecordsToDisk so

@@ -23,7 +23,7 @@ import (
 
 // envPrefix lets one binary serve as two distinct helpers: a copy named
 // rancher-credential-fake2 reads FAKEHELPER2_* variables (falling back to
-// FAKEHELPER_* when unset), so mixed-success drain tests can drive two
+// FAKEHELPER_* when unset), so mixed-success delete tests can drive two
 // helpers into different modes.
 func envPrefix() string {
 	if strings.Contains(filepath.Base(os.Args[0]), "fake2") {
