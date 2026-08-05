@@ -50,11 +50,12 @@ func TestAllCodesNonEmpty(t *testing.T) {
 
 // TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
-// been removed — the enum shrinks 11 -> 10.
+// been removed. The count pins the full enum: 10 originals plus LOCK_TIMEOUT.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 10)
+	assert.Len(t, codes, 11)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
+	assert.Contains(t, codes, CodeLockTimeout)
 }
 
 func TestErrorDetailsSerialization(t *testing.T) {

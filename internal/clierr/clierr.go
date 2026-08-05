@@ -8,6 +8,7 @@ const (
 	CodeDryRunNotApplicable  = "DRY_RUN_NOT_APPLICABLE"
 	CodeAmbiguousSelection   = "AMBIGUOUS_SELECTION"
 	CodeConflict             = "CONFLICT"
+	CodeLockTimeout          = "LOCK_TIMEOUT"
 	CodeAuth                 = "AUTH"
 	CodeNotFound             = "NOT_FOUND"
 	CodeRBAC                 = "RBAC"
@@ -26,7 +27,10 @@ var exitCodes = map[string]int{
 	CodeNotFound:             4,
 	CodeConflict:             5,
 	CodeRBAC:                 6,
-	CodeGeneric:              1,
+	// 7 is not an error exit: `skill status` claims it as a success status
+	// (drift detected), and SuccessExitCodes must stay disjoint from this map.
+	CodeLockTimeout: 8,
+	CodeGeneric:     1,
 }
 
 // Candidate is a selectable option returned with AMBIGUOUS_SELECTION.
@@ -99,7 +103,7 @@ func Retryable(code, message string) *Error { return New(code, message).WithRetr
 func AllCodes() []string {
 	return []string{
 		CodeContextNotSet, CodeConfirmationRequired, CodeDryRunNotApplicable,
-		CodeAmbiguousSelection, CodeConflict,
+		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
 		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodeGeneric,
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // The helper-records file remembers which exec helpers were asked to store
@@ -97,7 +98,9 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 		if errors.Is(err, context.Canceled) {
 			return err
 		}
-		return fmt.Errorf("locking the credential-helper records (another rancher process may be logging in/out): %w", err)
+		return clierr.Retryable(clierr.CodeLockTimeout,
+			"locking the credential-helper records (another rancher process may be logging in/out): "+err.Error()).
+			WithCause(err)
 	}
 	defer release()
 

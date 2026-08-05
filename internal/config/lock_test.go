@@ -140,7 +140,8 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
+	assert.True(t, ce.Retryable, "a lock timeout is transient — the holder finishes")
 	assert.Contains(t, ce.Hint, "RANCHER_CLI_CONFIG_NO_LOCK")
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -153,7 +154,9 @@ func (f *fileStore) withCacheLock(fn func() error) error {
 	defer cancel()
 	release, err := waitForFlock(ctx, f.cacheLockPath, 50*time.Millisecond)
 	if err != nil {
-		return fmt.Errorf("locking token-cache.yaml (another rancher process may be writing): %w", err)
+		return clierr.Retryable(clierr.CodeLockTimeout,
+			"locking token-cache.yaml (another rancher process may be writing): "+err.Error()).
+			WithCause(err)
 	}
 	defer release()
 	return fn()
