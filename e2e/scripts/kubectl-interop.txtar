@@ -3,7 +3,7 @@
 # through the façade's /v1-public/* endpoints and the ext.cattle.io/v1
 # token mint instead (spec FA-0 supersedes the old "shim must not grow"
 # note — the façade is a separate layer composed in front of the
-# unchanged router, per docs/superpowers/specs/2026-07-11-auth-e2e-harness-design.md).
+# unchanged router).
 # seedexeccache pre-warms the cache through the real config store API, so
 # get-token takes its cache fast-path here without touching login at all.
 [!kubectl] skip 'kubectl not on PATH'

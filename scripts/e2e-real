@@ -3,7 +3,6 @@ set -euo pipefail
 
 # Fidelity oracle harness: boots the pinned real Rancher in Docker, bootstraps
 # an admin token, and runs the e2e_real record/verify suite against it.
-# Spec: docs/design/2026-07-24-real-e2e-fidelity-oracle-spec.md.
 #
 # ORACLE_IMAGE is the single bump point: one literal tag+digest, changed only
 # through a reviewed golden-regeneration change (wave 4 sets the first value).

@@ -1,7 +1,6 @@
 // Package fidelity defines the probe vocabulary for the testrancher fidelity
 // oracle: probes recorded against a real, pinned Rancher and replayed against
-// the e2e composite façade. Spec:
-// docs/design/2026-07-24-real-e2e-fidelity-oracle-spec.md.
+// the e2e composite façade.
 package fidelity
 
 import (

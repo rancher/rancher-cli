@@ -12,8 +12,8 @@ import (
 
 // TestMigratingCoversLegacyInventory keeps MIGRATING.md's reconciliation
 // honest on every clean clone: legacy-commands.txt is a tracked transcription
-// of the gitignored legacy command inventory (docs/design/legacy-command-inventory.md),
-// so this test never reads that file directly.
+// of a gitignored legacy command inventory document, so this test never reads
+// that document directly.
 func TestMigratingCoversLegacyInventory(t *testing.T) {
 	t.Parallel()
 

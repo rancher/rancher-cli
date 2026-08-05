@@ -1,6 +1,6 @@
 // Package skillinstall installs the embedded rancher agents skill into
 // coding-agent harness skill directories, with provenance and integrity
-// checks. See docs/design/2026-07-25-skill-install-design.md.
+// checks.
 package skillinstall
 
 import (
