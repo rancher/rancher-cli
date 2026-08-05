@@ -374,7 +374,7 @@ var table = []Kind{
 	{
 		// K8sKind "Cluster" is shared with provisioningcluster/capicluster —
 		// branch 2's manifest reverse lookup disambiguates by apiVersion group.
-		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters"},
+		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters", "fleet-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
 		NoDeleteReason: "controller-owned; delete the owning source object",
@@ -461,7 +461,7 @@ var table = []Kind{
 	},
 
 	{
-		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters"},
+		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters", "provisioning-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
@@ -469,7 +469,7 @@ var table = []Kind{
 	{
 		// Empty GVR version: cluster.x-k8s.io is resolved via discovery at call
 		// time (the served version varies by Rancher release).
-		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters"},
+		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters", "capi-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
 		NoDeleteReason: "controller-owned; delete the owning source object",
@@ -497,7 +497,7 @@ var table = []Kind{
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
-		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters"},
+		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters", "k3k-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "k3k.io", Version: "v1beta1", Resource: "clusters"},
 		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
@@ -526,7 +526,7 @@ var table = []Kind{
 		// ext.cattle.io Token; still serving UI session tokens and derived tokens
 		// in Rancher 2.15. The v3 Token type (pkg/apis/management.cattle.io/v3)
 		// has its fields at the object root, not under spec/status.
-		Key: "managementtoken", Name: "management-token", Aliases: []string{"managementtokens", "v3token", "v3tokens"},
+		Key: "managementtoken", Name: "management-token", Aliases: []string{"managementtokens", "management-tokens", "v3token", "v3tokens"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Deprecated},

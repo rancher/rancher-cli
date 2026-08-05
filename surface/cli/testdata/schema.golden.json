@@ -267,7 +267,7 @@
       "name": "config edit",
       "network": false,
       "toolset": "core",
-      "usage": "Edit the config file in $VISUAL or $EDITOR"
+      "usage": "Edit the config file in $VISUAL or $EDITOR (needs a TTY)"
     },
     {
       "auth": false,
@@ -1421,7 +1421,8 @@
     },
     {
       "aliases": [
-        "k3kclusters"
+        "k3kclusters",
+        "k3k-clusters"
       ],
       "args": [
         {
@@ -1512,6 +1513,7 @@
     {
       "aliases": [
         "managementtokens",
+        "management-tokens",
         "v3token",
         "v3tokens"
       ],
@@ -1793,7 +1795,8 @@
     },
     {
       "aliases": [
-        "provisioningclusters"
+        "provisioningclusters",
+        "provisioning-clusters"
       ],
       "args": [
         {
@@ -2386,7 +2389,8 @@
     },
     {
       "aliases": [
-        "capiclusters"
+        "capiclusters",
+        "capi-clusters"
       ],
       "args": [
         {
@@ -2933,7 +2937,8 @@
     },
     {
       "aliases": [
-        "fleetclusters"
+        "fleetclusters",
+        "fleet-clusters"
       ],
       "args": [
         {
@@ -3230,7 +3235,8 @@
     },
     {
       "aliases": [
-        "k3kclusters"
+        "k3kclusters",
+        "k3k-clusters"
       ],
       "args": [
         {
@@ -3454,6 +3460,7 @@
     {
       "aliases": [
         "managementtokens",
+        "management-tokens",
         "v3token",
         "v3tokens"
       ],
@@ -3841,7 +3848,8 @@
     },
     {
       "aliases": [
-        "provisioningclusters"
+        "provisioningclusters",
+        "provisioning-clusters"
       ],
       "args": [
         {
@@ -4839,7 +4847,8 @@
     },
     {
       "aliases": [
-        "capiclusters"
+        "capiclusters",
+        "capi-clusters"
       ],
       "args": [
         {
@@ -5556,7 +5565,8 @@
     },
     {
       "aliases": [
-        "fleetclusters"
+        "fleetclusters",
+        "fleet-clusters"
       ],
       "args": [
         {
@@ -5960,7 +5970,8 @@
     },
     {
       "aliases": [
-        "k3kclusters"
+        "k3kclusters",
+        "k3k-clusters"
       ],
       "args": [
         {
@@ -6248,6 +6259,7 @@
     {
       "aliases": [
         "managementtokens",
+        "management-tokens",
         "v3token",
         "v3tokens"
       ],
@@ -6774,7 +6786,8 @@
     },
     {
       "aliases": [
-        "provisioningclusters"
+        "provisioningclusters",
+        "provisioning-clusters"
       ],
       "args": [
         {
@@ -7966,6 +7979,10 @@
       "name": "RANCHER_CLI_READONLY"
     },
     {
+      "desc": "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking",
+      "name": "RANCHER_CLI_CONFIG_NO_LOCK"
+    },
+    {
       "desc": "OAuth flow: devicecode or authcode",
       "flag": "--auth-flow",
       "name": "RANCHER_CLI_OAUTH_AUTH_FLOW"
@@ -8002,6 +8019,7 @@
     "DRY_RUN_NOT_APPLICABLE",
     "AMBIGUOUS_SELECTION",
     "CONFLICT",
+    "LOCK_TIMEOUT",
     "AUTH",
     "NOT_FOUND",
     "RBAC",
@@ -8016,6 +8034,7 @@
     "CONTEXT_NOT_SET": 2,
     "DRY_RUN_NOT_APPLICABLE": 2,
     "GENERIC": 1,
+    "LOCK_TIMEOUT": 8,
     "NOT_FOUND": 4,
     "RBAC": 6,
     "VALIDATION": 2
@@ -9015,7 +9034,8 @@
     },
     {
       "aliases": [
-        "fleetclusters"
+        "fleetclusters",
+        "fleet-clusters"
       ],
       "defaultNamespace": "fleet-default",
       "group": "fleet.cattle.io",
@@ -9285,7 +9305,8 @@
     },
     {
       "aliases": [
-        "provisioningclusters"
+        "provisioningclusters",
+        "provisioning-clusters"
       ],
       "defaultNamespace": "fleet-default",
       "group": "provisioning.cattle.io",
@@ -9317,7 +9338,8 @@
     },
     {
       "aliases": [
-        "capiclusters"
+        "capiclusters",
+        "capi-clusters"
       ],
       "defaultNamespace": "fleet-default",
       "group": "cluster.x-k8s.io",
@@ -9433,7 +9455,8 @@
     },
     {
       "aliases": [
-        "k3kclusters"
+        "k3kclusters",
+        "k3k-clusters"
       ],
       "group": "k3k.io",
       "key": "k3kcluster",
@@ -9493,6 +9516,7 @@
     {
       "aliases": [
         "managementtokens",
+        "management-tokens",
         "v3token",
         "v3tokens"
       ],

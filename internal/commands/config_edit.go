@@ -52,7 +52,7 @@ func NewConfigEdit(dir string) runtime.Command {
 func (configEditCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "config edit",
-		Usage:       "Edit the config file in $VISUAL or $EDITOR",
+		Usage:       "Edit the config file in $VISUAL or $EDITOR (needs a TTY)",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config edit"},
 	}
