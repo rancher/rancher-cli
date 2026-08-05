@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -341,4 +343,84 @@ func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 
 	_, statErr := os.Stat(capturedTemp)
 	require.NoError(t, statErr, "edits must stay preserved on cancellation")
+}
+
+// TestConfigEditReadFailureNamedAsReadFailure pins the third-review P2: a
+// failed comparison read during write-back must say the CHECK failed, not
+// claim "writing config failed" for a write that was never attempted.
+func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	realPath := config.FilePath(dir)
+	launch := func(bin string, launchArgs []string, tempPath string) error {
+		// Break the comparison read: replace the real file with a directory.
+		if err := os.Remove(realPath); err != nil {
+			return err
+		}
+		if err := os.Mkdir(realPath, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+	}
+
+	cmd := &configEditCmd{dir: dir, launchEditor: launch}
+	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "check for concurrent changes", "the failing step must be named")
+	assert.NotContains(t, err.Error(), "writing config failed")
+}
+
+// TestConfigEditLockTimeoutNamesPreservedEdits pins the fourth-review P2:
+// when lock acquisition itself times out — before the write-back closure
+// ever runs — the error must still tell the user their edits are preserved
+// at the temp path; that branch is the one guaranteed-safe case and was the
+// only one not saying so.
+// No t.Parallel(): package-level lock hook and timeout seam.
+func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	restoreTimeout := config.SetLockWaitTimeoutForTest(300 * time.Millisecond)
+	defer restoreTimeout()
+
+	// Park a holder on the lock so the edit's write-back times out.
+	release := make(chan struct{})
+	parked := make(chan struct{})
+	var once sync.Once
+	restoreHook := config.SetLockHookForTest(func() {
+		once.Do(func() { close(parked) })
+		<-release
+	})
+	defer restoreHook()
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- config.WithLock(context.Background(), dir, func() error { return nil })
+	}()
+	select {
+	case <-parked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("holder never acquired the lock")
+	}
+	restoreHook() // the edit's write-back must not park in the hook
+
+	var capturedTemp string
+	launch := func(bin string, launchArgs []string, tempPath string) error {
+		capturedTemp = tempPath
+		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+	}
+	cmd := &configEditCmd{dir: dir, launchEditor: launch}
+	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Message, capturedTemp, "the lock-timeout branch must name the preserved temp path")
+	assert.Contains(t, ce.Message, "held by this same process", "the in-process holder gets the stage-accurate message")
+
+	close(release)
+	require.NoError(t, <-holderDone)
+	_, statErr := os.Stat(capturedTemp)
+	require.NoError(t, statErr, "edits preserved")
 }

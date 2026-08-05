@@ -75,7 +75,17 @@ func CodeExits() map[string]int {
 	return out
 }
 
-func (e *Error) WithHint(h string) *Error            { e.Hint = h; return e }
+func (e *Error) WithHint(h string) *Error { e.Hint = h; return e }
+
+// WithMessage returns a copy of e with msg as its message; every other
+// field (code, hint, cause, retryable, candidates, details) carries over,
+// so a caller amending the text cannot silently drop the rest.
+func (e *Error) WithMessage(msg string) *Error {
+	c := *e
+	c.Message = msg
+	return &c
+}
+
 func (e *Error) WithCause(err error) *Error          { e.cause = err; return e }
 func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }

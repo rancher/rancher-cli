@@ -297,7 +297,7 @@ func TestDrainTokenRemovesFromBothBackends(t *testing.T) {
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
 	_ = NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file")
-	from, _, err := DrainToken(dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	from, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestDrainTokenAlsoDrainsExecCache(t *testing.T) {
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
 
-	_, drainedCache, err := DrainToken(dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, drainedCache, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err)
 	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, drainedCache)
 
@@ -334,7 +334,7 @@ func TestDrainTokenFailsOnUnreadableFileStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := DrainToken(dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err == nil {
 		t.Fatal("DrainToken must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
@@ -423,7 +423,7 @@ func TestDrainTokenWarnsOnUnreachableKeychainButStillDrainsFile(t *testing.T) {
 	logrus.SetOutput(&buf)
 	defer logrus.SetOutput(orig)
 
-	from, _, err := DrainToken(dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	from, _, err := DrainToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store drains")
 	assert.Contains(t, from, "file", "file backend must still be drained")
 	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})

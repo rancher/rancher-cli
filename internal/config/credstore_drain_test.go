@@ -1,9 +1,12 @@
 package config
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -121,13 +124,13 @@ func TestDrainLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 
-	from, err := DrainLoginToken(dir, execRef(), "auto")
+	from, err := DrainLoginToken(context.Background(), dir, execRef(), "auto")
 	require.NoError(t, err)
 	assert.Contains(t, from, "helper:fake")
 
 	_, gerr := st.GetToken(execRef())
 	assert.ErrorIs(t, gerr, ErrNoToken, "helper credential must be gone")
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "helper record cleared")
 		return nil
 	}))
@@ -144,19 +147,19 @@ func TestDrainLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 
 	// Helper now fails: drain must error and RETAIN the entry for retry.
 	t.Setenv("FAKEHELPER_MODE", "fail")
-	_, derr := DrainLoginToken(dir, ref, "exec:fake")
+	_, derr := DrainLoginToken(context.Background(), dir, ref, "exec:fake")
 	require.Error(t, derr)
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the helper record")
 		return nil
 	}))
 
 	// Helper heals: retry drains and clears.
 	t.Setenv("FAKEHELPER_MODE", "ok")
-	from, derr := DrainLoginToken(dir, ref, "exec:fake")
+	from, derr := DrainLoginToken(context.Background(), dir, ref, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"))
 		return nil
 	}))
@@ -174,13 +177,13 @@ func TestDrainSameNameTwoURLsErasesBoth(t *testing.T) {
 
 	// Drain with only the CURRENT URL: the recorded old identity must be
 	// erased too — replayed verbatim from the helper records, not reconstructed.
-	from, derr := DrainLoginToken(dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
+	from, derr := DrainLoginToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 
 	assert.Empty(t, fakeHelperCreds(t, statePath), "both identities (old and current URL) erased")
 
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "all entries cleared after full success")
 		return nil
 	}))
@@ -204,10 +207,10 @@ func TestDrainMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	require.NoError(t, st2.SetToken(ref, "id:s"))
 
 	t.Setenv("FAKEHELPER2_MODE", "fail")
-	_, derr := DrainLoginToken(dir, ref, "auto")
+	_, derr := DrainLoginToken(context.Background(), dir, ref, "auto")
 	require.Error(t, derr)
 
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		entries := s.forServer("prod")
 		require.Len(t, entries, 1, "successful removal persisted despite the joined error")
 		assert.Equal(t, "fake2", entries[0].Helper)
@@ -224,7 +227,7 @@ func TestDrainLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	// DrainLoginToken must error (not silently skip) and must not attempt to
 	// exec anything. The helper-records file is empty, so file/keychain drains also
 	// report nothing — only the validation error is returned.
-	_, err := DrainLoginToken(dir, execRef(), "exec:../evil")
+	_, err := DrainLoginToken(context.Background(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "../evil", "error must name the invalid helper")
 }
@@ -238,12 +241,12 @@ func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	keyring.MockInit()
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		s.add(HelperRecord{Helper: "fake", Name: "prod", CanonicalURL: "https://rancher.example.com"})
 		return nil
 	}))
 
-	from, err := DrainLoginToken(dir, execRef(), "auto") // policy-independent: "auto" names no helper
+	from, err := DrainLoginToken(context.Background(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
 	require.NoError(t, err, "a leftover crash record drains as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
 	// deletion (friction-4 semantics) — the replay and the cleanup below
@@ -251,7 +254,7 @@ func TestDrainOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
 		"the helper saw exactly the recorded identity")
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "leftover record cleared")
 		return nil
 	}))
@@ -268,8 +271,42 @@ func TestDrainLoginTokenNoOpEraseNotReported(t *testing.T) {
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 
-	from, err := DrainLoginToken(dir, execRef(), "exec:fake")
+	from, err := DrainLoginToken(context.Background(), dir, execRef(), "exec:fake")
 	require.NoError(t, err)
 	assert.NotContains(t, from, "helper:fake", "a no-op erase is not a deletion")
 	assert.Empty(t, from)
+}
+
+// TestDrainLoginTokenCancellableWhileRecordsLockHeld pins the third-review
+// P1: a drain waiting on a contended helper-records lock must be
+// interruptible by the caller's context — before this, the wait was built
+// from context.Background() and Ctrl-C during logout could not reach it
+// (while the command also held the config write lock, blocking every other
+// invocation on the machine).
+func TestDrainLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
+	keyring.MockInit()
+	useFakeHelper(t, "ok")
+	dir := t.TempDir()
+
+	fl := flock.New(filepath.Join(dir, helperRecordsLockName))
+	locked, err := fl.TryLock()
+	require.NoError(t, err)
+	require.True(t, locked)
+	defer func() { _ = fl.Unlock() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, derr := DrainLoginToken(ctx, dir, execRef(), "exec:fake")
+		done <- derr
+	}()
+	time.Sleep(200 * time.Millisecond) // let the drain reach the records-lock wait
+	cancel()
+	select {
+	case derr := <-done:
+		require.Error(t, derr)
+		assert.ErrorIs(t, derr, context.Canceled, "cancellation must interrupt the records-lock wait")
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not unblock the records-lock wait")
+	}
 }

@@ -233,7 +233,7 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 		return err
 	}
 	entry := HelperRecord{Helper: s.helper, Name: ref.Name, CanonicalURL: req.ServerURL}
-	return withHelperRecordsLock(s.dir, func(st *helperRecords) error {
+	return withHelperRecordsLock(context.Background(), s.dir, func(st *helperRecords) error {
 		// Write-ahead: persist the intent before the helper can create a
 		// remote credential. persist-now, then invoke.
 		st.add(entry)
@@ -290,7 +290,7 @@ func (s *execStore) DeleteToken(ref ServerRef) error {
 	delete(s.shortLived, req.ServerURL+"\n"+req.Name)
 	s.mu.Unlock()
 	rec := HelperRecord{Helper: s.helper, Name: ref.Name, CanonicalURL: req.ServerURL}
-	return withHelperRecordsLock(s.dir, func(st *helperRecords) error {
+	return withHelperRecordsLock(context.Background(), s.dir, func(st *helperRecords) error {
 		if execStoreLockedHook != nil {
 			execStoreLockedHook("erase")
 		}

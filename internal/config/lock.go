@@ -34,6 +34,16 @@ var configLockSem = make(chan struct{}, 1)
 // runs. Nil in production. Set via SetLockHookForTest.
 var lockHeldHook func()
 
+// SetLockWaitTimeoutForTest shortens the lock wait for the current test
+// run; call the returned restore in cleanup. Exported for the same reason
+// as SetLockHookForTest: other packages' tests (internal/commands) pin
+// lock-timeout behavior they cannot otherwise reach. Not for production.
+func SetLockWaitTimeoutForTest(d time.Duration) (restore func()) {
+	old := lockWaitTimeout
+	lockWaitTimeout = d
+	return func() { lockWaitTimeout = old }
+}
+
 // SetLockHookForTest sets the config-lock hook for the current test run;
 // call the returned restore in cleanup. Exported from non-test code so
 // other packages' tests (internal/commands) can pin lock/load orderings.
@@ -70,7 +80,7 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 	select {
 	case configLockSem <- struct{}{}:
 	case <-waitCtx.Done():
-		return lockWaitError(waitCtx.Err())
+		return lockWaitError(waitCtx.Err(), lockWaitInProcess)
 	}
 	defer func() { <-configLockSem }()
 	// Both select arms can be ready when the caller's context is already
@@ -79,24 +89,18 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 	// mutate — the env opt-out path below has no later context check at
 	// all, and even the flock path would create the config directory first.
 	if err := waitCtx.Err(); err != nil {
-		return lockWaitError(err)
+		return lockWaitError(err, lockWaitInProcess)
 	}
 
 	if os.Getenv(EnvConfigNoLock) == "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		fl := flock.New(filepath.Join(dir, configLockName))
-		ok, lockErr := fl.TryLockContext(waitCtx, 100*time.Millisecond)
-		if lockErr == nil && !ok {
-			// TryLockContext can report plain failure; keep a wrappable
-			// timeout identity for errors.Is.
-			lockErr = context.DeadlineExceeded
-		}
+		release, lockErr := waitForFlock(waitCtx, filepath.Join(dir, configLockName), 100*time.Millisecond)
 		if lockErr != nil {
-			return lockWaitError(lockErr)
+			return lockWaitError(lockErr, lockWaitCrossProcess)
 		}
-		defer func() { _ = fl.Unlock() }()
+		defer release()
 	}
 	if lockHeldHook != nil {
 		lockHeldHook()
@@ -104,16 +108,49 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 	return fn()
 }
 
+// lockWaitStage says which of the two waits timed out, so the error can
+// point at the right suspect: an exhausted IN-PROCESS wait means this very
+// process holds the lock — a concurrent goroutine or a nested WithLock call
+// (a bug) — while a cross-process wait points at another rancher process.
+type lockWaitStage int
+
+const (
+	lockWaitInProcess lockWaitStage = iota
+	lockWaitCrossProcess
+)
+
 // lockWaitError classifies a failed lock wait: the caller's own
 // cancellation (Ctrl-C) passes through as-is — it is not a lock problem —
-// while a deadline or contention failure gets the actionable message and
-// the escape-hatch hint.
-func lockWaitError(err error) error {
+// while a deadline or contention failure gets a stage-specific actionable
+// message and the escape-hatch hint.
+func lockWaitError(err error, stage lockWaitStage) error {
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
-	return clierr.New(clierr.CodeGeneric,
-		"locking the configuration directory (another rancher process may be writing): "+err.Error()).
+	msg := "locking the configuration directory (another rancher process may be writing): "
+	if stage == lockWaitInProcess {
+		msg = "waiting for the configuration lock held by this same process (a concurrent goroutine, or a nested WithLock call — a bug): "
+	}
+	return clierr.New(clierr.CodeGeneric, msg+err.Error()).
 		WithCause(err).
 		WithHint("set RANCHER_CLI_CONFIG_NO_LOCK=1 to skip the flock on filesystems with broken file locking")
+}
+
+// waitForFlock acquires the flock at path, polling every poll interval until
+// ctx's deadline, and returns the release. One implementation behind every
+// config-directory lock (the config lock, the token-cache lock, the
+// helper-records lock) so the wait mechanics cannot drift; each caller keeps
+// its own timeout policy and error wording. A (false, nil) result from the
+// flock library must never let a caller proceed unlocked, so it is mapped to
+// a wrappable timeout identity here.
+func waitForFlock(ctx context.Context, path string, poll time.Duration) (release func(), err error) {
+	fl := flock.New(path)
+	ok, lockErr := fl.TryLockContext(ctx, poll)
+	if lockErr == nil && !ok {
+		lockErr = context.DeadlineExceeded
+	}
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	return func() { _ = fl.Unlock() }, nil
 }

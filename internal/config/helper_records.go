@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gofrs/flock"
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/credhelper"
@@ -83,18 +82,24 @@ func (s *helperRecords) forServer(name string) []HelperRecord {
 // helper store/erase while holding the lock, by design — then persist if
 // dirty. The lock spanning the helper calls is what makes a concurrent
 // login's re-store never race a logout's erase-then-unrecord.
-func withHelperRecordsLock(dir string, fn func(*helperRecords) error) error {
+func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecords) error) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	fl := flock.New(filepath.Join(dir, helperRecordsLockName))
-	ctx, cancel := context.WithTimeout(context.Background(), 2*execHelperTimeout)
+	// ctx is the caller's context where one exists (the drains, so Ctrl-C
+	// interrupts a contended wait even while the config lock is held);
+	// interface-bound store paths pass context.Background() and stay
+	// bounded by the timeout alone.
+	waitCtx, cancel := context.WithTimeout(ctx, 2*execHelperTimeout)
 	defer cancel()
-	ok, err := fl.TryLockContext(ctx, 100*time.Millisecond)
-	if err != nil || !ok {
-		return fmt.Errorf("locking the credential-helper records (another rancher process may be logging in/out): %v", err)
+	release, err := waitForFlock(waitCtx, filepath.Join(dir, helperRecordsLockName), 100*time.Millisecond)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		return fmt.Errorf("locking the credential-helper records (another rancher process may be logging in/out): %w", err)
 	}
-	defer func() { _ = fl.Unlock() }()
+	defer release()
 
 	st := &helperRecords{}
 	b, rerr := os.ReadFile(filepath.Join(dir, helperRecordsFileName))
@@ -138,9 +143,9 @@ func withHelperRecordsLock(dir string, fn func(*helperRecords) error) error {
 // errors joined. Returns the records whose credential was actually deleted —
 // structured, so callers never re-parse a name that may itself contain any
 // separator character.
-func DrainOrphanedHelperCredentials(dir string) ([]HelperRecord, error) {
+func DrainOrphanedHelperCredentials(ctx context.Context, dir string) ([]HelperRecord, error) {
 	var drained []HelperRecord
-	lerr := withHelperRecordsLock(dir, func(st *helperRecords) error {
+	lerr := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
 		// Snapshot the entries: st.remove mutates st.Entries mid-loop.
 		remaining := make([]HelperRecord, len(st.Entries))
 		copy(remaining, st.Entries)

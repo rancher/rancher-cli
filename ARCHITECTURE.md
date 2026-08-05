@@ -437,7 +437,7 @@ respective files via `flock` (released by the OS on process exit):
 One ordering rule holds across all three: the config lock is always outermost. Code
 holding either of the other two locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
 (any non-empty value) skips the `flock` — escape hatch for filesystems with broken
-advisory locking — while the process-level mutex still serializes in-process callers.
+advisory locking — while the process-level semaphore still serializes in-process callers.
 
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
 `/v1-public/authproviders` and then runs the matching flow: **basic**
@@ -570,14 +570,24 @@ its generic verbs.
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
 half-written, but it does not make the surrounding read-modify-write atomic. The lock
 inventory above closes that window: `config.WithLock` takes an exclusive `flock` on
-`<dir>/config.lock` plus a process-level mutex, so the read that decides is the read
+`<dir>/config.lock` plus a process-level semaphore (a channel, so the wait is cancellable), so the read that decides is the read
 that wins, both within a process and across processes. kubectl's earlier attempt at
 kubeconfig locking is the cautionary reference: it locked every file in `KUBECONFIG`,
 so a read-only entry the command never intended to write could turn a valid operation
 into `permission denied` (kubernetes/kubectl#708). The design here avoids that by using
 a single dedicated lock file per protected data set rather than locking the data files
 themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
-filesystems with broken advisory locking. Waits are bounded at 60 s; a
+filesystems with broken advisory locking. The grouping rule: one lock per set of
+files that must change together atomically — `config.yaml` and `credentials.yaml`
+share `config.lock` because login/logout must keep the server registration and its
+credential in agreement, while the exec-credential cache and the helper records
+evolve independently and each get their own lock. Cancellation (Ctrl-C) covers
+lock acquisition end to end and the drains' helper-records waits; the
+store-interface paths reachable inside a locked span — credential-helper
+subprocess calls and cache-lock waits — remain bounded by their own timeouts but
+are not interruptible, because `CredStore` carries no context parameter.
+Threading a context through that interface is a tracked follow-up
+(auth-token-modernization). Waits are bounded at 60 s; a
 many-server `logout --all` can legitimately exceed it (each helper call takes
 up to 30 s inside the lock); `RANCHER_CLI_CONFIG_NO_LOCK` is the escape hatch
 for that case.

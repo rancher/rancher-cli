@@ -152,6 +152,10 @@ func LoadAndStore(dir string) (*Config, CredStore, error) {
 }
 
 // Write persists the config as 0600 YAML, creating the dir at 0700.
+// Write itself is lock-free: any COMMAND doing load-modify-write must run
+// the whole span inside config.WithLock (the command sites' lock boundary
+// tests are the enforcement point) — a direct load→Write from a new command
+// reintroduces the concurrent lost-update the lock exists to prevent.
 func (c *Config) Write() error {
 	if c.path == "" {
 		return fmt.Errorf("config path is empty")

@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -273,7 +275,7 @@ func TestLogoutAllDrainsOrphanedHelperCredential(t *testing.T) {
 	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the drained orphan under its server name")
 	assert.Empty(t, helperCreds(t, statePath), "the orphaned helper credential must be erased")
 
-	residue, err := config.DrainOrphanedHelperCredentials(dir)
+	residue, err := config.DrainOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
 	assert.Empty(t, residue, "provenance must be fully drained")
 }
@@ -319,7 +321,7 @@ func TestLogoutAllDrainsResidueAfterFailedConfigWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded residue")
 
-	residue, err := config.DrainOrphanedHelperCredentials(dir)
+	residue, err := config.DrainOrphanedHelperCredentials(context.Background(), dir)
 	require.NoError(t, err)
 	assert.Empty(t, residue)
 }
@@ -343,4 +345,22 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
 	assert.Equal(t, "", cfgAfter.CurrentContext)
+}
+
+// TestDrainFailureCancellationPassesThrough pins the fourth-review P1: a
+// drain interrupted by the caller's own cancellation must surface as
+// context.Canceled through logout's failure shaping — never rewrapped into
+// the generic "failed to log out" clierr, which severs the errors.Is chain
+// and reads as a helper fault.
+func TestDrainFailureCancellationPassesThrough(t *testing.T) {
+	t.Parallel()
+	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
+	err := drainFailure("failed to log out \"prod\"", wrapped, []string{"a"})
+	assert.ErrorIs(t, err, context.Canceled)
+	var ce *clierr.Error
+	assert.False(t, errors.As(err, &ce), "cancellation must not be dressed as a clierr drain failure")
+
+	real := drainFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"})
+	require.ErrorAs(t, real, &ce)
+	assert.Contains(t, ce.Hint, "already logged out")
 }

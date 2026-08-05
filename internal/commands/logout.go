@@ -66,9 +66,9 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
 		if all {
-			deletedFrom, deletedCache, err = l.drainAll(cfg, targets, policy)
+			deletedFrom, deletedCache, err = l.drainAll(cmdCtx, cfg, targets, policy)
 		} else {
-			deletedFrom, deletedCache, err = l.drainTargets(cfg, targets, policy)
+			deletedFrom, deletedCache, err = l.drainTargets(cmdCtx, cfg, targets, policy)
 		}
 		if err != nil {
 			return err
@@ -123,16 +123,14 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 // point), reporting the token backends touched per server so a partial
 // failure names what was already drained, plus every cache key removed
 // across all targets.
-func (l logoutCmd) drainTargets(cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
+func (l logoutCmd) drainTargets(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	var deletedCache []string
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, cache, derr := config.DrainToken(l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		from, cache, derr := config.DrainToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
-			return nil, nil, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("failed to log out %q: %v", s, derr)).
-				WithHint(fmt.Sprintf("already logged out: %v", done))
+			return nil, nil, drainFailure(fmt.Sprintf("failed to log out %q", s), derr, done)
 		}
 		deletedFrom[s] = from
 		deletedCache = append(deletedCache, cache...)
@@ -148,24 +146,20 @@ func (l logoutCmd) drainTargets(cfg *config.Config, targets []string, policy str
 // orphaned/bare cache entries that match no configured server (which no
 // per-server drain, keyed to a currently-configured server's host, could
 // ever reach). See DrainAllExecCache's doc for why.
-func (l logoutCmd) drainAll(cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
+func (l logoutCmd) drainAll(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, derr := config.DrainLoginToken(l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		from, derr := config.DrainLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
-			return nil, nil, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("failed to log out %q: %v", s, derr)).
-				WithHint(fmt.Sprintf("already logged out: %v", done))
+			return nil, nil, drainFailure(fmt.Sprintf("failed to log out %q", s), derr, done)
 		}
 		deletedFrom[s] = from
 		done = append(done, s)
 	}
 	deletedCache, err := config.DrainAllExecCache(l.dir)
 	if err != nil {
-		return nil, nil, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("failed to drain exec-credential cache: %v", err)).
-			WithHint(fmt.Sprintf("already logged out: %v", done))
+		return nil, nil, drainFailure("failed to drain exec-credential cache", err, done)
 	}
 
 	// Reach helper credentials whose server name never made it into
@@ -173,16 +167,28 @@ func (l logoutCmd) drainAll(cfg *config.Config, targets []string, policy string)
 	// store and cfg.Write): no per-server drain above could see them. Merge
 	// each drained record into deletedFrom under its server name so the
 	// envelope stays stable.
-	orphans, rerr := config.DrainOrphanedHelperCredentials(l.dir)
+	orphans, rerr := config.DrainOrphanedHelperCredentials(ctx, l.dir)
 	for _, e := range orphans {
 		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
 	}
 	if rerr != nil {
-		return nil, nil, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("failed to drain orphaned helper credentials: %v", rerr)).
-			WithHint(fmt.Sprintf("already logged out: %v", done))
+		return nil, nil, drainFailure("failed to drain orphaned helper credentials", rerr, done)
 	}
 	return deletedFrom, deletedCache, nil
+}
+
+// drainFailure shapes a drain-step failure: the caller's own cancellation
+// (Ctrl-C during a contended lock wait inside the drain) passes through
+// unchanged so errors.Is(err, context.Canceled) keeps working — dressing it
+// as a drain failure would send the user diagnosing helper problems.
+// Anything else becomes the actionable generic error with the
+// already-done hint.
+func drainFailure(step string, err error, done []string) error {
+	return wrapUnlessCanceled(err, func(err error) error {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: %v", step, err)).
+			WithHint(fmt.Sprintf("already logged out: %v", done))
+	})
 }
 
 // clearCurrentContext unsets the current context when it no longer resolves to

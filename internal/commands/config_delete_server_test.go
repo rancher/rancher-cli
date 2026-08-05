@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestConfigDeleteServerDrainFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	drainErr := errors.New("keychain locked")
-	cmd.drain = func(dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
+	cmd.drain = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
 		return nil, nil, drainErr
 	}
 
@@ -201,4 +202,27 @@ func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	view := testView{srvNames: []string{"acme"}}
 	got := configDeleteServerCmd{}.CompleteArgs(context.Background(), view)
 	assert.Equal(t, []string{"acme"}, got)
+}
+
+// TestDeleteServerCancellationPassesThrough pins the fourth-review P1 for
+// config delete-server: a cancellation surfacing from the drain must pass
+// through unchanged, not be rewrapped as a generic drain failure.
+func TestDeleteServerCancellationPassesThrough(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{Servers: map[string]config.Server{"acme": {URL: "https://acme.ex"}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := &configDeleteServerCmd{dir: dir, drain: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
+	}}
+	_, err := cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), "server config left untouched")
+
+	cfgAfter, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	_, ok := cfgAfter.Servers["acme"]
+	assert.True(t, ok, "the server entry must be untouched after a cancelled drain")
 }

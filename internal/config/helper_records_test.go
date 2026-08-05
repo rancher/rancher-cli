@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,19 +18,19 @@ func TestHelperRecordsAddRemove(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	e := HelperRecord{Helper: "vault", Name: "prod", CanonicalURL: "https://r.example.com"}
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		s.add(e)
 		return nil
 	}))
 	// Re-read in a fresh lock scope: entry persisted.
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		got := s.forServer("prod")
 		require.Len(t, got, 1)
 		assert.Equal(t, e, got[0])
 		s.remove(e)
 		return nil
 	}))
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"))
 		return nil
 	}))
@@ -44,12 +45,12 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			e := HelperRecord{Helper: "vault", Name: fmt.Sprintf("s%d", i), CanonicalURL: "https://r.example.com"}
-			_ = withHelperRecordsLock(dir, func(s *helperRecords) error { s.add(e); return nil })
+			_ = withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error { s.add(e); return nil })
 		}(i)
 	}
 	wg.Wait()
 	total := 0
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		for i := 0; i < 20; i++ {
 			total += len(s.forServer(fmt.Sprintf("s%d", i)))
 		}
@@ -72,7 +73,7 @@ func TestHelperRecordsLockCrossProcessContention(t *testing.T) {
 	waitForLocked(t, child) // child provably owns the lock now
 
 	start := time.Now()
-	err := withHelperRecordsLock(dir, func(s *helperRecords) error {
+	err := withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		s.add(HelperRecord{Helper: "vault", Name: "p", CanonicalURL: "https://x"})
 		return nil
 	})
@@ -87,7 +88,7 @@ func TestHelperRecordsLockBoundedWait(t *testing.T) {
 	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "30s")
 	waitForLocked(t, child)
 
-	err := withHelperRecordsLock(dir, func(*helperRecords) error { return nil })
+	err := withHelperRecordsLock(context.Background(), dir, func(*helperRecords) error { return nil })
 	require.Error(t, err, "acquisition must give up after the bounded wait")
 	assert.Contains(t, err.Error(), "another rancher process")
 }
@@ -99,7 +100,7 @@ func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
 	require.NoError(t, child.Process.Kill(), "…and dies holding it")
 	_, _ = child.Process.Wait()
 
-	err := withHelperRecordsLock(dir, func(s *helperRecords) error { return nil })
+	err := withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error { return nil })
 	assert.NoError(t, err, "OS must release a dead process's lock — no stale-lock recovery")
 }
 
@@ -110,7 +111,7 @@ func TestExecStoreSetTokenWritesIntentBeforeStore(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	require.Error(t, err)
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "write-ahead intent must survive a failed store")
 		return nil
 	}))
@@ -123,7 +124,7 @@ func TestExecStoreSetTokenUnsupportedRemovesIntent(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	assert.ErrorIs(t, err, ErrTokenStoreUnsupported)
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "unsupported store recorded nothing")
 		return nil
 	}))
@@ -160,7 +161,7 @@ func TestExecStoreDeleteTokenClearsHelperRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 	require.NoError(t, st.DeleteToken(execRef()))
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "a direct DeleteToken clears its helper record")
 		return nil
 	}))
@@ -174,7 +175,7 @@ func TestExecStoreDeleteTokenFailureKeepsHelperRecord(t *testing.T) {
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 	t.Setenv("FAKEHELPER_MODE", "fail")
 	require.Error(t, st.DeleteToken(execRef()))
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the entry for retry")
 		return nil
 	}))
@@ -241,7 +242,7 @@ func TestExecStoreStoreThenEraseInterleaving(t *testing.T) {
 	require.NoError(t, <-storeErr)
 	require.NoError(t, <-eraseErr)
 	assert.Empty(t, fakeHelperCreds(t, statePath), "store→erase: no credential survives")
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "store→erase: no helper record survives")
 		return nil
 	}))
@@ -283,7 +284,7 @@ func TestExecStoreEraseThenStoreInterleaving(t *testing.T) {
 	require.NoError(t, <-storeErr)
 	creds := fakeHelperCreds(t, statePath)
 	require.Len(t, creds, 1, "erase→store: the re-stored credential is live")
-	require.NoError(t, withHelperRecordsLock(dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1,
 			"erase→store: the live credential has its helper record")
 		return nil

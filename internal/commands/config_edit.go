@@ -116,7 +116,9 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 		// Write back under the config lock with a compare-and-write check: if
 		// the real file changed (bytes differ or existence changed) while the
 		// editor was open, conflict — the user's edits are preserved at tempPath.
+		fnRan := false
 		writeErr := config.WithLock(ctx, c.dir, func() error {
+			fnRan = true
 			current, readErr := os.ReadFile(realPath)
 			currentExisted := true
 			if os.IsNotExist(readErr) {
@@ -125,7 +127,10 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 				readErr = nil
 			}
 			if readErr != nil {
-				return readErr
+				// A failed comparison read is not a write failure — the
+				// write was never attempted. Say which step broke.
+				return clierr.New(clierr.CodeGeneric,
+					fmt.Sprintf("reading the config to check for concurrent changes failed; your edits are preserved at %s: %v", tempPath, readErr))
 			}
 			if currentExisted != existed || !bytes.Equal(current, baseline) {
 				return clierr.New(clierr.CodeConflict,
@@ -146,6 +151,15 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 			// user's work must not be lost.
 			var ce *clierr.Error
 			if errors.As(writeErr, &ce) {
+				// A clierr produced inside fn (conflict, read failure)
+				// already names the preserved temp path at its source; a
+				// failure BEFORE fn ran can only be lock acquisition, which
+				// cannot know the path — say the edits are safe for it. The
+				// distinction is the fnRan fact, not message sniffing.
+				if !fnRan {
+					return runtime.Result{}, ce.WithMessage(
+						fmt.Sprintf("%s; your edits are preserved at %s", ce.Message, tempPath))
+				}
 				return runtime.Result{}, writeErr
 			}
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,

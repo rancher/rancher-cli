@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
@@ -150,14 +149,13 @@ func (f *fileStore) withCacheLock(fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(f.cacheLockPath), 0o700); err != nil {
 		return err
 	}
-	fl := flock.New(f.cacheLockPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	ok, err := fl.TryLockContext(ctx, 50*time.Millisecond)
-	if err != nil || !ok {
-		return fmt.Errorf("locking token-cache.yaml (another rancher process may be writing): %v", err)
+	release, err := waitForFlock(ctx, f.cacheLockPath, 50*time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("locking token-cache.yaml (another rancher process may be writing): %w", err)
 	}
-	defer func() { _ = fl.Unlock() }()
+	defer release()
 	return fn()
 }
 
@@ -230,6 +228,11 @@ func (f *fileStore) GetToken(ref ServerRef) (string, error) {
 	return tok, nil
 }
 
+// SetToken is a lock-free read-modify-write of credentials.yaml: any
+// COMMAND that reaches it must run inside config.WithLock (the command
+// sites' lock boundary tests are the enforcement point) — a direct call
+// from a new command reintroduces the concurrent lost-update this file's
+// tests pin.
 func (f *fileStore) SetToken(ref ServerRef, token string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -588,8 +591,8 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // way to reach a cache entry cached against a server no longer configured —
 // still misses orphaned/bare entries that match no configured server. See
 // DrainAllExecCache, which `--all` calls once instead.
-func DrainToken(dir string, ref ServerRef, policy string) (fromBackends, drainedCache []string, err error) {
-	fromBackends, err = DrainLoginToken(dir, ref, policy)
+func DrainToken(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, drainedCache []string, err error) {
+	fromBackends, err = DrainLoginToken(ctx, dir, ref, policy)
 	drainedCache, cerr := DrainExecCacheForServer(NewFileStore(dir), ref.URL)
 	if cerr != nil {
 		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
@@ -605,7 +608,7 @@ func DrainToken(dir string, ref ServerRef, policy string) (fromBackends, drained
 // DrainToken (single-server logout) and by `logout --all` (which drains
 // every configured server's token this way, then wipes the exec-credential
 // cache once via DrainAllExecCache instead of per server).
-func DrainLoginToken(dir string, ref ServerRef, policy string) ([]string, error) {
+func DrainLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) ([]string, error) {
 	var (
 		from []string
 		errs []error
@@ -657,7 +660,7 @@ func DrainLoginToken(dir string, ref ServerRef, policy string) ([]string, error)
 			errs = append(errs, fmt.Errorf("credential helper drain: %w", cerr))
 		}
 	}
-	lerr := withHelperRecordsLock(dir, func(st *helperRecords) error {
+	lerr := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
 		for _, e := range st.forServer(ref.Name) {
 			targets.add(e)
 		}
