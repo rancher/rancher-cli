@@ -2199,3 +2199,34 @@ func TestResolveConnNoAmbientRequiresServer(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Error(), "--server is required")
 }
+
+// errDeleteCacheStore wraps a CredStore but fails DeleteCachedCred with a
+// fixed error, for pinning delete-token's error classification pass-through.
+type errDeleteCacheStore struct {
+	config.CredStore
+	delErr error
+}
+
+func (s *errDeleteCacheStore) DeleteCachedCred(string) error { return s.delErr }
+
+// TestDeleteTokenNamedPreservesLockTimeout pins the exercise-8/9-fixes
+// review finding: a named delete whose store delete times out on the
+// token-cache lock must surface LOCK_TIMEOUT (exit 8, retryable), matching
+// the --all path's pass-through, not the GENERIC catch-all.
+func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
+	dir := t.TempDir()
+	base := config.NewFileStore(dir)
+	require.NoError(t, base.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
+	store := &errDeleteCacheStore{CredStore: base, delErr: clierr.Retryable(clierr.CodeLockTimeout,
+		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")}
+	cmd := NewDeleteTokenCommand(dir, store).(runtime.ReadCommand)
+
+	_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
+	assert.True(t, ce.Retryable)
+	assert.Equal(t, 8, ce.ExitCode())
+	assert.Contains(t, ce.Message, `failed to delete "acme/u/c"`)
+	assert.Contains(t, ce.Hint, "already deleted")
+}

@@ -71,7 +71,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		deletedFrom, deletedCache, err = d.drain(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 		if err != nil {
 			return wrapUnlessCanceled(err, func(err error) error {
-				return clierr.New(clierr.CodeGeneric,
+				return clierr.Wrap(err,
 					fmt.Sprintf("failed to drain credentials for %q; server config left untouched: %v", name, err))
 			})
 		}

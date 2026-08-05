@@ -364,3 +364,22 @@ func TestDrainFailureCancellationPassesThrough(t *testing.T) {
 	require.ErrorAs(t, real, &ce)
 	assert.Contains(t, ce.Hint, "already logged out")
 }
+
+// TestDrainFailurePreservesLockTimeout pins the exercise-8/9-fixes review
+// finding: a LOCK_TIMEOUT surfacing from the token-cache or helper-records
+// lock inside the drain must keep its code and retryability through logout's
+// failure shaping — flattening it to GENERIC hides exit 8 and the retry
+// signal from scripted callers.
+func TestDrainFailurePreservesLockTimeout(t *testing.T) {
+	t.Parallel()
+	inner := clierr.Retryable(clierr.CodeLockTimeout,
+		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")
+	err := drainFailure("failed to log out \"prod\"", inner, []string{"a"})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
+	assert.True(t, ce.Retryable)
+	assert.Equal(t, 8, ce.ExitCode())
+	assert.Contains(t, ce.Message, "failed to log out")
+	assert.Contains(t, ce.Hint, "already logged out")
+}

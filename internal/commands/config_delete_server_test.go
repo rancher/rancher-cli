@@ -226,3 +226,25 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	_, ok := cfgAfter.Servers["acme"]
 	assert.True(t, ok, "the server entry must be untouched after a cancelled drain")
 }
+
+// TestConfigDeleteServerDrainLockTimeoutSurvives pins the exercise-8/9-fixes
+// review finding for this command: a classified LOCK_TIMEOUT from the drain
+// keeps its code, retryability, and exit status through the
+// "server config left untouched" wrap.
+func TestConfigDeleteServerDrainLockTimeoutSurvives(t *testing.T) {
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme"}, map[string]string{"acme": "acme"})
+
+	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
+	cmd.drain = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
+			"locking the credential-helper records (another rancher process may be logging in/out): context deadline exceeded")
+	}
+
+	_, err := cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
+	assert.True(t, ce.Retryable)
+	assert.Equal(t, 8, ce.ExitCode())
+	assert.Contains(t, ce.Message, "server config left untouched")
+}

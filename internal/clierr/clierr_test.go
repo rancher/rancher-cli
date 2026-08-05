@@ -2,6 +2,8 @@ package clierr
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,4 +76,41 @@ func TestErrorDetailsSerialization(t *testing.T) {
 	b2, err := json.Marshal(New(CodeNotFound, "x"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(b2), "details")
+}
+
+// TestWrapPreservesClassification pins the exercise-8/9-fixes review fix:
+// command wrappers adding context must not flatten a classified error (a
+// LOCK_TIMEOUT from a store lock) into the GENERIC catch-all.
+func TestWrapPreservesClassification(t *testing.T) {
+	t.Run("classified error keeps code and retryability under the new message", func(t *testing.T) {
+		inner := Retryable(CodeLockTimeout, "locking token-cache.yaml: context deadline exceeded")
+		got := Wrap(inner, "failed to drain: boom")
+		assert.Equal(t, CodeLockTimeout, got.Code)
+		assert.True(t, got.Retryable)
+		assert.Equal(t, "failed to drain: boom", got.Message)
+		assert.Equal(t, 8, got.ExitCode())
+	})
+
+	t.Run("wrapped classified error is found through the chain", func(t *testing.T) {
+		inner := Retryable(CodeLockTimeout, "locked").WithCause(errors.New("flock"))
+		chained := fmt.Errorf("outer: %w", inner)
+		got := Wrap(chained, "ctx: outer: locked")
+		assert.Equal(t, CodeLockTimeout, got.Code)
+		assert.True(t, got.Retryable)
+	})
+
+	t.Run("plain error becomes GENERIC with the cause kept", func(t *testing.T) {
+		plain := errors.New("disk failure")
+		got := Wrap(plain, "ctx: disk failure")
+		assert.Equal(t, CodeGeneric, got.Code)
+		assert.False(t, got.Retryable)
+		assert.ErrorIs(t, got, plain)
+	})
+
+	t.Run("does not mutate the wrapped error", func(t *testing.T) {
+		inner := Retryable(CodeLockTimeout, "original")
+		_ = Wrap(inner, "new message").WithHint("added hint")
+		assert.Equal(t, "original", inner.Message)
+		assert.Empty(t, inner.Hint)
+	})
 }

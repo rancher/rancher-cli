@@ -437,7 +437,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 				continue
 			}
 			if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
-				return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				return runtime.Result{}, clierr.Wrap(derr,
 					fmt.Sprintf("failed to delete %q: %v", arg, derr)).
 					WithHint(fmt.Sprintf("already deleted: %v", deleted))
 			}

@@ -108,6 +108,20 @@ func AllCodes() []string {
 	}
 }
 
+// Wrap re-messages err for a caller adding command context: when err carries
+// a structured *Error its classification (code, retryability, hint,
+// candidates, details) survives with msg as the new message; otherwise a
+// plain GENERIC error with msg is built, keeping err as the cause. Use it
+// where a wrapper would otherwise flatten a classified error (e.g. a
+// LOCK_TIMEOUT from a store) into the catch-all shape.
+func Wrap(err error, msg string) *Error {
+	var ce *Error
+	if errors.As(err, &ce) {
+		return ce.WithMessage(msg)
+	}
+	return New(CodeGeneric, msg).WithCause(err)
+}
+
 // AsNotFound returns err's *Error when err is a structured NOT_FOUND error,
 // nil otherwise — for callers that also need the concrete error (message,
 // hint) without a second chain walk.

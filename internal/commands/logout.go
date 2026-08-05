@@ -181,12 +181,11 @@ func (l logoutCmd) drainAll(ctx context.Context, cfg *config.Config, targets []s
 // (Ctrl-C during a contended lock wait inside the drain) passes through
 // unchanged so errors.Is(err, context.Canceled) keeps working — dressing it
 // as a drain failure would send the user diagnosing helper problems.
-// Anything else becomes the actionable generic error with the
-// already-done hint.
+// Anything else keeps its classification (a lock timeout stays LOCK_TIMEOUT
+// and retryable) under the step-prefixed message and the already-done hint.
 func drainFailure(step string, err error, done []string) error {
 	return wrapUnlessCanceled(err, func(err error) error {
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: %v", step, err)).
+		return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
 			WithHint(fmt.Sprintf("already logged out: %v", done))
 	})
 }
