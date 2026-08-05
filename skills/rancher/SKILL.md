@@ -100,6 +100,11 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 - `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too.
+- The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
+  invocation only. `--apply` re-plans from scratch — fresh read, fresh
+  resourceVersion — and its conflict check spans its own plan-to-execute
+  window, not the gap since your dry-run. If the object may have changed
+  since the preview, re-run `--dry-run` and re-read the diff before applying.
 - Never chain `--apply --yes` onto a command you have not dry-run or whose
   effect the user has not asked for.
 
