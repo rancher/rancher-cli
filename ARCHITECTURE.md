@@ -214,6 +214,7 @@ graph TD
 
     observe --> engine
     observe --> kinds
+    observe --> resources
     observe --> extres
     observe --> runtime
     observe --> clierr
