@@ -453,25 +453,30 @@ func TestResolveSubjectErrorPassthrough(t *testing.T) {
 	}
 }
 
-// TestNearCandidatesEmptyDisplayNameHay verifies that nearCandidates searches
-// both displayName and username independently. A user whose displayName is set
-// to a different value must still be findable by username, and a user with an
-// empty displayName must be findable by username without the username appearing
-// twice in the haystack and causing false positives.
-func TestNearCandidatesEmptyDisplayNameHay(t *testing.T) {
-	users := []*unstructured.Unstructured{
-		// displayName "Alice", username "bob" — needle "bob" must match via username.
-		{Object: userObj("u-abc", "Alice", "bob", "local://u-abc")},
-		// empty displayName, username "charlie" — needle "charlie" must match.
-		{Object: userObj("u-def", "", "charlie", "local://u-def")},
-		// control: must not appear for either needle.
-		{Object: userObj("u-xyz", "Zed", "zed", "local://u-xyz")},
+// TestResolveSubjectNoNearMatchFallsBackToPool mirrors
+// TestGrantNoNearMatchRoleFallsBackToPool: a subject typo that shares no
+// substring with any seeded user falls back to the capped pool so the
+// NOT_FOUND always names valid options.
+func TestResolveSubjectNoNearMatchFallsBackToPool(t *testing.T) {
+	t.Parallel()
+	// "zz-no-such-user" shares no substring with "alice", "bob", or "carol".
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-alice", "Alice", "alice", "local://u-alice"),
+		userObj("u-bob", "Bob", "bob", "local://u-bob"),
+		userObj("u-carol", "Carol", "carol", "local://u-carol"),
+	}}
+	_, err := ResolveSubject(context.Background(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "zz-no-such-user"})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "zz-no-such-user")
+	// No substring overlap with any user → fallback to the full pool.
+	require.NotEmpty(t, ce.Candidates, "zero near-matches must fall back to the user pool")
+	ids := make([]string, 0, len(ce.Candidates))
+	for _, cand := range ce.Candidates {
+		ids = append(ids, cand.ID)
 	}
-	got := nearCandidates("bob", users)
-	require.Len(t, got, 1, "only u-abc matches 'bob' via username")
-	assert.Equal(t, "u-abc", got[0].ID)
-
-	got2 := nearCandidates("charlie", users)
-	require.Len(t, got2, 1, "only u-def matches 'charlie' via username")
-	assert.Equal(t, "u-def", got2[0].ID)
+	assert.Contains(t, ids, "u-alice")
+	assert.Contains(t, ids, "u-bob")
+	assert.Contains(t, ids, "u-carol")
 }

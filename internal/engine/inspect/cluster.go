@@ -72,7 +72,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	mgmtKind, _ := kinds.Lookup("cluster")
 	obj, err := mgmt.Get(ctx, mgmtKind.GVR, "", clusterID)
 	if err != nil {
-		return runtime.Result{}, err // IC-6: the one hard requirement
+		return runtime.Result{}, err
 	}
 	displayName, _, _ := unstructured.NestedString(obj.Object, "spec", "displayName")
 	state, _, _ := unstructured.NestedString(obj.Object, "status", "state")

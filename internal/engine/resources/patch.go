@@ -104,7 +104,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	orig, err := getNamed(ctx, client, c.k, ns, name)
+	orig, err := client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -110,6 +111,101 @@ type Kind struct {
 	// through a higher-level command that handles key generation, lifecycle
 	// derivation, or other invariants that a raw manifest write cannot satisfy.
 	NoCreateViaManifest string
+}
+
+// Plural returns the English plural of a lowercase kind name. Sibilant endings
+// take -es, a consonant followed by -y takes -ies, everything else -s. Used
+// for the alias-invariant check in validateKinds, by hintToken's fallback, and
+// by external callers that need a plain plural form without registering a kind
+// (e.g. get's Usage string). Identical semantics to the former resources.plural,
+// which is now removed — this is the canonical single copy.
+func Plural(name string) string {
+	switch {
+	case strings.HasSuffix(name, "s"), strings.HasSuffix(name, "x"),
+		strings.HasSuffix(name, "z"), strings.HasSuffix(name, "ch"),
+		strings.HasSuffix(name, "sh"):
+		return name + "es"
+	case len(name) > 1 && strings.HasSuffix(name, "y") && !isVowel(name[len(name)-2]):
+		return name[:len(name)-1] + "ies"
+	default:
+		return name + "s"
+	}
+}
+
+func isVowel(b byte) bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
+	}
+	return false
+}
+
+// hintToken derives the CLI plural token for a kind's NOT_FOUND hint. The
+// table invariant (enforced by validateKinds) is that Aliases[0] is always
+// the plural of the hyphen-stripped name — "fleet-cluster" → "fleetclusters".
+// When no alias is registered, plural(hyphen-stripped Name) is the fallback.
+func hintToken(k Kind) string {
+	if len(k.Aliases) > 0 {
+		return k.Aliases[0]
+	}
+	return Plural(strings.ReplaceAll(k.Name, "-", ""))
+}
+
+// NotFoundCurated returns the curated NOT_FOUND error for a named-get miss:
+// "<kind> not found: <name>" with a hint naming the list command. The dynamic
+// client calls this after mapErr when ByGVR resolves the GVR to a kind row —
+// that is the single seam. Exported so test helpers can build the expected
+// curated shape without duplicating the hint formula.
+//
+// Rule: an error that ALREADY CARRIES A HINT is already curated — the dynamic
+// client checks for an existing hint in curateNotFound and passes such errors
+// through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
+// get the "<kind> not found: <name>" treatment.
+func NotFoundCurated(k Kind, name string) error {
+	return clierr.New(clierr.CodeNotFound, k.Name+" not found: "+name).
+		WithHint("list with: rancher get " + hintToken(k))
+}
+
+// groupResource is the (Group, Resource) pair used as a map key for O(1)
+// kind lookups in kindsByGR and in validateKinds' uniqueness check.
+type groupResource struct{ group, resource string }
+
+// kindsByGR is the static Group+Resource → Kind index built once from the
+// table. ByGVR uses it for O(1) lookup instead of a linear scan. The
+// Group+Resource uniqueness invariant (enforced by validateKinds) guarantees
+// the map is injective.
+var kindsByGR = func() map[groupResource]Kind {
+	m := make(map[groupResource]Kind, len(table))
+	for _, k := range table {
+		m[groupResource{k.GVR.Group, k.GVR.Resource}] = k
+	}
+	return m
+}()
+
+// wildcardVersionMatch reports whether a table row's version matches an
+// incoming version. An empty row version is a discovery-resolved wildcard
+// that matches any incoming version.
+func wildcardVersionMatch(rowVersion, incoming string) bool {
+	return rowVersion == "" || rowVersion == incoming
+}
+
+// ByGVR resolves a GroupVersionResource to a kind table row by matching
+// Group and Resource. Empty-Version rows (CAPI kinds whose served version
+// varies by Rancher release) match any incoming version for their Group+Resource;
+// non-empty Version rows require an exact version match. Returns the matching
+// Kind and true, or the zero Kind and false when no row matches.
+//
+// ByGVR is safe to call concurrently; it reads the package-level kindsByGR
+// index without modification.
+func ByGVR(gvr schema.GroupVersionResource) (Kind, bool) {
+	k, ok := kindsByGR[groupResource{gvr.Group, gvr.Resource}]
+	if !ok {
+		return Kind{}, false
+	}
+	if !wildcardVersionMatch(k.GVR.Version, gvr.Version) {
+		return Kind{}, false
+	}
+	return k, true
 }
 
 // MachineConfigGroup is the GVR group shared by every rke-machine-config
@@ -596,7 +692,7 @@ func LookupGVK(apiVersion, kind string) (Kind, bool) {
 		if k.K8sKind != kind || k.GVR.Group != group {
 			continue
 		}
-		if k.GVR.Version == "" || k.GVR.Version == version {
+		if wildcardVersionMatch(k.GVR.Version, version) {
 			return k, true
 		}
 	}
@@ -657,6 +753,32 @@ func validateKinds(ts []Kind) error {
 				return fmt.Errorf("kind %q column %q: Condition type %q must start with an uppercase letter (k8s CamelCase convention)", k.Key, col.Header, col.Condition)
 			}
 		}
+		// Plural-first alias invariant: every row must register at least one
+		// alias and Aliases[0] must equal plural(strings.ReplaceAll(k.Name,
+		// "-", "")). hintToken relies on this to produce a resolvable CLI
+		// token for the NOT_FOUND hint.
+		if len(k.Aliases) == 0 {
+			return fmt.Errorf("kind %q has no aliases; Aliases[0] must be the plural of the hyphen-stripped name", k.Name)
+		}
+		expected := Plural(strings.ReplaceAll(k.Name, "-", ""))
+		if k.Aliases[0] != expected {
+			return fmt.Errorf("kind %q: Aliases[0] must be the plural of the hyphen-stripped name (%q), got %q", k.Name, expected, k.Aliases[0])
+		}
+	}
+	// Group+Resource uniqueness: ByGVR must resolve unambiguously. Two rows may
+	// share a Resource name across different Groups (e.g. four "clusters" kinds
+	// across management.cattle.io, provisioning.cattle.io, cluster.x-k8s.io, and
+	// fleet.cattle.io), but no two rows may share the same Group+Resource — that
+	// would make ByGVR return the wrong kind for whichever row comes second.
+	// This check runs after the per-kind loop so that a per-kind defect (column,
+	// alias) always takes precedence in the first-defect-wins ordering.
+	seenGR := map[groupResource]string{}
+	for _, k := range ts {
+		gr := groupResource{k.GVR.Group, k.GVR.Resource}
+		if prev, dup := seenGR[gr]; dup {
+			return fmt.Errorf("kind rows %q and %q share Group+Resource {%q, %q}: ByGVR cannot distinguish them", prev, k.Key, k.GVR.Group, k.GVR.Resource)
+		}
+		seenGR[gr] = k.Key
 	}
 	return nil
 }

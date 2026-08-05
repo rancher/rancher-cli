@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -263,4 +264,36 @@ func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
 				"the rest of the pod survives")
 		})
 	}
+}
+
+// TestInspectPodNotFoundCurated verifies that a hint-less NOT_FOUND from the
+// pod Get is curated to "pod not found: <name>" and that a hint-bearing
+// NOT_FOUND passes through unchanged.
+func TestInspectPodNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+
+	// hint-less 404 → curated shape (produced by the dynamic client; fake simulates it)
+	client := newFakeClient().withGetErr(podKind.GVR, "ns1", "web", kinds.NotFoundCurated(podKind, "web"))
+	cmd := NewPod(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "pod not found: web", ce.Message)
+	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+
+	// hint-bearing 404 passes through unchanged
+	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")
+	client2 := newFakeClient().withGetErr(podKind.GVR, "ns1", "web", hinted)
+	cmd2 := NewPod(&fakeFactory{client: client2})
+	_, err2 := execRead(t, cmd2, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	var ce2 *clierr.Error
+	require.ErrorAs(t, err2, &ce2)
+	assert.Equal(t, "try another group", ce2.Hint, "hint-bearing error must pass through unchanged")
 }

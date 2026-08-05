@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -163,6 +165,38 @@ func TestUsageByNodePendingPodsExcluded(t *testing.T) {
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
 	assert.Equal(t, "0", env.Data["n1"].CPURequest, "pending pods (no nodeName) must not appear in node rows")
+}
+
+// TestUsageByNodeGetNotFoundCurated verifies that a hint-less NOT_FOUND from
+// the single-node Get is curated to "node not found: <name>" and that a
+// hint-bearing NOT_FOUND passes through unchanged.
+func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	nodeKind := mustKind(t, "node")
+	podKind := mustKind(t, "pod")
+	pods := &unstructured.UnstructuredList{}
+
+	// hint-less 404 → curated shape (produced by the dynamic client; fake simulates it)
+	client := newFakeClient().
+		withGetErr(nodeKind.GVR, "", "n1", kinds.NotFoundCurated(nodeKind, "n1")).
+		withList(podKind.GVR, pods)
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "node not found: n1", ce.Message)
+	assert.Equal(t, "list with: rancher get nodes", ce.Hint)
+
+	// hint-bearing 404 passes through unchanged
+	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")
+	client2 := newFakeClient().
+		withGetErr(nodeKind.GVR, "", "n1", hinted).
+		withList(podKind.GVR, pods)
+	cmd2 := NewUsage(&fakeFactory{client: client2})
+	_, err2 := execRead(t, cmd2, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
+	var ce2 *clierr.Error
+	require.ErrorAs(t, err2, &ce2)
+	assert.Equal(t, "try another group", ce2.Hint, "hint-bearing error must pass through unchanged")
 }
 
 // A pod whose spec.nodeName names a node absent from the List (deleted mid-run

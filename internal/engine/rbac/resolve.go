@@ -197,7 +197,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		return resolvedFromUser(nameMatches[0])
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
-			WithCandidates(nearCandidates(sub.Bare, all)).
+			WithCandidates(subjectCandidates(all, sub.Bare)).
 			WithHint("run: rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(nameMatches))
@@ -247,38 +247,27 @@ func principalOwned(pids []string, principal string) bool {
 	return false
 }
 
-// nearFilter applies case-insensitive substring matching of needle against
-// the haystack returned by hay(i) for each candidate at index i. Returns at
-// most limit matching candidates in input order.
-func nearFilter(needle string, cands []clierr.Candidate, hay func(int) string, limit int) []clierr.Candidate {
-	ln := strings.ToLower(needle)
-	var out []clierr.Candidate
-	for i, c := range cands {
-		if len(out) == limit {
-			break
-		}
-		if strings.Contains(strings.ToLower(hay(i)), ln) {
-			out = append(out, c)
+// subjectCandidates builds the candidate slice for a user not-found error.
+// Each user's fields are extracted once: username for the haystack and
+// candidate() for the display-name-fallback Candidate. The haystack is
+// id + candidate.Name + username; the display-name-fallback rule is owned
+// by candidate(), so it is not restated here.
+func subjectCandidates(users []*unstructured.Unstructured, needle string) []clierr.Candidate {
+	type row struct {
+		haystack string
+		cand     clierr.Candidate
+	}
+	rows := make([]row, len(users))
+	for i, u := range users {
+		un, _, _ := unstructured.NestedString(u.Object, "username")
+		cand := candidate(u)
+		rows[i] = row{
+			haystack: cand.ID + " " + cand.Name + " " + un,
+			cand:     cand,
 		}
 	}
-	return out
-}
-
-// nearCandidates filters users to case-insensitive substring matches of
-// input against id, displayName, and username, capped at candidateCap.
-// The haystack for each candidate is id + " " + displayName + " " + username
-// (empties preserved), which is the exact pre-consolidation shape — an empty
-// displayName produces a double space between id and username, so a needle
-// built against that shape matches correctly without false positives from
-// the username appearing twice.
-func nearCandidates(input string, users []*unstructured.Unstructured) []clierr.Candidate {
-	cands := make([]clierr.Candidate, 0, len(users))
-	hays := make([]string, 0, len(users))
-	for _, u := range users {
-		display, _, _ := unstructured.NestedString(u.Object, "displayName")
-		username, _, _ := unstructured.NestedString(u.Object, "username")
-		cands = append(cands, candidate(u))
-		hays = append(hays, u.GetName()+" "+display+" "+username)
-	}
-	return nearFilter(input, cands, func(i int) string { return hays[i] }, candidateCap)
+	return candidatesWithFallback(len(rows),
+		func(i int) string { return rows[i].haystack },
+		func(i int) clierr.Candidate { return rows[i].cand },
+		needle)
 }

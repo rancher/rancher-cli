@@ -81,7 +81,20 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 	// verify a bare cc-* name directly rather than paying for a List.
 	name := strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
 	if strings.HasPrefix(name, cloudCredPrefix) {
-		return client.Get(ctx, secretsGVR, cloudCredNamespace, name)
+		obj, err := client.Get(ctx, secretsGVR, cloudCredNamespace, name)
+		if err == nil {
+			return obj, nil
+		}
+		if !clierr.IsNotFound(err) {
+			// Non-NOT_FOUND errors (auth, network, etc.) propagate immediately.
+			return nil, err
+		}
+		// NOT_FOUND from the fast-path Get falls through to the list-based
+		// resolution below: the client curates 404s by literal kind name,
+		// which would surface "secret not found" — leaking the Secret
+		// implementation detail this resolver exists to hide. The list path's
+		// MatchOneOrError yields the domain-specific shape ("cloud credential
+		// not found") with proper candidates.
 	}
 
 	list, err := client.List(ctx, secretsGVR, cloudCredNamespace, "")

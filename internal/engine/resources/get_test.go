@@ -23,9 +23,12 @@ import (
 )
 
 // memClient serves canned objects and records the namespaces/names it is asked
-// for, so routing tests can assert what reached the client.
+// for, so routing tests can assert what reached the client. getErr, when set,
+// is returned instead of the items-miss default, so tests can inject a
+// pre-curated NOT_FOUND (simulating what the real dynamic client now produces).
 type memClient struct {
 	items   []unstructured.Unstructured
+	getErr  error
 	listNS  []string
 	getNS   []string
 	getName []string
@@ -34,6 +37,9 @@ type memClient struct {
 func (m *memClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	m.getNS = append(m.getNS, ns)
 	m.getName = append(m.getName, name)
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	if len(m.items) == 0 {
 		return nil, clierr.New(clierr.CodeNotFound, name+" not found")
 	}
@@ -387,12 +393,13 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 }
 
 // TestGetNamedNotFoundCurated pins the curated NOT_FOUND shape for a named get:
-// the raw apiserver message becomes "<kind> not found: <name>" with a hint
-// naming the list command, and the code stays NOT_FOUND.
+// the dynamic client now produces "<kind> not found: <name>" with a list hint;
+// the fake simulates that by returning a pre-curated error.
 func TestGetNamedNotFoundCurated(t *testing.T) {
 	t.Parallel()
-	client := &memClient{} // empty items → Get returns NOT_FOUND
-	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	k := mustKind(t, "user")
+	client := &memClient{getErr: kinds.NotFoundCurated(k, "u-xxx")}
+	cmd := NewGet(k, &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -401,43 +408,61 @@ func TestGetNamedNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get users", ce.Hint)
 }
 
+// TestGetWaitNotFoundCurated pins that the --wait path surfaces a curated
+// NOT_FOUND from the dynamic client: the fake returns the pre-curated shape
+// (as the real dynamic client now produces) and it propagates unchanged.
+func TestGetWaitNotFoundCurated(t *testing.T) {
+	k := mustKind(t, "cluster")
+	client := &seqClient{
+		objs: []*unstructured.Unstructured{nil},
+		errs: []error{kinds.NotFoundCurated(k, "missing")},
+	}
+	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+	_, err := cmd.Execute(context.Background(), input{
+		args: []string{"missing"},
+		b:    map[string]bool{"wait": true},
+	}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "cluster not found: missing", ce.Message)
+	assert.Equal(t, "list with: rancher get clusters", ce.Hint)
+}
+
+// TestGetNamedNotFoundWithHintPassesThrough pins Fix 1's has-hint guard: a
+// NOT_FOUND that already carries a hint (e.g. resolveVersion's unsupported-
+// group diagnostic) must pass through verbatim — its message and hint must
+// not be overwritten by the generic "<kind> not found: <name>" curation.
+func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	// Build an ext.cattle.io-style error: NOT_FOUND with a pre-existing hint.
+	alreadyCurated := clierr.New(clierr.CodeNotFound,
+		"this Rancher does not serve ext.cattle.io (requires Rancher >= 2.14, the supported minimum)").
+		WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
+	client := &delClient{getErr: alreadyCurated}
+	cmd := NewGet(mustKind(t, "token"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"t-xxx"}}, nil)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "ext.cattle.io")
+	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through untouched")
+}
+
 // TestGetNamedNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
 // client reaches the caller unchanged (code, message) without re-wrapping.
+// Uses delClient (defined in delete_test.go) — the two stubs serve the same
+// purpose; a fourth type would be the duplication.
 func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
 	t.Parallel()
 	rbacErr := clierr.New(clierr.CodeRBAC, "forbidden")
-	client := &errClient{getErr: rbacErr}
+	client := &delClient{getErr: rbacErr}
 	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "forbidden", ce.Message)
-}
-
-// errClient is a ClusterClient stub that returns a canned error from Get and
-// succeeds on every other method.
-type errClient struct {
-	getErr error
-}
-
-func (e *errClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
-	return nil, e.getErr
-}
-func (e *errClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
-	return &unstructured.UnstructuredList{}, nil
-}
-func (e *errClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
-	return "", nil
-}
-func (e *errClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, nil
-}
-func (e *errClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, nil
-}
-func (e *errClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
-	return nil
 }
 
 // TestRoutePolicyMatrix pins the routing contract for every NamespacePolicy:
@@ -612,9 +637,10 @@ func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
 	}
 }
 
-// TestPlural pins the usage-string pluralizer against every ending the kind
-// table can produce, including the sibilant and hyphenated cases the naive
-// name+"s" got wrong ("ingresss").
+// TestPlural pins kinds.Plural against every ending the kind table can
+// produce, including the sibilant and hyphenated cases the naive name+"s"
+// got wrong ("ingresss"). The function moved from resources to kinds so this
+// test now calls the canonical copy there.
 func TestPlural(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -642,18 +668,8 @@ func TestPlural(t *testing.T) {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, c.want, plural(c.name))
+			assert.Equal(t, c.want, kinds.Plural(c.name))
 		})
-	}
-}
-
-func TestIsVowel(t *testing.T) {
-	t.Parallel()
-	for _, b := range []byte("aeiou") {
-		assert.True(t, isVowel(b), "want vowel: %c", b)
-	}
-	for _, b := range []byte("bcdfgyz") {
-		assert.False(t, isVowel(b), "want non-vowel: %c", b)
 	}
 }
 

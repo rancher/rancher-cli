@@ -1452,6 +1452,41 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 	})
 }
 
+func TestInspectClusterNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	client := newFakeClient().
+		withGetErr(mgmtKind.GVR, "", "c-gone", kinds.NotFoundCurated(mgmtKind, "c-gone")).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{})
+	_, err := execRead(t, cmd, input{args: []string{"c-gone"}})
+	require.Error(t, err)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "cluster not found: c-gone", ce.Message)
+	assert.NotEmpty(t, ce.Hint, "curated error must carry a hint")
+}
+
+func TestInspectClusterNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	alreadyCurated := clierr.New(clierr.CodeNotFound, "cluster not found: c-gone").
+		WithHint("list with: rancher get clusters")
+	client := newFakeClient().
+		withGetErr(mgmtKind.GVR, "", "c-gone", alreadyCurated).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{})
+	_, err := execRead(t, cmd, input{args: []string{"c-gone"}})
+	require.Error(t, err)
+	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
+}
+
 func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 	t.Parallel()
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}

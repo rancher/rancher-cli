@@ -32,7 +32,11 @@ func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _ str
 	if obj, ok := f.objects[name]; ok {
 		return obj, nil
 	}
-	return nil, fmt.Errorf("fakeClient: no secret named %q", name)
+	// Return the realistic curated clierr shape the dynamic client produces on
+	// a 404 for the secrets GVR — this is the shape the fast-path fall-through
+	// fix must treat as NOT_FOUND and route to the list-based resolution path.
+	return nil, clierr.New(clierr.CodeNotFound, "secret not found: "+name).
+		WithHint("list with: rancher get secrets")
 }
 
 func (f *fakeClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
@@ -184,6 +188,31 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	require.Len(t, cerr.Candidates, 1)
 	assert.Equal(t, "cc-abc12", cerr.Candidates[0].ID)
 	assert.Equal(t, "AWS Prod", cerr.Candidates[0].Name)
+}
+
+// TestResolveCloudCredentialExactIDMissFallsThroughToListPath pins fix 1: when
+// a cc-* exact-id Get returns the curated "secret not found" shape (the dynamic
+// client curates 404s by literal kind name), the resolver must fall through to
+// the list-based path and return the domain-specific "cloud credential not found"
+// shape — NOT "secret not found". Candidates come from the list.
+func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
+	t.Parallel()
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil),
+	}}
+	// objects is empty: Get("cc-missing") returns the curated clierr NOT_FOUND shape.
+	client := &fakeClient{list: list}
+	factory := fakeFactory{c: client}
+
+	_, err := ResolveCloudCredential(context.Background(), factory, "cc-missing")
+	require.Error(t, err)
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
+	assert.Contains(t, cerr.Message, "cloud credential", "fast-path miss must yield the domain error, not 'secret not found'")
+	assert.NotContains(t, cerr.Message, "secret", "fast-path miss must not leak the Secret kind implementation detail")
+	require.NotEmpty(t, cerr.Candidates, "fast-path miss must yield candidates from the list")
+	assert.Equal(t, "run: rancher get cloud-credential", cerr.Hint)
 }
 
 // TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID pins

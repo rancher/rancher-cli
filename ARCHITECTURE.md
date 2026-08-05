@@ -165,6 +165,7 @@ graph TD
     engine --> safety
     engine --> clierr
 
+    kinds --> clierr
     kinds --> safety
 
     resources --> engine
@@ -230,6 +231,7 @@ graph TD
 
     provider --> selfuser
     provider --> engine
+    provider --> kinds
     provider --> kube
     provider --> config
     provider --> safety
@@ -291,7 +293,7 @@ validator requires the annotation on dry-run; pre-stamping makes the dry-run hon
 the probe fails, a `"creatorId not stamped"` warning is emitted and the create proceeds
 unstamped — rancher-webhook may then deny the dry-run, but a real `--apply` create is
 still expected to succeed (the mutator stamps identity server-side on real creates).
-These are the two deliberate network writes during Plan — `create cluster` uses the SelfUser
+These are the two deliberate network writes before or during Plan — `create cluster` uses the SelfUser
 probe for creatorId stamping, and `delete user` uses it for the self-delete guard. The
 `delete user` guard runs pre-Plan (before the server-side dry-run): Rancher's own users
 webhook refuses a self-delete dry-run before a post-Plan guard could fire, surfacing raw

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -199,6 +200,41 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 	return out
 }
 
+// candidatesWithFallback builds a candidate slice in a single pass: it
+// simultaneously collects near-matches (case-insensitive substring of needle
+// in hay(i)) up to candidateCap and the first candidateCap items via cand(i)
+// as a fallback. Returns near-matches if any exist, else the fallback. An
+// empty needle matches every item, so the capped pool is returned directly.
+func candidatesWithFallback(n int, hay func(i int) string, cand func(i int) clierr.Candidate, needle string) []clierr.Candidate {
+	lneedle := strings.ToLower(needle)
+	var near, fallback []clierr.Candidate
+	for i := 0; i < n; i++ {
+		if len(fallback) < candidateCap {
+			fallback = append(fallback, cand(i))
+		}
+		if len(near) < candidateCap && strings.Contains(strings.ToLower(hay(i)), lneedle) {
+			near = append(near, cand(i))
+		}
+		if len(near) == candidateCap && len(fallback) == candidateCap {
+			break
+		}
+	}
+	if len(near) > 0 {
+		return near
+	}
+	return fallback
+}
+
+// roleCandidates builds the candidate slice for a role error. An empty needle
+// matches every item, so the capped at-scope pool is returned directly (used
+// for scope-mismatch errors where any valid at-scope role is equally useful).
+func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
+	return candidatesWithFallback(len(pool),
+		func(i int) string { return pool[i].ID + " " + pool[i].Name },
+		func(i int) clierr.Candidate { return pool[i] },
+		needle)
+}
+
 // checkRole verifies that role exists at the given scope before the mutation
 // is planned. On NOT_FOUND it returns a structured error with nearby
 // candidates (roletemplates whose context is empty or matches scope, or
@@ -228,13 +264,9 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 				if perr != nil {
 					return perr
 				}
-				// Scope mismatch: the name is correct but the scope is wrong.
-				// Show the valid at-scope roles directly — no nearness needle.
-				// Empty needle matches everything; nearFilter caps at candidateCap.
-				candidates := nearFilter("", pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
 				return clierr.New(clierr.CodeNotFound,
 					fmt.Sprintf("role %s is a %s role, not usable at %s scope", role, rtCtx, scope)).
-					WithCandidates(candidates).
+					WithCandidates(roleCandidates(pool, "")).
 					WithHint(hint)
 			}
 		}
@@ -258,14 +290,8 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	if perr != nil {
 		return perr
 	}
-	cands := nearFilter(role, pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
-	if len(cands) == 0 {
-		// A needle too far from every role still deserves the valid options —
-		// mirror of the wrong-scope branch's reasoning.
-		cands = nearFilter("", pool, func(i int) string { return pool[i].ID + " " + pool[i].Name }, candidateCap)
-	}
 	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
-		WithCandidates(cands).
+		WithCandidates(roleCandidates(pool, role)).
 		WithHint(hint)
 }
 

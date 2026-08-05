@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -22,12 +23,15 @@ type updateCall struct {
 }
 
 // patchClient serves a canned object from Get and records Update calls (dry-run
-// preview then real), echoing the submitted object back.
+// preview then real), echoing the submitted object back. execUpdateErr is
+// returned only on the real (non-dry-run) Update, simulating a post-confirmation
+// TOCTOU race.
 type patchClient struct {
-	obj     *unstructured.Unstructured
-	getErr  error
-	updates []updateCall
-	getName []string
+	obj           *unstructured.Unstructured
+	getErr        error
+	execUpdateErr error
+	updates       []updateCall
+	getName       []string
 }
 
 func (p *patchClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
@@ -48,6 +52,9 @@ func (p *patchClient) Create(context.Context, schema.GroupVersionResource, strin
 }
 func (p *patchClient) Update(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	p.updates = append(p.updates, updateCall{ns: ns, dryRun: dryRun, obj: obj})
+	if !dryRun && p.execUpdateErr != nil {
+		return nil, p.execUpdateErr
+	}
 	return obj, nil
 }
 func (p *patchClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
@@ -217,13 +224,14 @@ func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 }
 
 // TestPatchNotFoundCurated pins the curated NOT_FOUND shape for a named patch:
-// the raw apiserver message becomes "<kind> not found: <name>" with a hint
-// naming the list command, and the code stays NOT_FOUND.
+// the dynamic client now produces "<kind> not found: <name>"; the fake
+// simulates that pre-curated shape.
 func TestPatchNotFoundCurated(t *testing.T) {
 	t.Parallel()
-	client := &patchClient{getErr: clierr.New(clierr.CodeNotFound, `deployments "web" not found`)}
+	k := mustKind(t, "deployment")
+	client := &patchClient{getErr: kinds.NotFoundCurated(k, "web")}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
-	_, _, err := planPatch(t, NewPatch(mustKind(t, "deployment"), fac, nil),
+	_, _, err := planPatch(t, NewPatch(k, fac, nil),
 		input{args: []string{"web"}, s: map[string]string{
 			"cluster": "prod", "namespace": "ns1",
 			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
@@ -391,4 +399,35 @@ func TestPatchInvalidOpsRejected(t *testing.T) {
 	_, _, err = planPatch(t, NewPatch(mustKind(t, "cluster"), fac2, nil),
 		input{args: []string{"c1"}, s: map[string]string{"patch": `[{"op":"test","path":"/spec/x","value":"wrong"}]`}})
 	requireValidation(t, err)
+}
+
+// TestPatchExecPhaseNotFoundCurated pins the post-confirmation TOCTOU path:
+// the object is deleted between the dry-run and the real update; the dynamic
+// client curates the NOT_FOUND (Fix 3 — client-level curation covers this,
+// dissolving the earlier patch.go exec-wrapper approach). The fake simulates
+// the pre-curated shape the real client now produces.
+func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "deployment")
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"3"},"spec":{"replicas":1}}`)
+	client := &patchClient{
+		obj:           orig,
+		execUpdateErr: kinds.NotFoundCurated(k, "web"),
+	}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, exec, err := planPatch(t, NewPatch(k, fac, nil),
+		input{args: []string{"web"}, s: map[string]string{
+			"cluster": "prod", "namespace": "ns1",
+			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+		}})
+	require.NoError(t, err, "Plan must succeed (dry-run succeeds)")
+	require.NotNil(t, exec)
+
+	_, err = exec(context.Background())
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "deployment not found: web", ce.Message)
+	assert.NotEmpty(t, ce.Hint, "curated exec-phase NOT_FOUND must carry a list hint")
 }

@@ -104,3 +104,12 @@ func AsNotFound(err error) *Error {
 
 // IsNotFound reports whether err is a structured NOT_FOUND error.
 func IsNotFound(err error) bool { return AsNotFound(err) != nil }
+
+// Classified reports whether e carries a specific classification beyond the
+// mapErr catch-all default: a non-Generic code, a retry signal, or a
+// caller-facing hint. The catch-all shape (CodeGeneric, Retryable false,
+// Hint "") is indistinguishable from transport noise and must not pass through
+// identity-critical guards unchanged.
+func Classified(e *Error) bool {
+	return e.Code != CodeGeneric || e.Retryable || e.Hint != ""
+}

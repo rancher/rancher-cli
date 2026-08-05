@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -136,7 +137,8 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 		// it unset so a later call retries once the group reports a version.
 		if g.PreferredVersion.Version == "" {
 			return gvr, clierr.New(clierr.CodeNotFound,
-				fmt.Sprintf("API group %q has no preferred version", gvr.Group))
+				fmt.Sprintf("API group %q has no preferred version", gvr.Group)).
+				WithHint("the API group exists but reports no preferred version — the server may be mid-upgrade; retry, or run: rancher schema <kind> to check API requirements")
 		}
 		r.mu.Lock()
 		r.versions[gvr.Group] = g.PreferredVersion.Version
@@ -149,7 +151,25 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 			fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum)", config.MinRancherVersion)).
 			WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
 	}
-	return gvr, clierr.New(clierr.CodeNotFound, fmt.Sprintf("API group %q not served by the cluster", gvr.Group))
+	return gvr, clierr.New(clierr.CodeNotFound, fmt.Sprintf("API group %q not served by the cluster", gvr.Group)).
+		WithHint("the API group is not served by this Rancher — the kind may need a newer server version or an optional feature; run: rancher schema <kind> for requirements")
+}
+
+// curateNotFound enriches a hint-less NOT_FOUND error with the curated
+// "<kind> not found: <name>" message and a list hint when the GVR resolves to a
+// known kind row. The has-hint guard protects any hinted NOT_FOUND arriving at
+// this seam — resolveVersion diagnostics return early from the caller before
+// reaching curateNotFound, so they are not protected by this guard but by that
+// early return. Errors from GVRs not in the kinds table pass through unchanged.
+// LIST and Create callers must not call this; only the named-object methods
+// (Get, Delete, Update) do.
+func curateNotFound(gvr schema.GroupVersionResource, name string, err error) error {
+	if ce := clierr.AsNotFound(err); ce != nil && ce.Hint == "" {
+		if k, ok := kinds.ByGVR(gvr); ok {
+			return kinds.NotFoundCurated(k, name)
+		}
+	}
+	return err
 }
 
 func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
@@ -160,7 +180,7 @@ func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	out, err := r.ri(gvr, ns).Get(ctx, name, metav1.GetOptions{})
-	return out, mapErr(err)
+	return out, curateNotFound(gvr, name, mapErr(err))
 }
 
 func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
@@ -220,7 +240,7 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Update(ctx, obj, opts)
-	return out, mapErr(err)
+	return out, curateNotFound(gvr, obj.GetName(), mapErr(err))
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
@@ -237,5 +257,5 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	if resourceVersion != "" {
 		opts.Preconditions = &metav1.Preconditions{ResourceVersion: &resourceVersion}
 	}
-	return mapErr(r.ri(gvr, ns).Delete(ctx, name, opts))
+	return curateNotFound(gvr, name, mapErr(r.ri(gvr, ns).Delete(ctx, name, opts)))
 }

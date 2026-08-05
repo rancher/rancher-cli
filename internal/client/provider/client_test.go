@@ -69,9 +69,10 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 }
 
 // TestEmptyPreferredVersionIsNotCached guards the cache-poisoning fix: a group
-// whose preferred version is the empty string must error, and the empty value
-// must NOT be memoized — a later call re-consults discovery so a group that
-// starts serving a version can recover without recreating the client.
+// whose preferred version is the empty string must error with an actionable
+// hint, and the empty value must NOT be memoized — a later call re-consults
+// discovery so a group that starts serving a version can recover without
+// recreating the client.
 func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	t.Parallel()
 	scheme := runtime.NewScheme()
@@ -85,6 +86,8 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.NotEmpty(t, ce.Hint, "no-preferred-version error must carry an actionable hint")
+	assert.Contains(t, ce.Hint, "rancher schema", "hint must mention rancher schema for requirements")
 	assert.Equal(t, 1, disc.calls)
 
 	// Second call: the empty version was not cached, so discovery is consulted again.
@@ -96,7 +99,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 // TestAbsentExtGroupYieldsFriendlyHint pins EXT-R-4: an older Rancher without
 // the aggregated ext.cattle.io APIService must surface a hint pointing at the
 // pre-existing local alternatives, not the generic "not served" message other
-// groups get.
+// groups get. Non-ext absent groups carry their own actionable hint.
 func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	t.Parallel()
 	scheme := runtime.NewScheme()
@@ -113,11 +116,71 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	assert.Contains(t, ce.Error(), "ext.cattle.io")
 	assert.Contains(t, ce.Hint, "auth list-tokens")
 
-	// A non-ext group absence keeps the generic message.
+	// A non-ext group absence carries the generic "not served" hint (not the ext hint).
 	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "")
 	require.Error(t, err)
 	require.True(t, errors.As(err, &ce))
-	assert.NotContains(t, ce.Hint, "auth list-tokens")
+	assert.NotContains(t, ce.Hint, "auth list-tokens", "non-ext group must not carry ext hint")
+	assert.NotEmpty(t, ce.Hint, "non-ext not-served error must carry an actionable hint")
+	assert.Contains(t, ce.Hint, "rancher schema", "non-ext not-served hint must mention rancher schema")
+}
+
+// TestResolveVersionErrorReturnsEarlyFromGet pins the REAL mechanism: a
+// resolveVersion failure returns from Get unchanged before curateNotFound is
+// ever reached. The message and hint from resolveVersion are preserved because
+// the early return bypasses curation entirely, not because curateNotFound
+// passes them through.
+func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
+
+	t.Run("no-preferred-version error returns early from Get with hint intact", func(t *testing.T) {
+		t.Parallel()
+		disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
+		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+		_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "", "m-1")
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce))
+		// resolveVersion's hint is preserved via early return, not curation.
+		assert.NotEmpty(t, ce.Hint, "resolveVersion error must carry hint intact after early return from Get")
+		assert.Contains(t, ce.Hint, "rancher schema", "resolveVersion hint must survive early return unchanged")
+		// The message must not be the curated format — curateNotFound never ran.
+		assert.NotContains(t, ce.Message, "not found: m-1", "resolveVersion diagnostic must not be overwritten by curation")
+	})
+
+	t.Run("not-served error returns early from Get with hint intact", func(t *testing.T) {
+		t.Parallel()
+		disc := &stubDiscovery{groups: map[string]string{}}
+		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+		_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "w-1")
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.True(t, errors.As(err, &ce))
+		// resolveVersion's hint is preserved via early return, not curation.
+		assert.NotEmpty(t, ce.Hint, "resolveVersion error must carry hint intact after early return from Get")
+		assert.Contains(t, ce.Hint, "rancher schema", "resolveVersion hint must survive early return unchanged")
+		assert.NotContains(t, ce.Message, "not found: w-1", "resolveVersion diagnostic must not be overwritten by curation")
+	})
+}
+
+// TestCurateNotFoundHintBearingPassesThrough directly tests curateNotFound's
+// has-hint guard: a hinted NOT_FOUND for a known GVR must pass through
+// unchanged. This guard protects any hinted NOT_FOUND that reaches the curation
+// seam (resolveVersion diagnostics never reach it, protected by their early
+// return; this covers other hinted NOT_FOUNDs that may arise in the future).
+func TestCurateNotFoundHintBearingPassesThrough(t *testing.T) {
+	t.Parallel()
+	hinted := clierr.New(clierr.CodeNotFound, "some diagnostic with hint").
+		WithHint("run: rancher schema project")
+	// projectGVR is in the kinds table, so a hint-less NOT_FOUND would be
+	// curated. The hint guard must prevent that rewrite.
+	got := curateNotFound(projectGVR, "p-missing", hinted)
+	var ce *clierr.Error
+	require.True(t, errors.As(got, &ce))
+	assert.Equal(t, hinted.Message, ce.Message, "hinted NOT_FOUND message must not be overwritten by curation")
+	assert.Equal(t, hinted.Hint, ce.Hint, "hinted NOT_FOUND hint must not be overwritten by curation")
 }
 
 var projectGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
@@ -299,6 +362,92 @@ func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 	r, _ := newFakeClient()
 	_, err := r.Get(context.Background(), projectGVR, "c-x", "nope")
 	require.Error(t, err)
-	// mapErr(Task 1) turns the k8s NotFound into a CodeNotFound clierr.
+	// mapErr turns the k8s NotFound into a CodeNotFound clierr; curateNotFound
+	// then adds the kind-aware message and list hint.
 	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestClientGetCuratesKnownGVRNotFound pins that Get curates a hint-less
+// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
+	t.Parallel()
+	r, _ := newFakeClient()
+	_, err := r.Get(context.Background(), projectGVR, "c-x", "p-missing")
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "project not found: p-missing", ce.Message)
+	assert.Equal(t, "list with: rancher get projects", ce.Hint)
+}
+
+// TestClientGetHintedNotFoundPassesThrough pins that Get does not overwrite a
+// hint-bearing NOT_FOUND: resolveVersion's unsupported-group diagnostic carries
+// a hint and must pass through curateNotFound unchanged.
+func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
+	// empty preferred version → resolveVersion returns a hint-bearing NOT_FOUND
+	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
+	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+
+	_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "ns", "x")
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.NotEmpty(t, ce.Hint, "hint-bearing NOT_FOUND must pass through curateNotFound unchanged")
+	assert.NotContains(t, ce.Message, "capi-cluster not found", "resolveVersion diagnostic must not be overwritten by curation")
+}
+
+// TestClientGetUnknownGVRNotFoundPassesThrough pins that Get does not curate a
+// hint-less NOT_FOUND for a GVR absent from the kinds table (Fix 3: unknown GVR
+// passes through untouched by curateNotFound).
+func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
+	t.Parallel()
+	unknownGVR := schema.GroupVersionResource{Group: "custom.example.io", Version: "v1", Resource: "widgets"}
+	scheme := runtime.NewScheme()
+	gvrToListKind := map[schema.GroupVersionResource]string{unknownGVR: "WidgetList"}
+	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind)
+	c := &dynamicClient{
+		dyn:      fc,
+		disc:     &stubDiscovery{groups: map[string]string{"custom.example.io": "v1"}},
+		versions: map[string]string{},
+	}
+
+	_, err := c.Get(context.Background(), unknownGVR, "", "w-missing")
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, ce.Hint, "unknown GVR must not be curated — no hint expected")
+}
+
+// TestClientDeleteCuratesKnownGVRNotFound pins that Delete curates a hint-less
+// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
+	t.Parallel()
+	r, _ := newFakeClient()
+	err := r.Delete(context.Background(), projectGVR, "c-x", "p-missing", "", false)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "project not found: p-missing", ce.Message)
+	assert.Equal(t, "list with: rancher get projects", ce.Hint)
+}
+
+// TestClientUpdateCuratesKnownGVRNotFound pins that Update curates a hint-less
+// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
+	t.Parallel()
+	r, _ := newFakeClient()
+	obj := project("c-x", "p-missing")
+	_, err := r.Update(context.Background(), projectGVR, "c-x", obj, false)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "project not found: p-missing", ce.Message)
+	assert.Equal(t, "list with: rancher get projects", ce.Hint)
 }

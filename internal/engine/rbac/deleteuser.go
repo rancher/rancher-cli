@@ -1,22 +1,11 @@
 // deleteuser.go implements the delete override for the user kind row: the
 // row becomes Deletable and the generic delete provides the full dry-run/
 // apply/--yes gating; this wrapper adds a cascade warning and a self-delete
-// guard. The guard runs before inner.Plan (PrePlan timing), using the
-// ext.cattle.io SelfUser probe to resolve the current user's ID and refusing
-// deletion when the target matches the authenticated caller's own record.
-// PrePlan timing is required here: on a real Rancher server the users webhook
-// denies a self-delete dry-run before the PostPlan guard could fire, surfacing
-// raw webhook text with no hint. Running the guard first ensures the curated
-// lockout refusal ("deleting your own user record locks this CLI out" + hint)
-// always wins over the webhook — a curated refusal beats raw webhook text, and
-// the extra identity probe on mistyped targets is a cheap read-equivalent call.
-// A probe that returns NOT_FOUND (the ext.cattle.io group absent on older
-// Rancher) skips the guard as a legitimately unsupported endpoint. A probe
-// that returns an empty identity (success, but no userID field) refuses
-// retryably — an unverifiable identity must cost a retry rather than risk a
-// lockout, same as any other probe failure. Any other probe or Cluster failure
-// refuses with a retryable GENERIC error: for an irreversible identity deletion
-// a transient failure must cost a retry, not risk a lockout.
+// guard. The guard runs PrePlan (see resources.guardedDeleteCmd.prePlan for
+// the full tradeoff): on a real Rancher server the users webhook denies a
+// self-delete dry-run before a PostPlan guard could fire, surfacing raw
+// webhook text with no hint. Running the guard first ensures the curated
+// lockout refusal always wins.
 package rbac
 
 import (
@@ -51,15 +40,25 @@ func NewDeleteUser(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Co
 
 // guardSelfDelete probes the current user's identity via the SelfUser
 // endpoint and refuses deletion when the target arg matches the authenticated
-// caller's own user ID. Cancellation propagates. A NOT_FOUND probe error
-// means the ext.cattle.io endpoint is absent (older Rancher) — skip the
-// guard. A probe that succeeds but carries no userID refuses retryably: an
-// unverifiable identity must cost a retry, not risk a lockout. A transient
-// API-aggregation flap can momentarily drop the ext.cattle.io group from
-// discovery and produce the same NOT_FOUND as a permanently absent endpoint,
-// so the NOT_FOUND skip is a deliberate availability tradeoff — the guard is
-// defense-in-depth; the destructive gates (--dry-run preview, --apply, --yes,
-// cascade warning) remain the primary protection.
+// caller's own user ID. A client construction failure that carries a clierr
+// code passes through unchanged — its own code and retryability stand, and
+// the pipeline's toClierr normalization will surface it correctly. A raw
+// (non-clierr) construction failure is ambiguous: the guard refuses retryably
+// so an unverifiable identity costs a retry, not a lockout. Cancellation
+// propagates via the probe call path: if the context is already cancelled,
+// client.Create returns a context error and ctx.Err() is non-nil. A NOT_FOUND
+// probe error means the ext.cattle.io endpoint is absent (older Rancher) —
+// skip the guard. A classified probe error (code other than Generic, a hint,
+// or Retryable true) passes through with its identity intact; mapErr's
+// catch-all default (CodeGeneric, no hint, Retryable false) is
+// indistinguishable from transport noise and is refused retryably instead. A
+// raw non-clierr probe error or a probe that returns no userID refuses
+// retryably. A transient API-aggregation flap can momentarily drop the
+// ext.cattle.io group from discovery and produce the same NOT_FOUND as a
+// permanently absent endpoint, so the NOT_FOUND skip is a deliberate
+// availability tradeoff — the guard is defense-in-depth; the destructive gates
+// (--dry-run preview, --apply, --yes, cascade warning) remain the primary
+// protection.
 func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) error {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
@@ -67,10 +66,13 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 	}
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return guardVerifyRefusal(err)
+		// A classified clierr error (its own code and retryability already set)
+		// passes through unchanged. An unclassified error — raw or a bare
+		// CodeGeneric-no-hint-non-retryable clierr — is ambiguous; the guard
+		// refuses retryably so an unverifiable identity costs a retry rather
+		// than risking a lockout. Both paths share the same Classified predicate
+		// as the probe branch below.
+		return passClassifiedOrRefuse(err)
 	}
 	probe, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
 	if err != nil {
@@ -80,7 +82,13 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 		if clierr.IsNotFound(err) {
 			return nil // ext.cattle.io absent on older Rancher — unsupported endpoint, skip
 		}
-		return guardVerifyRefusal(err)
+		// Only classified errors pass through: a code other than Generic, a hint,
+		// or Retryable true means mapErr (or the caller) already diagnosed the
+		// fault. mapErr's catch-all default (CodeGeneric, no hint, Retryable false)
+		// is indistinguishable from transport noise — treat it like a raw error and
+		// refuse retryably so an unverifiable identity costs a retry rather than
+		// risking a lockout.
+		return passClassifiedOrRefuse(err)
 	}
 	currentID := selfuser.UserID(probe)
 	if currentID == "" {
@@ -100,4 +108,16 @@ func guardVerifyRefusal(cause error) *clierr.Error {
 	return clierr.Retryable(clierr.CodeGeneric,
 		fmt.Sprintf("could not verify the target is not your own user: %v", cause)).
 		WithHint("the self-delete guard could not run — retry, or have another admin delete this user")
+}
+
+// passClassifiedOrRefuse returns err unchanged when it is a classified clierr
+// error — classified errors carry their own diagnosis and pass through; everything
+// else — raw errors and the error map's unclassified catch-all — refuses retryably
+// per the guard contract.
+func passClassifiedOrRefuse(err error) error {
+	var ce *clierr.Error
+	if errors.As(err, &ce) && clierr.Classified(ce) {
+		return err
+	}
+	return guardVerifyRefusal(err)
 }

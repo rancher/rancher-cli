@@ -5,7 +5,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -32,48 +31,6 @@ const (
 
 const defaultWaitTimeout = 120 * time.Second
 
-// plural returns the English plural of a lowercase kind name for usage strings:
-// sibilant endings take -es, a consonant followed by -y takes -ies, everything
-// else -s. Kind names are simple lowercase tokens (some hyphenated), so this
-// covers the table without pulling in a pluralization library.
-func plural(name string) string {
-	switch {
-	case strings.HasSuffix(name, "s"), strings.HasSuffix(name, "x"),
-		strings.HasSuffix(name, "z"), strings.HasSuffix(name, "ch"),
-		strings.HasSuffix(name, "sh"):
-		return name + "es"
-	case len(name) > 1 && strings.HasSuffix(name, "y") && !isVowel(name[len(name)-2]):
-		return name[:len(name)-1] + "ies"
-	default:
-		return name + "s"
-	}
-}
-
-func isVowel(b byte) bool {
-	switch b {
-	case 'a', 'e', 'i', 'o', 'u':
-		return true
-	}
-	return false
-}
-
-// getNamed fetches one object by name, curating the NOT_FOUND shape:
-// the raw apiserver text ("users.management.cattle.io \"u-x\" not
-// found") becomes "<kind> not found: <name>" with a hint naming the
-// list command — the same plain-English styling the cluster and role
-// lookups already use. Every other error passes through unchanged.
-func getNamed(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string) (*unstructured.Unstructured, error) {
-	obj, err := client.Get(ctx, k.GVR, ns, name)
-	if err != nil {
-		if clierr.IsNotFound(err) {
-			return nil, clierr.New(clierr.CodeNotFound, k.Name+" not found: "+name).
-				WithHint("list with: rancher get " + plural(k.Name))
-		}
-		return nil, err
-	}
-	return obj, nil
-}
-
 type getCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
@@ -90,7 +47,7 @@ func (c getCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:         "get " + c.k.Name,
 		Aliases:      c.k.Aliases,
-		Usage:        "List " + plural(c.k.Name) + " or show one",
+		Usage:        "List " + kinds.Plural(c.k.Name) + " or show one",
 		CommandType:  runtime.ReadOnly,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Flags:        getFlags(c.k),
@@ -203,7 +160,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 			}
 		} else {
-			one, err = getNamed(ctx, client, c.k, ns, name)
+			one, err = client.Get(ctx, c.k.GVR, ns, name)
 		}
 		if err != nil {
 			return runtime.Result{}, err

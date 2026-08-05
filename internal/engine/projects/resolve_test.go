@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,6 +22,8 @@ type listClient struct {
 	// gets, when set, answers Get by "namespace/name" key; unset keys fall
 	// through to a nil, nil no-op (existing List-only tests are unaffected).
 	gets map[string]*unstructured.Unstructured
+	// getErrs, when set, returns the error for "namespace/name" key.
+	getErrs map[string]error
 
 	lastNS       string
 	lastSelector string
@@ -28,7 +31,11 @@ type listClient struct {
 }
 
 func (l *listClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
-	if obj, ok := l.gets[ns+"/"+name]; ok {
+	k := ns + "/" + name
+	if err, ok := l.getErrs[k]; ok {
+		return nil, err
+	}
+	if obj, ok := l.gets[k]; ok {
 		return obj, nil
 	}
 	return nil, nil
@@ -289,6 +296,34 @@ func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", ns)
 	assert.True(t, statusEmpty)
+}
+
+func TestBackingNamespaceNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	projectKind, _ := kinds.Lookup("project")
+	client := &listClient{getErrs: map[string]error{"c-x/p-gone": kinds.NotFoundCurated(projectKind, "p-gone")}}
+	factory := stubFactory{c: client}
+
+	_, _, err := BackingNamespace(context.Background(), factory, "c-x", "p-gone")
+	require.Error(t, err)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "project not found: p-gone", ce.Message)
+	assert.NotEmpty(t, ce.Hint, "curated error must carry a hint")
+}
+
+func TestBackingNamespaceNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	alreadyCurated := clierr.New(clierr.CodeNotFound, "project not found: p-gone").
+		WithHint("list with: rancher get projects")
+	client := &listClient{getErrs: map[string]error{"c-x/p-gone": alreadyCurated}}
+	factory := stubFactory{c: client}
+
+	_, _, err := BackingNamespace(context.Background(), factory, "c-x", "p-gone")
+	require.Error(t, err)
+	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
 }
 
 var _ engine.ClusterClient = (*listClient)(nil)

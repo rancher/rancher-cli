@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -21,11 +22,12 @@ type delCall struct {
 }
 
 // delClient records Delete calls and serves a canned object (or error) from Get,
-// with an optional dry-run failure.
+// with an optional dry-run failure and an optional exec-phase (real-delete) failure.
 type delClient struct {
 	obj       *unstructured.Unstructured
 	getErr    error
 	dryRunErr error
+	execErr   error // returned only for the non-dry-run real delete
 	deletes   []delCall
 }
 
@@ -52,7 +54,7 @@ func (d *delClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns,
 	if dryRun {
 		return d.dryRunErr
 	}
-	return nil
+	return d.execErr
 }
 
 func objWithRV(name, rv string) *unstructured.Unstructured {
@@ -146,13 +148,14 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
-// TestDeleteNotFoundCurated pins the curated NOT_FOUND shape: the raw apiserver
-// message becomes "<kind> not found: <name>" with a hint naming the list command.
+// TestDeleteNotFoundCurated pins the curated NOT_FOUND shape: the dynamic client
+// now produces "<kind> not found: <name>"; the fake simulates that.
 func TestDeleteNotFoundCurated(t *testing.T) {
 	t.Parallel()
-	client := &delClient{getErr: clierr.New(clierr.CodeNotFound, `pods "web" not found`)}
+	k := mustKind(t, "pod")
+	client := &delClient{getErr: kinds.NotFoundCurated(k, "web")}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
-	_, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac),
+	_, _, err := planDelete(t, NewDelete(k, fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -173,6 +176,47 @@ func TestDeleteNonNotFoundPassesThrough(t *testing.T) {
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "forbidden", ce.Message)
+}
+
+// TestDeleteDryRunNotFoundCurated pins the TOCTOU path: when Get succeeds but
+// the dry-run delete returns a NOT_FOUND (deleted between Get and dry-run),
+// the dynamic client curates it; the fake simulates that pre-curated shape.
+func TestDeleteDryRunNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "pod")
+	client := &delClient{
+		obj:       objWithRV("web", "7"),
+		dryRunErr: kinds.NotFoundCurated(k, "web"),
+	}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, _, err := planDelete(t, NewDelete(k, fac),
+		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "pod not found: web", ce.Message)
+	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+}
+
+// TestDeleteDryRunNotFoundWithHintPassesThrough pins that an already-curated
+// dry-run NOT_FOUND (one that already carries a hint) passes through verbatim.
+func TestDeleteDryRunNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	alreadyCurated := clierr.New(clierr.CodeNotFound,
+		"this Rancher does not serve ext.cattle.io (requires Rancher >= 2.14, the supported minimum)").
+		WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
+	client := &delClient{
+		obj:       objWithRV("t-xxx", "1"),
+		dryRunErr: alreadyCurated,
+	}
+	fac := &recFactory{client: client}
+	_, _, err := planDelete(t, NewDelete(mustKind(t, "token"), fac),
+		input{args: []string{"t-xxx"}})
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "ext.cattle.io", "already-curated message must pass through")
+	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
 }
 
 func TestDeleteDownstreamNamespacedRequiresNamespace(t *testing.T) {
@@ -226,4 +270,54 @@ func TestDeleteManagementNamespacedRequiresCluster(t *testing.T) {
 	assert.Equal(t, "c-abc", eff.Cluster, "Effect targets the downstream cluster, not the local proxy")
 	assert.Equal(t, []string{engine.LocalCluster}, okFac.clusterCalls, "client is the local proxy")
 	assert.Equal(t, "c-abc", okClient.deletes[0].ns, "dry-run delete uses the resolved namespace")
+}
+
+// TestDeleteExecPhaseNotFoundCurated pins the post-confirmation TOCTOU path:
+// the object is deleted between the user's confirmation and the real execute
+// call; the dynamic client curates the NOT_FOUND; the fake simulates that.
+func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "pod")
+	client := &delClient{
+		obj:     objWithRV("web", "7"),
+		execErr: kinds.NotFoundCurated(k, "web"),
+	}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, exec, err := planDelete(t, NewDelete(k, fac),
+		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	require.NoError(t, err, "Plan must succeed (dry-run succeeds)")
+	require.NotNil(t, exec)
+
+	_, err = exec(context.Background())
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "pod not found: web", ce.Message)
+	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+}
+
+// TestDeleteExecPhaseNotFoundWithHintPassesThrough pins that an already-curated
+// exec-phase NOT_FOUND (one that already carries a hint) passes through unchanged.
+func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	alreadyCurated := clierr.New(clierr.CodeNotFound,
+		"this Rancher does not serve ext.cattle.io (requires Rancher >= 2.14, the supported minimum)").
+		WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
+	client := &delClient{
+		obj:     objWithRV("t-xxx", "1"),
+		execErr: alreadyCurated,
+	}
+	fac := &recFactory{client: client}
+	_, exec, err := planDelete(t, NewDelete(mustKind(t, "token"), fac),
+		input{args: []string{"t-xxx"}})
+	require.NoError(t, err)
+
+	_, err = exec(context.Background())
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "ext.cattle.io", "already-curated message must pass through")
+	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -249,6 +250,62 @@ func TestProjectMemberSystemJSONContract(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &doc))
 	_, has := doc["system"]
 	assert.False(t, has, "zero System must omit the key")
+}
+
+// TestInspectProjectNotFoundCurated pins Fix 1: the post-Resolve project Get
+// returns a hint-less NOT_FOUND; it must be curated to "project not found:
+// <id>" with a list hint — the same shape inspect cluster uses.
+func TestInspectProjectNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	mgmt := newFakeClient().
+		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
+			Items: []unstructured.Unstructured{*projectFixtureObj("p-gone", "Gone", "")},
+		}).
+		withGetErr(projectKind.GVR, "c-test", "p-gone", kinds.NotFoundCurated(projectKind, "p-gone"))
+	downstream := newFakeClient().
+		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{
+		engine.LocalCluster: mgmt,
+		"c-test":            downstream,
+	}}
+
+	cmd := NewInspectProject(fac)
+	_, err := execRead(t, cmd, input{args: []string{"p-gone"}, s: map[string]string{"cluster": "c-test"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "project not found: p-gone", ce.Message)
+	assert.NotEmpty(t, ce.Hint, "curated project error must carry a list hint")
+}
+
+// TestInspectProjectNotFoundWithHintPassesThrough pins that an already-curated
+// NOT_FOUND (one that already carries a hint) passes through unchanged — a
+// resolver's candidates error must not be re-wrapped.
+func TestInspectProjectNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	alreadyCurated := clierr.New(clierr.CodeNotFound, "project not found: p-gone").
+		WithHint("list with: rancher get projects")
+	mgmt := newFakeClient().
+		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
+			Items: []unstructured.Unstructured{*projectFixtureObj("p-gone", "Gone", "")},
+		}).
+		withGetErr(projectKind.GVR, "c-test", "p-gone", alreadyCurated)
+	downstream := newFakeClient().
+		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{
+		engine.LocalCluster: mgmt,
+		"c-test":            downstream,
+	}}
+
+	cmd := NewInspectProject(fac)
+	_, err := execRead(t, cmd, input{args: []string{"p-gone"}, s: map[string]string{"cluster": "c-test"}})
+	require.Error(t, err)
+	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
 }
 
 func TestRenderProjectTextEscapeStripping(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -18,10 +19,12 @@ import (
 // membershipClient fakes the pieces add/remove-namespace and create namespace
 // exercise: List (ResolveProject's project list), Get (fetch the live
 // namespace), Create, and Update (recorded for assertion), and dry-run
-// tracking on both.
+// tracking on both. getErr, when set, overrides every namespace Get with
+// the given error (used by curation tests).
 type membershipClient struct {
 	projects   *unstructured.UnstructuredList
 	namespaces map[string]*unstructured.Unstructured
+	getErr     error // if non-nil, Get returns this for all namespace lookups
 
 	updated       *unstructured.Unstructured
 	updatedNS     string
@@ -32,6 +35,9 @@ type membershipClient struct {
 }
 
 func (m *membershipClient) Get(_ context.Context, _ schema.GroupVersionResource, _, name string) (*unstructured.Unstructured, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	if ns, ok := m.namespaces[name]; ok {
 		return ns, nil
 	}
@@ -196,3 +202,35 @@ func TestCreateNamespaceWithoutProjectHasNoMembership(t *testing.T) {
 }
 
 var _ engine.ClusterClient = (*membershipClient)(nil)
+
+// TestLoadMembershipTargetNotFoundCurated verifies that a hint-less NOT_FOUND
+// from the namespace Get is curated to "namespace not found: <name>" and that
+// a hint-bearing NOT_FOUND passes through unchanged.
+func TestLoadMembershipTargetNotFoundCurated(t *testing.T) {
+	t.Parallel()
+
+	// hint-less 404 → curated shape (produced by dynamic client; fake simulates it)
+	nsKind, _ := kinds.Lookup("namespace")
+	client := &membershipClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		getErr:   kinds.NotFoundCurated(nsKind, "no-ns"),
+	}
+	cmd := NewAddNamespace(stubFactory{c: client})
+	_, _, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"no-ns"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "namespace not found: no-ns", ce.Message)
+	assert.Equal(t, "list with: rancher get namespaces", ce.Hint)
+
+	// hint-bearing 404 passes through unchanged
+	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")
+	client2 := &membershipClient{
+		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+		getErr:   hinted,
+	}
+	cmd2 := NewAddNamespace(stubFactory{c: client2})
+	_, _, err2 := planMembership(t, cmd2, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"no-ns"}})
+	var ce2 *clierr.Error
+	require.ErrorAs(t, err2, &ce2)
+	assert.Equal(t, "try another group", ce2.Hint, "hint-bearing error must pass through unchanged")
+}

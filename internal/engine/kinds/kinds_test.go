@@ -6,9 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
@@ -279,6 +281,76 @@ func TestUserRowDeletableAndCompletable(t *testing.T) {
 	assert.Empty(t, k.NoDeleteReason, "Deletable row must not carry a NoDeleteReason")
 }
 
+// TestValidateRejectsBadFirstAlias pins the plural-first alias invariant: a row
+// whose Aliases[0] is not plural(hyphen-stripped Name) must fail validateKinds,
+// and a row with no aliases at all also fails — every row must register its plural.
+func TestValidateRejectsBadFirstAlias(t *testing.T) {
+	t.Parallel()
+	bad := []Kind{
+		{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"wrongplural"}},
+	}
+	err := validateKinds(bad)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Aliases[0]")
+	assert.Contains(t, err.Error(), "foos")
+
+	// An alias-less row fails validation.
+	noAlias := []Kind{
+		{Key: "b", Name: "bar", K8sKind: "Bar"},
+	}
+	noAliasErr := validateKinds(noAlias)
+	require.Error(t, noAliasErr)
+	assert.Contains(t, noAliasErr.Error(), "bar")
+
+	// The shipped table must pass the invariant.
+	require.NoError(t, Validate())
+}
+
+// TestHintTokenResolvesForAllKinds proves that hintToken(k) is a token
+// Lookup recognizes for every kind in the table — i.e. the plural token the
+// not-found hint prints is a real command the CLI accepts. Hyphenated kinds
+// ("fleet-cluster") register an unhyphenated plural alias ("fleetclusters")
+// that hintToken must use instead of plural(k.Name).
+func TestHintTokenResolvesForAllKinds(t *testing.T) {
+	t.Parallel()
+	for _, k := range All() {
+		k := k
+		t.Run(k.Name, func(t *testing.T) {
+			t.Parallel()
+			token := hintToken(k)
+			_, ok := Lookup(token)
+			assert.True(t, ok, "hintToken(%q) = %q does not resolve via Lookup", k.Name, token)
+		})
+	}
+}
+
+// TestNotFoundCuratedShape pins the curated NOT_FOUND output shape:
+// "<kind> not found: <name>" with a hint naming the list command.
+func TestNotFoundCuratedShape(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("user")
+	require.True(t, ok)
+	err := NotFoundCurated(k, "u-xxx")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "user not found: u-xxx", ce.Message)
+	assert.Equal(t, "list with: rancher get users", ce.Hint)
+}
+
+// TestNotFoundCuratedHyphenatedKind pins the hyphenated-kind case: the hint
+// token is the unhyphenated first alias, not plural(k.Name).
+func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("fleet-cluster")
+	require.True(t, ok)
+	err := NotFoundCurated(k, "local")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "fleet-cluster not found: local", ce.Message)
+	assert.Equal(t, "list with: rancher get fleetclusters", ce.Hint)
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -304,4 +376,100 @@ func TestLookupGVK(t *testing.T) {
 			assert.Equal(t, tt.wantKey, k.Key)
 		}
 	}
+}
+
+// TestByGVR pins ByGVR's Group+Resource matching, including the empty-Version
+// CAPI case (any versioned incoming GVR matches the empty-Version row), exact
+// version rows (version must match), and the miss cases (unknown group/resource,
+// wrong version on a fixed-version row).
+func TestByGVR(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		gvr     schema.GroupVersionResource
+		wantKey string
+		ok      bool
+	}{
+		{
+			name:    "exact-version match: management cluster",
+			gvr:     schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
+			wantKey: "managementcluster",
+			ok:      true,
+		},
+		{
+			name:    "exact-version match: pod",
+			gvr:     schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
+			wantKey: "pod",
+			ok:      true,
+		},
+		{
+			name:    "exact-version match: deployment",
+			gvr:     schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
+			wantKey: "deployment",
+			ok:      true,
+		},
+		{
+			name:    "empty-Version row: CAPI cluster matches any incoming version (v1beta1)",
+			gvr:     schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "v1beta1", Resource: "clusters"},
+			wantKey: "capicluster",
+			ok:      true,
+		},
+		{
+			name:    "empty-Version row: CAPI machine matches any version",
+			gvr:     schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "v1alpha4", Resource: "machines"},
+			wantKey: "capimachine",
+			ok:      true,
+		},
+		{
+			name:    "empty-Version row: ext.cattle.io token matches any version",
+			gvr:     schema.GroupVersionResource{Group: "ext.cattle.io", Version: "v1", Resource: "tokens"},
+			wantKey: "token",
+			ok:      true,
+		},
+		{
+			name: "wrong version for fixed-version row: miss",
+			gvr:  schema.GroupVersionResource{Group: "apps", Version: "v1beta1", Resource: "deployments"},
+			ok:   false,
+		},
+		{
+			name: "unknown group: miss",
+			gvr:  schema.GroupVersionResource{Group: "custom.example.io", Version: "v1", Resource: "widgets"},
+			ok:   false,
+		},
+		{
+			name: "unknown resource in known group: miss",
+			gvr:  schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "unknowns"},
+			ok:   false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			k, ok := ByGVR(tt.gvr)
+			assert.Equal(t, tt.ok, ok, "ByGVR(%v)", tt.gvr)
+			if tt.ok {
+				assert.Equal(t, tt.wantKey, k.Key)
+			}
+		})
+	}
+}
+
+// TestValidateGroupResourceUniqueness pins that the table validates correctly
+// when two rows share a Group+Resource (which would make ByGVR ambiguous).
+func TestValidateGroupResourceUniqueness(t *testing.T) {
+	t.Parallel()
+	// Two rows with identical Group+Resource but different Keys:
+	dup := []Kind{
+		{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"},
+			GVR: schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "foos"}},
+		{Key: "b", Name: "bar", K8sKind: "Bar", Aliases: []string{"bars"},
+			GVR: schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "foos"}},
+	}
+	err := validateKinds(dup)
+	require.Error(t, err, "duplicate Group+Resource must fail validation")
+	assert.Contains(t, err.Error(), "ByGVR cannot distinguish them")
+
+	// The real table must still pass — no current Group+Resource collisions.
+	require.NoError(t, Validate(), "shipped table must validate")
 }

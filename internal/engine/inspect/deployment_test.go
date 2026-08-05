@@ -3,6 +3,8 @@ package inspect
 import (
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -88,4 +90,39 @@ func TestInspectDeploymentEmptySelectorErrors(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Empty(t, client.listSelectors, "an empty selector must never reach List")
+}
+
+func TestInspectDeploymentNotFoundCurated(t *testing.T) {
+	t.Parallel()
+	depKind := mustKind(t, "deployment")
+	client := newFakeClient().withGetErr(depKind.GVR, "ns1", "web", kinds.NotFoundCurated(depKind, "web"))
+
+	cmd := NewDeployment(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.Error(t, err)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "deployment not found: web", ce.Message)
+	assert.NotEmpty(t, ce.Hint, "curated error must carry a hint")
+}
+
+func TestInspectDeploymentNotFoundWithHintPassesThrough(t *testing.T) {
+	t.Parallel()
+	depKind := mustKind(t, "deployment")
+	alreadyCurated := clierr.New(clierr.CodeNotFound, "deployment not found: web").
+		WithHint("list with: rancher get deployments")
+	client := newFakeClient().withGetErr(depKind.GVR, "ns1", "web", alreadyCurated)
+
+	cmd := NewDeployment(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
 }

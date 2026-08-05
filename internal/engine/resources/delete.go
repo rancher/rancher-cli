@@ -80,7 +80,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	obj, err := getNamed(ctx, client, c.k, ns, name)
+	obj, err := client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -95,7 +95,8 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string) (safety.Effect, runtime.ExecuteFunc, error) {
 	rv := obj.GetResourceVersion()
 	// Admission preview: a server-side dry-run delete surfaces RBAC/webhook
-	// denials before the user confirms.
+	// denials before the user confirms. A TOCTOU race can also produce a
+	// NOT_FOUND here; the dynamic client curates hint-less 404s at the source.
 	if err := client.Delete(ctx, k.GVR, ns, name, rv, true); err != nil {
 		return safety.Effect{}, nil, err
 	}
