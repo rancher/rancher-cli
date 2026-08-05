@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -180,5 +182,30 @@ func TestMapErrAgentDisconnected(t *testing.T) {
 		require.ErrorAs(t, got, &ce)
 		assert.True(t, ce.Retryable)
 		assert.Contains(t, ce.Hint, "may not be registered yet")
+	})
+}
+
+// TestMapErrDeadlineExceeded covers the hung agent-tunnel request: client-go
+// hands back a *url.Error wrapping context.DeadlineExceeded with no HTTP
+// status at all, which must classify retryable with a hint pointing at the
+// likely cause instead of falling through to the uncurated default.
+func TestMapErrDeadlineExceeded(t *testing.T) {
+	t.Run("wrapped deadline maps to GENERIC+retryable+hint", func(t *testing.T) {
+		err := &url.Error{Op: "Get", URL: "https://rancher.example/k8s/clusters/c-m-x/api/v1/nodes", Err: context.DeadlineExceeded}
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable, "request timeout must be retryable")
+		assert.Contains(t, ce.Hint, "rancher inspect cluster")
+	})
+
+	t.Run("context cancellation is not given the timeout hint", func(t *testing.T) {
+		got := mapErr(&url.Error{Op: "Get", URL: "https://rancher.example", Err: context.Canceled})
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.False(t, ce.Retryable)
+		assert.Empty(t, ce.Hint)
 	})
 }
