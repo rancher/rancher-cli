@@ -76,13 +76,13 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 		Examples: []string{"rancher config use-server prod"},
 	}
 }
-func (s serverSwitchCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	var (
 		name     string
 		ctxName  string
 		warnings []string
 	)
-	if err := config.WithLock(s.dir, func() error {
+	if err := config.WithLock(cmdCtx, s.dir, func() error {
 		cfg, err := config.Load(config.FilePath(s.dir))
 		if err != nil {
 			return err

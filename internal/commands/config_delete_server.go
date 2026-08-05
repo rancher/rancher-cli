@@ -47,7 +47,7 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 // disappeared server entry — the exact bug this command exists to kill; the
 // benign failure direction is creds gone + server still configured, never
 // the reverse.
-func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
 
 	var (
@@ -57,7 +57,7 @@ func (d configDeleteServerCmd) Execute(_ context.Context, in runtime.Input, _ ru
 		deletedFrom     []string
 		deletedCache    []string
 	)
-	if err := config.WithLock(d.dir, func() error {
+	if err := config.WithLock(cmdCtx, d.dir, func() error {
 		cfg, err := config.Load(config.FilePath(d.dir))
 		if err != nil {
 			return err

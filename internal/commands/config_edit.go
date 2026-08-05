@@ -116,7 +116,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 		// Write back under the config lock with a compare-and-write check: if
 		// the real file changed (bytes differ or existence changed) while the
 		// editor was open, conflict — the user's edits are preserved at tempPath.
-		writeErr := config.WithLock(c.dir, func() error {
+		writeErr := config.WithLock(ctx, c.dir, func() error {
 			current, readErr := os.ReadFile(realPath)
 			currentExisted := true
 			if os.IsNotExist(readErr) {
@@ -128,12 +128,19 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 				return readErr
 			}
 			if currentExisted != existed || !bytes.Equal(current, baseline) {
-				return clierr.New(clierr.CodeValidation,
+				return clierr.New(clierr.CodeConflict,
 					fmt.Sprintf("the configuration changed while you were editing; your edits are preserved at %s", tempPath))
 			}
 			return config.WriteRawConfig(realPath, raw)
 		})
 		if writeErr != nil {
+			// Cancellation while waiting for the write lock passes through
+			// unchanged, like every other locked command — dressing it as a
+			// write failure would send the user diagnosing the wrong thing.
+			// The edits stay preserved at tempPath either way.
+			if errors.Is(writeErr, context.Canceled) {
+				return runtime.Result{}, writeErr
+			}
 			// Both the conflict clierr and I/O errors preserve tempPath — in
 			// the conflict case the brief requires it; for I/O failures the
 			// user's work must not be lost.

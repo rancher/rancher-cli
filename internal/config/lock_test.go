@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,7 +18,7 @@ import (
 func TestWithLockRunsFnAndCreatesLockFile(t *testing.T) {
 	dir := t.TempDir()
 	ran := false
-	err := WithLock(dir, func() error {
+	err := WithLock(context.Background(), dir, func() error {
 		ran = true
 		return nil
 	})
@@ -29,13 +31,13 @@ func TestWithLockRunsFnAndCreatesLockFile(t *testing.T) {
 func TestWithLockPropagatesErrorAndReleases(t *testing.T) {
 	dir := t.TempDir()
 	sentinel := errors.New("sentinel error")
-	err := WithLock(dir, func() error {
+	err := WithLock(context.Background(), dir, func() error {
 		return sentinel
 	})
 	require.ErrorIs(t, err, sentinel)
 
 	// the lock must have been released — a second WithLock must succeed
-	err2 := WithLock(dir, func() error { return nil })
+	err2 := WithLock(context.Background(), dir, func() error { return nil })
 	require.NoError(t, err2)
 }
 
@@ -58,7 +60,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	// Launch A.
 	aErr := make(chan error, 1)
 	go func() {
-		aErr <- WithLock(dir, func() error {
+		aErr <- WithLock(context.Background(), dir, func() error {
 			aCounter++
 			return nil
 		})
@@ -80,7 +82,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	bDone := make(chan struct{})
 	go func() {
 		close(bStarted)
-		_ = WithLock(dir, func() error {
+		_ = WithLock(context.Background(), dir, func() error {
 			bCounter++
 			close(bDone)
 			return nil
@@ -132,7 +134,7 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 	require.True(t, locked)
 	defer func() { _ = fl.Unlock() }()
 
-	err = WithLock(dir, func() error { return nil })
+	err = WithLock(context.Background(), dir, func() error { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "another rancher process")
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
@@ -154,7 +156,7 @@ func TestWithLockEnvOptOutSkipsFlock(t *testing.T) {
 	defer func() { _ = fl.Unlock() }()
 
 	ran := false
-	err = WithLock(dir, func() error {
+	err = WithLock(context.Background(), dir, func() error {
 		ran = true
 		return nil
 	})
@@ -170,7 +172,105 @@ func TestSetLockHookForTestFiresWhileHeld(t *testing.T) {
 	})
 	defer restore()
 
-	err := WithLock(dir, func() error { return nil })
+	err := WithLock(context.Background(), dir, func() error { return nil })
 	require.NoError(t, err)
 	assert.True(t, fired)
+}
+
+// TestWithLockCancellationUnblocksWaits pins the review finding: Ctrl-C
+// (context cancellation) must abort BOTH waits promptly — the in-process
+// semaphore wait and the cross-process flock wait — and surface as the
+// caller's own cancellation, not as a lock timeout.
+// No t.Parallel(): holds the package-level semaphore and the flock.
+func TestWithLockCancellationUnblocksWaits(t *testing.T) {
+	t.Run("cancel while waiting on the flock", func(t *testing.T) {
+		dir := t.TempDir()
+		fl := flock.New(filepath.Join(dir, configLockName))
+		locked, err := fl.TryLock()
+		require.NoError(t, err)
+		require.True(t, locked)
+		defer func() { _ = fl.Unlock() }()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- WithLock(ctx, dir, func() error { return nil }) }()
+		time.Sleep(150 * time.Millisecond) // let the waiter reach TryLockContext
+		cancel()
+		select {
+		case werr := <-done:
+			require.Error(t, werr)
+			assert.ErrorIs(t, werr, context.Canceled, "cancellation must pass through, not be dressed as a lock timeout")
+		case <-time.After(5 * time.Second):
+			t.Fatal("cancellation did not unblock the flock wait")
+		}
+	})
+
+	t.Run("cancel while waiting on the in-process semaphore", func(t *testing.T) {
+		dir := t.TempDir()
+		holderParked := make(chan struct{})
+		holderRelease := make(chan struct{})
+		holderDone := make(chan error, 1)
+		var once sync.Once
+		restore := SetLockHookForTest(func() {
+			once.Do(func() { close(holderParked) })
+			<-holderRelease
+		})
+		go func() { holderDone <- WithLock(context.Background(), dir, func() error { return nil }) }()
+
+		// Wait until the holder is provably inside the hook (semaphore held);
+		// the channel gives the happens-before edge that makes removing the
+		// hook race-free. The waiter below must not park in it.
+		select {
+		case <-holderParked:
+		case <-time.After(10 * time.Second):
+			t.Fatal("holder never reached the lock hook")
+		}
+		restore()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		waiterDone := make(chan error, 1)
+		go func() { waiterDone <- WithLock(ctx, dir, func() error { return nil }) }()
+		time.Sleep(150 * time.Millisecond) // let the waiter block on the semaphore
+		cancel()
+		select {
+		case werr := <-waiterDone:
+			require.Error(t, werr)
+			assert.ErrorIs(t, werr, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Fatal("cancellation did not unblock the semaphore wait")
+		}
+
+		close(holderRelease)
+		require.NoError(t, <-holderDone)
+	})
+}
+
+// TestWithLockPreCanceledContextNeverRunsFn pins the re-review P1: when the
+// caller's context is already canceled, both acquisition select arms are
+// ready and Go may pick the semaphore send — fn must still never run, with
+// or without the flock (the env opt-out path has no later context check),
+// and no filesystem work may happen first.
+// No t.Parallel(): t.Setenv in the second case.
+func TestWithLockPreCanceledContextNeverRunsFn(t *testing.T) {
+	run := func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "never-created")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		ran := false
+		// The two-ready-arms choice is random: iterate so a lucky Done pick
+		// cannot hide the bug.
+		for i := 0; i < 50; i++ {
+			err := WithLock(ctx, dir, func() error { ran = true; return nil })
+			require.Error(t, err)
+			assert.ErrorIs(t, err, context.Canceled)
+		}
+		assert.False(t, ran, "fn must never run under a canceled context")
+		_, statErr := os.Stat(dir)
+		assert.True(t, os.IsNotExist(statErr), "no filesystem work under a canceled context")
+	}
+	t.Run("flock path", run)
+	t.Run("env opt-out path", func(t *testing.T) {
+		t.Setenv(EnvConfigNoLock, "1")
+		run(t)
+	})
 }

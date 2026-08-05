@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -124,7 +125,7 @@ func main() {
 		if nolock {
 			err = doWork()
 		} else {
-			err = config.WithLock(dir, doWork)
+			err = config.WithLock(context.Background(), dir, doWork)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "configwrite:", err)

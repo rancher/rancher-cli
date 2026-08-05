@@ -137,7 +137,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	// snapshot, which can predate a concurrent policy change
 	// (config-write-lock plan, review issue 2).
 	var warnings []string
-	if err := config.WithLock(l.dir, func() error {
+	if err := config.WithLock(ctx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
 		if err != nil {
 			return err

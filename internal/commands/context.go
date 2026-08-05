@@ -58,7 +58,7 @@ func (contextSetCmd) Describe() runtime.Descriptor {
 		Examples: []string{"rancher config set-context --current --cluster c-1 --project p-1"},
 	}
 }
-func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (c contextSetCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cluster, project := in.String("cluster"), in.String("project")
 	if ce := rejectShadowedGlobalOverride(cluster, project); ce != nil {
 		return runtime.Result{}, ce
@@ -76,7 +76,7 @@ func (c contextSetCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 		ctxName string
 		ctx     config.Context
 	)
-	if err := config.WithLock(c.dir, func() error {
+	if err := config.WithLock(cmdCtx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
 		if err != nil {
 			return err
@@ -124,13 +124,13 @@ func (contextUseCmd) Describe() runtime.Descriptor {
 		Examples:    []string{"rancher config use-context acme-prod"},
 	}
 }
-func (c contextUseCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (c contextUseCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	if len(in.Args()) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "argument <name> is required").
 			WithHint("provide <name>")
 	}
 	name := in.Args()[0]
-	if err := config.WithLock(c.dir, func() error {
+	if err := config.WithLock(cmdCtx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
 		if err != nil {
 			return err

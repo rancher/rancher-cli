@@ -259,7 +259,7 @@ func TestConfigEditConflictPreservesTemp(t *testing.T) {
 	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Message, "changed while you were editing")
 	assert.Contains(t, ce.Message, capturedTemp, "error message must name the preserved temp path")
 
@@ -304,7 +304,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 		_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Equal(t, clierr.CodeConflict, ce.Code)
 		assert.Contains(t, ce.Message, "changed while you were editing")
 
 		_, statErr := os.Stat(capturedTemp)
@@ -314,4 +314,31 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 		require.NoError(t, readErr)
 		assert.Equal(t, concurrentContent, string(got), "concurrent content must survive")
 	})
+}
+
+// TestConfigEditCanceledLockWaitPassesThrough pins the re-review P2 finding:
+// a cancellation hitting the write-lock wait must surface as the caller's
+// own context.Canceled — never dressed as "writing config failed" — while
+// the edits stay preserved in the temp file.
+func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	var capturedTemp string
+	launch := func(bin string, launchArgs []string, tempPath string) error {
+		capturedTemp = tempPath
+		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cmd := &configEditCmd{dir: dir, launchEditor: launch}
+	_, err := cmd.Execute(ctx, args{}, &fakePrompter{canPrompt: true})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled, "cancellation must pass through the write-back path")
+	assert.NotContains(t, err.Error(), "writing config failed")
+
+	_, statErr := os.Stat(capturedTemp)
+	require.NoError(t, statErr, "edits must stay preserved on cancellation")
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -980,7 +981,7 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 
 	err1 := make(chan error, 1)
 	go func() {
-		err1 <- WithLock(dir, func() error {
+		err1 <- WithLock(context.Background(), dir, func() error {
 			return store1.SetToken(ServerRef{Name: "alpha"}, "token-alpha")
 		})
 	}()
@@ -997,7 +998,7 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 	// still holds it via the hook.
 	err2 := make(chan error, 1)
 	go func() {
-		err2 <- WithLock(dir, func() error {
+		err2 <- WithLock(context.Background(), dir, func() error {
 			return store2.SetToken(ServerRef{Name: "beta"}, "token-beta")
 		})
 	}()

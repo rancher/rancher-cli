@@ -45,7 +45,7 @@ func (setCompletionCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	networkStr := in.String("network")
 	timeoutStr := in.String("timeout")
 	if networkStr == "" && timeoutStr == "" {
@@ -78,7 +78,7 @@ func (c setCompletionCmd) Execute(_ context.Context, in runtime.Input, _ runtime
 		result map[string]any
 		note   string
 	)
-	if err := config.WithLock(c.dir, func() error {
+	if err := config.WithLock(cmdCtx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
 		if err != nil {
 			return err

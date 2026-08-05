@@ -38,7 +38,7 @@ func (logoutCmd) Describe() runtime.Descriptor {
 	}
 }
 
-func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	all := in.Bool("all")
 	name := ""
 	if a := in.Args(); len(a) > 0 {
@@ -55,7 +55,7 @@ func (l logoutCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompt
 		deletedFrom  map[string][]string
 		deletedCache []string
 	)
-	if err := config.WithLock(l.dir, func() error {
+	if err := config.WithLock(cmdCtx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
 		if err != nil {
 			return err
