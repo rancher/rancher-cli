@@ -421,6 +421,21 @@ success, never `NOT_FOUND`) so teardown scripts stay green.
 OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
 file-backed regardless of policy. Accepted trade-off.
 
+**Config-directory lock inventory.** Three advisory cross-process locks guard their
+respective files via `flock` (released by the OS on process exit):
+
+- `<dir>/config.lock` — guards `config.yaml` and `credentials.yaml` writes; taken at
+  command level via `config.WithLock`.
+- `<dir>/token-cache.lock` — guards `token-cache.yaml` reads that trigger a write-back;
+  taken by `withCacheLock`.
+- `<dir>/credhelper-provenance.lock` — guards the helper-records file; taken by
+  `withHelperRecordsLock`.
+
+One ordering rule holds across all three: the config lock is always outermost. Code
+holding either of the other two locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
+(any non-empty value) skips the `flock` — escape hatch for filesystems with broken
+advisory locking — while the process-level mutex still serializes in-process callers.
+
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
 `/v1-public/authproviders` and then runs the matching flow: **basic**
 (username/password), **SAML** (generates an RSA-2048 keypair, sends the public key,
@@ -548,19 +563,15 @@ against real servers, and thin hand-owned structs (a few fields, decoded
 locally) where a specific shape matters. kubectl makes the same choice for
 its generic verbs.
 
-**No inter-process lock on the config directory.** Every config-dir mutation is a
-load-modify-write cycle, and nothing serializes that cycle across processes: two
-concurrent `rancher` invocations can each read the config, each write it, and the
-second silently discards the first's change. `atomicWriteFile`'s temp-and-rename
-keeps any single file from being torn or half-written, but it does not make the
-surrounding read-modify-write atomic. The absence is deliberate. An advisory
-`flock` on a dedicated `.lock` file was designed and built, then rejected.
-kubectl's experience with kubeconfig locking is the cautionary one: it takes a lock
-on every file in `KUBECONFIG`, so a read-only entry the command never intends to
-write turns an otherwise valid operation into a hard `permission denied`
-(kubernetes/kubectl#708); its flock implementation is unix-only; and upstream has
-since added an opt-out and now advises separate files where concurrent access is a
-risk, rather than leaning on the lock. The trade only pays when independent
-processes share the config. Here the CLI is the sole writer of its own config dir,
-so the residual race is a user racing themselves: two `rancher` commands mutating
-the same config at the same instant.
+**Config-directory write locking.** Every config-dir mutation is a load-modify-write
+cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
+half-written, but it does not make the surrounding read-modify-write atomic. The lock
+inventory above closes that window: `config.WithLock` takes an exclusive `flock` on
+`<dir>/config.lock` plus a process-level mutex, so the read that decides is the read
+that wins, both within a process and across processes. kubectl's earlier attempt at
+kubeconfig locking is the cautionary reference: it locked every file in `KUBECONFIG`,
+so a read-only entry the command never intended to write could turn a valid operation
+into `permission denied` (kubernetes/kubectl#708). The design here avoids that by using
+a single dedicated lock file per protected data set rather than locking the data files
+themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
+filesystems with broken advisory locking.
