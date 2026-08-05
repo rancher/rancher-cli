@@ -489,6 +489,7 @@ never depends on them.
   | `RANCHER_CLI_CONFIG_DIR` | config directory |
   | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
   | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
+  | `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
 
   The global `--context cluster[:project]` flag overrides `RANCHER_CLI_CONTEXT`
   for a single invocation. `--context c:` (trailing colon, no project) clears

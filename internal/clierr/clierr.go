@@ -45,12 +45,14 @@ type Error struct {
 	// Details carries an optional command-specific structured payload
 	// (e.g. revoke's partial-failure split). Shape is owned by the
 	// producing command; consumers decode by command context.
-	Details any `json:"details,omitempty"`
+	Details any   `json:"details,omitempty"`
+	cause   error // not serialized; enables errors.Is/As chaining
 }
 
 func New(code, message string) *Error { return &Error{Code: code, Message: message} }
 
 func (e *Error) Error() string { return e.Message }
+func (e *Error) Unwrap() error { return e.cause }
 
 // ExitCode returns the process exit status for this error's code.
 func (e *Error) ExitCode() int { return ExitCode(e.Code) }
@@ -74,6 +76,7 @@ func CodeExits() map[string]int {
 }
 
 func (e *Error) WithHint(h string) *Error            { e.Hint = h; return e }
+func (e *Error) WithCause(err error) *Error          { e.cause = err; return e }
 func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
 func (e *Error) WithDetails(d any) *Error            { e.Details = d; return e }

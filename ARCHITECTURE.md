@@ -426,8 +426,11 @@ respective files via `flock` (released by the OS on process exit):
 
 - `<dir>/config.lock` — guards `config.yaml` and `credentials.yaml` writes; taken at
   command level via `config.WithLock`.
-- `<dir>/token-cache.lock` — guards `token-cache.yaml` reads that trigger a write-back;
-  taken by `withCacheLock`.
+- `<dir>/token-cache.lock` — guards every cache write: `SetCachedCred`,
+  `DeleteCachedCred`, `DeleteAllCachedCreds`, and the prune paths of
+  `GetCachedCred` and `ListCachedCreds`; taken by `withCacheLock`. Plain
+  reads stay lock-free. The credstore pin file (`credstore-pin`) is
+  deliberately lock-free — last-writer-wins by design (see `pin.go`).
 - `<dir>/credhelper-provenance.lock` — guards the helper-records file; taken by
   `withHelperRecordsLock`.
 
@@ -574,4 +577,7 @@ so a read-only entry the command never intended to write could turn a valid oper
 into `permission denied` (kubernetes/kubectl#708). The design here avoids that by using
 a single dedicated lock file per protected data set rather than locking the data files
 themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
-filesystems with broken advisory locking.
+filesystems with broken advisory locking. Waits are bounded at 60 s; a
+many-server `logout --all` can legitimately exceed it (each helper call takes
+up to 30 s inside the lock); `RANCHER_CLI_CONFIG_NO_LOCK` is the escape hatch
+for that case.

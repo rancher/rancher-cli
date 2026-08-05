@@ -120,6 +120,9 @@ func NewFileStore(dir string) CredStore {
 // between SetToken's read and write. Lets tests pin the exact stale-snapshot
 // interleaving of two fileStore instances (two processes' worth of state).
 // Nil in production.
+//
+// The calling test must not use t.Parallel(): the hook is a package-level
+// seam shared by every SetToken call.
 var setTokenHook func()
 
 // setCachedLock is a test-only synchronization point, invoked (when non-nil)

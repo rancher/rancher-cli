@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -135,6 +136,10 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "another rancher process")
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Hint, "RANCHER_CLI_CONFIG_NO_LOCK")
 }
 
 func TestWithLockEnvOptOutSkipsFlock(t *testing.T) {

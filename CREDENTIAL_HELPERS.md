@@ -86,6 +86,9 @@ but do not treat it as a transactional guarantee.
   (e.g. `VAULT_TOKEN`, `op` session state) is outside the protocol's scope
   and follows that backend's conventions.
 - The CLI enforces a 30-second timeout per invocation.
+- A helper must not invoke `rancher` commands that modify the CLI's own
+  configuration; the calling command may hold the config write lock during
+  helper execution, so such a call waits and then fails.
 
 ## Writing a helper in Go
 

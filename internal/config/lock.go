@@ -2,20 +2,26 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 const configLockName = "config.lock"
 
 // lockWaitTimeout bounds how long WithLock waits for another process to
 // release the config lock. A var so tests shorten it.
-var lockWaitTimeout = 10 * time.Second
+//
+// 60 s exceeds the worst expected single hold: a credential-helper call inside
+// a locked span is bounded at execHelperTimeout (30 s), but logout --all
+// multiplies helper calls by server count, so a waiter may still time out in
+// that pathological case. RANCHER_CLI_CONFIG_NO_LOCK is the escape hatch when
+// that occurs.
+var lockWaitTimeout = 60 * time.Second
 
 // configLockMu serializes same-process WithLock callers so goroutines in
 // one process never contend on the flock.
@@ -29,6 +35,9 @@ var lockHeldHook func()
 // SetLockHookForTest sets the config-lock hook for the current test run;
 // call the returned restore in cleanup. Exported from non-test code so
 // other packages' tests (internal/commands) can pin lock/load orderings.
+//
+// The calling test must not use t.Parallel(): the hook is a package-level
+// seam shared by every WithLock call.
 func SetLockHookForTest(fn func()) (restore func()) {
 	old := lockHeldHook
 	lockHeldHook = fn
@@ -65,7 +74,10 @@ func WithLock(dir string, fn func() error) error {
 			lockErr = context.DeadlineExceeded
 		}
 		if lockErr != nil {
-			return fmt.Errorf("locking the configuration directory (another rancher process may be writing): %w", lockErr)
+			return clierr.New(clierr.CodeGeneric,
+				"locking the configuration directory (another rancher process may be writing): "+lockErr.Error()).
+				WithCause(lockErr).
+				WithHint("set RANCHER_CLI_CONFIG_NO_LOCK=1 to skip the flock on filesystems with broken file locking")
 		}
 		defer func() { _ = fl.Unlock() }()
 	}

@@ -23,12 +23,17 @@ func assertSerializedWithLoadUnderLock(t *testing.T, dir string, first func(), m
 	t.Helper()
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	var once sync.Once
+	var enteredOnce sync.Once
+	var releaseOnce sync.Once
+	closeRelease := func() { releaseOnce.Do(func() { close(release) }) }
 	restore := config.SetLockHookForTest(func() {
-		once.Do(func() { close(entered) }) // first holder only
+		enteredOnce.Do(func() { close(entered) }) // first holder only
 		<-release
 	})
 	defer restore()
+	// Guard release on all exit paths so a t.Fatal cannot leave the first
+	// goroutine parked holding the process mutex and hang the whole package.
+	t.Cleanup(closeRelease)
 
 	firstDone := make(chan struct{})
 	go func() { defer close(firstDone); first() }()
@@ -48,7 +53,7 @@ func assertSerializedWithLoadUnderLock(t *testing.T, dir string, first func(), m
 		t.Fatal("second command completed while the first held the lock")
 	case <-time.After(200 * time.Millisecond):
 	}
-	close(release)
+	closeRelease()
 	<-firstDone
 	<-secondDone
 }

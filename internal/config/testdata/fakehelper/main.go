@@ -110,7 +110,14 @@ func main() {
 				cfg.Servers = map[string]config.Server{}
 			}
 			cfg.Servers[serverName] = config.Server{URL: "https://" + serverName + ".example"}
-			return cfg.Write()
+			if err := cfg.Write(); err != nil {
+				return err
+			}
+			// Print "done" while the lock is still held so that
+			// lock_process_test.go's firstDoneIdx < secondLoadedIdx ordering
+			// is enforced by mutual exclusion, not just the 100 ms poll gap.
+			fmt.Println("done")
+			return nil
 		}
 
 		var err error
@@ -123,7 +130,6 @@ func main() {
 			fmt.Fprintln(os.Stderr, "configwrite:", err)
 			os.Exit(1)
 		}
-		fmt.Println("done")
 		os.Exit(0)
 	}
 
