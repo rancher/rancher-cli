@@ -156,8 +156,18 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			}
 			start := time.Now()
 			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout, c.k.WaitFailsOnStalled)
+			var waitWarnings []string
 			if err == nil {
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
+				if c.k.WaitFailsOnStalled {
+					if w := freshSuccessWarning(one, c.k.Name, name); w != "" {
+						waitWarnings = append(waitWarnings, w)
+					}
+				}
+			}
+			if err == nil {
+				return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
+					Summary: waitSummary, Warnings: waitWarnings}, nil
 			}
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)

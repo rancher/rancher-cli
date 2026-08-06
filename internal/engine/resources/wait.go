@@ -78,6 +78,17 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// carrying whatever state was last observed into the eventual message.
 		default:
 			last = obj
+			// A controller that has not reconciled the object's current
+			// generation yet has written none of the conditions we are
+			// about to trust — a freshly created object can carry a
+			// default Ready=True before its controller ever runs. When
+			// the object tracks observedGeneration and it lags, nothing
+			// on it is meaningful: keep polling. Objects without the
+			// field (no generation tracking) are always considered
+			// settled.
+			if !settled(obj) {
+				break
+			}
 			if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
 				msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
 				return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
@@ -198,4 +209,35 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 	default:
 		return ""
 	}
+}
+
+// settled reports whether the object's controller has reconciled its
+// current generation: when status.observedGeneration is present and lags
+// metadata.generation, every condition describes an older spec and cannot
+// be trusted. Objects without the field report settled — plenty of kinds
+// never track generations.
+func settled(obj *unstructured.Unstructured) bool {
+	og, found, _ := unstructured.NestedInt64(obj.Object, "status", "observedGeneration")
+	if !found {
+		return true
+	}
+	return og >= obj.GetGeneration()
+}
+
+// freshSuccessWarning covers the window generation tracking cannot: a
+// kstatus controller may abort into Stalled only after retry backoff
+// (Fleet flips a bad GitRepo ~15s post-create), while the object carries
+// a default satisfied condition from birth. A wait that succeeds while
+// the object is younger than freshWindow gets an advisory warning naming
+// the re-check, because the success may predate the controller's verdict.
+// Applied only to kinds that opted into Stalled semantics.
+const freshWindow = 30 * time.Second
+
+func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name string) string {
+	created := obj.GetCreationTimestamp()
+	if created.IsZero() || time.Since(created.Time) > freshWindow {
+		return ""
+	}
+	return fmt.Sprintf("condition satisfied %s after creation — a fresh %s's conditions may predate its controller's verdict; re-check shortly with: rancher get %s %s",
+		time.Since(created.Time).Round(time.Second), kindName, kindName, name)
 }

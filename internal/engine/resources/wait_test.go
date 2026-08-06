@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -556,4 +557,59 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "x stalled: condition Stalled=True")
+}
+
+// TestWaitForSkipsUnsettledGenerations pins the exercise-11 settle gate: an
+// object whose status.observedGeneration lags metadata.generation carries
+// conditions from an older spec — the wait must keep polling instead of
+// trusting a satisfied condition or a Stalled abort on it.
+func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	stale := multiConditionObj([3]string{"Ready", "True", ""})
+	stale.SetGeneration(2)
+	require.NoError(t, unstructured.SetNestedField(stale.Object, int64(1), "status", "observedGeneration"))
+
+	settledObj := multiConditionObj([3]string{"Ready", "True", ""})
+	settledObj.SetGeneration(2)
+	require.NoError(t, unstructured.SetNestedField(settledObj.Object, int64(2), "status", "observedGeneration"))
+
+	client := &seqClient{objs: []*unstructured.Unstructured{stale, settledObj}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, 2, client.calls, "the unsettled first observation must not satisfy the wait")
+
+	// The stale generation must not trigger the Stalled abort either.
+	staleStalled := multiConditionObj([3]string{"Stalled", "True", "old spec"})
+	staleStalled.SetGeneration(3)
+	require.NoError(t, unstructured.SetNestedField(staleStalled.Object, int64(2), "status", "observedGeneration"))
+	ready := multiConditionObj([3]string{"Ready", "True", ""})
+	client2 := &seqClient{objs: []*unstructured.Unstructured{staleStalled, ready}}
+	got, err = waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+	require.NoError(t, err, "a stale Stalled=True must not abort the wait")
+	require.NotNil(t, got)
+}
+
+// TestFreshSuccessWarning pins the advisory covering the window generation
+// tracking cannot close (exercise-11 S-09.3): a kstatus controller may
+// flip Stalled only after retry backoff, so a success on a seconds-old
+// object warns; an aged object does not.
+func TestFreshSuccessWarning(t *testing.T) {
+	t.Parallel()
+	young := multiConditionObj([3]string{"Ready", "True", ""})
+	young.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-2 * time.Second)))
+	w := freshSuccessWarning(young, "gitrepo", "repo-1")
+	assert.Contains(t, w, "re-check shortly")
+	assert.Contains(t, w, "rancher get gitrepo repo-1")
+
+	old := multiConditionObj([3]string{"Ready", "True", ""})
+	old.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-5 * time.Minute)))
+	assert.Empty(t, freshSuccessWarning(old, "gitrepo", "repo-1"))
+
+	noTimestamp := multiConditionObj([3]string{"Ready", "True", ""})
+	assert.Empty(t, freshSuccessWarning(noTimestamp, "gitrepo", "repo-1"))
 }
