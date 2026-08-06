@@ -7895,7 +7895,7 @@
       ],
       "flags": [
         {
-          "desc": "print the full capability manifest (every command expanded, kinds, envVars, error codes) instead of the table of contents",
+          "desc": "emit the full capability manifest — every command expanded, kinds, environment variables, error codes — in structured output (-o json/yaml); the table view stays the table of contents",
           "name": "all",
           "type": "bool"
         },

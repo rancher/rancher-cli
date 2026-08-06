@@ -38,7 +38,7 @@ func (s *schemaCmd) Describe() Descriptor {
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
 		Flags: []ArgSpec{
 			{Name: "all", Type: "bool",
-				Desc: "print the full capability manifest (every command expanded, kinds, envVars, error codes) instead of the table of contents"},
+				Desc: "emit the full capability manifest — every command expanded, kinds, environment variables, error codes — in structured output (-o json/yaml); the table view stays the table of contents"},
 			{Name: "kind", Type: "bool",
 				Desc: "resolve the selector as a kind, not a command"},
 			// The verb enum is a static literal — the descriptor cannot see
@@ -117,19 +117,20 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	}
 	asKind := in.Bool("kind")
 	f := filtersFrom(in)
+	// Mutually exclusive selection modes: --all | filter/search | positional
+	// selector | --kind. --all is tested first; within its conflict switch
+	// asKind precedes the positional check so `schema pod --kind --all` names
+	// --kind in the error rather than the selector.
 	if in.Bool("all") {
 		switch {
 		case f.active():
-			return Result{}, clierr.New(clierr.CodeValidation,
-				"--all prints the unfiltered manifest; drop "+strings.Join(f.describe(), " ")+" or drop --all")
-		case len(in.Args()) > 0:
-			return Result{}, clierr.New(clierr.CodeValidation,
-				"--all prints the whole manifest; drop the selector or drop --all")
+			return Result{}, allConflict(strings.Join(f.describe(), " "))
 		case asKind:
-			return Result{}, clierr.New(clierr.CodeValidation,
-				"--all prints the whole manifest; --kind selects one kind — drop one")
+			return Result{}, allConflict("--kind")
+		case len(in.Args()) > 0:
+			return Result{}, allConflict("the selector")
 		}
-		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOC(m)}, nil
+		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOCText(m, false)}, nil
 	}
 	if f.active() {
 		// SE-20: filters and --search span the whole surface; a positional
@@ -281,6 +282,15 @@ func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("%s cannot combine with %s", strings.Join(f.describe(), ", "), with)).
 		WithHint("filters and --search search the whole surface; drop the selector or the filter")
+}
+
+// allConflict constructs the --all selection-mode conflict error. mode names
+// what the caller also passed: a filter description (from schemaFilters.describe()),
+// "--kind", or "the selector". The four mutually exclusive modes are enumerated
+// at the --all switch site in Execute.
+func allConflict(mode string) error {
+	return clierr.New(clierr.CodeValidation,
+		"--all prints the unfiltered manifest; drop "+mode+" or drop --all")
 }
 
 // lookupKind resolves a positional selector against the manifest's kind rows

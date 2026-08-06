@@ -976,7 +976,9 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 
 // TestSchemaAllReturnsFullManifest pins --all as exact delegation: the
 // result marshals byte-equivalent to the registry's own manifest —
-// nothing filtered, nothing added (review P2).
+// nothing filtered, nothing added (review P2). Text is the TOC (the
+// table view stays the TOC under --all; structured output carries the
+// full manifest). The self-referential footer must be absent.
 func TestSchemaAllReturnsFullManifest(t *testing.T) {
 	t.Parallel()
 	reg := kindRegistry()
@@ -988,6 +990,11 @@ func TestSchemaAllReturnsFullManifest(t *testing.T) {
 	want, err := json.Marshal(reg.Schema("v-test", "2.14"))
 	require.NoError(t, err)
 	assert.JSONEq(t, string(want), string(got), "--all must delegate the complete, unchanged manifest")
+
+	assert.True(t, strings.HasPrefix(res.Text, "rancher v-test — "),
+		"--all text is the TOC, headed by the CLI version and counts")
+	assert.NotContains(t, res.Text, "full manifest: rancher schema --all",
+		"--all text must not carry the self-referential footer")
 }
 
 // TestSchemaAllConflicts pins the VALIDATION conflicts: --all crossed with

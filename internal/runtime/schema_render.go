@@ -268,13 +268,11 @@ func readOnlyLine(m Manifest) string {
 	return "read-only (" + strings.Join(m.ReadOnlySources, ", ") + ")\n"
 }
 
-// renderTOC builds the bare-`schema` table of contents (SE-9): a header of
-// CLI version plus derived counts, the manifest's ordered sections with one
-// line per non-generated command, the generated get/patch/delete commands
-// collapsed into ONE kind-vocabulary block at the position of the first
-// generated command's group, and a footer of the exit-code strip plus the
-// `-o json` pointer. Rendered via Result.Text under default/table only.
-func renderTOC(m Manifest) string {
+// renderTOCText builds the bare-schema TOC text. withManifestLine controls
+// whether the "full manifest: rancher schema --all -o json" footer line is
+// appended; the bare path includes it, the --all path omits it (the footer
+// would be self-referential when --all is already active).
+func renderTOCText(m Manifest, withManifestLine bool) string {
 	generated := generatedCommandNames(m.Kinds)
 	byName := commandIndex(m.Commands)
 	genCount := 0
@@ -322,9 +320,19 @@ func renderTOC(m Manifest) string {
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
-	b.WriteString("full manifest: rancher schema --all -o json\n")
+	if withManifestLine {
+		b.WriteString("full manifest: rancher schema --all -o json\n")
+	}
 	return b.String()
 }
+
+// renderTOC builds the bare-`schema` table of contents (SE-9): a header of
+// CLI version plus derived counts, the manifest's ordered sections with one
+// line per non-generated command, the generated get/patch/delete commands
+// collapsed into ONE kind-vocabulary block at the position of the first
+// generated command's group, and a footer of the exit-code strip plus the
+// `-o json` pointer. Rendered via Result.Text under default/table only.
+func renderTOC(m Manifest) string { return renderTOCText(m, true) }
 
 // renderFilteredTOC builds the filter/search result view (SE-10/SE-11):
 // a match-count header naming the active filters, every retained command as
