@@ -140,17 +140,17 @@ func gateLine(ct CommandType, destructive, stability string) string {
 	case Local:
 		return "gates: none (local command)"
 	case Mutating:
-		var g string
-		switch destructive {
-		case "true":
-			g = "gates: --apply --yes"
-		case "dependsOnInput":
-			g = "gates: --apply; --yes when the input is destructive (see description)"
-		default:
-			g = "gates: --apply"
+		// The flag set comes from Gates — the single source shared with the
+		// manifest's gates field — and only the dependsOnInput prose (a
+		// conditional --yes the structured list deliberately omits) is
+		// layered on here, right after --apply.
+		gates := Gates(ct, destructive, stability)
+		g := "gates: " + gates[0]
+		if destructive == "dependsOnInput" {
+			g += "; --yes when the input is destructive (see description)"
 		}
-		if stability == string(safety.Deprecated) {
-			g += " --allow-deprecated"
+		for _, f := range gates[1:] {
+			g += " " + f
 		}
 		return g
 	default:

@@ -1,19 +1,25 @@
 #!/bin/bash
 set -e
-# Version resolution order: explicit $VERSION, the git checkout's HEAD, the
-# SHA baked into a `git archive` tarball (scripts/archive-sha, stamped via
-# .gitattributes export-subst), then "unknown". The archive fallback exists
-# because acceptance/packaging builds run from tarballs with no .git.
+# Version resolution order: explicit $VERSION, the SHA baked into a
+# `git archive` tarball (scripts/archive-sha, stamped via .gitattributes
+# export-subst), then the git checkout's HEAD, then "unknown".
+#
+# The archive stamp is consulted BEFORE git on purpose: `git rev-parse`
+# walks UP parent directories, so a tarball extracted anywhere inside an
+# unrelated repository (packaging monorepo, docker build context) would
+# silently report the enclosing repo's HEAD. In a real checkout the stamp
+# file still holds its unexpanded $Format placeholder, so git is used.
 if [ -n "$VERSION" ]; then
   echo "$VERSION"
   exit 0
 fi
-COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "")
-if [ -z "$COMMIT" ]; then
-  STAMP=$(cat "$(dirname "$0")/archive-sha" 2>/dev/null || echo "")
-  case "$STAMP" in
-    '$Format'*|'') COMMIT="unknown" ;;
-    *) COMMIT="$STAMP" ;;
-  esac
-fi
+STAMP=$(cat "$(dirname "$0")/archive-sha" 2>/dev/null || echo "")
+case "$STAMP" in
+  '$Format'*|'')
+    COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    ;;
+  *)
+    COMMIT="$STAMP"
+    ;;
+esac
 echo "dev-${COMMIT}"
