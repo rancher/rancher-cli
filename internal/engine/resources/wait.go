@@ -233,11 +233,18 @@ func settled(obj *unstructured.Unstructured) bool {
 // Applied only to kinds that opted into Stalled semantics.
 const freshWindow = 30 * time.Second
 
-func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name string) string {
+func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns string) string {
 	created := obj.GetCreationTimestamp()
 	if created.IsZero() || time.Since(created.Time) > freshWindow {
 		return ""
 	}
-	return fmt.Sprintf("condition satisfied %s after creation — a fresh %s's conditions may predate its controller's verdict; re-check shortly with: rancher get %s %s",
-		time.Since(created.Time).Round(time.Second), kindName, kindName, name)
+	recheck := fmt.Sprintf("rancher get %s %s", kindName, name)
+	if ns != "" {
+		// The re-check must target the same namespace the wait resolved —
+		// a copy-pasted command falling back to the kind's default
+		// workspace could 404 or, worse, report a same-named stranger.
+		recheck += " --namespace " + ns
+	}
+	return fmt.Sprintf("wait satisfied %s after creation — a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
+		time.Since(created.Time).Round(time.Second), kindName, recheck)
 }
