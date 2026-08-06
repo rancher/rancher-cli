@@ -105,6 +105,48 @@ func TestTOCViewNameRows(t *testing.T) {
 		"-o name is unchanged: EVERY selection command, generated included")
 }
 
+// TestCardViewFlattensTheCommand pins the spec'd card shape: data IS the command —
+// fields at top level, no commands array — plus globalExitCodes and the
+// kindViewHint mirror of the text card's collision pointer.
+func TestCardViewFlattensTheCommand(t *testing.T) {
+	t.Parallel()
+	m := readOnlyTOCManifest()
+	c := m.Commands[2] // delete pod, destructive
+	b, err := json.Marshal(newCardView(m, c, "pod"))
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+
+	assert.Equal(t, "delete pod", got["name"])
+	assert.Equal(t, "true", got["destructive"])
+	assert.Contains(t, got, "globalExitCodes")
+	assert.Equal(t, "pod", got["kindViewHint"])
+	assert.NotContains(t, got, "commands", "flattened: no wrapper array")
+	assert.NotContains(t, got, "kinds")
+	assert.NotContains(t, got, "envVars")
+}
+
+// TestCardViewOmitsEmptyKindHint pins that a non-colliding selector adds
+// no kindViewHint key at all.
+func TestCardViewOmitsEmptyKindHint(t *testing.T) {
+	t.Parallel()
+	m := readOnlyTOCManifest()
+	b, err := json.Marshal(newCardView(m, m.Commands[0], ""))
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	assert.NotContains(t, got, "kindViewHint")
+}
+
+// TestCardViewNameRows pins -o name for a command selection: one row, the
+// command's name.
+func TestCardViewNameRows(t *testing.T) {
+	t.Parallel()
+	m := readOnlyTOCManifest()
+	v := newCardView(m, m.Commands[1], "") // Commands[1] = "get pod"
+	assert.Equal(t, [][]string{{"get pod"}}, v.Rows())
+}
+
 // TestTOCGeneratedCountMatchesTheText pins the mirror as an assertion,
 // not a golden eyeball (plan-review round 4): the JSON's
 // generatedCommandCount equals the N the bare text TOC actually prints

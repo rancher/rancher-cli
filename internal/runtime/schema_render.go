@@ -40,7 +40,7 @@ func renderCommandCard(m Manifest, c SchemaCommand) string {
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
-	b.WriteString("global flags: see `rancher schema -o json` (globalFlags)\n")
+	b.WriteString("global flags: see `rancher schema --all -o json` (globalFlags)\n")
 	return b.String()
 }
 
@@ -322,7 +322,7 @@ func renderTOC(m Manifest) string {
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
-	b.WriteString("full manifest: rancher schema -o json\n")
+	b.WriteString("full manifest: rancher schema --all -o json\n")
 	return b.String()
 }
 
@@ -358,7 +358,7 @@ func renderFilteredTOC(m Manifest, f schemaFilters) string {
 			b.WriteString(indent + line + "\n")
 		}
 	}
-	b.WriteString("\nfull manifest: rancher schema -o json\n")
+	b.WriteString("\nfull manifest: rancher schema --all -o json\n")
 	return b.String()
 }
 

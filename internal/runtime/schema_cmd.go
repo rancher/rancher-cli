@@ -143,10 +143,12 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 				sel.Commands = []SchemaCommand{c}
 				sel.Groups = filterGroups(m.Groups, map[string]bool{c.Name: true})
 				text := renderCommandCard(sel, c)
+				kindHint := ""
 				if k, collides := lookupKind(m.Kinds, want); collides {
 					text += "kind view: rancher schema " + k.Name + " --kind\n"
+					kindHint = k.Name
 				}
-				return Result{Kind: "Schema", Data: newSchemaView(sel, []string{c.Name}), Text: text}, nil
+				return Result{Kind: "Schema", Data: newCardView(m, c, kindHint), Text: text}, nil
 			}
 		}
 	}

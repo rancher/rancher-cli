@@ -69,6 +69,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		wantNames []string // expected -o name lines
 		wantKind  string   // expected single kinds entry, "" = kinds untouched
 		isTOC     bool     // bare/filtered selections use tocView, not schemaView
+		isCard    bool     // command selections use cardView (flattened name at top level)
 	}
 
 	shapes := []shapeTC{
@@ -78,7 +79,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		},
 		{
 			name: "command selection", in: tin{a: []string{"kubeconfig"}},
-			wantCmds: []string{"kubeconfig"}, wantNames: []string{"kubeconfig"},
+			wantCmds: []string{"kubeconfig"}, wantNames: []string{"kubeconfig"}, isCard: true,
 		},
 		{
 			name: "kind selection", in: tin{a: []string{"crt"}},
@@ -99,6 +100,16 @@ func TestSchemaFormatCompat(t *testing.T) {
 		_, ce := Run(context.Background(), cmd, in, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce, "stderr: %s", errBuf.String())
 		return out.String()
+	}
+	// assertCardData checks the cardView JSON shape used by command selections:
+	// the command's fields are flattened to the top level — name at root, no
+	// commands wrapper array — plus globalExitCodes always present.
+	assertCardData := func(t *testing.T, data map[string]any, tc shapeTC) {
+		t.Helper()
+		require.Len(t, tc.wantCmds, 1, "card selection must have exactly one command name")
+		assert.Equal(t, tc.wantCmds[0], data["name"])
+		assert.Contains(t, data, "globalExitCodes")
+		assert.NotContains(t, data, "commands", "flattened: no commands wrapper array")
 	}
 	assertData := func(t *testing.T, data map[string]any, tc shapeTC) {
 		t.Helper()
@@ -143,9 +154,12 @@ func TestSchemaFormatCompat(t *testing.T) {
 				assert.Equal(t, "Schema", env["kind"])
 				data, ok := env["data"].(map[string]any)
 				require.True(t, ok)
-				if tc.isTOC {
+				switch {
+				case tc.isCard:
+					assertCardData(t, data, tc)
+				case tc.isTOC:
 					assertTOCData(t, data, tc)
-				} else {
+				default:
 					assertData(t, data, tc)
 				}
 			})
@@ -157,9 +171,12 @@ func TestSchemaFormatCompat(t *testing.T) {
 				assert.Equal(t, "Schema", env["kind"])
 				data, ok := env["data"].(map[string]any)
 				require.True(t, ok)
-				if tc.isTOC {
+				switch {
+				case tc.isCard:
+					assertCardData(t, data, tc)
+				case tc.isTOC:
 					assertTOCData(t, data, tc)
-				} else {
+				default:
 					assertData(t, data, tc)
 				}
 			})
@@ -177,10 +194,15 @@ func TestSchemaFormatCompat(t *testing.T) {
 			t.Run("template", func(t *testing.T) {
 				t.Parallel()
 				var tpl, want string
-				if tc.isTOC {
+				switch {
+				case tc.isCard:
+					require.Len(t, tc.wantCmds, 1)
+					tpl = "template={{ .name }}"
+					want = tc.wantCmds[0] + "\n"
+				case tc.isTOC:
 					tpl = "template={{ .commandCount }}"
 					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
-				} else {
+				default:
 					tpl = "template={{len .commands}}"
 					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
 				}

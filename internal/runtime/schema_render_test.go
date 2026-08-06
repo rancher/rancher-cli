@@ -85,7 +85,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "examples:")
 	assert.Contains(t, lines, "  rancher get pod -o json")
 	assert.Contains(t, lines, "exit codes: GENERIC=1 · VALIDATION=2 · AUTH=3")
-	assert.Contains(t, lines, "global flags: see `rancher schema -o json` (globalFlags)")
+	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
 func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
@@ -137,7 +137,7 @@ func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
 	assert.Contains(t, lines, "contract: local")
 	assert.Contains(t, lines, "gates: none (local command)")
 	assert.Contains(t, lines, "exit codes: GENERIC=1 · VALIDATION=2 · AUTH=3")
-	assert.Contains(t, lines, "global flags: see `rancher schema -o json` (globalFlags)")
+	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
 // TestSchemaCommandCardDependsOnInput pins the SE-3 dependsOnInput wording on
@@ -337,7 +337,7 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	kvAt := idx("  get kubernetes-versions — List installable versions")
 	grantAt := idx("grant — Grant a role")
 	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
-	pointerAt := idx("full manifest: rancher schema -o json")
+	pointerAt := idx("full manifest: rancher schema --all -o json")
 
 	assert.Less(t, schemaAt, completionAt, "unnamed leading section keeps registration order")
 	assert.Less(t, completionAt, authHdrAt)

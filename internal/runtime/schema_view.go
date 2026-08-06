@@ -136,6 +136,42 @@ func (v tocView) MarshalJSON() ([]byte, error) { return json.Marshal(v.toc()) }
 
 func (v tocView) MarshalYAML() (any, error) { return v.toc(), nil }
 
+// cardView is a command selection's Result.Data: the selected command's
+// fields FLATTENED to the top level (schema disclosure spec — no commands array
+// wrapper), the global exit map the text card's strip renders, and the
+// text card's kind-collision pointer as kindViewHint.
+type cardView struct {
+	manifest Manifest
+	cmd      SchemaCommand
+	kindHint string
+}
+
+func newCardView(m Manifest, c SchemaCommand, kindHint string) cardView {
+	return cardView{manifest: m, cmd: c, kindHint: kindHint}
+}
+
+// cardJSON is the typed marshal shape: embedding flattens the command's
+// fields to the top level while keeping deterministic field order for
+// BOTH encoders (an untyped map would be encoder-defined in YAML —
+// plan-review round 3, P3).
+type cardJSON struct {
+	SchemaCommand
+	GlobalExitCodes map[string]int `json:"globalExitCodes"`
+	KindViewHint    string         `json:"kindViewHint,omitempty"`
+}
+
+func (v cardView) card() cardJSON {
+	return cardJSON{SchemaCommand: v.cmd, GlobalExitCodes: v.manifest.ExitCodes, KindViewHint: v.kindHint}
+}
+
+func (v cardView) Columns() []string { return []string{"NAME"} }
+
+func (v cardView) Rows() [][]string { return [][]string{{v.cmd.Name}} }
+
+func (v cardView) MarshalJSON() ([]byte, error) { return json.Marshal(v.card()) }
+
+func (v cardView) MarshalYAML() (any, error) { return v.card(), nil }
+
 // commandNames lists m's command names in manifest order — the bare and
 // filtered selections' `-o name` sets.
 func commandNames(m Manifest) []string {

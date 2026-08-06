@@ -53,6 +53,19 @@ func viewTOC(t *testing.T, res Result) map[string]any {
 	return out
 }
 
+// viewCard decodes the cardView a command selection carries as Data into a
+// plain map for field-level assertions against the flattened card JSON shape.
+func viewCard(t *testing.T, res Result) map[string]any {
+	t.Helper()
+	v, ok := res.Data.(cardView)
+	require.True(t, ok, "schema Result.Data must be cardView for command selections, got %T", res.Data)
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(b, &out))
+	return out
+}
+
 func TestSchemaFilter(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
@@ -70,16 +83,14 @@ func TestSchemaFilter(t *testing.T) {
 	t.Run("multi-word name filters to one", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
 		require.NoError(t, err)
-		m := viewManifest(t, res)
-		require.Len(t, m.Commands, 1)
-		assert.Equal(t, "get pod", m.Commands[0].Name)
-		assert.NotEmpty(t, m.ErrorCodes, "filtered manifest keeps the shared context")
+		got := viewCard(t, res)
+		assert.Equal(t, "get pod", got["name"])
 	})
 
 	t.Run("alias matches", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pods"}}, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "get pod", viewManifest(t, res).Commands[0].Name)
+		assert.Equal(t, "get pod", viewCard(t, res)["name"])
 	})
 
 	t.Run("unknown command is VALIDATION", func(t *testing.T) {
@@ -134,9 +145,8 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher get pod [name]", lines[0])
 		assert.Contains(t, lines, "gates: none (read-only)")
-		m := viewManifest(t, res)
-		require.Len(t, m.Commands, 1)
-		assert.Equal(t, "get pod", m.Commands[0].Name)
+		got := viewCard(t, res)
+		assert.Equal(t, "get pod", got["name"])
 	})
 
 	t.Run("destructive deprecated mutating command card", func(t *testing.T) {
@@ -158,18 +168,18 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 	})
 }
 
-// TestSchemaSelectionPrunesGroups covers SE-18's consistency rule under
-// selection: each section's Commands is pruned to the retained command set
-// and empty sections are dropped, preserving relative order.
-func TestSchemaSelectionPrunesGroups(t *testing.T) {
+// TestSchemaSelectionCardShape covers the command card's flattened structured
+// shape: the selected command's fields are at the top level, no commands
+// wrapper array, no groups (card view is flattened — not a manifest slice).
+func TestSchemaSelectionCardShape(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
 	require.NoError(t, err)
-	m := viewManifest(t, res)
-	require.Len(t, m.Groups, 1)
-	assert.Equal(t, "get", m.Groups[0].Name)
-	assert.Equal(t, []string{"get pod"}, m.Groups[0].Commands)
+	got := viewCard(t, res)
+	assert.Equal(t, "get pod", got["name"])
+	assert.NotContains(t, got, "commands", "flattened: no commands wrapper array")
+	assert.NotContains(t, got, "groups", "flattened: no groups in structured output")
 }
 
 // kindRegistry builds a registry with a kind vocabulary mirroring the
@@ -282,10 +292,9 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher kubeconfig", lines[0])
 		assert.Contains(t, lines, "kind view: rancher schema kubeconfig --kind")
-		m := viewManifest(t, res)
-		require.Len(t, m.Commands, 1)
-		assert.Equal(t, "kubeconfig", m.Commands[0].Name)
-		assert.Len(t, m.Kinds, 5, "command selection leaves the kind vocabulary untouched")
+		got := viewCard(t, res)
+		assert.Equal(t, "kubeconfig", got["name"])
+		assert.Equal(t, "kubeconfig", got["kindViewHint"], "kind-collision pointer in structured output")
 	})
 
 	t.Run("--kind flips the collision to the kind card", func(t *testing.T) {
@@ -592,24 +601,20 @@ func TestSchemaSelectionFormats(t *testing.T) {
 		assert.Equal(t, def, out)
 	})
 
-	t.Run("json renders the envelope over the filtered manifest", func(t *testing.T) {
+	t.Run("json renders the envelope over the card", func(t *testing.T) {
 		t.Parallel()
 		out, _ := newRun(t, "json")
 		env := decodeEnvelope(t, []byte(out))
 		assert.Equal(t, "Schema", env["kind"])
 		data, ok := env["data"].(map[string]any)
 		require.True(t, ok)
-		cmds, ok := data["commands"].([]any)
-		require.True(t, ok)
-		require.Len(t, cmds, 1)
-		assert.Equal(t, "get pod", cmds[0].(map[string]any)["name"])
-		exits, ok := data["exitCodes"].(map[string]any)
-		require.True(t, ok, "W1's exitCodes map must survive selection")
-		assert.EqualValues(t, 2, exits["VALIDATION"])
+		assert.Equal(t, "get pod", data["name"], "command name at top level (flattened card)")
+		assert.Contains(t, data, "globalExitCodes", "exit map always present on card")
+		assert.NotContains(t, data, "commands", "flattened: no commands wrapper array")
 		assert.NotContains(t, out, "gates: none", "card text must not leak into json")
 	})
 
-	t.Run("yaml renders the envelope over the filtered manifest", func(t *testing.T) {
+	t.Run("yaml renders the envelope over the card", func(t *testing.T) {
 		t.Parallel()
 		out, _ := newRun(t, "yaml")
 		var env map[string]any
@@ -617,15 +622,13 @@ func TestSchemaSelectionFormats(t *testing.T) {
 		assert.Equal(t, "Schema", env["kind"])
 		data, ok := env["data"].(map[string]any)
 		require.True(t, ok)
-		cmds, ok := data["commands"].([]any)
-		require.True(t, ok)
-		require.Len(t, cmds, 1)
-		assert.Equal(t, "get pod", cmds[0].(map[string]any)["name"])
+		assert.Equal(t, "get pod", data["name"], "command name at top level (flattened card)")
+		assert.NotContains(t, data, "commands", "flattened: no commands wrapper array")
 	})
 
 	t.Run("template renders over the JSON view of Data", func(t *testing.T) {
 		t.Parallel()
-		out, _ := newRun(t, "template={{ (index .commands 0).name }}")
+		out, _ := newRun(t, "template={{ .name }}")
 		assert.Equal(t, "get pod\n", out)
 	})
 }
@@ -881,7 +884,11 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 			default:
 				res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
 				require.NoError(t, err)
-				m = viewManifest(t, res)
+				if cv, ok := res.Data.(cardView); ok {
+					m = cv.manifest
+				} else {
+					m = viewManifest(t, res)
+				}
 			}
 			want := map[string]bool{}
 			for _, c := range m.Commands {
@@ -968,9 +975,13 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 			for _, cand := range cands {
 				res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: strings.Fields(cand)}, nil)
 				require.NoError(t, err, "candidate %q must resolve as a schema selector", cand)
-				m := viewManifest(t, res)
-				assert.True(t, len(m.Commands) == 1 || len(m.Kinds) == 1,
-					"candidate %q must select one command or one kind", cand)
+				if cv, ok := res.Data.(cardView); ok {
+					assert.NotEmpty(t, cv.cmd.Name, "candidate %q must resolve to a named command", cand)
+				} else {
+					m := viewManifest(t, res)
+					assert.Equal(t, 1, len(m.Kinds),
+						"candidate %q must select one kind", cand)
+				}
 			}
 		})
 	}
