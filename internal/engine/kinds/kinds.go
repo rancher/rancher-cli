@@ -240,9 +240,14 @@ var table = []Kind{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
-		Completable: true,
-		Binding:     safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
-		Columns:     []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
+		// Cascade verified against rancher source 2026-08-05
+		// (pkg/controllers/managementuser/rbac/project_handler.go Remove):
+		// namespaces carrying field.cattle.io/creatorId are deleted, adopted
+		// ones are released; PRTBs and project-scoped secrets go regardless.
+		DeleteCascadeWarning: "deleting this project cascades: namespaces created through Rancher are deleted along with their workloads (namespaces moved into the project are released and survive); the project's role bindings and project-scoped secrets are removed",
+		Completable:          true,
+		Binding:              safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		Columns:              []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
 	{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},

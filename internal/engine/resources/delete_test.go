@@ -331,6 +331,7 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	t.Parallel()
 	gitrepo := mustKind(t, "gitrepo")
 	require.NotEmpty(t, gitrepo.DeleteCascadeWarning, "gitrepo row must declare the cascade warning")
+	require.NotEmpty(t, mustKind(t, "project").DeleteCascadeWarning, "project row must declare the cascade warning")
 
 	client := &delClient{obj: objWithRV("repo-1", "7")}
 	fac := &recFactory{client: client}
