@@ -80,10 +80,11 @@ type Result struct {
 	Kind string
 	Data any
 	// Warnings render to stderr as "# warning: <w>" lines under format ""/
-	// "table", for BOTH paths renderResult supports: the Text branch below
-	// and the envelope (Data-driven) branch. json/yaml/name/template modes
-	// carry Warnings inside the envelope only — no stderr write, no double
-	// print.
+	// "table" for BOTH paths renderResult supports (the Text branch and the
+	// envelope/Data branch), and also under name/template — their stdout is
+	// raw (no envelope), so the stderr mirror is the only delivery path.
+	// json/yaml carry Warnings inside the envelope; no stderr write, no
+	// double print.
 	Warnings []string
 	Raw      bool
 	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope

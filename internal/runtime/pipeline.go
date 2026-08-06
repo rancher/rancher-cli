@@ -334,10 +334,14 @@ func renderResult(streams IO, res Result) *clierr.Error {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
-	// envelope-level warning would otherwise vanish exactly where a
-	// default/table-format user looks. Mirror the "# warning: <w>" stderr
-	// convention the res.Text branch above already uses.
-	if tableFormat(streams.Format) {
+	// envelope-level warning would otherwise reach the user only when the
+	// format embeds the full envelope (json/yaml). Mirror the
+	// "# warning: <w>" stderr convention for every other format: table/default
+	// (where a user looks at the rendered rows), name (whose stdout is the raw
+	// name field — no envelope), and template (whose stdout is the template
+	// expansion — no envelope). json/yaml carry warnings inside the envelope;
+	// mirroring there would double-print.
+	if streams.Format != "json" && streams.Format != "yaml" {
 		for _, w := range res.Warnings {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}

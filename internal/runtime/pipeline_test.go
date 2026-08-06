@@ -793,6 +793,52 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
 }
 
+// TestRenderResultNameFormatWarningsToStderr pins the round-3 High-1 fix: -o
+// name is a raw-output format whose stdout carries only the name field — the
+// envelope's warnings key is never emitted. renderResult must mirror each
+// warning to stderr as "# warning: <w>" so they are not silently dropped.
+func TestRenderResultNameFormatWarningsToStderr(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{
+			Kind:     "Cluster",
+			Data:     map[string]string{"name": "c-abc"},
+			Warnings: []string{"cert-expiry: 3 days"},
+		},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
+	assert.NotContains(t, out.String(), "cert-expiry")
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cert-expiry"),
+		"warning must appear exactly once total across both streams")
+}
+
+// TestRenderResultTemplateFormatWarningsToStderr pins the round-3 High-1 fix:
+// -o template=... is a raw-output format whose stdout is the template
+// expansion — the envelope's warnings key is not rendered. renderResult must
+// mirror each warning to stderr as "# warning: <w>".
+func TestRenderResultTemplateFormatWarningsToStderr(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{
+			Kind:     "Cluster",
+			Data:     map[string]string{"name": "c-abc"},
+			Warnings: []string{"cert-expiry: 3 days"},
+		},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "template={{.name}}"}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
+	assert.NotContains(t, out.String(), "cert-expiry")
+	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cert-expiry"),
+		"warning must appear exactly once total across both streams")
+}
+
 // TestRunValidatesOutputFormat pins the -o contract: the closed set of
 // literals plus template=<go-template>, validated BEFORE the command runs.
 // Anything else is a structured VALIDATION error — never Go template source.
