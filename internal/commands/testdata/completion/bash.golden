@@ -184,7 +184,10 @@ __rancher_bash_autocomplete() {
           else
             COMPREPLY+=("$(printf '%q' "${__rancher_name}") ")
           fi
-        done < <(compgen -f -- "${__rancher_fallback_cur}")
+        # compgen -f emits in platform/locale-dependent order (Linux bash
+        # groups directories first under some locales); a fixed collation
+        # keeps candidate order identical everywhere.
+        done < <(compgen -f -- "${__rancher_fallback_cur}" | LC_ALL=C sort)
       fi
     fi
 
