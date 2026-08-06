@@ -92,12 +92,15 @@ type Kind struct {
 	// for kinds where the expression is grounded in a real, well-known
 	// status.state/status.conditions shape; when in doubt, leave empty.
 	WaitDefault string
-	// WaitFailsOnStalled makes waits on this kind fail fast when the object
-	// reports a Stalled=True condition (the kstatus abort convention) even if
-	// the awaited condition reads satisfied — Fleet sets Ready=True alongside
-	// Stalled=True on a failed GitRepo clone. Opt-in per row because not
-	// every controller treats Stalled as terminal; set it only where the
-	// kind's controller is known to use kstatus abort semantics.
+	// WaitFailsOnStalled marks the kind's controller as kstatus-conformant
+	// and gates BOTH consequences: the Stalled=True fail-fast (abort the
+	// wait even when the awaited condition reads satisfied — Fleet sets
+	// Ready=True alongside Stalled=True on a failed GitRepo clone) AND the
+	// fresh-success advisory warning (freshSuccessWarning). Opt-in per row
+	// because not every controller treats Stalled as terminal; set it only
+	// where the kind's controller is known to use kstatus abort semantics.
+	// A future kind wanting only one of the two behaviours would need a new
+	// axis; none does today.
 	WaitFailsOnStalled bool
 	// DeleteCascadeWarning, when non-empty, is appended to the generic
 	// delete's Effect warnings: a plain statement of what the server removes

@@ -615,6 +615,22 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Contains(t, ce.Hint, "kinds array")
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
+
+	// TestSchemaUnknownSelectionPaddedSingleTokenGetsDualHint pins round-2 Low-6:
+	// a single arg with surrounding whitespace (e.g. " pod") contains a space
+	// but is a single token — strings.Fields splits it to one element, so it
+	// must stay in the dual tier, not the command tier.
+	t.Run("padded single-token selector gets dual hint not command hint", func(t *testing.T) {
+		t.Parallel()
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{" pod"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Hint, "kinds array",
+			"padded single token must get the dual hint, not the command-only hint")
+		assert.Contains(t, ce.Hint, "rancher schema -o name")
+	})
 }
 
 // TestSchemaSelectionFormats is the W2a seam regression for the schema result

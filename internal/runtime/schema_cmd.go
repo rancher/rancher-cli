@@ -334,10 +334,11 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 // list stops helping.
 const maxNearestMatches = 10
 
-// commandListHint and kindsArrayHint are SE-4's reusable hint fragments.
-// unknownSelection composes its per-mode hint from these two named constants
-// so the three final hint strings (dual, kindOnly, nearest) share one source
-// of truth rather than three inline literals.
+// commandListHint, kindsArrayHint, and dualListHint are SE-4's reusable hint
+// fragments. unknownSelection composes its per-mode hint from these three named
+// constants so the tier hints (dual, kindOnly, command) share one source of
+// truth rather than inline literals. Nearest-match candidates are a layer on
+// top of the tier hint, not a separate tier.
 const commandListHint = "run `rancher schema -o name` for the full command list"
 const kindsArrayHint = "run `rancher schema -o json` — its kinds array lists every kind name"
 const dualListHint = commandListHint + ", or `rancher schema -o json` for the kinds array"
@@ -355,7 +356,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	switch {
 	case kindOnly:
 		noun, hint = "kind", kindsArrayHint
-	case strings.Contains(want, " "):
+	case len(strings.Fields(want)) > 1:
 		noun, hint = "command", commandListHint
 	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).

@@ -594,6 +594,64 @@ func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 	require.NotNil(t, got)
 }
 
+// TestWaitTimeoutWithUnsettledObservationShowsCaveat pins the round-2 High-1
+// caveat: when the only observation seen before timeout had a lagging
+// observedGeneration, the timeout message must include the generation caveat
+// so operators know the reported state is stale.
+func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	unsettled := multiConditionObj([3]string{"Ready", "False", ""})
+	unsettled.SetGeneration(2)
+	require.NoError(t, unstructured.SetNestedField(unsettled.Object, int64(1), "status", "observedGeneration"))
+
+	client := &seqClient{objs: []*unstructured.Unstructured{unsettled}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.True(t, ce.Retryable)
+	assert.Contains(t, err.Error(), "not yet reconciled",
+		"timeout with only an unsettled observation must include the generation caveat")
+}
+
+// TestSettledAbsentFieldIsSettled documents the deliberate choice: a
+// generation-1 object with no status.observedGeneration field (the omitempty
+// zero case for a controller that never ran) passes straight through settled as
+// true. The freshSuccessWarning advisory covers this birth window instead.
+func TestSettledAbsentFieldIsSettled(t *testing.T) {
+	t.Parallel()
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "x", "generation": int64(1)},
+		"status":   map[string]any{},
+	}}
+	assert.True(t, settled(obj), "absent observedGeneration (omitempty zero) must be treated as settled")
+}
+
+// TestFreshSuccessWarningElapsedFormatting pins the round-2 Low-4 edge cases:
+// a sub-second-old object and a future creationTimestamp (server/client clock
+// skew) both render "immediately after creation" instead of "0s after creation"
+// or a negative duration.
+func TestFreshSuccessWarningElapsedFormatting(t *testing.T) {
+	t.Parallel()
+
+	subSecond := multiConditionObj([3]string{"Ready", "True", ""})
+	subSecond.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-100 * time.Millisecond)))
+	w := freshSuccessWarning(subSecond, "gitrepo", "repo-1", "")
+	assert.Contains(t, w, "immediately after creation",
+		"sub-second elapsed must render as 'immediately after creation'")
+	assert.NotContains(t, w, "0s after creation")
+
+	skewed := multiConditionObj([3]string{"Ready", "True", ""})
+	skewed.SetCreationTimestamp(metav1.NewTime(time.Now().Add(5 * time.Second)))
+	w2 := freshSuccessWarning(skewed, "gitrepo", "repo-1", "")
+	assert.Contains(t, w2, "immediately after creation",
+		"future creationTimestamp (clock skew) must render as 'immediately after creation'")
+}
+
 // TestFreshSuccessWarning pins the advisory covering the window generation
 // tracking cannot close (exercise-11 S-09.3): a kstatus controller may
 // flip Stalled only after retry backoff, so a success on a seconds-old

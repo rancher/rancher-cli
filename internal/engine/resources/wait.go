@@ -87,6 +87,16 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// field (no generation tracking) are always considered
 			// settled.
 			if !settled(obj) {
+				// Deliberately suppresses the abort checks
+				// (transitioning=error, Stalled=True, waitSatisfied)
+				// too: a stale Stalled or transitioning verdict
+				// describes a superseded spec and must not abort the
+				// wait. TestWaitForSkipsUnsettledGenerations pins this.
+				// The cost — a controller that only bumps
+				// observedGeneration on success masks its failure until
+				// timeout — is accepted; the timeout message surfaces
+				// it via the "(from an older generation, not yet
+				// reconciled)" caveat.
 				break
 			}
 			if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
@@ -124,6 +134,9 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond)
 	summary := "<no state observed>"
 	if last != nil {
 		summary = summarizeState(last, cond)
+		if !settled(last) {
+			summary += " (from an older generation, not yet reconciled)"
+		}
 	}
 	return clierr.Retryable(clierr.CodeGeneric,
 		fmt.Sprintf("timed out waiting for %s; last state: %s", name, summary)).
@@ -216,6 +229,12 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 // metadata.generation, every condition describes an older spec and cannot
 // be trusted. Objects without the field report settled — plenty of kinds
 // never track generations.
+//
+// Omitempty reality: a freshly created object whose controller never ran
+// usually serializes NO observedGeneration (int64 omitempty zero), so an
+// absent-field object passes this gate as settled. That birth window is
+// deliberately covered by freshSuccessWarning, not by this gate; the two
+// are a pair.
 func settled(obj *unstructured.Unstructured) bool {
 	og, found, _ := unstructured.NestedInt64(obj.Object, "status", "observedGeneration")
 	if !found {
@@ -238,6 +257,15 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 	if created.IsZero() || time.Since(created.Time) > freshWindow {
 		return ""
 	}
+	elapsed := time.Since(created.Time)
+	var when string
+	if elapsed < time.Second {
+		// Covers both sub-second-old objects and a future creationTimestamp
+		// from server/client clock skew (elapsed goes negative).
+		when = "immediately after creation"
+	} else {
+		when = elapsed.Round(time.Second).String() + " after creation"
+	}
 	recheck := fmt.Sprintf("rancher get %s %s", kindName, name)
 	if ns != "" {
 		// The re-check must target the same namespace the wait resolved —
@@ -245,6 +273,6 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 		// workspace could 404 or, worse, report a same-named stranger.
 		recheck += " --namespace " + ns
 	}
-	return fmt.Sprintf("wait satisfied %s after creation — a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
-		time.Since(created.Time).Round(time.Second), kindName, recheck)
+	return fmt.Sprintf("wait satisfied %s — a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
+		when, kindName, recheck)
 }
