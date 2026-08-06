@@ -96,11 +96,17 @@ type Kind struct {
 	// and gates BOTH consequences: the Stalled=True fail-fast (abort the
 	// wait even when the awaited condition reads satisfied — Fleet sets
 	// Ready=True alongside Stalled=True on a failed GitRepo clone) AND the
-	// fresh-success advisory warning (freshSuccessWarning). Opt-in per row
-	// because not every controller treats Stalled as terminal; set it only
-	// where the kind's controller is known to use kstatus abort semantics.
-	// A future kind wanting only one of the two behaviours would need a new
-	// axis; none does today.
+	// fresh-success advisory warning (freshSuccessWarning), AND the
+	// generation staleness gate (settled). Opt-in per row because not every
+	// controller treats Stalled as terminal; set it only where the kind's
+	// controller is known to use kstatus abort semantics.
+	// Six condition=Ready rows (provisioningcluster, capicluster,
+	// capimachine, capimachineset, capimachinedeployment, k3kcluster) are
+	// candidate beneficiaries of the fresh-success advisory but stay unset
+	// deliberately: their controllers are unvetted for kstatus semantics
+	// and no birth-window race has been observed on them; vetting is queued
+	// for a future live exercise. A future kind wanting only one of the
+	// gated behaviours would need a new axis.
 	WaitFailsOnStalled bool
 	// DeleteCascadeWarning, when non-empty, is appended to the generic
 	// delete's Effect warnings: a plain statement of what the server removes

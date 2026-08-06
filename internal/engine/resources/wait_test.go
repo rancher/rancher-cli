@@ -595,9 +595,10 @@ func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 }
 
 // TestWaitTimeoutWithUnsettledObservationShowsCaveat pins the round-2 High-1
-// caveat: when the only observation seen before timeout had a lagging
-// observedGeneration, the timeout message must include the generation caveat
-// so operators know the reported state is stale.
+// caveat: when a kstatus-opted (failOnStalled=true) wait times out and the
+// only observation had a lagging observedGeneration, the timeout message must
+// include the generation caveat so operators know the reported state is stale.
+// The caveat is scoped to failOnStalled kinds; non-opted kinds omit it.
 func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
 	orig := pollInterval
 	pollInterval = time.Millisecond
@@ -609,13 +610,39 @@ func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
 
 	client := &seqClient{objs: []*unstructured.Unstructured{unsettled}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, true)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.True(t, ce.Retryable)
 	assert.Contains(t, err.Error(), "not yet reconciled",
 		"timeout with only an unsettled observation must include the generation caveat")
+}
+
+// TestWaitForUnsettledUnstalledSucceedsImmediately pins that the generation
+// staleness gate is scoped to failOnStalled=true kinds. A non-opted kind
+// (failOnStalled=false) must check waitSatisfied on every poll regardless of
+// observedGeneration lag — so a permanently-unsettled object whose condition
+// is already satisfied at the first Get succeeds immediately instead of
+// polling until timeout (which was the pre-settlement-gate behaviour and must
+// be preserved for non-opted kinds).
+func TestWaitForUnsettledUnstalledSucceedsImmediately(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	// Object has generation=2 but observedGeneration=1 (unsettled) and
+	// already carries the satisfied condition.
+	unsettledReady := multiConditionObj([3]string{"Ready", "True", ""})
+	unsettledReady.SetGeneration(2)
+	require.NoError(t, unstructured.SetNestedField(unsettledReady.Object, int64(1), "status", "observedGeneration"))
+
+	client := &seqClient{objs: []*unstructured.Unstructured{unsettledReady}}
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+	require.NoError(t, err, "non-opted kind must succeed when condition is satisfied, regardless of observedGeneration lag")
+	require.NotNil(t, got)
+	assert.Equal(t, 1, client.calls, "wait must succeed on the first Get, not poll")
 }
 
 // TestSettledAbsentFieldIsSettled documents the deliberate choice: a

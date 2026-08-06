@@ -78,63 +78,60 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// carrying whatever state was last observed into the eventual message.
 		default:
 			last = obj
-			// A controller that has not reconciled the object's current
-			// generation yet has written none of the conditions we are
-			// about to trust — a freshly created object can carry a
-			// default Ready=True before its controller ever runs. When
-			// the object tracks observedGeneration and it lags, nothing
-			// on it is meaningful: keep polling. Objects without the
-			// field (no generation tracking) are always considered
-			// settled.
-			if !settled(obj) {
-				// Deliberately suppresses the abort checks
-				// (transitioning=error, Stalled=True, waitSatisfied)
-				// too: a stale Stalled or transitioning verdict
-				// describes a superseded spec and must not abort the
-				// wait. TestWaitForSkipsUnsettledGenerations pins this.
-				// The cost — a controller that only bumps
-				// observedGeneration on success masks its failure until
-				// timeout — is accepted; the timeout message surfaces
-				// it via the "(from an older generation, not yet
-				// reconciled)" caveat.
-				break
-			}
-			if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
-				msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
-				return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
-			}
-			// Stalled=True is the kstatus abort convention (Fleet sets it on a
-			// failed GitRepo clone while still reporting Ready=True), so it
-			// fails the wait even when the target condition reads satisfied —
-			// unless Stalled itself is what the caller is waiting for. Opt-in
-			// per kind row (WaitFailsOnStalled): not every controller treats
-			// Stalled as terminal, so a kind must be known-kstatus to abort.
-			if failOnStalled && (cond.kind != "condition" || cond.name != "Stalled") {
-				if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
-					if msg == "" {
-						msg = "condition Stalled=True"
-					}
-					return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, engine.Printable(msg)))
+			// The generation staleness gate applies only to kstatus-opted
+			// kinds (failOnStalled=true). A controller that has not
+			// reconciled the object's current generation yet has written
+			// none of the conditions we are about to trust — a freshly
+			// created object can carry a default Ready=True before its
+			// controller ever runs. When the object tracks
+			// observedGeneration and it lags, nothing on it is meaningful:
+			// keep polling. Objects without the field (no generation
+			// tracking) are always considered settled.
+			//
+			// Non-opted kinds (failOnStalled=false) keep pre-branch
+			// behaviour: transitioning=error and waitSatisfied are checked
+			// on every poll regardless of generation bookkeeping.
+			// TestWaitForSkipsUnsettledGenerations and
+			// TestWaitForUnsettledUnstalledSucceedsImmediately pin the two
+			// sides of this invariant.
+			if !failOnStalled || settled(obj) {
+				if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
+					msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
+					return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
 				}
-			}
-			if waitSatisfied(obj, cond) {
-				return obj, nil
+				// Stalled=True is the kstatus abort convention (Fleet sets it on a
+				// failed GitRepo clone while still reporting Ready=True), so it
+				// fails the wait even when the target condition reads satisfied —
+				// unless Stalled itself is what the caller is waiting for. Opt-in
+				// per kind row (WaitFailsOnStalled): not every controller treats
+				// Stalled as terminal, so a kind must be known-kstatus to abort.
+				if failOnStalled && (cond.kind != "condition" || cond.name != "Stalled") {
+					if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
+						if msg == "" {
+							msg = "condition Stalled=True"
+						}
+						return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, engine.Printable(msg)))
+					}
+				}
+				if waitSatisfied(obj, cond) {
+					return obj, nil
+				}
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, waitTimeoutErr(name, last, cond)
+			return nil, waitTimeoutErr(name, last, cond, failOnStalled)
 		case <-time.After(pollInterval):
 		}
 	}
 }
 
-func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond) *clierr.Error {
+func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond, failOnStalled bool) *clierr.Error {
 	summary := "<no state observed>"
 	if last != nil {
 		summary = summarizeState(last, cond)
-		if !settled(last) {
+		if failOnStalled && !settled(last) {
 			summary += " (from an older generation, not yet reconciled)"
 		}
 	}
@@ -254,17 +251,20 @@ const freshWindow = 30 * time.Second
 
 func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns string) string {
 	created := obj.GetCreationTimestamp()
-	if created.IsZero() || time.Since(created.Time) > freshWindow {
+	if created.IsZero() {
 		return ""
 	}
 	elapsed := time.Since(created.Time)
+	if elapsed > freshWindow {
+		return ""
+	}
 	var when string
 	if elapsed < time.Second {
 		// Covers both sub-second-old objects and a future creationTimestamp
 		// from server/client clock skew (elapsed goes negative).
 		when = "immediately after creation"
 	} else {
-		when = elapsed.Round(time.Second).String() + " after creation"
+		when = waitElapsed(elapsed) + " after creation"
 	}
 	recheck := fmt.Sprintf("rancher get %s %s", kindName, name)
 	if ns != "" {
