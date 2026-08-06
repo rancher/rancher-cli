@@ -63,7 +63,7 @@ func invalidForErr(forExpr string) *clierr.Error {
 // Fail-fast returns immediately with a non-retryable error; a timeout always
 // returns a retryable error carrying the last-observed state, never a raw Get
 // error.
-func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration) (*unstructured.Unstructured, error) {
+func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, failOnStalled bool) (*unstructured.Unstructured, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -85,8 +85,10 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// Stalled=True is the kstatus abort convention (Fleet sets it on a
 			// failed GitRepo clone while still reporting Ready=True), so it
 			// fails the wait even when the target condition reads satisfied —
-			// unless Stalled itself is what the caller is waiting for.
-			if cond.kind != "condition" || cond.name != "Stalled" {
+			// unless Stalled itself is what the caller is waiting for. Opt-in
+			// per kind row (WaitFailsOnStalled): not every controller treats
+			// Stalled as terminal, so a kind must be known-kstatus to abort.
+			if failOnStalled && (cond.kind != "condition" || cond.name != "Stalled") {
 				if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
 					if msg == "" {
 						msg = "condition Stalled=True"

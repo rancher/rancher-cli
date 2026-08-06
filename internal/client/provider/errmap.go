@@ -46,13 +46,13 @@ func mapErr(err error) error {
 		return clierr.Retryable(clierr.CodeGeneric, err.Error()).
 			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
 	case errors.Is(err, context.DeadlineExceeded):
-		// A hung request through the agent-tunnel proxy expires the client
-		// timeout without any HTTP status — client-go hands back a url.Error
-		// wrapping context.DeadlineExceeded. From here the slow management
-		// server and the dead downstream tunnel are indistinguishable, so
-		// the hint hedges.
+		// A hung request expires the client timeout without any HTTP status —
+		// client-go hands back a url.Error wrapping context.DeadlineExceeded.
+		// This arm serves management-plane reads and downstream agent-tunnel
+		// reads alike, and the two causes are indistinguishable here, so the
+		// hint names both.
 		return clierr.Retryable(clierr.CodeGeneric, err.Error()).
-			WithHint("the request timed out — for a downstream cluster this usually means its agent is disconnected; check with: rancher inspect cluster <cluster>")
+			WithHint("the request timed out — the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster>)")
 	case isUnexpectedServerError(err):
 		ce := clierr.Retryable(clierr.CodeGeneric, err.Error())
 		// The substring refines the hint only — it is never the classifier,

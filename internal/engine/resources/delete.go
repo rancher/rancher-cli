@@ -110,6 +110,12 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		Reversible:        false,
 		Destructive:       true,
 	}
+	// A row-declared cascade note rides the generic delete so a kind whose
+	// server-side removal reaches beyond the named object warns without a
+	// bespoke command (guarded overrides append their own text instead).
+	if k.DeleteCascadeWarning != "" {
+		eff.Warnings = append(eff.Warnings, k.DeleteCascadeWarning)
+	}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err

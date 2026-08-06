@@ -143,7 +143,7 @@ func TestWaitForPollsUntilState(t *testing.T) {
 		stateObj("active", "no"),
 	}}
 	cond := waitCond{kind: "state", name: "active"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
 	require.NoError(t, err)
 	assert.Equal(t, "active", mustState(got))
 	assert.Equal(t, 2, client.calls)
@@ -163,7 +163,7 @@ func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
 
 	client := &seqClient{objs: []*unstructured.Unstructured{phaseObj("Pending")}}
 	cond := waitCond{kind: "state", name: "running"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Pending", "timeout message shows the real phase, not <no state>")
 	var ce *clierr.Error
@@ -202,7 +202,7 @@ func TestWaitForFailsFastOnTransitioningError(t *testing.T) {
 	}}
 	cond := waitCond{kind: "state", name: "active"}
 	start := time.Now()
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
 	elapsed := time.Since(start)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "quota exceeded")
@@ -222,7 +222,7 @@ func TestWaitForConditionStatus(t *testing.T) {
 		conditionObj("Ready", "True"),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, 2, client.calls)
@@ -235,7 +235,7 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 
 	client := &seqClient{objs: []*unstructured.Unstructured{stateObj("provisioning", "yes")}}
 	cond := waitCond{kind: "state", name: "active"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -248,7 +248,7 @@ func TestWaitForNotFoundFailsImmediately(t *testing.T) {
 	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{clierr.New(clierr.CodeNotFound, "x not found")}}
 	cond := waitCond{kind: "state", name: "active"}
 	start := time.Now()
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
 	elapsed := time.Since(start)
 	require.Error(t, err)
 	var ce *clierr.Error
@@ -267,7 +267,7 @@ func TestWaitForRetriesTransientGetError(t *testing.T) {
 		errs: []error{nil, errors.New("transient network blip"), nil},
 	}
 	cond := waitCond{kind: "state", name: "active"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
 	require.NoError(t, err)
 	assert.Equal(t, "active", mustState(got))
 	assert.Equal(t, 3, client.calls)
@@ -280,7 +280,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 
 	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{errors.New("down")}}
 	cond := waitCond{kind: "state", name: "active"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, false)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -413,7 +413,7 @@ func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
 		conditionObjMsg("Ready", "Unknown", "waiting for probes: calico, kube-apiserver"),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Ready=Unknown (waiting for probes: calico, kube-apiserver)")
 }
@@ -435,7 +435,7 @@ func TestWaitTimeoutConditionMessageSanitized(t *testing.T) {
 		conditionObjMsg("Ready", "Unknown", "bad\x1b[2Jmsg with \u202ebidi"),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
 	assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
@@ -453,7 +453,7 @@ func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
 		conditionObj("Ready", "Unknown"),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Ready=Unknown")
 	assert.NotContains(t, err.Error(), "Ready=Unknown (",
@@ -502,7 +502,7 @@ func TestWaitForFailsFastOnStalled(t *testing.T) {
 		),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "x stalled: authentication required")
 	var ce *clierr.Error
@@ -522,7 +522,7 @@ func TestWaitForStalledFalseDoesNotTrip(t *testing.T) {
 		),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 }
@@ -536,7 +536,7 @@ func TestWaitForExplicitStalledTargetStillWaitable(t *testing.T) {
 		multiConditionObj([3]string{"Stalled", "True", "boom"}),
 	}}
 	cond := waitCond{kind: "condition", name: "Stalled", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 	require.NoError(t, err, "waiting FOR Stalled must not be aborted by the Stalled fail-fast")
 	require.NotNil(t, got)
 }
@@ -553,7 +553,7 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 		),
 	}}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second)
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "x stalled: condition Stalled=True")
 }

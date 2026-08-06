@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -320,4 +321,69 @@ func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Contains(t, ce.Message, "ext.cattle.io", "already-curated message must pass through")
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
+}
+
+// TestDeleteCarriesRowCascadeWarning pins the S-10 exercise fix, table-row
+// form: a kind whose row declares DeleteCascadeWarning gets that advisory in
+// its generic delete Effect (gitrepo is the first user), and rows without
+// one stay warning-free.
+func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
+	t.Parallel()
+	gitrepo := mustKind(t, "gitrepo")
+	require.NotEmpty(t, gitrepo.DeleteCascadeWarning, "gitrepo row must declare the cascade warning")
+
+	client := &delClient{obj: objWithRV("repo-1", "7")}
+	fac := &recFactory{client: client}
+	eff, exec, err := planDelete(t, NewDelete(gitrepo, fac), input{args: []string{"repo-1"}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, []string{gitrepo.DeleteCascadeWarning}, eff.Warnings)
+	assert.Contains(t, gitrepo.DeleteCascadeWarning, "cascades")
+
+	plain := &delClient{obj: objWithRV("web", "1")}
+	eff2, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), &recFactory{client: plain, resolve: map[string]string{"prod": "c-abc"}}),
+		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	require.NoError(t, err)
+	assert.Empty(t, eff2.Warnings, "a row without DeleteCascadeWarning must not grow one")
+}
+
+// TestWaitStalledScopedToOptInKinds pins the round-3 review fix: the
+// Stalled=True fast-fail fires only for rows with WaitFailsOnStalled
+// (fleet's kstatus kinds), never for kinds whose controllers may use
+// Stalled transiently.
+func TestWaitStalledScopedToOptInKinds(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	stalledReady := multiConditionObj(
+		[3]string{"Ready", "False", ""},
+		[3]string{"Stalled", "True", "boom"},
+	)
+	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+
+	// Opt-in kind: aborts immediately.
+	client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
+	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stalled")
+
+	// Non-opt-in kind: keeps polling to the eventual Ready.
+	ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})
+	client2 := &seqClient{objs: []*unstructured.Unstructured{stalledReady, ready}}
+	got, err := waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+	require.NoError(t, err, "without the opt-in, Stalled=True must not abort the wait")
+	require.NotNil(t, got)
+}
+
+// TestWaitFlagWiredFromKindRow pins the row->waitFor plumbing: gitrepo,
+// bundle, and fleet-cluster opt in; the common Ready-waiting kinds do not.
+func TestWaitFlagWiredFromKindRow(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"gitrepo", "bundle", "fleet-cluster"} {
+		assert.True(t, mustKind(t, name).WaitFailsOnStalled, name)
+	}
+	for _, name := range []string{"pod", "deployment", "node", "cluster"} {
+		assert.False(t, mustKind(t, name).WaitFailsOnStalled, name)
+	}
 }

@@ -92,6 +92,18 @@ type Kind struct {
 	// for kinds where the expression is grounded in a real, well-known
 	// status.state/status.conditions shape; when in doubt, leave empty.
 	WaitDefault string
+	// WaitFailsOnStalled makes waits on this kind fail fast when the object
+	// reports a Stalled=True condition (the kstatus abort convention) even if
+	// the awaited condition reads satisfied — Fleet sets Ready=True alongside
+	// Stalled=True on a failed GitRepo clone. Opt-in per row because not
+	// every controller treats Stalled as terminal; set it only where the
+	// kind's controller is known to use kstatus abort semantics.
+	WaitFailsOnStalled bool
+	// DeleteCascadeWarning, when non-empty, is appended to the generic
+	// delete's Effect warnings: a plain statement of what the server removes
+	// beyond the named object. Advisory only, never a gate (Destructive
+	// already forces --yes). Bespoke delete overrides carry their own text.
+	DeleteCascadeWarning string
 	// Completable marks this kind as eligible for live name completion (AC-15).
 	// Deny-by-default: a new row gets no completion until this is explicitly set.
 	// Secrets and cloud-credentials are never set (AC-25).
@@ -348,14 +360,17 @@ var table = []Kind{
 		Key: "gitrepo", Name: "gitrepo", Aliases: []string{"gitrepos"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "gitrepos"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "GitRepo", Scope: Management, Deletable: true, WaitDefault: "condition=Ready",
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		WaitFailsOnStalled:   true,
+		DeleteCascadeWarning: "deleting this GitRepo cascades: Fleet removes its Bundles and their BundleDeployments, which uninstalls the deployed workloads from every target cluster",
+		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
-		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		WaitFailsOnStalled: true,
+		NoDeleteReason:     "controller-owned; delete the owning source object",
+		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
@@ -377,8 +392,9 @@ var table = []Kind{
 		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters", "fleet-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
-		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		WaitFailsOnStalled: true,
+		NoDeleteReason:     "controller-owned; delete the owning source object",
+		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 
 	{
