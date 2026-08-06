@@ -54,17 +54,22 @@ different actor for a different purpose:
 ### 2. Discover, don't guess
 
 ```
-rancher schema -o json              # every command: args, flags, aliases, destructive markers, gates, contract/stability, error-code enum
-rancher schema get pod -o json      # one command's contract
+rancher schema -o json              # orientation: command names + usage per group, kind names, exit codes (small)
+rancher schema get pod -o json      # one command's full contract: args, flags, gates
+rancher schema --all -o json        # the complete manifest in one document (bulk extraction only)
 ```
 
-One JSON document for the whole surface, or extract client-side for bulk work.
+The orientation payload is compact; the full manifest is for bulk extraction.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Kind names have kubectl-style aliases (e.g. `get pods`,
 `get cm`). `get kubernetes-versions` always marks the newest release per
 distro (`newest`); when the server declares no default version, that marker
 is the only pick-this signal and a warning says so.
+
+Kind lookups are two steps: `rancher schema <kind> -o json` returns the
+kind's row — routing, aliases, per-verb availability — and a verb's full
+flag set is one more call: `rancher schema get <kind> -o json`.
 
 ### 3. Always parse, never scrape
 

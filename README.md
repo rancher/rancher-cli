@@ -125,7 +125,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
     rancher schema delete project        # one command: contract + gates
     rancher schema pod                   # one kind: aliases, routing, verbs
     rancher schema --search kubeconfig   # find commands by substring
-    rancher schema -o json               # full manifest (for agents)
+    rancher schema --all -o json          # full manifest (for agents)
 
     # Verify connectivity + credentials
     rancher auth check -o json
@@ -175,7 +175,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
-| `schema [command\|kind] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` is the full manifest |
+| `schema [command\|kind] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` emits the TOC as JSON; `--all -o json` is the full manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 | `skill install [--agent <claude\|codex\|copilot\|agents\|all>] [--scope <user\|project>] [--force]` | Install the rancher agents skill into coding-agent harnesses |
 | `skill uninstall [--agent AGENT] [--scope SCOPE]` | Remove rancher-installed agents skills (only exact owner-marked installations) |
@@ -208,7 +208,7 @@ Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
 (48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
 126 generated commands, 171 total together with the fixed commands above. The authoritative, always-current list is
-`rancher schema -o json`.
+`rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->
 
 
@@ -335,15 +335,15 @@ Every command emits one JSON document per invocation under `-o json` — an
   `8` lock-timeout · `1` generic.
   Rancher's proxy paths reject an invalid or insufficient token as a 403
   (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
-- **Discovery:** `rancher schema -o json` returns the CLI version, the output
-  `apiVersion`, the error-code enum with exit codes, the global flags, the
-  kind vocabulary (aliases, GVR, scope, per-kind verb availability), and
-  every command with its args, flags, `commandType`, `gates`,
-  `successExitCodes`, and
-  (for server ops) `contract`/`stability`, as one document. The schema manifest
-  is the single source for contract and stability — these fields are NOT in Effect
-  or Result envelopes. `rancher schema <command|kind>`
-  narrows to one command (e.g. `rancher schema get pod`) or one kind (e.g.
+- **Discovery:** `rancher schema -o json` is the orientation payload —
+  command names and usage grouped by section, kind names, and exit codes
+  as a compact TOC. `rancher schema --all -o json` is the
+  complete manifest: every command with its args, flags, `commandType`,
+  `gates`, `successExitCodes`, and (for server ops) `contract`/`stability`,
+  as one document. The schema manifest is the single source for contract and
+  stability — these fields are NOT in Effect or Result envelopes.
+  `rancher schema <command|kind>` narrows to one command (e.g.
+  `rancher schema get pod`) or one kind (e.g.
   `rancher schema clusterregistrationtoken`) — a name that is both
   (`kubeconfig`) resolves as the command; `--kind` forces the kind reading.
   `--verb`, `--destructive`, `--contract`, `--mutating`, and `--search <term>`
