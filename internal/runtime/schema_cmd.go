@@ -37,6 +37,8 @@ func (s *schemaCmd) Describe() Descriptor {
 		Desc:  "Multi-word command names (\"get pod\") work as a single selector — pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
 		Flags: []ArgSpec{
+			{Name: "all", Type: "bool",
+				Desc: "print the full capability manifest (every command expanded, kinds, envVars, error codes) instead of the table of contents"},
 			{Name: "kind", Type: "bool",
 				Desc: "resolve the selector as a kind, not a command"},
 			// The verb enum is a static literal — the descriptor cannot see
@@ -115,6 +117,20 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	}
 	asKind := in.Bool("kind")
 	f := filtersFrom(in)
+	if in.Bool("all") {
+		switch {
+		case f.active():
+			return Result{}, clierr.New(clierr.CodeValidation,
+				"--all prints the unfiltered manifest; drop "+strings.Join(f.describe(), " ")+" or drop --all")
+		case len(in.Args()) > 0:
+			return Result{}, clierr.New(clierr.CodeValidation,
+				"--all prints the whole manifest; drop the selector or drop --all")
+		case asKind:
+			return Result{}, clierr.New(clierr.CodeValidation,
+				"--all prints the whole manifest; --kind selects one kind — drop one")
+		}
+		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOC(m)}, nil
+	}
 	if f.active() {
 		// SE-20: filters and --search span the whole surface; a positional
 		// selector (or --kind, itself a selection modifier) conflicts.

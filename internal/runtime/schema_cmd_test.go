@@ -968,6 +968,43 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 	}
 }
 
+// TestSchemaAllReturnsFullManifest pins --all as exact delegation: the
+// result marshals byte-equivalent to the registry's own manifest —
+// nothing filtered, nothing added (review P2).
+func TestSchemaAllReturnsFullManifest(t *testing.T) {
+	t.Parallel()
+	reg := kindRegistry()
+	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
+	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{flags: map[string]bool{"all": true}}, nil)
+	require.NoError(t, err)
+	got, err := json.Marshal(res.Data)
+	require.NoError(t, err)
+	want, err := json.Marshal(reg.Schema("v-test", "2.14"))
+	require.NoError(t, err)
+	assert.JSONEq(t, string(want), string(got), "--all must delegate the complete, unchanged manifest")
+}
+
+// TestSchemaAllConflicts pins the VALIDATION conflicts: --all crossed with
+// a selector, any filter, or --kind.
+func TestSchemaAllConflicts(t *testing.T) {
+	t.Parallel()
+	reg := kindRegistry()
+	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
+	cases := []tin{
+		{flags: map[string]bool{"all": true}, a: []string{"get", "pod"}},
+		{flags: map[string]bool{"all": true}, strs: map[string]string{"search": "pod"}},
+		{flags: map[string]bool{"all": true, "kind": true}},
+		{flags: map[string]bool{"all": true, "destructive": true}},
+	}
+	for _, in := range cases {
+		_, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "--all")
+	}
+}
+
 // TestSchemaPositionalCompletionShape pins SE-12's candidate shape: command
 // aliases appear only in their full typed form ("get pods", never a bare
 // "projects"), kind names/keys/aliases appear as bare tokens, the
