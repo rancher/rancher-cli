@@ -565,6 +565,20 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Contains(t, ce.Hint, "kinds array")
 	})
 
+	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
+		t.Parallel()
+		// Exercise-11 finding 6.1: `schema get pdo` is structurally a
+		// command typo — kinds are single tokens, always — so the noun and
+		// hint collapse to the command tier.
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pdo"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Contains(t, ce.Message, `unknown command "get pdo"`)
+		assert.Contains(t, ce.Hint, "rancher schema -o name")
+		assert.NotContains(t, ce.Hint, "kinds array")
+	})
+
 	t.Run("dual hint on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)

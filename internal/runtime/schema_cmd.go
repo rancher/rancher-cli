@@ -338,21 +338,25 @@ const maxNearestMatches = 10
 // unknownSelection composes its per-mode hint from these two named constants
 // so the three final hint strings (dual, kindOnly, nearest) share one source
 // of truth rather than three inline literals.
-const commandListHint = "run `rancher schema -o name` for the full command list, or `rancher schema -o json` for the kinds array"
+const commandListHint = "run `rancher schema -o name` for the full command list"
 const kindsArrayHint = "run `rancher schema -o json` — its kinds array lists every kind name"
+const dualListHint = commandListHint + ", or `rancher schema -o json` for the kinds array"
 
 // unknownSelection builds SE-4's VALIDATION error for a positional that
 // matches nothing, listing nearest matches when any exist. Under --kind
 // (kindOnly) the selector could only ever be a kind, so the message and the
 // candidate set are restricted to kinds.
 func unknownSelection(m Manifest, want string, kindOnly bool) error {
-	noun := "command or kind"
-	if kindOnly {
-		noun = "kind"
-	}
-	hint := commandListHint
-	if kindOnly {
-		hint = kindsArrayHint
+	// Three ambiguity tiers: --kind pins the kind interpretation; a
+	// multi-token selector is command-shaped (kinds are single tokens,
+	// always) so the kind half of the dual hint is noise; only a bare
+	// single token is genuinely either.
+	noun, hint := "command or kind", dualListHint
+	switch {
+	case kindOnly:
+		noun, hint = "kind", kindsArrayHint
+	case strings.Contains(want, " "):
+		noun, hint = "command", commandListHint
 	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).
 		WithHint(hint)
