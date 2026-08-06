@@ -595,67 +595,23 @@ func composeBindings() (runtime.Resolver, error) {
 	return resolver, nil
 }
 
-// buildManifest constructs the full schema manifest directly from the
-// registry, without creating the CLI command tree. Used by tests that need
-// the manifest for invariant assertions — the bare schema -o json now returns
-// the TOC view, not the full manifest.
-func buildManifest(version string) (runtime.Manifest, error) {
+// buildWiredRegistry constructs and validates the command registry for the
+// full surface. It handles kind validation, resolver composition, entry wiring,
+// and the fixed schema/completion registrations.
+//
+// readOnly is wired into the schema command; pass config.ReadOnlyOverride for
+// the real CLI path and nil for callers that only need the manifest shape.
+// fixed holds the adapted urfave leaves for schema and completion, ready for
+// assembleCommands; groups and order describe the generated entry sections.
+func buildWiredRegistry(version string, readOnly func() (bool, []string)) (
+	*runtime.Registry, []*ucli.Command, map[string][]*ucli.Command, []string, error,
+) {
 	if err := kinds.Validate(); err != nil {
-		return runtime.Manifest{}, fmt.Errorf("kind table: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("kind table: %w", err)
 	}
 	resolver, err := composeBindings()
 	if err != nil {
-		return runtime.Manifest{}, err
-	}
-	reg := runtime.NewRegistry(resolver)
-	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))
-
-	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
-		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version, config.MinRancherVersion) })
-	}})
-
-	sectionCmds := map[string][]string{}
-	var order []string
-	for _, e := range entries {
-		_, name, err := wireEntry(reg, resolver, version, e)
-		if err != nil {
-			return runtime.Manifest{}, err
-		}
-		if _, seen := sectionCmds[e.group]; !seen {
-			order = append(order, e.group)
-		}
-		sectionCmds[e.group] = append(sectionCmds[e.group], name)
-	}
-
-	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, nil)
-	reg.Register(schemaCmd)
-	completionCmd := commands.NewCompletion()
-	reg.Register(completionCmd)
-
-	sections := []runtime.SchemaGroup{{Name: "", Commands: []string{
-		schemaCmd.Describe().Name, completionCmd.Describe().Name,
-	}}}
-	for _, g := range order {
-		if len(sectionCmds[g]) == 0 {
-			continue
-		}
-		sections = append(sections, runtime.SchemaGroup{Name: g, Commands: sectionCmds[g]})
-	}
-	reg.SetGroups(sections)
-
-	if err := reg.Validate(); err != nil {
-		return runtime.Manifest{}, fmt.Errorf("command registry: %w", err)
-	}
-	return reg.Schema(version, config.MinRancherVersion), nil
-}
-
-func BuildRoot(version string) (*ucli.Command, error) {
-	if err := kinds.Validate(); err != nil {
-		return nil, fmt.Errorf("kind table: %w", err)
-	}
-	resolver, err := composeBindings()
-	if err != nil {
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
 	reg := runtime.NewRegistry(resolver)
 	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))
@@ -674,7 +630,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	for _, e := range entries {
 		leaf, name, err := wireEntry(reg, resolver, version, e)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
 		if _, seen := groups[e.group]; !seen {
 			order = append(order, e.group)
@@ -687,7 +643,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// binding). Its read-only resolver is config.ReadOnlyOverride itself —
 	// the process-wide stash root's Before hook populates below, using the
 	// SAME resolution buildIO reads for every other command.
-	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, config.ReadOnlyOverride)
+	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, readOnly)
 	reg.Register(schemaCmd)
 
 	// completion is a fixed command backed by the registry (no dir/store,
@@ -714,10 +670,18 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	reg.SetGroups(sections)
 
 	if err := reg.Validate(); err != nil {
-		return nil, fmt.Errorf("command registry: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("command registry: %w", err)
+	}
+	return reg, []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, groups, order, nil
+}
+
+func BuildRoot(version string) (*ucli.Command, error) {
+	_, fixed, groups, order, err := buildWiredRegistry(version, config.ReadOnlyOverride)
+	if err != nil {
+		return nil, err
 	}
 
-	commandsList := assembleCommands([]*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, order, groups)
+	commandsList := assembleCommands(fixed, order, groups)
 
 	// Install aliasAwareGroupComplete on every verb group (any command that
 	// has subcommands). For groups whose leaves carry Aliases this lists
