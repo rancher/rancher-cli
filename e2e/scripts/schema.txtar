@@ -1,5 +1,17 @@
-# schema manifest is the discovery contract
+# bare schema is the TOC: orientation, not the manifest
 exec rancher schema -o json
+cp stdout toc.json
+jsonquery toc.json 'data.commandCount' 171
+jsonquery toc.json 'data.kindCount' 48
+jsonquery toc.json 'data.kinds.#' 48
+# generated get/patch/delete <kind> commands are COLLAPSED on the bare
+# TOC — pin a NON-generated command's group entry and the collapsed count
+# (verify both actual values when writing this, like every count pin)
+jsonquery toc.json 'data.groups.#(name="auth").commands.0.name' 'auth login'
+jsonquery toc.json 'data.generatedCommandCount' 126
+
+# the full manifest is explicit: --all
+exec rancher schema --all -o json
 cp stdout schema.json
 jsonquery schema.json 'data.commands.#' 171
 jsonquery schema.json data.effectSchema.actions.0 create
@@ -7,17 +19,22 @@ jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
 jsonquery schema.json 'data.errorCodes.#' 11
 
-# CW-2: per-command filter (unquoted multi-word selector)
+# --all conflicts with narrowing
+! exec rancher schema get pod --all -o json
+jsonquery stderr data.error.code VALIDATION
+
+# CW-2: per-command selection is the flattened card (no commands array,
+# no kinds)
 exec rancher schema get pod -o json
 cp stdout one.json
-jsonquery one.json 'data.commands.#' 1
-jsonquery one.json data.commands.0.name 'get pod'
+jsonquery one.json data.name 'get pod'
+jsonquery one.json 'data.kinds.#' ''
+jsonquery one.json 'data.commands.#' ''
 
 # CW-2b: quoted single-token selector — one argv token must behave like
 # two unquoted tokens; the schema command joins args before matching.
 exec rancher schema 'get pod' -o json
-jsonquery stdout 'data.commands.#' 1
-jsonquery stdout data.commands.0.name 'get pod'
+jsonquery stdout data.name 'get pod'
 
 ! exec rancher schema get nonsense -o json
 jsonquery stderr data.error.code VALIDATION

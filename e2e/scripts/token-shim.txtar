@@ -53,8 +53,8 @@ jsonquery stdout 'data.#(name=="legacy:othercluster").name' 'legacy:othercluster
 
 # The manifest marks the shim internal · deprecated.
 exec rancher schema token -o json
-jsonquery stdout data.commands.0.contract internal
-jsonquery stdout data.commands.0.stability deprecated
+jsonquery stdout data.contract internal
+jsonquery stdout data.stability deprecated
 
 -- token.txt --
 e2e:secret

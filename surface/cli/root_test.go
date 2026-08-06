@@ -170,6 +170,26 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 		"schema --contract enum drifted from the contracts present in the manifest; update the Enum literal in schemaCmd.Describe()")
 }
 
+// TestSchemaDisclosureSizes pins the point of progressive disclosure:
+// the bare TOC and a narrowed card stay small (spec acceptance: TOC
+// < 20KB, card < 3KB). A regression here means a view regrew a
+// full-manifest section.
+func TestSchemaDisclosureSizes(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+
+	run := func(args ...string) int {
+		root, err := BuildRoot("golden")
+		require.NoError(t, err)
+		var out bytes.Buffer
+		root.Writer = &out
+		require.NoError(t, root.Run(context.Background(), append([]string{"rancher", "--config", dir}, args...)))
+		return out.Len()
+	}
+	assert.Less(t, run("schema", "-o", "json"), 20*1024, "bare TOC JSON")
+	assert.Less(t, run("schema", "get", "pod", "-o", "json"), 3*1024, "command card JSON")
+}
+
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
