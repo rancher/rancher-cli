@@ -173,15 +173,21 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
-	m, err := buildManifest("golden")
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("golden")
 	require.NoError(t, err)
 
-	// Re-marshal through a map so key order is stable regardless of struct
-	// field order. HTML escaping disabled so `<`, `>`, `&` stay literal.
-	b, err := json.Marshal(m)
-	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"}))
+
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 	var manifest any
-	require.NoError(t, json.Unmarshal(b, &manifest))
+	require.NoError(t, json.Unmarshal(env.Data, &manifest))
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
@@ -197,6 +203,42 @@ func TestSchemaManifestGolden(t *testing.T) {
 	want, err := os.ReadFile(golden)
 	require.NoError(t, err)
 	assert.Equal(t, string(want), string(got), "schema manifest drifted from golden; run with -update if intended")
+}
+
+// TestSchemaTOCGolden pins the bare `schema -o json` TOC shape — the
+// progressive-disclosure contract (spec 2026-08-06): orientation payload,
+// not the manifest. Regenerate with -update; drift is a signal.
+func TestSchemaTOCGolden(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	var toc any
+	require.NoError(t, json.Unmarshal(env.Data, &toc))
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	require.NoError(t, enc.Encode(toc))
+	got := buf.Bytes()
+
+	golden := filepath.Join("testdata", "schema-toc.golden.json")
+	if *update {
+		require.NoError(t, os.WriteFile(golden, got, 0o644))
+		return
+	}
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err)
+	assert.Equal(t, string(want), string(got), "schema TOC drifted from golden; run with -update if intended")
 }
 
 func TestBuildRootWiresGeneratedCommands(t *testing.T) {
@@ -539,6 +581,16 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	assert.True(t, count > 0, "commandCount must be positive")
 	assert.Equal(t, config.MinRancherVersion, data["minRancherVersion"])
 	assert.Equal(t, false, data["readOnly"], "no config/env/flag read-only source is active for this invocation")
+
+	// The --all path must carry a non-empty globalFlags array (full manifest, not TOC).
+	out.Reset()
+	err = root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"})
+	require.NoError(t, err)
+	var m2 map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &m2))
+	data2 := m2["data"].(map[string]any)
+	gf, _ := data2["globalFlags"].([]any)
+	assert.NotEmpty(t, gf, "schema --all must carry a non-empty globalFlags array")
 }
 
 // TestSchemaReportsConfigSourcedReadOnly is the external-review regression:

@@ -1,0 +1,297 @@
+{
+  "cliVersion": "golden",
+  "commandCount": 171,
+  "generatedCommandCount": 126,
+  "globalExitCodes": {
+    "AMBIGUOUS_SELECTION": 2,
+    "AUTH": 3,
+    "CONFIRMATION_REQUIRED": 2,
+    "CONFLICT": 5,
+    "CONTEXT_NOT_SET": 2,
+    "DRY_RUN_NOT_APPLICABLE": 2,
+    "GENERIC": 1,
+    "LOCK_TIMEOUT": 8,
+    "NOT_FOUND": 4,
+    "RBAC": 6,
+    "VALIDATION": 2
+  },
+  "groups": [
+    {
+      "commands": [
+        {
+          "name": "schema",
+          "usage": "Print the capability manifest, optionally filtered to one command"
+        },
+        {
+          "name": "completion",
+          "usage": "Print a shell completion script (ignores -o; always the raw script)"
+        }
+      ]
+    },
+    {
+      "commands": [
+        {
+          "name": "auth login",
+          "usage": "Login to a Rancher server"
+        },
+        {
+          "name": "auth logout",
+          "usage": "Clear stored login credentials for a server"
+        },
+        {
+          "name": "auth check",
+          "usage": "Verify connectivity and credentials against the current server"
+        },
+        {
+          "name": "auth get-token",
+          "usage": "Authenticate and print a kubeconfig ExecCredential"
+        },
+        {
+          "name": "auth list-tokens",
+          "usage": "List cached exec-credential token entries"
+        },
+        {
+          "name": "auth delete-token",
+          "usage": "Delete cached exec-credential token(s)"
+        }
+      ],
+      "name": "auth"
+    },
+    {
+      "commands": [
+        {
+          "name": "config current-context",
+          "usage": "Show the current context"
+        },
+        {
+          "name": "config set-context",
+          "usage": "Set the current context's cluster/project scope"
+        },
+        {
+          "name": "config use-context",
+          "usage": "Activate a named context"
+        },
+        {
+          "name": "config get-servers",
+          "usage": "List configured servers"
+        },
+        {
+          "name": "config use-server",
+          "usage": "Switch the current server"
+        },
+        {
+          "name": "config delete-server",
+          "usage": "Delete a configured server, its contexts, and its stored credentials"
+        },
+        {
+          "name": "config path",
+          "usage": "Print the resolved config file path"
+        },
+        {
+          "name": "config info",
+          "usage": "Print config diagnostics: file path and effective credential store"
+        },
+        {
+          "name": "config edit",
+          "usage": "Edit the config file in $VISUAL or $EDITOR (needs a TTY)"
+        },
+        {
+          "name": "config set-completion",
+          "usage": "Configure live shell completion (network on/off, timeout)"
+        }
+      ],
+      "name": "config"
+    },
+    {
+      "commands": [
+        {
+          "name": "skill install",
+          "usage": "Install the rancher agents skill into coding-agent harnesses"
+        },
+        {
+          "name": "skill uninstall",
+          "usage": "Remove rancher-installed agents skills"
+        },
+        {
+          "name": "skill status",
+          "usage": "Report installed skill versions and integrity per harness"
+        }
+      ],
+      "name": "skill"
+    },
+    {
+      "commands": [
+        {
+          "name": "create project",
+          "usage": "Create a project in a cluster"
+        },
+        {
+          "name": "create namespace",
+          "usage": "Create a namespace, optionally as a project member"
+        },
+        {
+          "name": "create secret",
+          "usage": "Create a secret, optionally project-scoped"
+        },
+        {
+          "name": "create resource",
+          "usage": "Create a resource from a manifest file"
+        },
+        {
+          "name": "create token",
+          "usage": "Create a token on the server"
+        },
+        {
+          "name": "create kubeconfig",
+          "usage": "Create a kubeconfig with an embedded token"
+        },
+        {
+          "name": "create cluster",
+          "usage": "Create a provisioning cluster (--import, --custom, or node-driver)"
+        },
+        {
+          "name": "create machine-config",
+          "usage": "Create a machine config for a node-driver cluster pool"
+        }
+      ],
+      "name": "create"
+    },
+    {
+      "commands": [
+        {
+          "name": "project add-namespace",
+          "usage": "Add a namespace to a project"
+        },
+        {
+          "name": "project remove-namespace",
+          "usage": "Remove a namespace from a project"
+        }
+      ],
+      "name": "project"
+    },
+    {
+      "commands": [
+        {
+          "name": "inspect cluster",
+          "usage": "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration"
+        },
+        {
+          "name": "inspect pod",
+          "usage": "Inspect a pod: owners, metrics, and container logs"
+        },
+        {
+          "name": "inspect deployment",
+          "usage": "Inspect a deployment and the pods it selects"
+        },
+        {
+          "name": "inspect project",
+          "usage": "Inspect a project: namespaces, members, quota, and usage"
+        }
+      ],
+      "name": "inspect"
+    },
+    {
+      "commands": [
+        {
+          "name": "get cloud-credential",
+          "usage": "List cloud credentials or show one (secret values never shown)"
+        },
+        {
+          "name": "get kubernetes-versions",
+          "usage": "List available Kubernetes versions (rke2/k3s)"
+        }
+      ],
+      "name": "get"
+    },
+    {
+      "commands": [
+        {
+          "name": "grant",
+          "usage": "Grant a role to a user or group at project, cluster, or global scope"
+        },
+        {
+          "name": "revoke",
+          "usage": "Revoke a user's or group's role binding(s) at project, cluster, or global scope"
+        },
+        {
+          "name": "token",
+          "usage": "Legacy exec-credential shim for Rancher-generated kubeconfigs"
+        },
+        {
+          "name": "images",
+          "usage": "List container images in use, grouped by image or owning workload"
+        },
+        {
+          "name": "usage",
+          "usage": "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods"
+        },
+        {
+          "name": "kubeconfig",
+          "usage": "Print an exec-credential kubeconfig for a cluster"
+        },
+        {
+          "name": "logs",
+          "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+        },
+        {
+          "name": "support-bundle",
+          "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
+        }
+      ]
+    }
+  ],
+  "kindCount": 48,
+  "kinds": [
+    "cluster",
+    "project",
+    "node",
+    "namespace",
+    "pod",
+    "deployment",
+    "service",
+    "configmap",
+    "secret",
+    "statefulset",
+    "daemonset",
+    "replicaset",
+    "job",
+    "cronjob",
+    "ingress",
+    "persistentvolume",
+    "persistentvolumeclaim",
+    "serviceaccount",
+    "event",
+    "gitrepo",
+    "bundle",
+    "bundledeployment",
+    "clustergroup",
+    "fleet-cluster",
+    "setting",
+    "feature",
+    "user",
+    "roletemplate",
+    "globalrole",
+    "globalrolebinding",
+    "clusterroletemplatebinding",
+    "projectroletemplatebinding",
+    "provisioning-cluster",
+    "capi-cluster",
+    "machine",
+    "machineset",
+    "machinedeployment",
+    "k3k-cluster",
+    "token",
+    "management-token",
+    "kubeconfig",
+    "amazonec2config",
+    "azureconfig",
+    "digitaloceanconfig",
+    "harvesterconfig",
+    "vmwarevsphereconfig",
+    "nodedriver",
+    "clusterregistrationtoken"
+  ],
+  "minRancherVersion": "2.14",
+  "outputApiVersion": "cli.rancher.io/v1",
+  "readOnly": false
+}
