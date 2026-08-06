@@ -1,5 +1,19 @@
 #!/bin/bash
 set -e
-COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-if [ -z "$VERSION" ]; then VERSION="dev-${COMMIT}"; fi
-echo "$VERSION"
+# Version resolution order: explicit $VERSION, the git checkout's HEAD, the
+# SHA baked into a `git archive` tarball (scripts/archive-sha, stamped via
+# .gitattributes export-subst), then "unknown". The archive fallback exists
+# because acceptance/packaging builds run from tarballs with no .git.
+if [ -n "$VERSION" ]; then
+  echo "$VERSION"
+  exit 0
+fi
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+if [ -z "$COMMIT" ]; then
+  STAMP=$(cat "$(dirname "$0")/archive-sha" 2>/dev/null || echo "")
+  case "$STAMP" in
+    '$Format'*|'') COMMIT="unknown" ;;
+    *) COMMIT="$STAMP" ;;
+  esac
+fi
+echo "dev-${COMMIT}"
