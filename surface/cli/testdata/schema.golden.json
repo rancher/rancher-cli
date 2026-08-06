@@ -469,6 +469,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "create",
       "name": "create cluster",
       "network": true,
@@ -514,6 +517,10 @@
           "name": "include-default-entry",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "create",
       "name": "create kubeconfig",
@@ -593,6 +600,9 @@
           "type": "stringSlice"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "create",
       "name": "create machine-config",
       "network": true,
@@ -626,6 +636,9 @@
           "name": "cluster",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "create",
       "name": "create namespace",
@@ -673,6 +686,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "create",
       "name": "create project",
       "network": true,
@@ -709,6 +725,9 @@
           "name": "namespace",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "create",
       "name": "create resource",
@@ -765,6 +784,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "create",
       "name": "create secret",
       "network": true,
@@ -796,6 +819,10 @@
           "name": "cluster",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "create",
       "name": "create token",
@@ -841,6 +868,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete amazonec2config",
       "network": true,
@@ -884,6 +915,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete azureconfig",
@@ -930,6 +965,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete clusterroletemplatebinding",
@@ -982,6 +1021,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete configmap",
       "network": true,
@@ -1032,6 +1075,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete cronjob",
@@ -1085,6 +1132,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete daemonset",
       "network": true,
@@ -1137,6 +1188,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete deployment",
       "network": true,
@@ -1182,6 +1237,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete digitaloceanconfig",
       "network": true,
@@ -1226,6 +1285,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete gitrepo",
       "network": true,
@@ -1264,6 +1327,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete globalrolebinding",
@@ -1308,6 +1375,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete harvesterconfig",
@@ -1360,6 +1431,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete ingress",
       "network": true,
@@ -1410,6 +1485,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete job",
@@ -1463,6 +1542,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete k3k-cluster",
       "network": true,
@@ -1502,6 +1585,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete kubeconfig",
@@ -1544,6 +1631,11 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes",
+        "--allow-deprecated"
       ],
       "group": "delete",
       "name": "delete management-token",
@@ -1589,6 +1681,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete namespace",
@@ -1642,6 +1738,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete persistentvolumeclaim",
       "network": true,
@@ -1694,6 +1794,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete pod",
       "network": true,
@@ -1739,6 +1843,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete project",
@@ -1786,6 +1894,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete projectroletemplatebinding",
       "network": true,
@@ -1830,6 +1942,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete provisioning-cluster",
@@ -1882,6 +1998,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete replicaset",
       "network": true,
@@ -1932,6 +2052,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete secret",
@@ -1985,6 +2109,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete service",
       "network": true,
@@ -2036,6 +2164,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete serviceaccount",
@@ -2089,6 +2221,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete statefulset",
       "network": true,
@@ -2129,6 +2265,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "delete",
       "name": "delete token",
       "network": true,
@@ -2167,6 +2307,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete user",
@@ -2211,6 +2355,10 @@
           "name": "timeout",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "delete",
       "name": "delete vmwarevsphereconfig",
@@ -4374,6 +4522,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "name": "grant",
       "network": true,
       "stability": "stable",
@@ -4667,6 +4819,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch amazonec2config",
       "network": true,
@@ -4723,6 +4878,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch azureconfig",
@@ -4781,6 +4939,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch bundle",
       "network": true,
@@ -4837,6 +4998,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch bundledeployment",
@@ -4896,6 +5060,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch capi-cluster",
       "network": true,
@@ -4947,6 +5114,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch cluster",
@@ -5004,6 +5174,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch clustergroup",
@@ -5064,6 +5237,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch clusterregistrationtoken",
       "network": true,
@@ -5122,6 +5298,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch clusterroletemplatebinding",
@@ -5187,6 +5367,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch configmap",
       "network": true,
@@ -5250,6 +5433,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch cronjob",
@@ -5316,6 +5502,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch daemonset",
       "network": true,
@@ -5381,6 +5570,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch deployment",
       "network": true,
@@ -5438,6 +5630,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch digitaloceanconfig",
@@ -5503,6 +5698,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch event",
       "network": true,
@@ -5555,6 +5753,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch feature",
@@ -5614,6 +5816,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "patch",
       "name": "patch fleet-cluster",
       "network": true,
@@ -5671,6 +5877,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch gitrepo",
       "network": true,
@@ -5723,6 +5932,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "patch",
       "name": "patch globalrole",
       "network": true,
@@ -5774,6 +5987,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch globalrolebinding",
@@ -5831,6 +6048,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch harvesterconfig",
@@ -5896,6 +6116,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch ingress",
       "network": true,
@@ -5959,6 +6182,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch job",
@@ -6025,6 +6251,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch k3k-cluster",
       "network": true,
@@ -6077,6 +6306,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch kubeconfig",
@@ -6135,6 +6368,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch machine",
       "network": true,
@@ -6191,6 +6427,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch machinedeployment",
@@ -6249,6 +6488,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch machineset",
       "network": true,
@@ -6303,6 +6545,11 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes",
+        "--allow-deprecated"
       ],
       "group": "patch",
       "name": "patch management-token",
@@ -6362,6 +6609,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch namespace",
       "network": true,
@@ -6420,6 +6670,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch node",
       "network": true,
@@ -6471,6 +6724,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch nodedriver",
@@ -6529,6 +6786,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch persistentvolume",
@@ -6593,6 +6853,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch persistentvolumeclaim",
@@ -6659,6 +6922,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch pod",
       "network": true,
@@ -6717,6 +6983,9 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "patch",
       "name": "patch project",
@@ -6777,6 +7046,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "patch",
       "name": "patch projectroletemplatebinding",
       "network": true,
@@ -6834,6 +7107,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch provisioning-cluster",
@@ -6899,6 +7176,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch replicaset",
       "network": true,
@@ -6951,6 +7231,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch roletemplate",
@@ -7014,6 +7298,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch secret",
@@ -7080,6 +7368,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch service",
       "network": true,
@@ -7145,6 +7436,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch serviceaccount",
       "network": true,
@@ -7197,6 +7491,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch setting",
@@ -7262,6 +7560,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch statefulset",
       "network": true,
@@ -7315,6 +7616,10 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
       "group": "patch",
       "name": "patch token",
       "network": true,
@@ -7366,6 +7671,10 @@
           "name": "filename",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "group": "patch",
       "name": "patch user",
@@ -7424,6 +7733,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "patch",
       "name": "patch vmwarevsphereconfig",
       "network": true,
@@ -7459,6 +7771,9 @@
           "type": "string"
         }
       ],
+      "gates": [
+        "--apply"
+      ],
       "group": "project",
       "name": "project add-namespace",
       "network": true,
@@ -7493,6 +7808,9 @@
           "name": "cluster",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply"
       ],
       "group": "project",
       "name": "project remove-namespace",
@@ -7550,6 +7868,10 @@
           "name": "type",
           "type": "string"
         }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
       ],
       "name": "revoke",
       "network": true,

@@ -203,3 +203,31 @@ func TestValidateSuccessExitCodes(t *testing.T) {
 		})
 	}
 }
+
+// TestSchemaCommandGates pins the per-command gates field (Linux acceptance
+// F6): the manifest states each command's unconditional gate flags instead
+// of leaving them inferable from commandType/destructive convention.
+func TestSchemaCommandGates(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{
+		"rm old": {Contract: safety.ContractInternal, Stability: safety.Deprecated},
+	})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "cfg set", CommandType: Local}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "rm widget", CommandType: Mutating, Destructive: "true"}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "apply widget", CommandType: Mutating, Destructive: "dependsOnInput"}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "rm old", CommandType: Mutating, Destructive: "true"}})
+
+	byName := map[string]SchemaCommand{}
+	for _, c := range reg.Schema("v-test", "2.14").Commands {
+		byName[c.Name] = c
+	}
+	assert.Empty(t, byName["get widget"].Gates, "read-only commands carry no gates")
+	assert.Empty(t, byName["cfg set"].Gates, "local commands carry no gates")
+	assert.Equal(t, []string{"--apply"}, byName["create widget"].Gates)
+	assert.Equal(t, []string{"--apply", "--yes"}, byName["rm widget"].Gates)
+	assert.Equal(t, []string{"--apply"}, byName["apply widget"].Gates,
+		"dependsOnInput signals the conditional --yes via the destructive field, not gates")
+	assert.Equal(t, []string{"--apply", "--yes", "--allow-deprecated"}, byName["rm old"].Gates)
+}

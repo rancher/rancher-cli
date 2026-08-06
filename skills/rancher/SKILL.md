@@ -54,7 +54,7 @@ different actor for a different purpose:
 ### 2. Discover, don't guess
 
 ```
-rancher schema -o json              # every command: args, flags, aliases, destructive markers, contract/stability, error-code enum
+rancher schema -o json              # every command: args, flags, aliases, destructive markers, gates, contract/stability, error-code enum
 rancher schema get pod -o json      # one command's contract
 ```
 

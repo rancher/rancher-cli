@@ -106,6 +106,13 @@ type SchemaCommand struct {
 	Stability        string      `json:"stability,omitempty"`
 	ProjectScope     bool        `json:"projectScope,omitempty"`
 	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
+	// Gates lists the flags this command unconditionally requires before it
+	// executes a mutation: --apply for every mutating command, --yes when
+	// destructive is "true", --allow-deprecated on a deprecated binding.
+	// A destructive "dependsOnInput" command may additionally demand --yes
+	// at run time — the destructive field carries that signal. Empty for
+	// read-only and local commands.
+	Gates []string `json:"gates,omitempty"`
 	// Group is the root section this command renders under (informational —
 	// Manifest.Groups carries the ordered sections; SE-18). "" for the two
 	// positional-root sections (fixed top-level and ungrouped entries).
@@ -369,6 +376,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			sc.Contract = string(b.Contract)
 			sc.Stability = string(b.Stability)
 		}
+		sc.Gates = Gates(sc.CommandType, sc.Destructive, sc.Stability)
 		m.Commands = append(m.Commands, sc)
 	}
 	sort.Slice(m.Commands, func(i, j int) bool { return m.Commands[i].Name < m.Commands[j].Name })

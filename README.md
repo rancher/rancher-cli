@@ -338,7 +338,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 - **Discovery:** `rancher schema -o json` returns the CLI version, the output
   `apiVersion`, the error-code enum with exit codes, the global flags, the
   kind vocabulary (aliases, GVR, scope, per-kind verb availability), and
-  every command with its args, flags, `commandType`, `successExitCodes`, and
+  every command with its args, flags, `commandType`, `gates`,
+  `successExitCodes`, and
   (for server ops) `contract`/`stability`, as one document. The schema manifest
   is the single source for contract and stability — these fields are NOT in Effect
   or Result envelopes. `rancher schema <command|kind>`

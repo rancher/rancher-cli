@@ -116,6 +116,25 @@ func contractLine(c SchemaCommand) string {
 // A mutating destructive value other than "true"/"dependsOnInput" (including
 // unset) carries no destructive gate; a non-mutating commandType other than
 // Local reads as read-only, matching the pipeline (only Mutating is gated).
+// Gates is gateLine's structured twin: the flags a command unconditionally
+// requires before executing a mutation, as a list the manifest can carry
+// per command. A destructive "dependsOnInput" command is not represented
+// here beyond --apply — the destructive field signals the conditional
+// --yes. Nil for read-only and local commands.
+func Gates(ct CommandType, destructive, stability string) []string {
+	if ct != Mutating {
+		return nil
+	}
+	gates := []string{"--apply"}
+	if destructive == "true" {
+		gates = append(gates, "--yes")
+	}
+	if stability == string(safety.Deprecated) {
+		gates = append(gates, "--allow-deprecated")
+	}
+	return gates
+}
+
 func gateLine(ct CommandType, destructive, stability string) string {
 	switch ct {
 	case Local:
