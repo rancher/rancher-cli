@@ -31,15 +31,6 @@ func (t tin) Strings(string) []string { return nil }
 func (t tin) IsSet(string) bool       { return false }
 func (t tin) Args() []string          { return t.a }
 
-// viewManifest unwraps the SE-19 schema view a schema Result carries as Data,
-// returning the wrapped (possibly filtered) manifest.
-func viewManifest(t *testing.T, res Result) Manifest {
-	t.Helper()
-	v, ok := res.Data.(schemaView)
-	require.True(t, ok, "schema Result.Data must be the SE-19 view, got %T", res.Data)
-	return v.manifest
-}
-
 // viewTOC decodes the tocView a bare or filtered schema Result carries as Data
 // into a plain map for field-level assertions against the TOC JSON shape.
 func viewTOC(t *testing.T, res Result) map[string]any {
@@ -63,6 +54,27 @@ func viewCard(t *testing.T, res Result) map[string]any {
 	require.NoError(t, err)
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(b, &out))
+	return out
+}
+
+// groupCommandNames extracts all command names from the groups of a TOC JSON
+// map, in order across all groups — the flat name list SE-18 membership and
+// bare-generated assertions need. Call sites that require per-group structure
+// (e.g. asserting group count or accessing a specific group's entries) should
+// access toc["groups"] directly instead of using this helper.
+func groupCommandNames(t *testing.T, toc map[string]any) []string {
+	t.Helper()
+	var out []string
+	groups, _ := toc["groups"].([]any)
+	for _, g := range groups {
+		gm, ok := g.(map[string]any)
+		require.True(t, ok, "group must be a JSON object")
+		for _, e := range gm["commands"].([]any) {
+			em, ok := e.(map[string]any)
+			require.True(t, ok, "command entry must be a JSON object")
+			out = append(out, em["name"].(string))
+		}
+	}
 	return out
 }
 
@@ -541,6 +553,54 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		}
 		assert.Equal(t, []string{"kubeconfig"}, names)
 	})
+
+	t.Run("hint without --kind covers both commands and kinds", func(t *testing.T) {
+		t.Parallel()
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"frobnicate"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Contains(t, ce.Hint, "rancher schema -o name")
+		assert.Contains(t, ce.Hint, "rancher schema -o json")
+		assert.Contains(t, ce.Hint, "kinds array")
+	})
+
+	t.Run("dual hint on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
+		t.Parallel()
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"pdo"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Hint, "rancher schema -o name")
+		assert.Contains(t, ce.Hint, "rancher schema -o json")
+		assert.Contains(t, ce.Hint, "kinds array")
+	})
+
+	t.Run("hint with --kind points to -o json kinds array", func(t *testing.T) {
+		t.Parallel()
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"frobnicate"}, flags: map[string]bool{"kind": true}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Contains(t, ce.Hint, "rancher schema -o json")
+		assert.Contains(t, ce.Hint, "kinds array")
+		assert.NotContains(t, ce.Hint, "-o name")
+	})
+
+	t.Run("hint with --kind and nearest matches still points to -o json kinds array", func(t *testing.T) {
+		t.Parallel()
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		_, err := kcmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"kubeconf"}, flags: map[string]bool{"kind": true}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.NotEmpty(t, ce.Candidates)
+		assert.Contains(t, ce.Hint, "rancher schema -o json")
+		assert.Contains(t, ce.Hint, "kinds array")
+		assert.NotContains(t, ce.Hint, "-o name")
+	})
 }
 
 // TestSchemaSelectionFormats is the W2a seam regression for the schema result
@@ -648,22 +708,10 @@ func TestSchemaFilters(t *testing.T) {
 		require.NoError(t, err)
 		return viewTOC(t, res), res.Text
 	}
-	// tocNames extracts command names from the groups of a TOC JSON map.
-	tocNames := func(toc map[string]any) []string {
-		var out []string
-		groups, _ := toc["groups"].([]any)
-		for _, g := range groups {
-			for _, e := range g.(map[string]any)["commands"].([]any) {
-				out = append(out, e.(map[string]any)["name"].(string))
-			}
-		}
-		return out
-	}
-
 	t.Run("--verb keeps commands whose first name token matches", func(t *testing.T) {
 		t.Parallel()
 		toc, text := run(t, tin{strs: map[string]string{"verb": "get"}})
-		assert.Equal(t, []string{"get pod", "get project"}, tocNames(toc))
+		assert.Equal(t, []string{"get pod", "get project"}, groupCommandNames(t, toc))
 		groups, _ := toc["groups"].([]any)
 		require.Len(t, groups, 1, "sections prune to the retained set")
 		assert.Equal(t, "get", groups[0].(map[string]any)["name"])
@@ -674,19 +722,19 @@ func TestSchemaFilters(t *testing.T) {
 	t.Run("--destructive keeps true and dependsOnInput", func(t *testing.T) {
 		t.Parallel()
 		toc, _ := run(t, tin{flags: map[string]bool{"destructive": true}})
-		assert.Equal(t, []string{"delete project"}, tocNames(toc))
+		assert.Equal(t, []string{"delete project"}, groupCommandNames(t, toc))
 	})
 
 	t.Run("--contract keeps the contract's commands", func(t *testing.T) {
 		t.Parallel()
 		toc, _ := run(t, tin{strs: map[string]string{"contract": "internal"}})
-		assert.Equal(t, []string{"delete project"}, tocNames(toc))
+		assert.Equal(t, []string{"delete project"}, groupCommandNames(t, toc))
 	})
 
 	t.Run("--mutating keeps mutating commands", func(t *testing.T) {
 		t.Parallel()
 		toc, _ := run(t, tin{flags: map[string]bool{"mutating": true}})
-		assert.Equal(t, []string{"delete project"}, tocNames(toc))
+		assert.Equal(t, []string{"delete project"}, groupCommandNames(t, toc))
 	})
 
 	t.Run("filters compose (AND)", func(t *testing.T) {
@@ -695,13 +743,13 @@ func TestSchemaFilters(t *testing.T) {
 			strs:  map[string]string{"verb": "delete"},
 			flags: map[string]bool{"destructive": true},
 		})
-		assert.Equal(t, []string{"delete project"}, tocNames(toc))
+		assert.Equal(t, []string{"delete project"}, groupCommandNames(t, toc))
 	})
 
 	t.Run("filters compose with --search", func(t *testing.T) {
 		t.Parallel()
 		toc, _ := run(t, tin{strs: map[string]string{"verb": "get", "search": "pods"}})
-		assert.Equal(t, []string{"get pod"}, tocNames(toc))
+		assert.Equal(t, []string{"get pod"}, groupCommandNames(t, toc))
 	})
 
 	t.Run("composed filters can produce zero hits, naming every active filter", func(t *testing.T) {
@@ -872,7 +920,7 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 					assert.NotEmpty(t, kv.kind.Name)
 					return
 				} else {
-					m = viewManifest(t, res)
+					t.Fatalf("unexpected view type %T for %s", res.Data, tc.name)
 				}
 			}
 			want := map[string]bool{}
@@ -892,6 +940,31 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 				assert.Empty(t, m.Groups)
 			} else {
 				assert.NotEmpty(t, m.Commands)
+			}
+			// For shapes that derive manifests directly (never calling Execute),
+			// also verify via the live Execute path: decode the tocView JSON and
+			// assert every groups[].commands[].name is in the expected command
+			// set. For the bare shape, also assert no generated command name
+			// appears in the groups (the bare tocJSON collapses them). For the
+			// zero-hit shape, filterManifest prunes Groups to nil and
+			// tocJSON.Groups carries omitempty — assert the key is absent
+			// entirely (the omitted-on-zero-hit contract as a checked fact).
+			if tc.name != "bare" && tc.name != "filtered" && tc.name != "search hit" && tc.name != "zero hit" {
+				return
+			}
+			res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
+			require.NoError(t, err)
+			decoded := viewTOC(t, res)
+			if tc.zeroHit {
+				assert.NotContains(t, decoded, "groups", "omitempty on zero-hit must elide the groups key")
+			} else {
+				gen := generatedCommandNames(full.Kinds)
+				for _, name := range groupCommandNames(t, decoded) {
+					assert.True(t, want[name], "group command %q not in expected command set for %s", name, tc.name)
+					if tc.name == "bare" {
+						assert.False(t, gen[name], "generated command %q must not appear in bare groups", name)
+					}
+				}
 			}
 		})
 	}
@@ -965,9 +1038,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 				} else if kv, ok := res.Data.(kindView); ok {
 					assert.NotEmpty(t, kv.kind.Name, "candidate %q must select one kind", cand)
 				} else {
-					m := viewManifest(t, res)
-					assert.Equal(t, 1, len(m.Kinds),
-						"candidate %q must select one kind", cand)
+					t.Fatalf("unexpected view type %T for candidate %q", res.Data, cand)
 				}
 			}
 		})

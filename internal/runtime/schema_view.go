@@ -2,37 +2,25 @@ package runtime
 
 import "encoding/json"
 
-// schemaView is the schema command's Result.Data for every selection (SE-19):
-// it wraps the (possibly filtered) manifest and adds the `-o name` contract —
-// a single NAME column whose rows are the selection's name set per the SE-2
-// matrix (all/filtered command names for bare and filtered selections, the
-// command's name for a command selection, the kind's canonical name for a
-// kind selection) — while delegating json and yaml marshaling to the wrapped
-// manifest, so structured output is byte-identical to marshaling the manifest
-// directly. Default/table rendering is unaffected: schema always sets
-// Result.Text, which wins over the envelope path.
+// schemaView is --all's Result.Data: it wraps the full manifest and provides
+// the -o name contract — a single NAME column whose rows are every command
+// name in manifest order. Structured output (-o json/-o yaml) is
+// byte-identical to marshaling the manifest directly; -o name lists all
+// names including generated commands. Per-selection roles (bare TOC, command
+// card, kind card) moved to tocView, cardView, and kindView respectively.
 type schemaView struct {
 	manifest Manifest
-	names    []string
 }
 
-func newSchemaView(m Manifest, names []string) schemaView {
-	return schemaView{manifest: m, names: names}
+func newSchemaView(m Manifest) schemaView {
+	return schemaView{manifest: m}
 }
 
 func (v schemaView) Columns() []string { return []string{"NAME"} }
 
-func (v schemaView) Rows() [][]string {
-	rows := make([][]string, len(v.names))
-	for i, n := range v.names {
-		rows[i] = []string{n}
-	}
-	return rows
-}
+func (v schemaView) Rows() [][]string { return namesToRows(commandNames(v.manifest)) }
 
 func (v schemaView) MarshalJSON() ([]byte, error) { return json.Marshal(v.manifest) }
-
-func (v schemaView) MarshalYAML() (any, error) { return v.manifest, nil }
 
 // tocView is the bare and filtered selections' Result.Data: the TOC-shaped
 // JSON/YAML mirror of renderTOC/renderFilteredTOC (schema disclosure spec, docs/design). bare gates
@@ -56,12 +44,25 @@ type tocGroup struct {
 	Commands []tocEntry `json:"commands"`
 }
 
+// readOnlyJSON is the session read-only pair shared by all three JSON shapes
+// (tocJSON, cardJSON, kindJSON). Embedding it keeps the pair in sync and
+// the wire format is byte-identical to the three hand-copied pairs it replaces
+// — ReadOnly is unconditional, ReadOnlySources carries omitempty.
+type readOnlyJSON struct {
+	ReadOnly        bool     `json:"readOnly"`
+	ReadOnlySources []string `json:"readOnlySources,omitempty"`
+}
+
+// tocJSON is the bare and filtered TOC's JSON/YAML shape. KindCount,
+// GeneratedCommandCount, GlobalExitCodes, and Kinds carry omitempty: they
+// are zero/nil on the filtered path (bare-only gating), so they are absent
+// there. A genuinely-zero GeneratedCommandCount or KindCount on the bare
+// path is unreachable — the kind table is static and validated non-empty.
 type tocJSON struct {
-	CLIVersion            string         `json:"cliVersion"`
-	MinRancherVersion     string         `json:"minRancherVersion"`
-	OutputAPIVersion      string         `json:"outputApiVersion"`
-	ReadOnly              bool           `json:"readOnly"`
-	ReadOnlySources       []string       `json:"readOnlySources,omitempty"`
+	CLIVersion        string `json:"cliVersion"`
+	MinRancherVersion string `json:"minRancherVersion"`
+	OutputAPIVersion  string `json:"outputApiVersion"`
+	readOnlyJSON
 	CommandCount          int            `json:"commandCount"`
 	KindCount             int            `json:"kindCount,omitempty"`
 	GeneratedCommandCount int            `json:"generatedCommandCount,omitempty"`
@@ -77,8 +78,7 @@ func (v tocView) toc() tocJSON {
 		CLIVersion:        m.CLIVersion,
 		MinRancherVersion: m.MinRancherVersion,
 		OutputAPIVersion:  m.OutputAPIVersion,
-		ReadOnly:          m.ReadOnly,
-		ReadOnlySources:   m.ReadOnlySources,
+		readOnlyJSON:      newReadOnlyJSON(m.ReadOnly, m.ReadOnlySources),
 		CommandCount:      len(m.Commands),
 	}
 	// The bare text TOC collapses generated get/patch/delete <kind>
@@ -96,7 +96,10 @@ func (v tocView) toc() tocJSON {
 			if generated[name] {
 				continue
 			}
-			c := byName[name]
+			c, ok := byName[name]
+			if !ok {
+				c = SchemaCommand{Name: name}
+			}
 			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage})
 		}
 		if len(tg.Commands) > 0 {
@@ -105,15 +108,9 @@ func (v tocView) toc() tocJSON {
 	}
 	if v.bare {
 		out.KindCount = len(m.Kinds)
-		// Count generated commands the way renderTOC's genCount does —
-		// membership over m.Commands, not len(generated) — so the JSON
-		// number and the text's collapsed-line N are the same computation,
-		// equal by construction.
-		for _, c := range m.Commands {
-			if generated[c.Name] {
-				out.GeneratedCommandCount++
-			}
-		}
+		// Shared computation via countGenerated — same function renderTOCText
+		// uses for its collapsed-line N, so JSON and text are always in sync.
+		out.GeneratedCommandCount = countGenerated(m.Commands, generated)
 		out.GlobalExitCodes = m.ExitCodes
 		for _, k := range m.Kinds {
 			out.Kinds = append(out.Kinds, k.Name)
@@ -124,17 +121,9 @@ func (v tocView) toc() tocJSON {
 
 func (v tocView) Columns() []string { return []string{"NAME"} }
 
-func (v tocView) Rows() [][]string {
-	rows := make([][]string, len(v.manifest.Commands))
-	for i, c := range v.manifest.Commands {
-		rows[i] = []string{c.Name}
-	}
-	return rows
-}
+func (v tocView) Rows() [][]string { return namesToRows(commandNames(v.manifest)) }
 
 func (v tocView) MarshalJSON() ([]byte, error) { return json.Marshal(v.toc()) }
-
-func (v tocView) MarshalYAML() (any, error) { return v.toc(), nil }
 
 // cardView is a command selection's Result.Data: the selected command's
 // fields FLATTENED to the top level (schema disclosure spec — no commands array
@@ -162,12 +151,11 @@ func newCardView(m Manifest, c SchemaCommand, kindHint string) cardView {
 // cardJSON is the typed marshal shape: embedding flattens the command's
 // fields to the top level while keeping deterministic field order for
 // BOTH encoders (an untyped map would be encoder-defined in YAML —
-// plan-review round 3, P3). ReadOnly is unconditional (mirrors tocJSON);
-// ReadOnlySources carries omitempty.
+// plan-review round 3, P3). readOnlyJSON is embedded (mirrors tocJSON and
+// kindJSON); GlobalExitCodes is unconditional on the card.
 type cardJSON struct {
 	SchemaCommand
-	ReadOnly        bool           `json:"readOnly"`
-	ReadOnlySources []string       `json:"readOnlySources,omitempty"`
+	readOnlyJSON
 	GlobalExitCodes map[string]int `json:"globalExitCodes"`
 	KindViewHint    string         `json:"kindViewHint,omitempty"`
 }
@@ -175,8 +163,7 @@ type cardJSON struct {
 func (v cardView) card() cardJSON {
 	return cardJSON{
 		SchemaCommand:   v.cmd,
-		ReadOnly:        v.readOnly,
-		ReadOnlySources: v.readOnlySources,
+		readOnlyJSON:    newReadOnlyJSON(v.readOnly, v.readOnlySources),
 		GlobalExitCodes: v.exitCodes,
 		KindViewHint:    v.kindHint,
 	}
@@ -187,8 +174,6 @@ func (v cardView) Columns() []string { return []string{"NAME"} }
 func (v cardView) Rows() [][]string { return [][]string{{v.cmd.Name}} }
 
 func (v cardView) MarshalJSON() ([]byte, error) { return json.Marshal(v.card()) }
-
-func (v cardView) MarshalYAML() (any, error) { return v.card(), nil }
 
 // kindView is a kind selection's Result.Data: the SchemaKind row alone —
 // verb state, not per-verb flags — mirroring renderKindCard (schema disclosure spec;
@@ -206,11 +191,15 @@ func newKindView(m Manifest, k SchemaKind) kindView {
 
 // kindJSON is the typed marshal shape for a kind selection: the kind row's
 // fields at top level plus the session's read-only state, mirroring the
-// card and TOC views. ReadOnly is unconditional; ReadOnlySources carries omitempty.
+// card and TOC views. readOnlyJSON is embedded (mirrors tocJSON and cardJSON).
+// GlobalExitCodes is absent here — renderKindCard renders no exit-code strip,
+// so the kind JSON carries none either. cardJSON differs because the command
+// card's text DOES render the strip. An agent doing the two-step kind lookup
+// (schema <kind> --kind, then schema <verb> <kind>) gets globalExitCodes from
+// the per-verb command card call.
 type kindJSON struct {
 	SchemaKind
-	ReadOnly        bool     `json:"readOnly"`
-	ReadOnlySources []string `json:"readOnlySources,omitempty"`
+	readOnlyJSON
 }
 
 func (v kindView) Columns() []string { return []string{"NAME"} }
@@ -218,11 +207,7 @@ func (v kindView) Columns() []string { return []string{"NAME"} }
 func (v kindView) Rows() [][]string { return [][]string{{v.kind.Name}} }
 
 func (v kindView) MarshalJSON() ([]byte, error) {
-	return json.Marshal(kindJSON{SchemaKind: v.kind, ReadOnly: v.readOnly, ReadOnlySources: v.readOnlySources})
-}
-
-func (v kindView) MarshalYAML() (any, error) {
-	return kindJSON{SchemaKind: v.kind, ReadOnly: v.readOnly, ReadOnlySources: v.readOnlySources}, nil
+	return json.Marshal(kindJSON{SchemaKind: v.kind, readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources)})
 }
 
 // commandNames lists m's command names in manifest order — the bare and
@@ -233,4 +218,21 @@ func commandNames(m Manifest) []string {
 		out[i] = c.Name
 	}
 	return out
+}
+
+// namesToRows converts a name slice into the single-column row matrix Rows()
+// returns — shared by schemaView and tocView whose Rows() bodies are otherwise
+// byte-identical.
+func namesToRows(names []string) [][]string {
+	rows := make([][]string, len(names))
+	for i, n := range names {
+		rows[i] = []string{n}
+	}
+	return rows
+}
+
+// newReadOnlyJSON constructs the readOnlyJSON pair from its two fields —
+// shared by the three call sites in toc(), card(), and MarshalJSON().
+func newReadOnlyJSON(readOnly bool, sources []string) readOnlyJSON {
+	return readOnlyJSON{ReadOnly: readOnly, ReadOnlySources: sources}
 }

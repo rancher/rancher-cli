@@ -9,6 +9,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCountGenerated pins the shared countGenerated helper used by both
+// renderTOCText and tocView.toc() to keep the collapsed-line N and the
+// JSON GeneratedCommandCount in sync.
+func TestCountGenerated(t *testing.T) {
+	t.Parallel()
+	ks := []SchemaKind{
+		{Name: "pod", Verbs: map[string]VerbState{
+			"get":    {State: VerbAvailable},
+			"delete": {State: VerbAvailable},
+		}},
+		{Name: "widget", Verbs: map[string]VerbState{
+			"get":   {State: VerbAvailable},
+			"patch": {State: VerbAvailable},
+		}},
+	}
+	generated := generatedCommandNames(ks)
+	cmds := []SchemaCommand{
+		{Name: "schema"},
+		{Name: "get pod"},
+		{Name: "delete pod"},
+		{Name: "get widget"},
+		{Name: "patch widget"},
+	}
+	assert.Equal(t, 4, countGenerated(cmds, generated))
+	assert.Equal(t, 0, countGenerated([]SchemaCommand{{Name: "schema"}}, generated))
+}
+
 // TestSchemaGateLineMatrix is the SE-3 conformance test: the gate line is a
 // total function of (commandType, destructive, stability) with exact wordings,
 // enumerated over every combination. The expected strings restate the spec

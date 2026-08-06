@@ -595,23 +595,29 @@ func composeBindings() (runtime.Resolver, error) {
 	return resolver, nil
 }
 
+// wiredRegistry is the validated command registry and its adapted CLI
+// surface as built by buildWiredRegistry. Callers pull fields by name to
+// avoid positional confusion across the former five return values.
+type wiredRegistry struct {
+	reg    *runtime.Registry
+	fixed  []*ucli.Command
+	groups map[string][]*ucli.Command
+	order  []string
+}
+
 // buildWiredRegistry constructs and validates the command registry for the
 // full surface. It handles kind validation, resolver composition, entry wiring,
 // and the fixed schema/completion registrations.
 //
 // readOnly is wired into the schema command; pass config.ReadOnlyOverride for
 // the real CLI path and nil for callers that only need the manifest shape.
-// fixed holds the adapted urfave leaves for schema and completion, ready for
-// assembleCommands; groups and order describe the generated entry sections.
-func buildWiredRegistry(version string, readOnly func() (bool, []string)) (
-	*runtime.Registry, []*ucli.Command, map[string][]*ucli.Command, []string, error,
-) {
+func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wiredRegistry, error) {
 	if err := kinds.Validate(); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("kind table: %w", err)
+		return wiredRegistry{}, fmt.Errorf("kind table: %w", err)
 	}
 	resolver, err := composeBindings()
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return wiredRegistry{}, err
 	}
 	reg := runtime.NewRegistry(resolver)
 	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))
@@ -630,7 +636,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (
 	for _, e := range entries {
 		leaf, name, err := wireEntry(reg, resolver, version, e)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return wiredRegistry{}, err
 		}
 		if _, seen := groups[e.group]; !seen {
 			order = append(order, e.group)
@@ -670,18 +676,23 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (
 	reg.SetGroups(sections)
 
 	if err := reg.Validate(); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("command registry: %w", err)
+		return wiredRegistry{}, fmt.Errorf("command registry: %w", err)
 	}
-	return reg, []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)}, groups, order, nil
+	return wiredRegistry{
+		reg:    reg,
+		fixed:  []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)},
+		groups: groups,
+		order:  order,
+	}, nil
 }
 
 func BuildRoot(version string) (*ucli.Command, error) {
-	_, fixed, groups, order, err := buildWiredRegistry(version, config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry(version, config.ReadOnlyOverride)
 	if err != nil {
 		return nil, err
 	}
 
-	commandsList := assembleCommands(fixed, order, groups)
+	commandsList := assembleCommands(wr.fixed, wr.order, wr.groups)
 
 	// Install aliasAwareGroupComplete on every verb group (any command that
 	// has subcommands). For groups whose leaves carry Aliases this lists

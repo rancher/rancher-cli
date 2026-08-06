@@ -38,7 +38,7 @@ func (s *schemaCmd) Describe() Descriptor {
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
 		Flags: []ArgSpec{
 			{Name: "all", Type: "bool",
-				Desc: "emit the full capability manifest — every command expanded, kinds, environment variables, error codes — in structured output (-o json/yaml); the table view stays the table of contents"},
+				Desc: "print the complete capability manifest in structured output (the table view stays the table of contents)"},
 			{Name: "kind", Type: "bool",
 				Desc: "resolve the selector as a kind, not a command"},
 			// The verb enum is a static literal — the descriptor cannot see
@@ -130,7 +130,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		case len(in.Args()) > 0:
 			return Result{}, allConflict("the selector")
 		}
-		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOCText(m, false)}, nil
+		return Result{Kind: "Schema", Data: newSchemaView(m), Text: renderTOCText(m, false)}, nil
 	}
 	if f.active() {
 		// SE-20: filters and --search span the whole surface; a positional
@@ -334,6 +334,13 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 // list stops helping.
 const maxNearestMatches = 10
 
+// commandListHint and kindsArrayHint are SE-4's reusable hint fragments.
+// unknownSelection composes its per-mode hint from these two named constants
+// so the three final hint strings (dual, kindOnly, nearest) share one source
+// of truth rather than three inline literals.
+const commandListHint = "run `rancher schema -o name` for the full command list, or `rancher schema -o json` for the kinds array"
+const kindsArrayHint = "run `rancher schema -o json` — its kinds array lists every kind name"
+
 // unknownSelection builds SE-4's VALIDATION error for a positional that
 // matches nothing, listing nearest matches when any exist. Under --kind
 // (kindOnly) the selector could only ever be a kind, so the message and the
@@ -343,8 +350,12 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	if kindOnly {
 		noun = "kind"
 	}
+	hint := commandListHint
+	if kindOnly {
+		hint = kindsArrayHint
+	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).
-		WithHint("run `rancher schema -o json` for the full command list")
+		WithHint(hint)
 	matches := nearestSelectors(m, want, kindOnly)
 	if len(matches) == 0 {
 		return ce
@@ -353,9 +364,8 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	for i, name := range matches {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
-	return ce.WithCandidates(cands).
-		WithHint(fmt.Sprintf("nearest matches: %s — run `rancher schema -o json` for the full command list",
-			strings.Join(matches, ", ")))
+	nearestHint := fmt.Sprintf("nearest matches: %s — %s", strings.Join(matches, ", "), hint)
+	return ce.WithCandidates(cands).WithHint(nearestHint)
 }
 
 // nearestSelectors finds SE-4's nearest matches: a case-insensitive substring

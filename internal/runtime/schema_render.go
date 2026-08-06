@@ -277,12 +277,7 @@ func readOnlyLine(m Manifest) string {
 func renderTOCText(m Manifest, withManifestLine bool) string {
 	generated := generatedCommandNames(m.Kinds)
 	byName := commandIndex(m.Commands)
-	genCount := 0
-	for _, c := range m.Commands {
-		if generated[c.Name] {
-			genCount++
-		}
-	}
+	genCount := countGenerated(m.Commands, generated)
 	var b strings.Builder
 	fmt.Fprintf(&b, "rancher %s — %d commands · %d kinds\n", m.CLIVersion, len(m.Commands), len(m.Kinds))
 	b.WriteString(readOnlyLine(m))
@@ -379,6 +374,19 @@ func tocLine(c SchemaCommand) string {
 		return c.Name
 	}
 	return c.Name + " — " + c.Usage
+}
+
+// countGenerated counts how many commands in cmds appear in the generated
+// set. Used by both renderTOCText's collapsed-line N and tocView.toc()'s
+// GeneratedCommandCount — shared computation, same number.
+func countGenerated(cmds []SchemaCommand, generated map[string]bool) int {
+	n := 0
+	for _, c := range cmds {
+		if generated[c.Name] {
+			n++
+		}
+	}
+	return n
 }
 
 // generatedCommandNames derives the generated command set from the kind

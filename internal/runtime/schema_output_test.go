@@ -22,7 +22,7 @@ import (
 func TestSchemaViewMarshalDelegation(t *testing.T) {
 	t.Parallel()
 	m := kindRegistry().Schema("test", "2.14")
-	view := newSchemaView(m, commandNames(m))
+	view := newSchemaView(m)
 
 	gotJSON, err := json.Marshal(view)
 	require.NoError(t, err)
@@ -35,10 +35,6 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 	wantYAML, err := yaml.Marshal(m)
 	require.NoError(t, err)
 	assert.Equal(t, wantYAML, gotYAML, "yaml of the view is byte-identical to the manifest")
-
-	y, err := view.MarshalYAML()
-	require.NoError(t, err)
-	assert.Equal(t, m, y, "MarshalYAML delegates to the wrapped manifest")
 
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	for _, format := range []string{"", "table"} {
