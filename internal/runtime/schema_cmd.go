@@ -153,8 +153,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		}
 	}
 	if k, ok := lookupKind(m.Kinds, want); ok {
-		return Result{Kind: "Schema", Data: newSchemaView(filterToKind(m, k), []string{k.Name}),
-			Text: renderKindCard(k)}, nil
+		return Result{Kind: "Schema", Data: newKindView(k), Text: renderKindCard(k)}, nil
 	}
 	return Result{}, unknownSelection(m, want, asKind)
 }
@@ -286,29 +285,6 @@ func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 		}
 	}
 	return SchemaKind{}, false
-}
-
-// filterToKind shapes the manifest for a kind selection (SE-2's kind row):
-// kinds holds exactly the selected kind, commands exactly its registered
-// generated verbs — available OR refused, both registered per SE-17; absent
-// verbs have no command — and Groups pruned to the same set (SE-18).
-func filterToKind(m Manifest, k SchemaKind) Manifest {
-	keep := map[string]bool{}
-	for verb, vs := range k.Verbs {
-		if vs.State == VerbAvailable || vs.State == VerbRefused {
-			keep[verb+" "+k.Name] = true
-		}
-	}
-	cmds := make([]SchemaCommand, 0, len(keep))
-	for _, c := range m.Commands {
-		if keep[c.Name] {
-			cmds = append(cmds, c)
-		}
-	}
-	m.Kinds = []SchemaKind{k}
-	m.Commands = cmds
-	m.Groups = filterGroups(m.Groups, keep)
-	return m
 }
 
 // filterGroups prunes each ordered section to the retained command names and

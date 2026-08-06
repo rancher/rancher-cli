@@ -66,6 +66,14 @@ func viewCard(t *testing.T, res Result) map[string]any {
 	return out
 }
 
+// viewKind extracts the SchemaKind from the kindView a kind-selection Result carries as Data.
+func viewKind(t *testing.T, res Result) SchemaKind {
+	t.Helper()
+	v, ok := res.Data.(kindView)
+	require.True(t, ok, "schema Result.Data must be kindView for kind selections, got %T", res.Data)
+	return v.kind
+}
+
 func TestSchemaFilter(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
@@ -303,9 +311,8 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 			tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "kind: kubeconfig\n"))
-		m := viewManifest(t, res)
-		require.Len(t, m.Kinds, 1)
-		assert.Equal(t, "kubeconfig", m.Kinds[0].Name)
+		k := viewKind(t, res)
+		assert.Equal(t, "kubeconfig", k.Name)
 	})
 
 	t.Run("non-colliding command card carries no kind footnote", func(t *testing.T) {
@@ -338,9 +345,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(),
 			tin{a: []string{name}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
-		m := viewManifest(t, res)
-		require.Len(t, m.Kinds, 1)
-		return strings.Split(res.Text, "\n"), m.Kinds[0]
+		return strings.Split(res.Text, "\n"), viewKind(t, res)
 	}
 	wantVerbLine := func(verb string, vs VerbState) string {
 		switch vs.State {
@@ -385,10 +390,8 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 }
 
 // TestSchemaKindStructured covers the SE-2 kind row for structured output:
-// -o json is the envelope whose data is the manifest filtered to that kind,
-// with commands exactly the kind's registered generated verbs (available OR
-// refused — derived from the kind's own verb states) and Groups pruned to
-// the same set.
+// -o json is the envelope whose data IS the kind row — name and verbs at top
+// level, no commands or groups wrapper (the per-verb detail is one more call away).
 func TestSchemaKindStructured(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
@@ -402,44 +405,18 @@ func TestSchemaKindStructured(t *testing.T) {
 	data, ok := env["data"].(map[string]any)
 	require.True(t, ok)
 
-	kinds, ok := data["kinds"].([]any)
+	// kind-row shape: the kind's fields are at top level — no kinds/commands/groups wrapper.
+	assert.Equal(t, "clusterregistrationtoken", data["name"])
+	verbs, ok := data["verbs"].(map[string]any)
+	require.True(t, ok, "kind row carries verbs")
+	getState, ok := verbs["get"].(map[string]any)
 	require.True(t, ok)
-	require.Len(t, kinds, 1)
-	k, ok := kinds[0].(map[string]any)
+	assert.Equal(t, VerbAvailable, getState["state"])
+	patchState, ok := verbs["patch"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "clusterregistrationtoken", k["name"])
-
-	want := map[string]bool{}
-	verbs, ok := k["verbs"].(map[string]any)
-	require.True(t, ok)
-	for verb, v := range verbs {
-		state := v.(map[string]any)["state"].(string)
-		if state == VerbAvailable || state == VerbRefused {
-			want[verb+" clusterregistrationtoken"] = true
-		}
-	}
-	require.NotEmpty(t, want)
-
-	got := map[string]bool{}
-	cmds, ok := data["commands"].([]any)
-	require.True(t, ok)
-	for _, c := range cmds {
-		got[c.(map[string]any)["name"].(string)] = true
-	}
-	assert.Equal(t, want, got, "commands are exactly the kind's registered generated verbs")
-	assert.True(t, got["patch clusterregistrationtoken"], "a refused verb is a registered command")
-
-	grouped := map[string]bool{}
-	groups, ok := data["groups"].([]any)
-	require.True(t, ok)
-	for _, g := range groups {
-		names := g.(map[string]any)["commands"].([]any)
-		require.NotEmpty(t, names, "empty sections are dropped")
-		for _, n := range names {
-			grouped[n.(string)] = true
-		}
-	}
-	assert.Equal(t, got, grouped, "Groups carry the same command set as commands (SE-18)")
+	assert.Equal(t, VerbRefused, patchState["state"], "a refused verb is present in the kind row")
+	assert.NotContains(t, data, "commands", "kind-row carries no commands wrapper")
+	assert.NotContains(t, data, "groups", "kind-row carries no groups wrapper")
 }
 
 // TestSchemaKindFlagRequiresSelector covers SE-20: --kind is a selection
@@ -470,18 +447,14 @@ func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 	env := decodeEnvelope(t, out.Bytes())
 	data, ok := env["data"].(map[string]any)
 	require.True(t, ok)
-	kinds, ok := data["kinds"].([]any)
-	require.True(t, ok)
-	require.Len(t, kinds, 1)
-	assert.Equal(t, "kubeconfig", kinds[0].(map[string]any)["name"])
 
-	names := map[string]bool{}
-	for _, c := range data["commands"].([]any) {
-		names[c.(map[string]any)["name"].(string)] = true
-	}
-	assert.Equal(t, map[string]bool{
-		"get kubeconfig": true, "patch kubeconfig": true, "delete kubeconfig": true,
-	}, names, "the colliding top-level command is not part of the kind view")
+	// kind-row shape: kind fields at top level — no kinds/commands wrapper, so the
+	// colliding top-level "kubeconfig" command is naturally absent.
+	assert.Equal(t, "kubeconfig", data["name"])
+	verbs, ok := data["verbs"].(map[string]any)
+	require.True(t, ok, "kind row carries verbs")
+	assert.Len(t, verbs, 3, "get, patch, delete all available")
+	assert.NotContains(t, data, "commands", "kind-row carries no commands wrapper")
 }
 
 // TestSchemaUnknownSelectionNearestMatch covers SE-4: an unknown selection is
@@ -886,6 +859,12 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 				require.NoError(t, err)
 				if cv, ok := res.Data.(cardView); ok {
 					m = cv.manifest
+				} else if kv, ok := res.Data.(kindView); ok {
+					// SE-18 is a manifest invariant; kindView carries only the kind
+					// row — no manifest to check — so assert the row is non-empty and
+					// return early.
+					assert.NotEmpty(t, kv.kind.Name)
+					return
 				} else {
 					m = viewManifest(t, res)
 				}
@@ -977,6 +956,8 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 				require.NoError(t, err, "candidate %q must resolve as a schema selector", cand)
 				if cv, ok := res.Data.(cardView); ok {
 					assert.NotEmpty(t, cv.cmd.Name, "candidate %q must resolve to a named command", cand)
+				} else if kv, ok := res.Data.(kindView); ok {
+					assert.NotEmpty(t, kv.kind.Name, "candidate %q must select one kind", cand)
 				} else {
 					m := viewManifest(t, res)
 					assert.Equal(t, 1, len(m.Kinds),

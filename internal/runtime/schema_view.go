@@ -172,6 +172,21 @@ func (v cardView) MarshalJSON() ([]byte, error) { return json.Marshal(v.card()) 
 
 func (v cardView) MarshalYAML() (any, error) { return v.card(), nil }
 
+// kindView is a kind selection's Result.Data: the SchemaKind row alone —
+// verb state, not per-verb flags — mirroring renderKindCard (schema disclosure spec;
+// the per-verb flag detail is one more call away: schema <verb> <kind>).
+type kindView struct{ kind SchemaKind }
+
+func newKindView(k SchemaKind) kindView { return kindView{kind: k} }
+
+func (v kindView) Columns() []string { return []string{"NAME"} }
+
+func (v kindView) Rows() [][]string { return [][]string{{v.kind.Name}} }
+
+func (v kindView) MarshalJSON() ([]byte, error) { return json.Marshal(v.kind) }
+
+func (v kindView) MarshalYAML() (any, error) { return v.kind, nil }
+
 // commandNames lists m's command names in manifest order — the bare and
 // filtered selections' `-o name` sets.
 func commandNames(m Manifest) []string {

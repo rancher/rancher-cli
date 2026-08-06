@@ -147,6 +147,22 @@ func TestCardViewNameRows(t *testing.T) {
 	assert.Equal(t, [][]string{{"get pod"}}, v.Rows())
 }
 
+// TestKindViewMarshalsTheRowOnly pins the spec'd kind view: a kind selection's data
+// is the kind row — verb STATE included, per-verb flags deliberately not
+// (the two-step: schema <kind> then schema <verb> <kind>).
+func TestKindViewMarshalsTheRowOnly(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{Name: "pod", Key: "pod", Aliases: []string{"pods"}}
+	b, err := json.Marshal(newKindView(k))
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	assert.Equal(t, "pod", got["name"])
+	assert.NotContains(t, got, "commands")
+	assert.NotContains(t, got, "envVars")
+	assert.Equal(t, [][]string{{"pod"}}, newKindView(k).Rows())
+}
+
 // TestTOCGeneratedCountMatchesTheText pins the mirror as an assertion,
 // not a golden eyeball (plan-review round 4): the JSON's
 // generatedCommandCount equals the N the bare text TOC actually prints

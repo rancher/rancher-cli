@@ -67,9 +67,10 @@ func TestSchemaFormatCompat(t *testing.T) {
 		in        tin
 		wantCmds  []string // expected data.commands names (schemaView) or commandCount (tocView)
 		wantNames []string // expected -o name lines
-		wantKind  string   // expected single kinds entry, "" = kinds untouched
+		wantKind  string   // expected kind name for kind-row shape
 		isTOC     bool     // bare/filtered selections use tocView, not schemaView
 		isCard    bool     // command selections use cardView (flattened name at top level)
+		isKind    bool     // kind selections use kindView (kind row at top level)
 	}
 
 	shapes := []shapeTC{
@@ -83,9 +84,9 @@ func TestSchemaFormatCompat(t *testing.T) {
 		},
 		{
 			name: "kind selection", in: tin{a: []string{"crt"}},
-			wantCmds:  []string{"get clusterregistrationtoken", "patch clusterregistrationtoken"},
 			wantNames: []string{"clusterregistrationtoken"},
 			wantKind:  "clusterregistrationtoken",
+			isKind:    true,
 		},
 		{
 			name: "zero hit", in: tin{strs: map[string]string{"search": "zzz"}},
@@ -131,6 +132,16 @@ func TestSchemaFormatCompat(t *testing.T) {
 			assert.Empty(t, groups, "zero hit carries no groups")
 		}
 	}
+	// assertKindData checks the kindView JSON shape used by kind selections:
+	// the kind's fields are at top level — name, verbs — no commands or groups wrapper.
+	assertKindData := func(t *testing.T, data map[string]any, tc shapeTC) {
+		t.Helper()
+		assert.Equal(t, tc.wantKind, data["name"])
+		_, ok := data["verbs"].(map[string]any)
+		assert.True(t, ok, "kind row carries verbs")
+		assert.NotContains(t, data, "commands", "kind-row carries no commands wrapper")
+		assert.NotContains(t, data, "groups", "kind-row carries no groups wrapper")
+	}
 	// assertTOCData checks the tocView JSON shape used by bare and filtered selections:
 	// commandCount instead of a commands array, groups with name+usage entries.
 	assertTOCData := func(t *testing.T, data map[string]any, tc shapeTC) {
@@ -159,6 +170,8 @@ func TestSchemaFormatCompat(t *testing.T) {
 					assertCardData(t, data, tc)
 				case tc.isTOC:
 					assertTOCData(t, data, tc)
+				case tc.isKind:
+					assertKindData(t, data, tc)
 				default:
 					assertData(t, data, tc)
 				}
@@ -176,6 +189,8 @@ func TestSchemaFormatCompat(t *testing.T) {
 					assertCardData(t, data, tc)
 				case tc.isTOC:
 					assertTOCData(t, data, tc)
+				case tc.isKind:
+					assertKindData(t, data, tc)
 				default:
 					assertData(t, data, tc)
 				}
@@ -202,6 +217,9 @@ func TestSchemaFormatCompat(t *testing.T) {
 				case tc.isTOC:
 					tpl = "template={{ .commandCount }}"
 					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
+				case tc.isKind:
+					tpl = "template={{ .name }}"
+					want = tc.wantKind + "\n"
 				default:
 					tpl = "template={{len .commands}}"
 					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
