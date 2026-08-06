@@ -66,7 +66,7 @@ type tocJSON struct {
 	KindCount             int            `json:"kindCount,omitempty"`
 	GeneratedCommandCount int            `json:"generatedCommandCount,omitempty"`
 	GlobalExitCodes       map[string]int `json:"globalExitCodes,omitempty"`
-	Groups                []tocGroup     `json:"groups"`
+	Groups                []tocGroup     `json:"groups,omitempty"`
 	Kinds                 []string       `json:"kinds,omitempty"`
 }
 
@@ -141,13 +141,13 @@ func (v tocView) MarshalYAML() (any, error) { return v.toc(), nil }
 // wrapper), the global exit map the text card's strip renders, and the
 // text card's kind-collision pointer as kindViewHint.
 type cardView struct {
-	manifest Manifest
-	cmd      SchemaCommand
-	kindHint string
+	exitCodes map[string]int
+	cmd       SchemaCommand
+	kindHint  string
 }
 
 func newCardView(m Manifest, c SchemaCommand, kindHint string) cardView {
-	return cardView{manifest: m, cmd: c, kindHint: kindHint}
+	return cardView{exitCodes: m.ExitCodes, cmd: c, kindHint: kindHint}
 }
 
 // cardJSON is the typed marshal shape: embedding flattens the command's
@@ -161,7 +161,7 @@ type cardJSON struct {
 }
 
 func (v cardView) card() cardJSON {
-	return cardJSON{SchemaCommand: v.cmd, GlobalExitCodes: v.manifest.ExitCodes, KindViewHint: v.kindHint}
+	return cardJSON{SchemaCommand: v.cmd, GlobalExitCodes: v.exitCodes, KindViewHint: v.kindHint}
 }
 
 func (v cardView) Columns() []string { return []string{"NAME"} }

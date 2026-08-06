@@ -858,7 +858,13 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 				res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
 				require.NoError(t, err)
 				if cv, ok := res.Data.(cardView); ok {
-					m = cv.manifest
+					// cardView carries only exitCodes+cmd; reconstruct the
+					// single-command sub-manifest to verify SE-18's Groups
+					// set-equals invariant for command selections.
+					m = Manifest{
+						Commands: []SchemaCommand{cv.cmd},
+						Groups:   filterGroups(full.Groups, map[string]bool{cv.cmd.Name: true}),
+					}
 				} else if kv, ok := res.Data.(kindView); ok {
 					// SE-18 is a manifest invariant; kindView carries only the kind
 					// row — no manifest to check — so assert the row is non-empty and

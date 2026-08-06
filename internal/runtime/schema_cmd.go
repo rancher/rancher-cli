@@ -155,10 +155,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	if !asKind {
 		for _, c := range m.Commands {
 			if c.Name == want || matchesAlias(c, want) {
-				sel := m
-				sel.Commands = []SchemaCommand{c}
-				sel.Groups = filterGroups(m.Groups, map[string]bool{c.Name: true})
-				text := renderCommandCard(sel, c)
+				text := renderCommandCard(m, c)
 				kindHint := ""
 				if k, collides := lookupKind(m.Kinds, want); collides {
 					text += "kind view: rancher schema " + k.Name + " --kind\n"

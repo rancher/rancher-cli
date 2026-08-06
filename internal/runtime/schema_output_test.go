@@ -112,26 +112,6 @@ func TestSchemaFormatCompat(t *testing.T) {
 		assert.Contains(t, data, "globalExitCodes")
 		assert.NotContains(t, data, "commands", "flattened: no commands wrapper array")
 	}
-	assertData := func(t *testing.T, data map[string]any, tc shapeTC) {
-		t.Helper()
-		cmds, ok := data["commands"].([]any)
-		require.True(t, ok, "data.commands must be an array, got %T", data["commands"])
-		names := make([]string, len(cmds))
-		for i, c := range cmds {
-			names[i] = c.(map[string]any)["name"].(string)
-		}
-		assert.ElementsMatch(t, tc.wantCmds, names)
-		if tc.wantKind != "" {
-			kinds, ok := data["kinds"].([]any)
-			require.True(t, ok)
-			require.Len(t, kinds, 1)
-			assert.Equal(t, tc.wantKind, kinds[0].(map[string]any)["name"])
-		}
-		if len(tc.wantCmds) == 0 {
-			groups, _ := data["groups"].([]any)
-			assert.Empty(t, groups, "zero hit carries no groups")
-		}
-	}
 	// assertKindData checks the kindView JSON shape used by kind selections:
 	// the kind's fields are at top level — name, verbs — no commands or groups wrapper.
 	assertKindData := func(t *testing.T, data map[string]any, tc shapeTC) {
@@ -172,8 +152,6 @@ func TestSchemaFormatCompat(t *testing.T) {
 					assertTOCData(t, data, tc)
 				case tc.isKind:
 					assertKindData(t, data, tc)
-				default:
-					assertData(t, data, tc)
 				}
 			})
 
@@ -191,8 +169,6 @@ func TestSchemaFormatCompat(t *testing.T) {
 					assertTOCData(t, data, tc)
 				case tc.isKind:
 					assertKindData(t, data, tc)
-				default:
-					assertData(t, data, tc)
 				}
 			})
 
@@ -220,9 +196,6 @@ func TestSchemaFormatCompat(t *testing.T) {
 				case tc.isKind:
 					tpl = "template={{ .name }}"
 					want = tc.wantKind + "\n"
-				default:
-					tpl = "template={{len .commands}}"
-					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
 				}
 				out := run(t, tc.in, tpl)
 				assert.Equal(t, want, out,

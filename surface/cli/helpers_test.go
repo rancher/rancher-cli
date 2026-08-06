@@ -10,9 +10,9 @@ import (
 //
 // TestSchemaGroupsMatchRootAssembly is the drift tripwire: it compares
 // BuildRoot's real command assembly against this helper's manifest, so a
-// divergence in BuildRoot's wiring surfaces as a test failure there. A later
-// task will re-point the golden tests at the real CLI path via --all,
-// further shrinking this helper's role.
+// divergence in BuildRoot's wiring surfaces as a test failure there. The
+// golden tests drive root.Run via --all; this helper feeds the
+// manifest-invariant tests.
 func buildManifest(version string) (runtime.Manifest, error) {
 	reg, _, _, _, err := buildWiredRegistry(version, nil)
 	if err != nil {

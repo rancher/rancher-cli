@@ -125,7 +125,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
     rancher schema delete project        # one command: contract + gates
     rancher schema pod                   # one kind: aliases, routing, verbs
     rancher schema --search kubeconfig   # find commands by substring
-    rancher schema --all -o json          # full manifest (for agents)
+    rancher schema --all -o json         # full manifest (for agents)
 
     # Verify connectivity + credentials
     rancher auth check -o json
