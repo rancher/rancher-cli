@@ -2,3 +2,6 @@
 /dist/
 docs/
 graphify-out/
+!.claude/
+.claude/*
+!.claude/settings.json
