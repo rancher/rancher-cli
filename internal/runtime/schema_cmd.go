@@ -122,7 +122,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
 		}
 		fm := filterManifest(m, f)
-		return Result{Kind: "Schema", Data: newSchemaView(fm, commandNames(fm)),
+		return Result{Kind: "Schema", Data: newTOCView(fm, false),
 			Text: renderFilteredTOC(fm, f)}, nil
 	}
 	if len(in.Args()) == 0 {
@@ -130,7 +130,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector").
 				WithHint("pass a kind name, e.g. `rancher schema kubeconfig --kind`")
 		}
-		return Result{Kind: "Schema", Data: newSchemaView(m, commandNames(m)), Text: renderTOC(m)}, nil
+		return Result{Kind: "Schema", Data: newTOCView(m, true), Text: renderTOC(m)}, nil
 	}
 	want := strings.Join(in.Args(), " ")
 	// Resolution order (SE-5/SE-6): command match wins; a positional that

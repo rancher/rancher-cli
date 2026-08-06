@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"testing"
 
@@ -17,27 +16,12 @@ import (
 // Adapt alone) and that the manifest's shellCompletion capability field is
 // always present.
 func TestCompletionCommandRegisteredWithShellCompletionField(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			ShellCompletion []string `json:"shellCompletion"`
-			Commands        []struct {
-				Name string `json:"name"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	assert.Equal(t, []string{"bash", "zsh", "fish", "pwsh"}, env.Data.ShellCompletion)
+	assert.Equal(t, []string{"bash", "zsh", "fish", "pwsh"}, m.ShellCompletion)
 
 	var names []string
-	for _, c := range env.Data.Commands {
+	for _, c := range m.Commands {
 		names = append(names, c.Name)
 	}
 	assert.Contains(t, names, "completion")

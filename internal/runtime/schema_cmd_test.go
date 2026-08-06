@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
@@ -39,6 +40,19 @@ func viewManifest(t *testing.T, res Result) Manifest {
 	return v.manifest
 }
 
+// viewTOC decodes the tocView a bare or filtered schema Result carries as Data
+// into a plain map for field-level assertions against the TOC JSON shape.
+func viewTOC(t *testing.T, res Result) map[string]any {
+	t.Helper()
+	v, ok := res.Data.(tocView)
+	require.True(t, ok, "schema Result.Data must be tocView for bare/filtered, got %T", res.Data)
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(b, &out))
+	return out
+}
+
 func TestSchemaFilter(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
@@ -49,8 +63,8 @@ func TestSchemaFilter(t *testing.T) {
 	t.Run("no args returns the full manifest", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 		require.NoError(t, err)
-		m := viewManifest(t, res)
-		assert.Len(t, m.Commands, 2)
+		toc := viewTOC(t, res)
+		assert.Equal(t, float64(2), toc["commandCount"])
 	})
 
 	t.Run("multi-word name filters to one", func(t *testing.T) {
@@ -626,10 +640,10 @@ func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
 
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 	require.NoError(t, err)
-	m := viewManifest(t, res)
-	assert.True(t, m.ReadOnly)
-	assert.Equal(t, []string{"config readOnly"}, m.ReadOnlySources)
-	assert.Equal(t, "2.14", m.MinRancherVersion)
+	toc := viewTOC(t, res)
+	assert.Equal(t, true, toc["readOnly"])
+	assert.Equal(t, []any{"config readOnly"}, toc["readOnlySources"])
+	assert.Equal(t, "2.14", toc["minRancherVersion"])
 }
 
 func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
@@ -640,9 +654,9 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 
 	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
 	require.NoError(t, err)
-	m := viewManifest(t, res)
-	assert.False(t, m.ReadOnly)
-	assert.Empty(t, m.ReadOnlySources)
+	toc := viewTOC(t, res)
+	assert.Equal(t, false, toc["readOnly"])
+	assert.NotContains(t, toc, "readOnlySources")
 }
 
 // TestSchemaFilters covers SE-10: --verb, --destructive, --contract, and
@@ -652,68 +666,73 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 func TestSchemaFilters(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
-	run := func(t *testing.T, in tin) (Manifest, string) {
+	run := func(t *testing.T, in tin) (map[string]any, string) {
 		t.Helper()
 		res, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
 		require.NoError(t, err)
-		return viewManifest(t, res), res.Text
+		return viewTOC(t, res), res.Text
 	}
-	names := func(m Manifest) []string {
-		out := make([]string, len(m.Commands))
-		for i, c := range m.Commands {
-			out[i] = c.Name
+	// tocNames extracts command names from the groups of a TOC JSON map.
+	tocNames := func(toc map[string]any) []string {
+		var out []string
+		groups, _ := toc["groups"].([]any)
+		for _, g := range groups {
+			for _, e := range g.(map[string]any)["commands"].([]any) {
+				out = append(out, e.(map[string]any)["name"].(string))
+			}
 		}
 		return out
 	}
 
 	t.Run("--verb keeps commands whose first name token matches", func(t *testing.T) {
 		t.Parallel()
-		m, text := run(t, tin{strs: map[string]string{"verb": "get"}})
-		assert.Equal(t, []string{"get pod", "get project"}, names(m))
-		require.Len(t, m.Groups, 1, "sections prune to the retained set")
-		assert.Equal(t, "get", m.Groups[0].Name)
+		toc, text := run(t, tin{strs: map[string]string{"verb": "get"}})
+		assert.Equal(t, []string{"get pod", "get project"}, tocNames(toc))
+		groups, _ := toc["groups"].([]any)
+		require.Len(t, groups, 1, "sections prune to the retained set")
+		assert.Equal(t, "get", groups[0].(map[string]any)["name"])
 		assert.Contains(t, text, "2 commands match --verb get")
 		assert.Contains(t, text, "get pod — List pods or show one")
 	})
 
 	t.Run("--destructive keeps true and dependsOnInput", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{flags: map[string]bool{"destructive": true}})
-		assert.Equal(t, []string{"delete project"}, names(m))
+		toc, _ := run(t, tin{flags: map[string]bool{"destructive": true}})
+		assert.Equal(t, []string{"delete project"}, tocNames(toc))
 	})
 
 	t.Run("--contract keeps the contract's commands", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{strs: map[string]string{"contract": "internal"}})
-		assert.Equal(t, []string{"delete project"}, names(m))
+		toc, _ := run(t, tin{strs: map[string]string{"contract": "internal"}})
+		assert.Equal(t, []string{"delete project"}, tocNames(toc))
 	})
 
 	t.Run("--mutating keeps mutating commands", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{flags: map[string]bool{"mutating": true}})
-		assert.Equal(t, []string{"delete project"}, names(m))
+		toc, _ := run(t, tin{flags: map[string]bool{"mutating": true}})
+		assert.Equal(t, []string{"delete project"}, tocNames(toc))
 	})
 
 	t.Run("filters compose (AND)", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{
+		toc, _ := run(t, tin{
 			strs:  map[string]string{"verb": "delete"},
 			flags: map[string]bool{"destructive": true},
 		})
-		assert.Equal(t, []string{"delete project"}, names(m))
+		assert.Equal(t, []string{"delete project"}, tocNames(toc))
 	})
 
 	t.Run("filters compose with --search", func(t *testing.T) {
 		t.Parallel()
-		m, _ := run(t, tin{strs: map[string]string{"verb": "get", "search": "pods"}})
-		assert.Equal(t, []string{"get pod"}, names(m))
+		toc, _ := run(t, tin{strs: map[string]string{"verb": "get", "search": "pods"}})
+		assert.Equal(t, []string{"get pod"}, tocNames(toc))
 	})
 
 	t.Run("composed filters can produce zero hits, naming every active filter", func(t *testing.T) {
 		t.Parallel()
-		m, text := run(t, tin{strs: map[string]string{"verb": "get", "contract": "public"}})
-		assert.Empty(t, m.Commands)
-		assert.Empty(t, m.Groups)
+		toc, text := run(t, tin{strs: map[string]string{"verb": "get", "contract": "public"}})
+		assert.Equal(t, float64(0), toc["commandCount"])
+		assert.Nil(t, toc["groups"])
 		assert.Equal(t, "no commands match --verb get --contract public\n", text)
 	})
 }
@@ -731,9 +750,12 @@ func TestSchemaSearch(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(),
 			tin{strs: map[string]string{"search": "MANAGEMENT"}}, nil)
 		require.NoError(t, err)
-		m := viewManifest(t, res)
-		require.Len(t, m.Commands, 1)
-		assert.Equal(t, "get project", m.Commands[0].Name)
+		toc := viewTOC(t, res)
+		assert.Equal(t, float64(1), toc["commandCount"])
+		groups, _ := toc["groups"].([]any)
+		require.Len(t, groups, 1)
+		entries := groups[0].(map[string]any)["commands"].([]any)
+		assert.Equal(t, "get project", entries[0].(map[string]any)["name"])
 		assert.Contains(t, res.Text, "[desc: ")
 		assert.Contains(t, res.Text, "management projects")
 	})
@@ -743,9 +765,12 @@ func TestSchemaSearch(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(context.Background(),
 			tin{strs: map[string]string{"search": "delete"}}, nil)
 		require.NoError(t, err)
-		m := viewManifest(t, res)
-		require.Len(t, m.Commands, 1)
-		assert.Equal(t, "delete project", m.Commands[0].Name)
+		toc := viewTOC(t, res)
+		assert.Equal(t, float64(1), toc["commandCount"])
+		groups, _ := toc["groups"].([]any)
+		require.Len(t, groups, 1)
+		entries := groups[0].(map[string]any)["commands"].([]any)
+		assert.Equal(t, "delete project", entries[0].(map[string]any)["name"])
 		assert.Contains(t, res.Text, "delete project — Delete a project")
 		assert.NotContains(t, res.Text, "[", "a match visible in the line carries no fragment")
 	})
@@ -840,12 +865,24 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 		{"search hit", tin{strs: map[string]string{"search": "kubeconfig"}}, false},
 		{"zero hit", tin{strs: map[string]string{"search": "zzzz"}}, true},
 	}
+	full := kindRegistry().Schema("test", "2.14")
 	for _, tc := range shapes {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
-			require.NoError(t, err)
-			m := viewManifest(t, res)
+			// SE-18 is a manifest invariant: assert on the manifest directly
+			// for bare/filtered selections (their tocView JSON collapses
+			// generated commands and does not carry a flat commands list).
+			var m Manifest
+			switch tc.name {
+			case "bare":
+				m = full
+			case "filtered", "search hit", "zero hit":
+				m = filterManifest(full, filtersFrom(tc.in))
+			default:
+				res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
+				require.NoError(t, err)
+				m = viewManifest(t, res)
+			}
 			want := map[string]bool{}
 			for _, c := range m.Commands {
 				want[c.Name] = true

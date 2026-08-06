@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -13,24 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// schemaManifest runs the real root's `schema -o json` and decodes the
-// envelope's data into the typed manifest — never string-matching the
-// rendered JSON. Not parallel-safe (t.Setenv).
+// schemaManifest returns the full schema manifest directly from the registry
+// for manifest-invariant assertions. The bare schema -o json now returns the
+// TOC view, not the full manifest, so tests that need the full manifest
+// (SE-17/SE-18 invariants) bypass the presentation layer entirely.
 func schemaManifest(t *testing.T) runtime.Manifest {
 	t.Helper()
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data runtime.Manifest `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	return env.Data
+	return m
 }
 
 // TestSchemaKindVerbSurfaceMatchesRegisteredCommands is the SE-17 invariant:

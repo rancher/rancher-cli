@@ -34,6 +34,108 @@ func (v schemaView) MarshalJSON() ([]byte, error) { return json.Marshal(v.manife
 
 func (v schemaView) MarshalYAML() (any, error) { return v.manifest, nil }
 
+// tocView is the bare and filtered selections' Result.Data: the TOC-shaped
+// JSON/YAML mirror of renderTOC/renderFilteredTOC (schema disclosure spec, docs/design). bare gates
+// the fields only the bare text TOC renders: the kind vocabulary, its
+// count, and the exit-code strip's map. -o name keeps the command-name
+// rows schemaView produced for these selections.
+type tocView struct {
+	manifest Manifest
+	bare     bool
+}
+
+func newTOCView(m Manifest, bare bool) tocView { return tocView{manifest: m, bare: bare} }
+
+type tocEntry struct {
+	Name  string `json:"name"`
+	Usage string `json:"usage,omitempty"`
+}
+
+type tocGroup struct {
+	Name     string     `json:"name,omitempty"`
+	Commands []tocEntry `json:"commands"`
+}
+
+type tocJSON struct {
+	CLIVersion            string         `json:"cliVersion"`
+	MinRancherVersion     string         `json:"minRancherVersion"`
+	OutputAPIVersion      string         `json:"outputApiVersion"`
+	ReadOnly              bool           `json:"readOnly"`
+	ReadOnlySources       []string       `json:"readOnlySources,omitempty"`
+	CommandCount          int            `json:"commandCount"`
+	KindCount             int            `json:"kindCount,omitempty"`
+	GeneratedCommandCount int            `json:"generatedCommandCount,omitempty"`
+	GlobalExitCodes       map[string]int `json:"globalExitCodes,omitempty"`
+	Groups                []tocGroup     `json:"groups"`
+	Kinds                 []string       `json:"kinds,omitempty"`
+}
+
+func (v tocView) toc() tocJSON {
+	m := v.manifest
+	byName := commandIndex(m.Commands)
+	out := tocJSON{
+		CLIVersion:        m.CLIVersion,
+		MinRancherVersion: m.MinRancherVersion,
+		OutputAPIVersion:  m.OutputAPIVersion,
+		ReadOnly:          m.ReadOnly,
+		ReadOnlySources:   m.ReadOnlySources,
+		CommandCount:      len(m.Commands),
+	}
+	// The bare text TOC collapses generated get/patch/delete <kind>
+	// commands into one summary line instead of listing them; the bare
+	// JSON mirrors both halves — skip them in groups, carry the count
+	// (schema disclosure spec). The filtered TOC never collapses: the matches ARE
+	// the content.
+	generated := map[string]bool{}
+	if v.bare {
+		generated = generatedCommandNames(m.Kinds)
+	}
+	for _, g := range m.Groups {
+		tg := tocGroup{Name: g.Name}
+		for _, name := range g.Commands {
+			if generated[name] {
+				continue
+			}
+			c := byName[name]
+			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage})
+		}
+		if len(tg.Commands) > 0 {
+			out.Groups = append(out.Groups, tg)
+		}
+	}
+	if v.bare {
+		out.KindCount = len(m.Kinds)
+		// Count generated commands the way renderTOC's genCount does —
+		// membership over m.Commands, not len(generated) — so the JSON
+		// number and the text's collapsed-line N are the same computation,
+		// equal by construction.
+		for _, c := range m.Commands {
+			if generated[c.Name] {
+				out.GeneratedCommandCount++
+			}
+		}
+		out.GlobalExitCodes = m.ExitCodes
+		for _, k := range m.Kinds {
+			out.Kinds = append(out.Kinds, k.Name)
+		}
+	}
+	return out
+}
+
+func (v tocView) Columns() []string { return []string{"NAME"} }
+
+func (v tocView) Rows() [][]string {
+	rows := make([][]string, len(v.manifest.Commands))
+	for i, c := range v.manifest.Commands {
+		rows[i] = []string{c.Name}
+	}
+	return rows
+}
+
+func (v tocView) MarshalJSON() ([]byte, error) { return json.Marshal(v.toc()) }
+
+func (v tocView) MarshalYAML() (any, error) { return v.toc(), nil }
+
 // commandNames lists m's command names in manifest order — the bare and
 // filtered selections' `-o name` sets.
 func commandNames(m Manifest) []string {

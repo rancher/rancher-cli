@@ -62,16 +62,19 @@ func TestSchemaFormatCompat(t *testing.T) {
 	allNames := commandNames(m)
 	require.NotEmpty(t, allNames)
 
-	shapes := []struct {
+	type shapeTC struct {
 		name      string
 		in        tin
-		wantCmds  []string // expected data.commands names, in manifest order
+		wantCmds  []string // expected data.commands names (schemaView) or commandCount (tocView)
 		wantNames []string // expected -o name lines
 		wantKind  string   // expected single kinds entry, "" = kinds untouched
-	}{
+		isTOC     bool     // bare/filtered selections use tocView, not schemaView
+	}
+
+	shapes := []shapeTC{
 		{
 			name: "bare", in: tin{},
-			wantCmds: allNames, wantNames: allNames,
+			wantCmds: allNames, wantNames: allNames, isTOC: true,
 		},
 		{
 			name: "command selection", in: tin{a: []string{"kubeconfig"}},
@@ -85,7 +88,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		},
 		{
 			name: "zero hit", in: tin{strs: map[string]string{"search": "zzz"}},
-			wantCmds: []string{}, wantNames: nil,
+			wantCmds: []string{}, wantNames: nil, isTOC: true,
 		},
 	}
 
@@ -97,13 +100,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		require.Nil(t, ce, "stderr: %s", errBuf.String())
 		return out.String()
 	}
-	assertData := func(t *testing.T, data map[string]any, tc struct {
-		name      string
-		in        tin
-		wantCmds  []string
-		wantNames []string
-		wantKind  string
-	}) {
+	assertData := func(t *testing.T, data map[string]any, tc shapeTC) {
 		t.Helper()
 		cmds, ok := data["commands"].([]any)
 		require.True(t, ok, "data.commands must be an array, got %T", data["commands"])
@@ -119,8 +116,20 @@ func TestSchemaFormatCompat(t *testing.T) {
 			assert.Equal(t, tc.wantKind, kinds[0].(map[string]any)["name"])
 		}
 		if len(tc.wantCmds) == 0 {
-			groups, ok := data["groups"]
-			assert.False(t, ok && len(groups.([]any)) > 0, "zero hit carries no groups")
+			groups, _ := data["groups"].([]any)
+			assert.Empty(t, groups, "zero hit carries no groups")
+		}
+	}
+	// assertTOCData checks the tocView JSON shape used by bare and filtered selections:
+	// commandCount instead of a commands array, groups with name+usage entries.
+	assertTOCData := func(t *testing.T, data map[string]any, tc shapeTC) {
+		t.Helper()
+		count, ok := data["commandCount"].(float64)
+		require.True(t, ok, "tocView data must have commandCount, got %T", data["commandCount"])
+		assert.Equal(t, len(tc.wantCmds), int(count))
+		if len(tc.wantCmds) == 0 {
+			groups, _ := data["groups"].([]any)
+			assert.Empty(t, groups, "zero hit carries no groups")
 		}
 	}
 
@@ -134,7 +143,11 @@ func TestSchemaFormatCompat(t *testing.T) {
 				assert.Equal(t, "Schema", env["kind"])
 				data, ok := env["data"].(map[string]any)
 				require.True(t, ok)
-				assertData(t, data, tc)
+				if tc.isTOC {
+					assertTOCData(t, data, tc)
+				} else {
+					assertData(t, data, tc)
+				}
 			})
 
 			t.Run("yaml", func(t *testing.T) {
@@ -144,7 +157,11 @@ func TestSchemaFormatCompat(t *testing.T) {
 				assert.Equal(t, "Schema", env["kind"])
 				data, ok := env["data"].(map[string]any)
 				require.True(t, ok)
-				assertData(t, data, tc)
+				if tc.isTOC {
+					assertTOCData(t, data, tc)
+				} else {
+					assertData(t, data, tc)
+				}
 			})
 
 			t.Run("name", func(t *testing.T) {
@@ -159,9 +176,17 @@ func TestSchemaFormatCompat(t *testing.T) {
 
 			t.Run("template", func(t *testing.T) {
 				t.Parallel()
-				out := run(t, tc.in, "template={{len .commands}}")
-				assert.Equal(t, fmt.Sprintf("%d\n", len(tc.wantCmds)), out,
-					"templates render over the filtered manifest's JSON view")
+				var tpl, want string
+				if tc.isTOC {
+					tpl = "template={{ .commandCount }}"
+					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
+				} else {
+					tpl = "template={{len .commands}}"
+					want = fmt.Sprintf("%d\n", len(tc.wantCmds))
+				}
+				out := run(t, tc.in, tpl)
+				assert.Equal(t, want, out,
+					"templates render over the selection's JSON view")
 			})
 		})
 	}

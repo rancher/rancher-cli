@@ -55,25 +55,11 @@ func findCommand(cmds []*ucli.Command, name string) *ucli.Command {
 
 func schemaCommandNames(t *testing.T) []string {
 	t.Helper()
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			Commands []struct {
-				Name string `json:"name"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	names := make([]string, 0, len(env.Data.Commands))
-	for _, c := range env.Data.Commands {
-		names = append(names, c.Name)
+	names := make([]string, len(m.Commands))
+	for i, c := range m.Commands {
+		names[i] = c.Name
 	}
 	return names
 }
@@ -82,25 +68,9 @@ func schemaCommandNames(t *testing.T) []string {
 // reports for op, and whether op was found at all.
 func schemaCommandBinding(t *testing.T, op string) (contract, stability string, found bool) {
 	t.Helper()
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			Commands []struct {
-				Name      string `json:"name"`
-				Contract  string `json:"contract"`
-				Stability string `json:"stability"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	for _, c := range env.Data.Commands {
+	for _, c := range m.Commands {
 		if c.Name == op {
 			return c.Contract, c.Stability, true
 		}
@@ -148,31 +118,13 @@ func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 // a command name) must fail here until the literal is updated. Runs against
 // the full real registry — the only place every command is wired.
 func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			Commands []struct {
-				Name  string `json:"name"`
-				Flags []struct {
-					Name string   `json:"name"`
-					Enum []string `json:"enum"`
-				} `json:"flags"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 
 	seen := map[string]bool{}
 	var wantVerbs []string
 	var verbEnum []string
-	for _, c := range env.Data.Commands {
+	for _, c := range m.Commands {
 		verb, _, _ := strings.Cut(c.Name, " ")
 		if !seen[verb] {
 			seen[verb] = true
@@ -195,32 +147,13 @@ func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
 // safety.Contract: an enum value with zero possible matches would make
 // completion suggest an impossible filter that validation then accepts.
 func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			Commands []struct {
-				Name     string `json:"name"`
-				Contract string `json:"contract"`
-				Flags    []struct {
-					Name string   `json:"name"`
-					Enum []string `json:"enum"`
-				} `json:"flags"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 
 	seen := map[string]bool{}
 	var wantContracts []string
 	var contractEnum []string
-	for _, c := range env.Data.Commands {
+	for _, c := range m.Commands {
 		if c.Contract != "" && !seen[c.Contract] {
 			seen[c.Contract] = true
 			wantContracts = append(wantContracts, c.Contract)
@@ -240,25 +173,15 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestSchemaManifestGolden(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("golden")
+	m, err := buildManifest("golden")
 	require.NoError(t, err)
 
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	// Re-marshal the manifest (the envelope's data) through a map so key order is
-	// stable regardless of struct field order.
-	var env struct {
-		Data json.RawMessage `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	// Re-marshal through a map so key order is stable regardless of struct
+	// field order. HTML escaping disabled so `<`, `>`, `&` stay literal.
+	b, err := json.Marshal(m)
+	require.NoError(t, err)
 	var manifest any
-	require.NoError(t, json.Unmarshal(env.Data, &manifest))
-	// Match the runtime -o json contract: indented, HTML escaping disabled so
-	// `<`, `>`, `&` in descriptions stay literal rather than < / > / &.
+	require.NoError(t, json.Unmarshal(b, &manifest))
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
@@ -372,27 +295,11 @@ func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
 // for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
 // projectScope: true, while a fixed command (schema itself) does not.
 func TestSchemaManifestExposesProjectScope(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
+	m, err := buildManifest("v-test")
 	require.NoError(t, err)
 
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data struct {
-			Commands []struct {
-				Name         string `json:"name"`
-				ProjectScope bool   `json:"projectScope"`
-			} `json:"commands"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-
 	byName := map[string]bool{}
-	for _, c := range env.Data.Commands {
+	for _, c := range m.Commands {
 		byName[c.Name] = c.ProjectScope
 	}
 
@@ -628,7 +535,8 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
 	data := m["data"].(map[string]any)
 	assert.Equal(t, "cli.rancher.io/v1", data["outputApiVersion"])
-	assert.NotEmpty(t, data["globalFlags"])
+	count, _ := data["commandCount"].(float64)
+	assert.True(t, count > 0, "commandCount must be positive")
 	assert.Equal(t, config.MinRancherVersion, data["minRancherVersion"])
 	assert.Equal(t, false, data["readOnly"], "no config/env/flag read-only source is active for this invocation")
 }

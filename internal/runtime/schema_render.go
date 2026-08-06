@@ -258,6 +258,16 @@ func verbLine(verb string, vs VerbState) string {
 	}
 }
 
+// readOnlyLine renders the session's read-only banner for the TOC text
+// views — both of them, so tocView's unconditional readOnly fields mirror
+// text on the bare and filtered paths alike (schema disclosure spec).
+func readOnlyLine(m Manifest) string {
+	if !m.ReadOnly {
+		return ""
+	}
+	return "read-only (" + strings.Join(m.ReadOnlySources, ", ") + ")\n"
+}
+
 // renderTOC builds the bare-`schema` table of contents (SE-9): a header of
 // CLI version plus derived counts, the manifest's ordered sections with one
 // line per non-generated command, the generated get/patch/delete commands
@@ -275,6 +285,7 @@ func renderTOC(m Manifest) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "rancher %s — %d commands · %d kinds\n", m.CLIVersion, len(m.Commands), len(m.Kinds))
+	b.WriteString(readOnlyLine(m))
 	blockDone := false
 	for _, g := range m.Groups {
 		indent := ""
@@ -324,11 +335,12 @@ func renderTOC(m Manifest) string {
 func renderFilteredTOC(m Manifest, f schemaFilters) string {
 	filters := strings.Join(f.describe(), " ")
 	if len(m.Commands) == 0 {
-		return "no commands match " + filters + "\n"
+		return "no commands match " + filters + "\n" + readOnlyLine(m)
 	}
 	byName := commandIndex(m.Commands)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d commands match %s\n", len(m.Commands), filters)
+	b.WriteString(readOnlyLine(m))
 	for _, g := range m.Groups {
 		b.WriteString("\n")
 		indent := ""

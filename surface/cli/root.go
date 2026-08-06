@@ -595,6 +595,60 @@ func composeBindings() (runtime.Resolver, error) {
 	return resolver, nil
 }
 
+// buildManifest constructs the full schema manifest directly from the
+// registry, without creating the CLI command tree. Used by tests that need
+// the manifest for invariant assertions — the bare schema -o json now returns
+// the TOC view, not the full manifest.
+func buildManifest(version string) (runtime.Manifest, error) {
+	if err := kinds.Validate(); err != nil {
+		return runtime.Manifest{}, fmt.Errorf("kind table: %w", err)
+	}
+	resolver, err := composeBindings()
+	if err != nil {
+		return runtime.Manifest{}, err
+	}
+	reg := runtime.NewRegistry(resolver)
+	reg.SetKinds(schemaKinds(kinds.All(), kindOverrides()))
+
+	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
+		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version, config.MinRancherVersion) })
+	}})
+
+	sectionCmds := map[string][]string{}
+	var order []string
+	for _, e := range entries {
+		_, name, err := wireEntry(reg, resolver, version, e)
+		if err != nil {
+			return runtime.Manifest{}, err
+		}
+		if _, seen := sectionCmds[e.group]; !seen {
+			order = append(order, e.group)
+		}
+		sectionCmds[e.group] = append(sectionCmds[e.group], name)
+	}
+
+	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, nil)
+	reg.Register(schemaCmd)
+	completionCmd := commands.NewCompletion()
+	reg.Register(completionCmd)
+
+	sections := []runtime.SchemaGroup{{Name: "", Commands: []string{
+		schemaCmd.Describe().Name, completionCmd.Describe().Name,
+	}}}
+	for _, g := range order {
+		if len(sectionCmds[g]) == 0 {
+			continue
+		}
+		sections = append(sections, runtime.SchemaGroup{Name: g, Commands: sectionCmds[g]})
+	}
+	reg.SetGroups(sections)
+
+	if err := reg.Validate(); err != nil {
+		return runtime.Manifest{}, fmt.Errorf("command registry: %w", err)
+	}
+	return reg.Schema(version, config.MinRancherVersion), nil
+}
+
 func BuildRoot(version string) (*ucli.Command, error) {
 	if err := kinds.Validate(); err != nil {
 		return nil, fmt.Errorf("kind table: %w", err)

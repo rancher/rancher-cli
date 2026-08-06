@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -19,8 +16,6 @@ import (
 // registers count; urfave-appended machinery (help, __completion) is not
 // surface.
 func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 
@@ -39,15 +34,8 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 		assembly = append(assembly, n)
 	}
 
-	var out bytes.Buffer
-	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
-
-	var env struct {
-		Data runtime.Manifest `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	m := env.Data
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
 
 	registered := map[string]bool{}
 	for _, c := range m.Commands {

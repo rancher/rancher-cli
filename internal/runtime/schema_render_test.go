@@ -377,3 +377,24 @@ func TestSchemaSearchFragment(t *testing.T) {
 
 	assert.Equal(t, "", searchFragment(c, "zzz"), "no match yields no fragment")
 }
+
+// TestTOCRendersReadOnlyLine pins the spec'd read-only mirror: BOTH TOC text views gain
+// a read-only line when active, so tocView's unconditional readOnly
+// fields mirror text on the bare and filtered paths alike.
+func TestTOCRendersReadOnlyLine(t *testing.T) {
+	t.Parallel()
+	m := readOnlyTOCManifest()
+	assert.Contains(t, renderTOC(m), "read-only (RANCHER_CLI_READONLY)")
+	assert.Contains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only (RANCHER_CLI_READONLY)")
+
+	// Zero-hit filtered result: the early-return branch must carry the
+	// read-only line too (review P1).
+	empty := readOnlyTOCManifest()
+	empty.Commands = nil
+	assert.Contains(t, renderFilteredTOC(empty, schemaFilters{verb: "zzz"}), "read-only (RANCHER_CLI_READONLY)")
+
+	m.ReadOnly = false
+	m.ReadOnlySources = nil
+	assert.NotContains(t, renderTOC(m), "read-only")
+	assert.NotContains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only")
+}
