@@ -167,7 +167,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		}
 	}
 	if k, ok := lookupKind(m.Kinds, want); ok {
-		return Result{Kind: "Schema", Data: newKindView(k), Text: renderKindCard(k)}, nil
+		return Result{Kind: "Schema", Data: newKindView(m, k), Text: renderKindCard(m, k)}, nil
 	}
 	return Result{}, unknownSelection(m, want, asKind)
 }

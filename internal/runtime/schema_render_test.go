@@ -175,7 +175,7 @@ func TestSchemaKindCardFields(t *testing.T) {
 			"delete": {State: VerbAbsent, Note: "controller-owned; delete the owning source object"},
 		},
 	}
-	card := renderKindCard(k)
+	card := renderKindCard(Manifest{}, k)
 	lines := strings.Split(card, "\n")
 
 	assert.Equal(t, "kind: gitrepo", lines[0])
@@ -209,7 +209,7 @@ func TestSchemaKindCardOmitsEmptyFields(t *testing.T) {
 			"delete": {State: VerbAbsent},
 		},
 	}
-	lines := strings.Split(renderKindCard(k), "\n")
+	lines := strings.Split(renderKindCard(Manifest{}, k), "\n")
 
 	assert.Equal(t, "kind: widget", lines[0])
 	for _, l := range lines {
@@ -397,4 +397,48 @@ func TestTOCRendersReadOnlyLine(t *testing.T) {
 	m.ReadOnlySources = nil
 	assert.NotContains(t, renderTOC(m), "read-only")
 	assert.NotContains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only")
+}
+
+// TestSchemaCommandCardReadOnlyLine pins the read-only banner on the command
+// card: present when the manifest carries ReadOnly: true, absent otherwise.
+func TestSchemaCommandCardReadOnlyLine(t *testing.T) {
+	t.Parallel()
+	c := SchemaCommand{Name: "get pod", Usage: "List pods", CommandType: ReadOnly}
+
+	active := Manifest{
+		ExitCodes:       map[string]int{"GENERIC": 1},
+		ReadOnly:        true,
+		ReadOnlySources: []string{"RANCHER_CLI_READONLY"},
+	}
+	assert.Contains(t, strings.Split(renderCommandCard(active, c), "\n"),
+		"read-only (RANCHER_CLI_READONLY)")
+
+	inactive := Manifest{ExitCodes: map[string]int{"GENERIC": 1}}
+	for _, l := range strings.Split(renderCommandCard(inactive, c), "\n") {
+		assert.False(t, strings.HasPrefix(l, "read-only"),
+			"no read-only line when inactive: got %q", l)
+	}
+}
+
+// TestSchemaKindCardReadOnlyLine pins the read-only banner on the kind card:
+// present when the manifest carries ReadOnly: true, absent otherwise, and
+// always immediately after the "kind: <name>" header line.
+func TestSchemaKindCardReadOnlyLine(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{
+		Name: "pod", Key: "pod", Resource: "pods",
+		Scope: "downstream", NamespacePolicy: "plain",
+		Verbs: map[string]VerbState{"get": {State: VerbAvailable}},
+	}
+
+	active := Manifest{ReadOnly: true, ReadOnlySources: []string{"--read-only"}}
+	lines := strings.Split(renderKindCard(active, k), "\n")
+	assert.Equal(t, "kind: pod", lines[0])
+	assert.Contains(t, lines, "read-only (--read-only)")
+
+	inactive := Manifest{}
+	for _, l := range strings.Split(renderKindCard(inactive, k), "\n") {
+		assert.False(t, strings.HasPrefix(l, "read-only"),
+			"no read-only line when inactive: got %q", l)
+	}
 }

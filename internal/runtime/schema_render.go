@@ -22,6 +22,7 @@ func renderCommandCard(m Manifest, c SchemaCommand) string {
 	if c.Usage != "" {
 		b.WriteString("  " + c.Usage + "\n")
 	}
+	b.WriteString(readOnlyLine(m))
 	if len(c.Flags) > 0 {
 		b.WriteString("\nflags:\n")
 		for _, f := range c.Flags {
@@ -164,9 +165,10 @@ func gateLine(ct CommandType, destructive, stability string) string {
 // (sensitive, completable), and the effective verb table from the manifest's
 // SE-17 data. Rendered via Result.Text under default/table only; the
 // structured formats keep serving Result.Data.
-func renderKindCard(k SchemaKind) string {
+func renderKindCard(m Manifest, k SchemaKind) string {
 	var b strings.Builder
 	b.WriteString("kind: " + k.Name + "\n")
+	b.WriteString(readOnlyLine(m))
 	b.WriteString("key: " + k.Key + "\n")
 	if len(k.Aliases) > 0 {
 		b.WriteString("aliases: " + strings.Join(k.Aliases, ", ") + "\n")

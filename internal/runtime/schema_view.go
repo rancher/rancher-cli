@@ -138,30 +138,48 @@ func (v tocView) MarshalYAML() (any, error) { return v.toc(), nil }
 
 // cardView is a command selection's Result.Data: the selected command's
 // fields FLATTENED to the top level (schema disclosure spec — no commands array
-// wrapper), the global exit map the text card's strip renders, and the
-// text card's kind-collision pointer as kindViewHint.
+// wrapper), the global exit map the text card's strip renders, the
+// text card's kind-collision pointer as kindViewHint, and the session's
+// read-only state (mirroring the TOC views).
 type cardView struct {
-	exitCodes map[string]int
-	cmd       SchemaCommand
-	kindHint  string
+	exitCodes       map[string]int
+	cmd             SchemaCommand
+	kindHint        string
+	readOnly        bool
+	readOnlySources []string
 }
 
 func newCardView(m Manifest, c SchemaCommand, kindHint string) cardView {
-	return cardView{exitCodes: m.ExitCodes, cmd: c, kindHint: kindHint}
+	return cardView{
+		exitCodes:       m.ExitCodes,
+		cmd:             c,
+		kindHint:        kindHint,
+		readOnly:        m.ReadOnly,
+		readOnlySources: m.ReadOnlySources,
+	}
 }
 
 // cardJSON is the typed marshal shape: embedding flattens the command's
 // fields to the top level while keeping deterministic field order for
 // BOTH encoders (an untyped map would be encoder-defined in YAML —
-// plan-review round 3, P3).
+// plan-review round 3, P3). ReadOnly is unconditional (mirrors tocJSON);
+// ReadOnlySources carries omitempty.
 type cardJSON struct {
 	SchemaCommand
+	ReadOnly        bool           `json:"readOnly"`
+	ReadOnlySources []string       `json:"readOnlySources,omitempty"`
 	GlobalExitCodes map[string]int `json:"globalExitCodes"`
 	KindViewHint    string         `json:"kindViewHint,omitempty"`
 }
 
 func (v cardView) card() cardJSON {
-	return cardJSON{SchemaCommand: v.cmd, GlobalExitCodes: v.exitCodes, KindViewHint: v.kindHint}
+	return cardJSON{
+		SchemaCommand:   v.cmd,
+		ReadOnly:        v.readOnly,
+		ReadOnlySources: v.readOnlySources,
+		GlobalExitCodes: v.exitCodes,
+		KindViewHint:    v.kindHint,
+	}
 }
 
 func (v cardView) Columns() []string { return []string{"NAME"} }
@@ -175,17 +193,37 @@ func (v cardView) MarshalYAML() (any, error) { return v.card(), nil }
 // kindView is a kind selection's Result.Data: the SchemaKind row alone —
 // verb state, not per-verb flags — mirroring renderKindCard (schema disclosure spec;
 // the per-verb flag detail is one more call away: schema <verb> <kind>).
-type kindView struct{ kind SchemaKind }
+// The session's read-only state is included, mirroring the TOC and card views.
+type kindView struct {
+	kind            SchemaKind
+	readOnly        bool
+	readOnlySources []string
+}
 
-func newKindView(k SchemaKind) kindView { return kindView{kind: k} }
+func newKindView(m Manifest, k SchemaKind) kindView {
+	return kindView{kind: k, readOnly: m.ReadOnly, readOnlySources: m.ReadOnlySources}
+}
+
+// kindJSON is the typed marshal shape for a kind selection: the kind row's
+// fields at top level plus the session's read-only state, mirroring the
+// card and TOC views. ReadOnly is unconditional; ReadOnlySources carries omitempty.
+type kindJSON struct {
+	SchemaKind
+	ReadOnly        bool     `json:"readOnly"`
+	ReadOnlySources []string `json:"readOnlySources,omitempty"`
+}
 
 func (v kindView) Columns() []string { return []string{"NAME"} }
 
 func (v kindView) Rows() [][]string { return [][]string{{v.kind.Name}} }
 
-func (v kindView) MarshalJSON() ([]byte, error) { return json.Marshal(v.kind) }
+func (v kindView) MarshalJSON() ([]byte, error) {
+	return json.Marshal(kindJSON{SchemaKind: v.kind, ReadOnly: v.readOnly, ReadOnlySources: v.readOnlySources})
+}
 
-func (v kindView) MarshalYAML() (any, error) { return v.kind, nil }
+func (v kindView) MarshalYAML() (any, error) {
+	return kindJSON{SchemaKind: v.kind, ReadOnly: v.readOnly, ReadOnlySources: v.readOnlySources}, nil
+}
 
 // commandNames lists m's command names in manifest order — the bare and
 // filtered selections' `-o name` sets.

@@ -124,6 +124,24 @@ func TestCardViewFlattensTheCommand(t *testing.T) {
 	assert.NotContains(t, got, "commands", "flattened: no wrapper array")
 	assert.NotContains(t, got, "kinds")
 	assert.NotContains(t, got, "envVars")
+	// readOnly propagates from manifest — unconditional bool like tocJSON.
+	assert.Equal(t, true, got["readOnly"])
+	assert.Equal(t, []any{"RANCHER_CLI_READONLY"}, got["readOnlySources"])
+}
+
+// TestCardViewReadOnlyFalseIsPresent pins that readOnly: false is present in
+// the card JSON even when inactive (unconditional bool, mirrors tocJSON).
+func TestCardViewReadOnlyFalseIsPresent(t *testing.T) {
+	t.Parallel()
+	m := readOnlyTOCManifest()
+	m.ReadOnly = false
+	m.ReadOnlySources = nil
+	b, err := json.Marshal(newCardView(m, m.Commands[0], ""))
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	assert.Equal(t, false, got["readOnly"], "readOnly: false must be present in JSON")
+	assert.NotContains(t, got, "readOnlySources")
 }
 
 // TestCardViewOmitsEmptyKindHint pins that a non-colliding selector adds
@@ -153,14 +171,38 @@ func TestCardViewNameRows(t *testing.T) {
 func TestKindViewMarshalsTheRowOnly(t *testing.T) {
 	t.Parallel()
 	k := SchemaKind{Name: "pod", Key: "pod", Aliases: []string{"pods"}}
-	b, err := json.Marshal(newKindView(k))
+	b, err := json.Marshal(newKindView(Manifest{}, k))
 	require.NoError(t, err)
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(b, &got))
 	assert.Equal(t, "pod", got["name"])
 	assert.NotContains(t, got, "commands")
 	assert.NotContains(t, got, "envVars")
-	assert.Equal(t, [][]string{{"pod"}}, newKindView(k).Rows())
+	assert.Equal(t, [][]string{{"pod"}}, newKindView(Manifest{}, k).Rows())
+}
+
+// TestKindViewReadOnlyPropagates pins readOnly propagation from the manifest
+// into the kind JSON: true propagates with sources; false is unconditional.
+func TestKindViewReadOnlyPropagates(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{Name: "pod", Key: "pod", Aliases: []string{"pods"}}
+
+	active := Manifest{ReadOnly: true, ReadOnlySources: []string{"--read-only"}}
+	b, err := json.Marshal(newKindView(active, k))
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got))
+	assert.Equal(t, "pod", got["name"])
+	assert.Equal(t, true, got["readOnly"])
+	assert.Equal(t, []any{"--read-only"}, got["readOnlySources"])
+
+	// readOnly: false must still appear (unconditional bool).
+	b2, err := json.Marshal(newKindView(Manifest{}, k))
+	require.NoError(t, err)
+	var got2 map[string]any
+	require.NoError(t, json.Unmarshal(b2, &got2))
+	assert.Equal(t, false, got2["readOnly"])
+	assert.NotContains(t, got2, "readOnlySources")
 }
 
 // TestTOCGeneratedCountMatchesTheText pins the mirror as an assertion,
