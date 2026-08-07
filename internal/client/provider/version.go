@@ -2,37 +2,57 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-var serverVersionSettingGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"}
+// rancherVersionResponse is the minimal wire shape of GET /rancherversion.
+type rancherVersionResponse struct {
+	Version string `json:"Version"`
+}
 
-// ServerVersionSetting reads the server-version Setting for `auth check`'s
-// PS-8 posture check, through the same RESTConfig/Dynamic building blocks
-// Preflight already uses in this package (auth check's existing client
-// path — no direct HTTP here, unlike login). It always targets
-// engine.LocalCluster regardless of eff.Cluster: Settings are
-// management-plane singletons that live under the LOCAL cluster's proxy,
-// not whichever downstream cluster the caller's context currently points
-// at (unlike Preflight's discovery ServerVersion, which is deliberately
-// scoped to the connected cluster). Any error (RBAC denial, a missing
-// setting, connectivity) is returned as-is, already clierr-mapped — the
-// caller folds it into PS-8's warn-only "cannot determine" posture rather
-// than failing the check.
-func ServerVersionSetting(ctx context.Context, eff config.Effective) (string, error) {
-	dyn, ctx, cancel, err := bootstrapLocalDynamic(ctx, eff)
+// RancherVersion reads the server's ldflags-stamped version from the
+// unauthenticated GET /rancherversion endpoint for `auth check`'s PS-8 floor
+// check. Unlike the previous server-version Setting, this endpoint requires no
+// RBAC permissions and reflects the binary's actual stamped version rather than
+// an editable config object — it is equivalent to checking the running binary,
+// not a user-editable value. Any error (connectivity, non-200 status,
+// unrecognized response body) is returned as-is; the caller folds it into
+// PS-8's warn-only "cannot determine" posture rather than failing the check.
+func RancherVersion(ctx context.Context, eff config.Effective) (string, error) {
+	caPEM, err := config.ResolveCA(eff.CA)
 	if err != nil {
 		return "", err
 	}
-	defer cancel()
-	obj, err := dyn.Resource(serverVersionSettingGVR).Get(ctx, "server-version", metav1.GetOptions{})
+	client, err := httpx.New(httpx.Options{CACert: caPEM})
 	if err != nil {
-		return "", mapErr(err)
+		return "", err
 	}
-	value, _, _ := unstructured.NestedString(obj.Object, "value")
-	return value, nil
+	boundedCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	base := strings.TrimRight(eff.URL, "/")
+	req, err := http.NewRequestWithContext(boundedCtx, http.MethodGet, base+"/rancherversion", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, body, err := httpx.Do(client, req)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("/rancherversion: unexpected status %d", resp.StatusCode)
+	}
+	var r rancherVersionResponse
+	if err := json.Unmarshal(body, &r); err != nil {
+		return "", fmt.Errorf("/rancherversion: malformed response: %w", err)
+	}
+	if r.Version == "" {
+		return "", fmt.Errorf("/rancherversion: response carried no Version field")
+	}
+	return r.Version, nil
 }

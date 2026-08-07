@@ -13,7 +13,7 @@ import (
 // create-only (rancher: pkg/ext/stores/selfuser/store.go, no Getter/Lister)
 // — the server fills status.userID from the request's bearer identity, so
 // an empty spec is all a caller ever sends. Always targets
-// engine.LocalCluster, like ServerVersionSetting: SelfUser is a
+// engine.LocalCluster, like RancherVersion: SelfUser is a
 // management-plane singleton under the local cluster's proxy, not whichever
 // downstream cluster eff.Cluster currently points at. Any error (RBAC
 // denial — expected under a read-only token, since this is a create-verb

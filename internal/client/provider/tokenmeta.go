@@ -18,7 +18,7 @@ var extTokensGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: 
 // Kind carries the RAW spec.kind value ("session" for Rancher's own login
 // flow, empty for CLI-derived tokens per createTokenCmd) — the command
 // layer, not this probe, turns it into a display label, the same
-// fetch-raw/interpret-in-the-command split ServerVersionSetting uses for
+// fetch-raw/interpret-in-the-command split RancherVersion uses for
 // checkMinRancherVersion.
 type TokenMetadata struct {
 	Name      string

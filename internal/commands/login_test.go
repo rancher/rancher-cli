@@ -669,33 +669,26 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
 }
 
-// newVersionProbeFake stands in for Rancher's local-cluster proxy, serving
-// EXACTLY the server-version Setting path PS-8 requires — a regression
-// hitting a bare /apis/... path (management.cattle.io/v3 is never served at
-// the Rancher root) 404s here exactly as it would for real, landing the
-// probe in the same unknown-version path every time. Since finding 7, login
-// reaches this path via provider.ServerVersionSetting's k8s dynamic client
-// (the same path auth check's version_test.go fakes hit), so a successful
-// response must carry "kind" — apimachinery's UnstructuredJSONScheme.Decode
-// rejects a body with no Kind, unlike the raw gjson read this replaced.
+// newVersionProbeFake stands in for Rancher's unauthenticated /rancherversion
+// endpoint. Any path other than /rancherversion 404s here, the same way a
+// real server would reject an unrecognised root path.
 func newVersionProbeFake(t *testing.T, value string, status int) *httptest.Server {
 	t.Helper()
 	if status == 0 {
 		status = http.StatusOK
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/k8s/clusters/local/apis/management.cattle.io/v3/settings/server-version" {
+		if r.URL.Path != "/rancherversion" {
 			http.NotFound(w, r)
 			return
 		}
-		assert.Equal(t, "Bearer id:sec", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"apiVersion": "management.cattle.io/v3", "kind": "Setting",
-			"metadata": map[string]string{"name": "server-version"},
-			"value":    value,
-		})
+		if status == http.StatusOK {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"Version": value, "GitCommit": "abc123",
+			})
+		}
 	}))
 	t.Cleanup(srv.Close)
 	return srv

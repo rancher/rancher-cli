@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -144,10 +145,10 @@ func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
 		assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
 	})
 
-	t.Run("RBAC-denied version read never fails the check: both keys nil plus the same warning", func(t *testing.T) {
+	t.Run("failed endpoint read never fails the check: both keys nil plus the same warning", func(t *testing.T) {
 		t.Parallel()
 		res, err := run(t, func(context.Context, config.Effective) (string, error) {
-			return "", clierr.New(clierr.CodeRBAC, "settings.management.cattle.io is forbidden")
+			return "", fmt.Errorf("/rancherversion: unexpected status 503")
 		})
 		require.NoError(t, err, "a working login must never be turned into a failure by the version probe")
 		data := res.Data.(map[string]any)
@@ -157,10 +158,10 @@ func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
 		assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
 	})
 
-	t.Run("missing setting is folded into the same unknown posture, not an error", func(t *testing.T) {
+	t.Run("unreachable version endpoint is folded into the same unknown posture, not an error", func(t *testing.T) {
 		t.Parallel()
 		res, err := run(t, func(context.Context, config.Effective) (string, error) {
-			return "", clierr.New(clierr.CodeNotFound, "settings.management.cattle.io \"server-version\" not found")
+			return "", fmt.Errorf("dial tcp: connection refused")
 		})
 		require.NoError(t, err)
 		require.Len(t, res.Warnings, 1)

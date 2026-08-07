@@ -1,43 +1,26 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# PS-8: the server-version Setting is a cluster-scoped singleton shared
-# with every other concurrent txtar against this one envtest apiserver —
-# this scenario is the ONLY one that creates/patches it, and owns ALL
-# warning-sensitive assertions on it; no other script may assert warning
-# presence/absence for `auth check`.
-
-exec rancher create resource -f setting.yaml --apply --yes
+# PS-8: the version probe now hits GET /rancherversion (unauthenticated,
+# ldflags-stamped). Envtest is a raw k8s apiserver — it does not serve
+# /rancherversion — so the probe always degrades to null + UnknownServerVersionWarning
+# here. The below-floor and at-floor code paths are covered by the injected-stub
+# unit tests in internal/commands/authcheck_test.go.
 
 exec rancher auth check -o json
 jsonquery stdout data.ok true
-jsonquery stdout data.rancherVersion v2.13.0
-jsonquery stdout data.supported false
-jsonquery stdout 'warnings.0' 'server v2.13.0 is below the supported minimum 2.14; some commands may fail'
-
-# PS-2: this harness has no SelfUser CRD (there is no server-side store to
-# fake status.userID against) — envtest's ext.cattle.io group serves tokens
-# and kubeconfigs only, so the identity probe's POST 404s exactly like a
-# server missing the whole group would. That absence is a static property
-# of this harness (no script ever registers a SelfUser CRD), unlike the
-# server-version Setting above, so asserting on it here does not compete
-# with any other concurrent script.
-jsonquery stdout data.identity ''
-jsonquery stdout 'warnings.1' 'identity metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)'
-
-# Setting is Deletable: false — patch in place rather than delete+recreate.
-exec rancher patch setting server-version --patch '[{"op":"replace","path":"/value","value":"dev"}]' --apply --yes -o json
-jsonquery stdout data.value dev
-
-exec rancher auth check -o json
-jsonquery stdout data.ok true
-jsonquery stdout data.rancherVersion dev
+jsonquery stdout data.rancherVersion ''
 jsonquery stdout data.supported ''
 jsonquery stdout 'warnings.0' 'cannot determine server version, assuming supported'
 
--- setting.yaml --
-apiVersion: management.cattle.io/v3
-kind: Setting
-metadata:
-  name: server-version
-value: v2.13.0
+# PS-2: envtest's ext.cattle.io group serves tokens and kubeconfigs only —
+# no SelfUser CRD is registered, so the identity probe 404s exactly like a
+# server missing the whole group.
+jsonquery stdout data.identity ''
+jsonquery stdout 'warnings.1' 'identity metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)'
+
+# PS-2: the test token (e2e:secret) has no ext/ prefix, so the v3 fallback
+# probe runs. Envtest has no management.cattle.io/v3 Token named "e2e", so
+# the lookup returns 404 → "stored token not found" advisory.
+jsonquery stdout data.token ''
+jsonquery stdout 'warnings.2' 'token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login'

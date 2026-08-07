@@ -44,11 +44,11 @@ func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 
 // bootstrapLocalDynamic builds a dynamic client bound to the LOCAL cluster's
 // proxy plus a request-bounded context, for the small `auth check` probes
-// (Identity, EffectiveTokenMetadata, ServerVersionSetting) that each read a
-// single management-plane singleton. Settings and ext.cattle.io resources
-// live under the local cluster's proxy regardless of which downstream
-// cluster eff.Cluster currently points at — see ServerVersionSetting's doc
-// — so eff.Cluster is always overridden here, once, rather than by each
+// (Identity, EffectiveTokenMetadata, V3TokenMetadata) that each read a
+// single management-plane singleton. ext.cattle.io and
+// management.cattle.io resources live under the local cluster's proxy
+// regardless of which downstream cluster eff.Cluster currently points at,
+// so eff.Cluster is always overridden here, once, rather than by each
 // caller. The returned cancel func must be deferred by the caller exactly
 // like the opCtx it wraps.
 func bootstrapLocalDynamic(ctx context.Context, eff config.Effective) (dynamic.Interface, context.Context, context.CancelFunc, error) {

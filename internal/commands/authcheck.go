@@ -19,8 +19,9 @@ type authCheckCmd struct {
 	// preflight is the server probe, injectable for tests; defaults to
 	// provider.Preflight in NewAuthCheck.
 	preflight func(ctx context.Context, eff config.Effective) (string, error)
-	// rancherVersion reads the server-version Setting for the PS-8 floor
-	// check, injectable for tests; defaults to provider.ServerVersionSetting.
+	// rancherVersion reads the server's stamped version from GET /rancherversion
+	// for the PS-8 floor check, injectable for tests; defaults to
+	// provider.RancherVersion in NewAuthCheck.
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
 	// identity is the PS-2 identity probe (POST an empty SelfUser, read back
 	// status.userID), injectable for tests; defaults to provider.Identity.
@@ -36,7 +37,7 @@ func NewAuthCheck(dir string, store config.CredStore) runtime.Command {
 	return &authCheckCmd{
 		dir: dir, store: store,
 		preflight:      provider.Preflight,
-		rancherVersion: provider.ServerVersionSetting,
+		rancherVersion: provider.RancherVersion,
 		identity:       provider.Identity,
 		token:          provider.EffectiveTokenMetadata,
 	}
@@ -131,11 +132,12 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	return res, nil
 }
 
-// checkMinRancherVersion evaluates the server-version Setting against
-// config.MinRancherVersion (PS-8, warn-only floor). Any failure to read it
-// at all — RBAC denial, a missing setting, connectivity — is folded into
-// the same "cannot determine" posture as an unparseable value (a dev/head
-// build): auth check's own success never depends on this read.
+// checkMinRancherVersion evaluates the server's stamped version (from GET
+// /rancherversion) against config.MinRancherVersion (PS-8, warn-only floor).
+// Any failure to read it at all — connectivity, a non-200 response, an
+// unrecognized body — is folded into the same "cannot determine" posture as
+// an unparseable value (a dev/head build): auth check's own success never
+// depends on this read.
 // rancherVersion is nil only on a read failure; supported is nil whenever
 // the version cannot be numerically compared (a read failure OR a
 // successfully read but unparseable value).

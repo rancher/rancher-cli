@@ -37,8 +37,7 @@ func releaseHandler(t *testing.T, routes map[string][]string) http.HandlerFunc {
 }
 
 // settingObj builds a fixture management.cattle.io/v3 Setting object with
-// only the top-level "value" field set (production's ServerVersionSetting
-// reads the same field; setting.go's own convention).
+// only the top-level "value" field set (setting.go convention).
 func settingObj(name, value string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": name},

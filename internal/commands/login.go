@@ -15,15 +15,10 @@ import (
 
 type loginCmd struct {
 	dir string
-	// rancherVersion reads the server-version Setting for the PS-8 floor
-	// check, injectable for tests; defaults to provider.ServerVersionSetting
-	// — the same PS-8 read `auth check` already uses (finding 7), rather
-	// than login re-implementing the local-cluster proxy path plus response
-	// decode via raw HTTP. The original "no engine client factory inside a
-	// Local command" objection doesn't apply here: ServerVersionSetting
-	// takes a bare config.Effective, no factory/cache construct, and login
-	// already has everything an Effective needs by this point (the server
-	// URL, --cacert, and the just-resolved/stored token).
+	// rancherVersion reads the server's stamped version from GET /rancherversion
+	// for the PS-8 floor check, injectable for tests; defaults to
+	// provider.RancherVersion — the same PS-8 read `auth check` uses,
+	// unauthenticated and requiring no engine client factory.
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
 	// newStore resolves the credential store FROM THE POLICY READ UNDER
 	// THE LOCK. Production wiring uses config.OpenStoreWithNotice; tests
@@ -39,7 +34,7 @@ type loginCmd struct {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, rancherVersion: provider.ServerVersionSetting}
+	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, rancherVersion: provider.RancherVersion}
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -198,10 +193,10 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 // warnBelowMinVersion evaluates the server-version Setting read via
 // l.rancherVersion against config.MinRancherVersion (PS-8, warn-only floor).
-// Any failure to read it at all — RBAC denial, a missing setting,
-// connectivity — is folded into the same "cannot determine" posture as an
-// unparseable value (a dev/head build): this probe never turns a successful
-// login into a failure.
+// Any failure to read it at all — connectivity, a non-200 response,
+// unrecognized body — is folded into the same "cannot determine" posture as
+// an unparseable value (a dev/head build): this probe never turns a
+// successful login into a failure.
 func (l loginCmd) warnBelowMinVersion(ctx context.Context, eff config.Effective) string {
 	if l.rancherVersion == nil {
 		return config.UnknownServerVersionWarning

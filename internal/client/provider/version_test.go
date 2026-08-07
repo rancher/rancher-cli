@@ -5,20 +5,20 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const serverVersionPath = "/k8s/clusters/local/apis/management.cattle.io/v3/settings/server-version"
+const rancherVersionPath = "/rancherversion"
 
-// newVersionFake starts a TLS fake standing in for Rancher, serving exactly
-// the local-cluster proxy path (PS-8's exact-path requirement — a bare
-// /apis/... GET must never be attempted, so any other path 404s here as it
-// would against a real Rancher).
+// newVersionFake starts a TLS fake standing in for Rancher's unauthenticated
+// /rancherversion endpoint. Any path other than /rancherversion 404s,
+// mirroring the requirement that the probe never falls back to a different path.
 func newVersionFake(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewTLSServer(handler)
@@ -32,76 +32,143 @@ func effFor(t *testing.T, srv *httptest.Server, cluster string) config.Effective
 	return config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret", Cluster: cluster}
 }
 
-func TestServerVersionSettingReturnsValue(t *testing.T) {
+func TestRancherVersionReturnsParsedVersion(t *testing.T) {
 	t.Parallel()
 	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != serverVersionPath {
+		if r.URL.Path != rancherVersionPath {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Setting","metadata":{"name":"server-version"},"value":"v2.13.0"}`))
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0","GitCommit":"abc123","RancherPrime":"false"}`))
 	})
 
-	got, err := ServerVersionSetting(context.Background(), effFor(t, srv, "local"))
+	got, err := RancherVersion(context.Background(), effFor(t, srv, ""))
 	require.NoError(t, err)
-	assert.Equal(t, "v2.13.0", got)
+	assert.Equal(t, "v2.15.0", got)
 }
 
-// TestServerVersionSettingAlwaysTargetsLocalCluster pins PS-8's exact-path
-// requirement: Settings are management-plane singletons under the LOCAL
-// cluster's proxy, regardless of which cluster the caller's context
-// currently points at.
-func TestServerVersionSettingAlwaysTargetsLocalCluster(t *testing.T) {
+// TestRancherVersionDevBuildReturnsUnparseable verifies that a dev-stamped
+// version string ("v2.15.0-dev") is returned as-is so the caller's
+// EvalMinVersionSupport can report it verbatim in the payload.
+func TestRancherVersionDevBuildReturnsUnparseable(t *testing.T) {
 	t.Parallel()
 	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != serverVersionPath {
+		if r.URL.Path != rancherVersionPath {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Setting","value":"v2.14.0"}`))
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0-dev","GitCommit":"deadbeef"}`))
 	})
 
-	got, err := ServerVersionSetting(context.Background(), effFor(t, srv, "c-1"))
-	require.NoError(t, err, "the request must land on /k8s/clusters/local, not /k8s/clusters/c-1")
-	assert.Equal(t, "v2.14.0", got)
+	got, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+	require.NoError(t, err)
+	// Caller (EvalMinVersionSupport) decides whether this is parseable.
+	assert.Equal(t, "v2.15.0-dev", got)
 }
 
-func TestServerVersionSettingRBACDenied(t *testing.T) {
+// TestRancherVersionGarbageBodyReturnsError pins the 200-but-unrecognized-body
+// case: a non-Rancher server (or a proxy) that returns 200 with an unexpected
+// payload must be treated as a read failure so the caller can degrade to
+// UnknownServerVersionWarning.
+func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		t.Parallel()
+		srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte(`not json at all`))
+		})
+		_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "/rancherversion")
+	})
+
+	t.Run("valid JSON but no Version field", func(t *testing.T) {
+		t.Parallel()
+		srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"something":"else"}`))
+		})
+		_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no Version field")
+	})
+}
+
+// TestRancherVersionNon200ReturnsError pins the non-200 path: any status other
+// than 200 (e.g. 404 from a non-Rancher server, 503 during startup) is a read
+// failure — never silently treated as an unknown version.
+func TestRancherVersionNon200ReturnsError(t *testing.T) {
 	t.Parallel()
 	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"kind":"Status","status":"Failure","reason":"Forbidden","code":403}`))
+		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 
-	_, err := ServerVersionSetting(context.Background(), effFor(t, srv, "local"))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
 }
 
-func TestServerVersionSettingMissing(t *testing.T) {
-	t.Parallel()
-	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"kind":"Status","status":"Failure","reason":"NotFound","code":404}`))
-	})
-
-	_, err := ServerVersionSetting(context.Background(), effFor(t, srv, "local"))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-}
-
-func TestServerVersionSettingNoValueFieldIsEmptyNotError(t *testing.T) {
+// TestRancherVersionUnreachableReturnsError pins the connectivity-failure path:
+// when the server is unreachable (connection refused after close), the error
+// propagates so checkMinRancherVersion can degrade to UnknownServerVersionWarning.
+func TestRancherVersionUnreachableReturnsError(t *testing.T) {
 	t.Parallel()
 	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Setting","metadata":{"name":"server-version"}}`))
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
 	})
+	eff := effFor(t, srv, "")
+	srv.Close() // close before the call; t.Cleanup will call Close again (idempotent)
 
-	got, err := ServerVersionSetting(context.Background(), effFor(t, srv, "local"))
+	_, err := RancherVersion(context.Background(), eff)
+	require.Error(t, err)
+}
+
+// TestRancherVersionPathValuedCA pins that a file-path CA (the common case
+// after `rancher auth login --cacert /path/to/ca.pem`) is resolved through
+// config.ResolveCA before being passed to httpx.New, so the TLS handshake
+// succeeds rather than failing to parse a filesystem path as raw PEM.
+func TestRancherVersionPathValuedCA(t *testing.T) {
+	t.Parallel()
+	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != rancherVersionPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
+	})
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(caFile, certPEM, 0600))
+
+	eff := config.Effective{URL: srv.URL, CA: caFile, Token: "id:secret"}
+	got, err := RancherVersion(context.Background(), eff)
 	require.NoError(t, err)
-	assert.Empty(t, got)
+	assert.Equal(t, "v2.15.0", got)
+}
+
+// TestRancherVersionTrailingSlashURL pins that a trailing slash in eff.URL
+// (set via RANCHER_CLI_URL env, which bypasses canonicalization) is trimmed
+// before appending "/rancherversion", so the probe does not send a double-
+// slash request that some server routers reject with 404.
+func TestRancherVersionTrailingSlashURL(t *testing.T) {
+	t.Parallel()
+	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != rancherVersionPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
+	})
+	eff := effFor(t, srv, "")
+	eff.URL += "/" // trailing slash, as set by RANCHER_CLI_URL env verbatim
+	got, err := RancherVersion(context.Background(), eff)
+	require.NoError(t, err)
+	assert.Equal(t, "v2.15.0", got)
 }
