@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"text/tabwriter"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -30,9 +33,26 @@ func (c contextCurrentCmd) Execute(_ context.Context, _ runtime.Input, _ runtime
 		return runtime.Result{}, clierr.New(clierr.CodeContextNotSet, "current context \""+cfg.CurrentContext+"\" not found").
 			WithHint("run: rancher config use-context <name> or rancher auth login")
 	}
-	return runtime.Result{Kind: "Context", Data: map[string]string{
-		"name": cfg.CurrentContext, "server": ctx.Server, "cluster": ctx.Cluster, "project": ctx.Project,
-	}}, nil
+	return runtime.Result{
+		Kind: "Context",
+		Data: map[string]string{
+			"name": cfg.CurrentContext, "server": ctx.Server, "cluster": ctx.Cluster, "project": ctx.Project,
+		},
+		Text: renderContextText(cfg.CurrentContext, ctx.Server, ctx.Cluster, ctx.Project),
+	}, nil
+}
+
+// renderContextText produces a single-row tabwriter table (NAME / SERVER /
+// CLUSTER / PROJECT) for the default/table output format. Empty fields render
+// as blank cells, matching the existing table convention. JSON/YAML output is
+// unaffected: the pipeline writes Text only when format is "" or "table".
+func renderContextText(name, server, cluster, project string) string {
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 8, 3, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "NAME\tSERVER\tCLUSTER\tPROJECT")
+	_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, server, cluster, project)
+	_ = tw.Flush()
+	return buf.String()
 }
 
 type contextSetCmd struct{ dir string }

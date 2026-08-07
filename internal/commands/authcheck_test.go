@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"encoding/pem"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -675,4 +677,132 @@ func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
 	token, ok := res.Data.(map[string]any)["token"].(map[string]any)
 	require.True(t, ok, "token must be a populated object")
 	assert.Equal(t, "derived-1", token["name"])
+}
+
+// TestAuthCheckTextViewHappyPath pins the TTY text view sections and key fields
+// for a full-data result: AUTH CHECK, VERSIONS, IDENTITY, TOKEN, CREDENTIAL STORE.
+func TestAuthCheckTextViewHappyPath(t *testing.T) {
+	t.Parallel()
+	ver := "v2.15.0"
+	supported := true
+	text := renderAuthCheckText(
+		true, "my-server", "c-abc", "v1.31.0",
+		&ver, &supported,
+		map[string]any{"userID": "u-abc"},
+		map[string]any{"name": "tok-1", "kind": "derived", "provider": "local", "expiresAt": "2030-01-01T00:00:00Z", "current": true},
+		"auto", "file",
+	)
+	assert.Contains(t, text, "ok: true")
+	assert.Contains(t, text, "server: my-server")
+	assert.Contains(t, text, "cluster: c-abc")
+	assert.Contains(t, text, "serverVersion: v1.31.0")
+	assert.Contains(t, text, "rancherVersion: v2.15.0")
+	assert.Contains(t, text, "supported: true")
+	assert.Contains(t, text, "userID: u-abc")
+	assert.Contains(t, text, "name: tok-1")
+	assert.Contains(t, text, "kind: derived")
+	assert.Contains(t, text, "provider: local")
+	assert.Contains(t, text, "expiresAt: 2030-01-01T00:00:00Z")
+	assert.Contains(t, text, "current: true")
+	assert.Contains(t, text, "policy: auto")
+	assert.Contains(t, text, "pinned: file")
+}
+
+// TestAuthCheckTextViewNullFields pins the honest-null convention: nil pointer
+// fields render as "-", nil sub-objects render as "<field>: unavailable", and
+// plain empty strings (cluster, pinned) also render as "-" — all three
+// "nothing here" states use the same marker within this view.
+func TestAuthCheckTextViewNullFields(t *testing.T) {
+	t.Parallel()
+	text := renderAuthCheckText(
+		true, "s", "", "v1.31.0",
+		nil, nil,
+		nil, nil,
+		"keychain", "",
+	)
+	assert.Contains(t, text, "cluster: -", "empty cluster renders as dash, not blank")
+	assert.Contains(t, text, "rancherVersion: -")
+	assert.Contains(t, text, "supported: -")
+	assert.Contains(t, text, "identity: unavailable")
+	assert.Contains(t, text, "token: unavailable")
+	assert.Contains(t, text, "pinned: -", "empty pinned renders as dash, not blank")
+}
+
+// TestAuthCheckTextViewWarningsReachStderr drives the real pipeline (runtime.Run's
+// Text branch) and pins that warnings still reach stderr as "# warning: ..."
+// lines — not stdout — when the text view is active. A non-ext token whose
+// v3 lookup 404s (revoked or rotated) is the real-world case: the Text view
+// renders on stdout while the re-authenticate advisory arrives only on stderr.
+func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
+	dir := t.TempDir()
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion,
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		v3token: func(_ context.Context, _ config.Effective, _ string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, `tokens.management.cattle.io "legacy-id" not found`)
+		},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := runtime.Run(context.Background(), cmd, args{},
+		runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+	require.Nil(t, ce)
+
+	stdout, stderr := out.String(), errBuf.String()
+	assert.Contains(t, stdout, "AUTH CHECK")
+	assert.NotContains(t, stdout, "# warning:", "warnings must never appear on stdout")
+	assert.Contains(t, stderr, "# warning: token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
+	assert.NotContains(t, stderr, "AUTH CHECK", "text view must never appear on stderr")
+}
+
+// TestAuthCheckDataPayloadUnchanged pins that adding Result.Text does not alter
+// the Result.Data map — every JSON key and type must survive byte-identical,
+// matching TestContextCurrentTextView's parallel assertion for current-context.
+func TestAuthCheckDataPayloadUnchanged(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
+	dir := t.TempDir()
+	ver := "v2.15.0"
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: func(context.Context, config.Effective) (string, error) { return ver, nil },
+		identity: func(context.Context, config.Effective) (string, error) {
+			return "u-abc", nil
+		},
+		token: func(_ context.Context, _ config.Effective, name string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{Name: name, Kind: "session", Provider: "local"}, nil
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+
+	data, ok := res.Data.(map[string]any)
+	require.True(t, ok, "Data must be map[string]any")
+
+	assert.Equal(t, true, data["ok"])
+	_, hasServer := data["server"]
+	assert.True(t, hasServer, "server key must be present")
+	_, hasCluster := data["cluster"]
+	assert.True(t, hasCluster, "cluster key must be present")
+	_, hasSV := data["serverVersion"]
+	assert.True(t, hasSV, "serverVersion key must be present")
+	rv, hasRV := data["rancherVersion"]
+	assert.True(t, hasRV, "rancherVersion key must be present")
+	assert.NotNil(t, rv, "rancherVersion must be non-nil with a responding stub")
+	_, hasSupported := data["supported"]
+	assert.True(t, hasSupported, "supported key must be present")
+	identity, hasIdentity := data["identity"]
+	assert.True(t, hasIdentity, "identity key must be present")
+	assert.NotNil(t, identity, "identity must be populated by the stub")
+	token, hasToken := data["token"]
+	assert.True(t, hasToken, "token key must be present")
+	assert.NotNil(t, token, "token must be populated by the stub")
+	cs, hasCS := data["credentialStore"].(map[string]any)
+	assert.True(t, hasCS, "credentialStore must be a nested map")
+	_, hasPolicy := cs["policy"]
+	assert.True(t, hasPolicy, "credentialStore.policy key must be present")
+	_, hasPinned := cs["pinned"]
+	assert.True(t, hasPinned, "credentialStore.pinned key must be present")
 }

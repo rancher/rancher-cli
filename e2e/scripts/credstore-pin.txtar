@@ -24,6 +24,8 @@ exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
 grep '^file$' $RANCHER_CLI_CONFIG_DIR/credstore-pin
 
 exec rancher config current-context
+stdout 'NAME'
+stdout 'e2e'
 ! stderr 'keychain unavailable'
 ! stderr 'pinned credential store:'
 

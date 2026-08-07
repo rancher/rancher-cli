@@ -120,21 +120,109 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	token := tokenRaw
 	tokenWarn := tokenWarning(tokenErr, supported)
 
-	res := runtime.Result{Kind: "AuthCheck", Data: map[string]any{
-		"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
-		"rancherVersion": rancherVersion, "supported": supported,
-		"identity": identity, "token": token,
-		"credentialStore": map[string]any{
-			"policy": config.EffectivePolicy(cfg.CredentialStore),
-			"pinned": pinned,
+	credentialPolicy := config.EffectivePolicy(cfg.CredentialStore)
+	res := runtime.Result{
+		Kind: "AuthCheck",
+		Data: map[string]any{
+			"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
+			"rancherVersion": rancherVersion, "supported": supported,
+			"identity": identity, "token": token,
+			"credentialStore": map[string]any{
+				"policy": credentialPolicy,
+				"pinned": pinned,
+			},
 		},
-	}}
+		Text: renderAuthCheckText(true, eff.ServerName, eff.Cluster, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned),
+	}
 	for _, w := range []string{warning, idWarning, tokenWarn} {
 		if w != "" {
 			res.Warnings = append(res.Warnings, w)
 		}
 	}
 	return res, nil
+}
+
+// renderAuthCheckText produces a multi-section key/value text view for the
+// default/table output format, following the inspect-cluster convention:
+// uppercase section headers, two-space-indented "key: value" lines. Nil
+// pointer fields render as "-" (honest null); nil sub-objects render as an
+// "<field>: unavailable" line in their section. Plain empty strings
+// (cluster, pinned) also render as "-" for the same "nothing here" reason:
+// a cluster-less context, a non-auto credential policy, and an auto policy
+// on a fresh machine before any pin is recorded all produce a legitimately
+// empty value that warrants the same honest marker.
+// Warnings are NOT duplicated here — they arrive on stderr via the
+// pipeline's stderr mirror.
+func renderAuthCheckText(
+	ok bool,
+	serverName, cluster, serverVersion string,
+	rancherVersion *string,
+	supported *bool,
+	identity, token any,
+	credentialPolicy, pinned string,
+) string {
+	ptrStr := func(p *string) string {
+		if p == nil {
+			return "-"
+		}
+		return *p
+	}
+	ptrBool := func(p *bool) string {
+		if p == nil {
+			return "-"
+		}
+		if *p {
+			return "true"
+		}
+		return "false"
+	}
+	emptyStr := func(s string) string {
+		if s == "" {
+			return "-"
+		}
+		return s
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "AUTH CHECK\n")
+	fmt.Fprintf(&b, "  ok: %v\n", ok)
+	fmt.Fprintf(&b, "  server: %s\n", serverName)
+	fmt.Fprintf(&b, "  cluster: %s\n", emptyStr(cluster))
+
+	fmt.Fprintf(&b, "\nVERSIONS\n")
+	fmt.Fprintf(&b, "  serverVersion: %s\n", serverVersion)
+	fmt.Fprintf(&b, "  rancherVersion: %s\n", ptrStr(rancherVersion))
+	fmt.Fprintf(&b, "  supported: %s\n", ptrBool(supported))
+
+	fmt.Fprintf(&b, "\nIDENTITY\n")
+	if idMap, idOK := identity.(map[string]any); idOK {
+		userID, _ := idMap["userID"].(string)
+		fmt.Fprintf(&b, "  userID: %s\n", userID)
+	} else {
+		fmt.Fprintf(&b, "  identity: unavailable\n")
+	}
+
+	fmt.Fprintf(&b, "\nTOKEN\n")
+	if tokMap, tokOK := token.(map[string]any); tokOK {
+		name, _ := tokMap["name"].(string)
+		kind, _ := tokMap["kind"].(string)
+		prov, _ := tokMap["provider"].(string)
+		expiresAt, _ := tokMap["expiresAt"].(string)
+		current, _ := tokMap["current"].(bool)
+		fmt.Fprintf(&b, "  name: %s\n", name)
+		fmt.Fprintf(&b, "  kind: %s\n", kind)
+		fmt.Fprintf(&b, "  provider: %s\n", prov)
+		fmt.Fprintf(&b, "  expiresAt: %s\n", expiresAt)
+		fmt.Fprintf(&b, "  current: %v\n", current)
+	} else {
+		fmt.Fprintf(&b, "  token: unavailable\n")
+	}
+
+	fmt.Fprintf(&b, "\nCREDENTIAL STORE\n")
+	fmt.Fprintf(&b, "  policy: %s\n", credentialPolicy)
+	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(pinned))
+
+	return b.String()
 }
 
 // checkMinRancherVersion evaluates the server's stamped version (from GET

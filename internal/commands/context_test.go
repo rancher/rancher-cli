@@ -174,6 +174,45 @@ func TestConfigSetContextMissingContextKeyDoesNotCorruptConfig(t *testing.T) {
 	assert.Empty(t, cfgAfter.Contexts, "config should not be corrupted with zero Context{}")
 }
 
+// TestContextCurrentTextView pins the TTY text view: a single-row tabwriter
+// table carrying NAME / SERVER / CLUSTER / PROJECT, with the JSON Data
+// payload byte-identical to the previous map[string]string.
+func TestContextCurrentTextView(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeCtxConfig(t, dir) // acme: server=acme, cluster=c-1, project=p-1
+
+	res, err := NewContextCurrent(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+
+	// Text contains the header row and all four values.
+	assert.Contains(t, res.Text, "NAME")
+	assert.Contains(t, res.Text, "SERVER")
+	assert.Contains(t, res.Text, "CLUSTER")
+	assert.Contains(t, res.Text, "PROJECT")
+	assert.Contains(t, res.Text, "acme")
+	assert.Contains(t, res.Text, "c-1")
+	assert.Contains(t, res.Text, "p-1")
+
+	// JSON Data payload is unchanged.
+	data, ok := res.Data.(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "acme", data["name"])
+	assert.Equal(t, "acme", data["server"])
+	assert.Equal(t, "c-1", data["cluster"])
+	assert.Equal(t, "p-1", data["project"])
+}
+
+// TestRenderContextTextEmptyFields pins that empty cluster/project render as
+// blank cells (not "-"), consistent with the existing table convention.
+func TestRenderContextTextEmptyFields(t *testing.T) {
+	t.Parallel()
+	text := renderContextText("myctx", "myserver", "", "")
+	assert.Contains(t, text, "NAME")
+	assert.Contains(t, text, "myctx")
+	assert.Contains(t, text, "myserver")
+}
+
 // TestContextUseCompleteArgsDelegatesToContextNames proves only the wiring:
 // sort order is a ConfigView-level fact, pinned once at newConfigView in
 // surface/cli.
