@@ -214,7 +214,9 @@ func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespace
 // aggregateUsage sums CPU/memory requests, limits, and (when metrics.k8s.io
 // is reachable) usage per grouped key, degrading a metrics fetch failure to
 // a warning rather than a command error. Shared by usage's own per-namespace/
-// per-project modes and inspect project's usage summary.
+// per-project modes and inspect project's usage summary. One row is emitted
+// per key present in grouped, even for nil (empty) pod slices — callers that
+// need a guaranteed row for a scope with no pods must seed the key first.
 func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured, namespaces []string) (runtime.Result, error) {
 	var warnings []string
 	metricsOK := true

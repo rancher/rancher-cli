@@ -195,9 +195,83 @@ func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 	r.Members = []projectMember{}
 	assert.Contains(t, renderProjectText(r), "MEMBERS\n  none\n")
 
-	// namespaces present but totals missing → genuinely unavailable.
+	// Defensive: Usage nil with non-empty Namespaces renders an explicit
+	// marker, not a bare header. Unreachable from Execute today but pins the
+	// renderer contract independent of the seeding invariant.
 	r.Namespaces = []projectNamespace{{Name: "ns1"}}
 	assert.Contains(t, renderProjectText(r), "USAGE\n  usage: unavailable\n")
+}
+
+// TestInspectProjectZeroPodsVerifiedZero covers the case that triggered the
+// "usage: unavailable" regression: a project with member namespaces but zero
+// pods must produce verified-zero totals (non-nil Usage with "0" values), not
+// a nil Usage that renders as unavailable.
+func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	podKind := mustKind(t, "pod")
+	depKind := mustKind(t, "deployment")
+	prtbKind := mustKind(t, "projectroletemplatebinding")
+
+	mgmt := newFakeClient()
+	mgmt.withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{*projectFixtureObj("p-empty", "Empty", "")},
+	})
+	mgmt.withObject(projectKind.GVR, "c-test", "p-empty", projectFixtureObj("p-empty", "Empty", ""))
+	mgmt.withListNS(prtbKind.GVR, "p-empty", &unstructured.UnstructuredList{})
+
+	downstream := newFakeClient()
+	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{nsListItem("ns-a")},
+	})
+	downstream.withList(podKind.GVR, &unstructured.UnstructuredList{})
+	downstream.withList(depKind.GVR, &unstructured.UnstructuredList{})
+
+	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{
+		engine.LocalCluster: mgmt,
+		"c-test":            downstream,
+	}}
+
+	cmd := NewInspectProject(fac)
+	res, err := execRead(t, cmd, input{args: []string{"p-empty"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	require.NotNil(t, data.Usage, "zero pods in a member namespace must produce verified-zero totals, not nil")
+	assert.Equal(t, "0", data.Usage.CPURequest)
+	assert.Equal(t, "0", data.Usage.CPULimit)
+	assert.Equal(t, "0", data.Usage.MemoryRequest)
+	assert.Equal(t, "0", data.Usage.MemoryLimit)
+
+	// Text view must render explicit zeros, not "unavailable".
+	text := res.Text
+	assert.Contains(t, text, "cpu: request=0 limit=0")
+	assert.Contains(t, text, "memory: request=0 limit=0")
+	assert.NotContains(t, text, "unavailable")
+}
+
+// TestProjectUsageJSONContract pins the verified-zero usage state at the JSON
+// level: Usage non-nil with zero values must serialize as a non-null object
+// (not null), so agents can distinguish "no pods measured" from "data absent".
+func TestProjectUsageJSONContract(t *testing.T) {
+	t.Parallel()
+
+	zeroes := projectResult{
+		ID:    "p-1",
+		Usage: &resourceTotals{CPURequest: "0", CPULimit: "0", MemoryRequest: "0", MemoryLimit: "0"},
+	}
+	b, err := json.Marshal(zeroes)
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(b, &doc))
+	usageRaw, hasUsage := doc["usage"]
+	require.True(t, hasUsage, "usage key must be present")
+	require.NotNil(t, usageRaw, "verified-zero usage must be non-null in JSON")
+	usageMap, ok := usageRaw.(map[string]any)
+	require.True(t, ok, "usage must be a JSON object")
+	assert.Equal(t, "0", usageMap["cpuRequest"])
+	assert.Equal(t, "0", usageMap["memoryRequest"])
 }
 
 func TestProjectMemberJSONContract(t *testing.T) {

@@ -92,6 +92,11 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	podCounts := map[string]int{}
 	depCounts := map[string]int{}
 	allPods := map[string][]unstructured.Unstructured{}
+	// Seed before the loop so aggregateUsage produces verified-zero totals when
+	// there are namespaces but no matching pods. append-to-nil is safe.
+	if len(namespaces) > 0 {
+		allPods[projectID] = nil
+	}
 	for i := range podList.Items {
 		ns := podList.Items[i].GetNamespace()
 		if !members[ns] {
@@ -126,6 +131,9 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 
 	var usage *resourceTotals
 	if len(namespaces) > 0 {
+		// aggregateUsage degrades fetch errors (e.g. metrics unavailable) to
+		// warnings and never returns a non-nil error; the guard is a seam for
+		// future genuine failures.
 		res, uerr := aggregateUsage(ctx, client, clusterID, allPods, namespaces)
 		if uerr != nil {
 			return runtime.Result{}, uerr
@@ -277,6 +285,10 @@ func renderProjectText(r projectResult) string {
 		// verified-empty state, not an unavailable one.
 		b.WriteString("  none (no namespaces)\n")
 	default:
+		// Defensive fallback: Usage is nil despite non-empty Namespaces.
+		// Unreachable from Execute today (seeding guarantees a row), but
+		// renders an explicit marker rather than a silent bare header if
+		// the invariant ever breaks.
 		b.WriteString("  usage: unavailable\n")
 	}
 	return b.String()
