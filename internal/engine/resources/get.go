@@ -159,7 +159,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout, c.k.WaitFailsOnStalled)
 			if err == nil {
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
-				if c.k.WaitFailsOnStalled {
+				if c.k.WaitFailsOnStalled && !cond.isStalledTarget() {
 					if w := freshSuccessWarning(one, c.k.Name, name, ns); w != "" {
 						waitWarnings = append(waitWarnings, w)
 					}

@@ -334,14 +334,17 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 // list stops helping.
 const maxNearestMatches = 10
 
-// commandListHint, kindsArrayHint, and dualListHint are SE-4's reusable hint
-// fragments. unknownSelection composes its per-mode hint from these three named
-// constants so the tier hints (dual, kindOnly, command) share one source of
-// truth rather than inline literals. Nearest-match candidates are a layer on
+// commandListHint, kindsArrayRef, kindsArrayHint, and dualListHint are SE-4's
+// reusable hint fragments. unknownSelection composes its per-mode hint from
+// these named constants so the tier hints (dual, kindOnly, command) share one
+// source of truth rather than inline literals. kindsArrayRef is the bare
+// reference fragment; kindsArrayHint and dualListHint both read as instructions
+// — each starts with the verb "run". Nearest-match candidates are a layer on
 // top of the tier hint, not a separate tier.
 const commandListHint = "run `rancher schema -o name` for the full command list"
-const kindsArrayHint = "run `rancher schema -o json` — its kinds array lists every kind name"
-const dualListHint = commandListHint + ", or `rancher schema -o json` for the kinds array"
+const kindsArrayRef = "`rancher schema -o json` — its kinds array lists every kind name"
+const kindsArrayHint = "run " + kindsArrayRef
+const dualListHint = commandListHint + ", or " + kindsArrayRef
 
 // unknownSelection builds SE-4's VALIDATION error for a positional that
 // matches nothing, listing nearest matches when any exist. Under --kind
@@ -352,16 +355,17 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	// multi-token selector is command-shaped (kinds are single tokens,
 	// always) so the kind half of the dual hint is noise; only a bare
 	// single token is genuinely either.
+	commandShaped := len(strings.Fields(want)) > 1
 	noun, hint := "command or kind", dualListHint
 	switch {
 	case kindOnly:
 		noun, hint = "kind", kindsArrayHint
-	case len(strings.Fields(want)) > 1:
+	case commandShaped:
 		noun, hint = "command", commandListHint
 	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).
 		WithHint(hint)
-	matches := nearestSelectors(m, want, kindOnly)
+	matches := nearestSelectors(m, want, kindOnly, commandShaped)
 	if len(matches) == 0 {
 		return ce
 	}
@@ -378,8 +382,10 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 // shape matchesAlias resolves) plus kind names, keys, and aliases — every
 // candidate deduplicated to its selectable name (a command/kind collision
 // yields one candidate), sorted, capped. kindOnly restricts the search to
-// kinds, matching --kind's forced interpretation.
-func nearestSelectors(m Manifest, want string, kindOnly bool) []string {
+// kinds, matching --kind's forced interpretation. commandOnly skips the kind
+// scan for multi-token (command-shaped) queries — kinds are always single
+// tokens, so the kind half of the search is noise for a query like "get pdo".
+func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []string {
 	q := strings.ToLower(want)
 	seen := map[string]bool{}
 	var out []string
@@ -396,9 +402,11 @@ func nearestSelectors(m Manifest, want string, kindOnly bool) []string {
 			}
 		}
 	}
-	for _, k := range m.Kinds {
-		if kindMatchesSubstring(k, q) {
-			add(k.Name)
+	if !commandOnly {
+		for _, k := range m.Kinds {
+			if kindMatchesSubstring(k, q) {
+				add(k.Name)
+			}
 		}
 	}
 	sort.Strings(out)

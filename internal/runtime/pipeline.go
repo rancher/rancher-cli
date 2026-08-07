@@ -282,6 +282,15 @@ func tableFormat(format string) bool {
 	return format == "" || format == "table"
 }
 
+// envelopeCarriesWarnings reports whether the output format serializes the full
+// stdout envelope — and therefore the top-level "warnings" key — to the user:
+// only json and yaml do. Every other format (table, name, template, "") writes
+// the data portion only, so warnings that land only in the envelope would
+// otherwise be silently dropped.
+func envelopeCarriesWarnings(format string) bool {
+	return format == "json" || format == "yaml"
+}
+
 func renderResult(streams IO, res Result) *clierr.Error {
 	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
 	// any combination is a command bug.
@@ -341,7 +350,7 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	// name field — no envelope), and template (whose stdout is the template
 	// expansion — no envelope). json/yaml carry warnings inside the envelope;
 	// mirroring there would double-print.
-	if streams.Format != "json" && streams.Format != "yaml" {
+	if !envelopeCarriesWarnings(streams.Format) {
 		for _, w := range res.Warnings {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}
@@ -355,11 +364,12 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
-	// Table/default rendering encodes env.Data alone (render.go's renderTable),
-	// so envelope-level warnings would otherwise vanish exactly where a user
-	// looks. Mirror the same "# warning: <w>" stderr convention Result
-	// already documents for table mode (command.go's Text field).
-	if tableFormat(streams.Format) {
+	// renderTable (render.go) encodes env.Data alone, so envelope-level
+	// warnings vanish for every format that does not serialize the full
+	// envelope — table, name, template. Mirror the "# warning: <w>" stderr
+	// convention renderResult uses for those formats; json/yaml carry warnings
+	// inside the envelope and must not double-print.
+	if !envelopeCarriesWarnings(streams.Format) {
 		for _, w := range env.Warnings {
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}

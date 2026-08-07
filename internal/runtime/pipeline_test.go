@@ -265,6 +265,36 @@ func TestRenderEffectWarningsTableStderrOnly(t *testing.T) {
 		"note-a must appear exactly once total across both streams")
 }
 
+// TestRenderEffectRawFormatsWarningsToStderr covers the round-4 High+Low-1 fix:
+// raw-output formats (-o name, -o template=...) carry only the target field on
+// stdout — the Effect envelope's "warnings" key is never emitted. renderEffect
+// must mirror each warning to stderr as "# warning: <w>" so they are not
+// silently dropped (same contract as renderResult under raw formats).
+func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
+	t.Parallel()
+	formats := []string{"name", "template={{.target}}"}
+	for _, format := range formats {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeMutating{
+				d:    mutatingDesc(),
+				eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"cascade-warning"}},
+				exec: unusedExec(t),
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(context.Background(), cmd, mapInput{},
+				IO{Out: &out, Err: &errBuf, Format: format, DryRun: true},
+				safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
+			require.Nil(t, ce)
+			assert.Contains(t, errBuf.String(), "# warning: cascade-warning\n")
+			assert.NotContains(t, out.String(), "cascade-warning")
+			assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cascade-warning"),
+				"cascade-warning must appear exactly once total across both streams")
+		})
+	}
+}
+
 // TestRenderEffectWarningsCombineDryRun covers case (c): two Effect.Warnings
 // notes ride together, each appearing exactly once, in both -o json and
 // default/table dry-run output, in the original order.
@@ -793,50 +823,35 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
 }
 
-// TestRenderResultNameFormatWarningsToStderr pins the round-3 High-1 fix: -o
-// name is a raw-output format whose stdout carries only the name field — the
-// envelope's warnings key is never emitted. renderResult must mirror each
-// warning to stderr as "# warning: <w>" so they are not silently dropped.
-func TestRenderResultNameFormatWarningsToStderr(t *testing.T) {
+// TestRenderResultRawFormatsWarningsToStderr pins the round-3 High-1 fix:
+// raw-output formats (-o name, -o template=...) carry only the named field on
+// stdout — the envelope's warnings key is never emitted. renderResult must
+// mirror each warning to stderr as "# warning: <w>" so they are not silently
+// dropped.
+func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 	t.Parallel()
-	cmd := fakeRead{
-		d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
-		res: Result{
-			Kind:     "Cluster",
-			Data:     map[string]string{"name": "c-abc"},
-			Warnings: []string{"cert-expiry: 3 days"},
-		},
+	formats := []string{"name", "template={{.name}}"}
+	for _, format := range formats {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
+				res: Result{
+					Kind:     "Cluster",
+					Data:     map[string]string{"name": "c-abc"},
+					Warnings: []string{"cert-expiry: 3 days"},
+				},
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
+			assert.NotContains(t, out.String(), "cert-expiry")
+			assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cert-expiry"),
+				"warning must appear exactly once total across both streams")
+		})
 	}
-	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
-	require.Nil(t, ce)
-	assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
-	assert.NotContains(t, out.String(), "cert-expiry")
-	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cert-expiry"),
-		"warning must appear exactly once total across both streams")
-}
-
-// TestRenderResultTemplateFormatWarningsToStderr pins the round-3 High-1 fix:
-// -o template=... is a raw-output format whose stdout is the template
-// expansion — the envelope's warnings key is not rendered. renderResult must
-// mirror each warning to stderr as "# warning: <w>".
-func TestRenderResultTemplateFormatWarningsToStderr(t *testing.T) {
-	t.Parallel()
-	cmd := fakeRead{
-		d: Descriptor{Name: "get cluster", CommandType: ReadOnly},
-		res: Result{
-			Kind:     "Cluster",
-			Data:     map[string]string{"name": "c-abc"},
-			Warnings: []string{"cert-expiry: 3 days"},
-		},
-	}
-	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "template={{.name}}"}, safety.Binding{})
-	require.Nil(t, ce)
-	assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
-	assert.NotContains(t, out.String(), "cert-expiry")
-	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), "cert-expiry"),
-		"warning must appear exactly once total across both streams")
 }
 
 // TestRunValidatesOutputFormat pins the -o contract: the closed set of

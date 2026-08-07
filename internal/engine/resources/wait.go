@@ -22,6 +22,15 @@ type waitCond struct {
 	status string // conditions only; default "True"
 }
 
+// isStalledTarget reports whether the caller is explicitly waiting FOR the
+// Stalled condition itself — the one case where seeing it is the answer,
+// not an abort, and where a fresh satisfied result is the controller's real
+// verdict rather than a birth-time default. Shared by the abort check and
+// the fresh-success advisory gate so the exemption cannot drift.
+func (c waitCond) isStalledTarget() bool {
+	return c.kind == "condition" && c.name == "Stalled"
+}
+
 // parseWaitCondition parses a --for expression (either the user's explicit
 // flag or a kind's WaitDefault) into a waitCond. JSONPath is deliberately
 // unsupported — that grammar belongs to `kubectl wait` via `rancher
@@ -105,7 +114,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 				// unless Stalled itself is what the caller is waiting for. Opt-in
 				// per kind row (WaitFailsOnStalled): not every controller treats
 				// Stalled as terminal, so a kind must be known-kstatus to abort.
-				if failOnStalled && (cond.kind != "condition" || cond.name != "Stalled") {
+				if failOnStalled && !cond.isStalledTarget() {
 					if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
 						if msg == "" {
 							msg = "condition Stalled=True"

@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
@@ -781,6 +782,77 @@ func TestGetWaitStampsSummary(t *testing.T) {
 	const wantPrefix = "wait: condition=Ready satisfied after "
 	assert.True(t, strings.HasPrefix(res.Summary, wantPrefix),
 		"want summary prefix %q, got %q", wantPrefix, res.Summary)
+}
+
+// TestGetWaitFreshSuccessWarning covers the Execute-level fresh-success wiring:
+// a WaitFailsOnStalled kind (gitrepo) whose wait resolves immediately against a
+// fresh, settled, satisfied object must carry the advisory warning on
+// Result.Warnings; a non-WaitFailsOnStalled kind (pod) under the same
+// conditions must carry no warnings (the fresh-success gate is opt-in per kind).
+func TestGetWaitFreshSuccessWarning(t *testing.T) {
+	orig := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = orig }()
+
+	// freshReadyObj returns a settled (no observedGeneration), freshly created
+	// (creationTimestamp=now), satisfied (Ready=True) unstructured object.
+	// settled() returns true when observedGeneration is absent, so no explicit
+	// generation bookkeeping is needed; the fresh creationTimestamp triggers
+	// freshSuccessWarning when WaitFailsOnStalled is true.
+	freshReadyObj := func() *unstructured.Unstructured {
+		obj := conditionObj("Ready", "True")
+		obj.SetCreationTimestamp(metav1.Now())
+		return obj
+	}
+
+	t.Run("WaitFailsOnStalled kind carries fresh-success advisory", func(t *testing.T) {
+		k := mustKind(t, "gitrepo")
+		client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
+		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+		res, err := cmd.Execute(context.Background(), input{
+			args: []string{"my-repo"},
+			b:    map[string]bool{"wait": true},
+		}, nil)
+		require.NoError(t, err)
+		require.Len(t, res.Warnings, 1, "one fresh-success advisory expected")
+		assert.Contains(t, res.Warnings[0], "gitrepo")
+		assert.Contains(t, res.Warnings[0], "my-repo")
+		assert.Contains(t, res.Warnings[0], "fleet-default", "re-check hint must name the resolved namespace")
+	})
+
+	t.Run("non-WaitFailsOnStalled kind carries no warnings", func(t *testing.T) {
+		k := mustKind(t, "pod")
+		client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
+		cmd := NewGet(k, &recFactory{client: client, ctxCluster: "local"}).(runtime.ReadCommand)
+		res, err := cmd.Execute(context.Background(), input{
+			args: []string{"my-pod"},
+			b:    map[string]bool{"wait": true},
+			s:    map[string]string{"namespace": "default", "for": "condition=Ready"},
+		}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, res.Warnings, "pod has WaitFailsOnStalled=false; no fresh-success advisory expected")
+	})
+
+	t.Run("WaitFailsOnStalled kind waiting for Stalled carries no advisory", func(t *testing.T) {
+		// A satisfied Stalled=True wait is the controller's real verdict, not a
+		// stale birth default — the freshSuccessWarning must be suppressed when
+		// the wait target is condition=Stalled.
+		freshStalledObj := func() *unstructured.Unstructured {
+			obj := conditionObj("Stalled", "True")
+			obj.SetCreationTimestamp(metav1.Now())
+			return obj
+		}
+		k := mustKind(t, "gitrepo")
+		client := &seqClient{objs: []*unstructured.Unstructured{freshStalledObj()}}
+		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+		res, err := cmd.Execute(context.Background(), input{
+			args: []string{"my-repo"},
+			b:    map[string]bool{"wait": true},
+			s:    map[string]string{"for": "condition=Stalled=True"},
+		}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, res.Warnings, "condition=Stalled wait satisfied immediately must carry no fresh-success advisory")
+	})
 }
 
 // TestWaitElapsed pins the boundary behaviour of waitElapsed: the

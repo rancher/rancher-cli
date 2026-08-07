@@ -598,6 +598,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 			tin{a: []string{"frobnicate"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
+		assert.True(t, strings.HasPrefix(ce.Hint, "run "), "--kind hint must start with 'run '")
 		assert.Contains(t, ce.Hint, "rancher schema -o json")
 		assert.Contains(t, ce.Hint, "kinds array")
 		assert.NotContains(t, ce.Hint, "-o name")
@@ -611,6 +612,8 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.NotEmpty(t, ce.Candidates)
+		// With nearest matches the hint is prefixed "nearest matches: ... — <kindsArrayRef>";
+		// the kindsArrayRef fragment itself still starts with "run " inside the composite.
 		assert.Contains(t, ce.Hint, "rancher schema -o json")
 		assert.Contains(t, ce.Hint, "kinds array")
 		assert.NotContains(t, ce.Hint, "-o name")
