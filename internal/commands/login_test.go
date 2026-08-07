@@ -103,7 +103,7 @@ func stubRancherVersion(context.Context, config.Effective) (string, error) {
 func newLoginCmd(dir string, store config.CredStore) runtime.ReadCommand {
 	return &loginCmd{
 		dir:            dir,
-		newStore:       func(string, string) (config.CredStore, error) { return store, nil },
+		newStore:       func(string, string) (config.CredStore, string, error) { return store, "", nil },
 		rancherVersion: stubRancherVersion,
 	}
 }
@@ -119,8 +119,8 @@ func (s setErrStore) SetToken(config.ServerRef, string) error { return s.setErr 
 func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, error) {
-		return setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}, nil
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
+		return setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}, "", nil
 	}}
 	res, err := cmd.Execute(context.Background(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
@@ -142,7 +142,7 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, error) { return store, nil }}
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
 	_, err := cmd.Execute(context.Background(),
 		args{s: map[string]string{"server": "https://r.ex", "name": config.LegacyCachePrefix + "alice"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
@@ -160,8 +160,8 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, error) {
-		return setErrStore{CredStore: store, setErr: errors.New("keychain exploded")}, nil
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
+		return setErrStore{CredStore: store, setErr: errors.New("keychain exploded")}, "", nil
 	}}
 	_, err := cmd.Execute(context.Background(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
@@ -421,6 +421,63 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	if _, ferr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"}); !errors.Is(ferr, config.ErrNoToken) {
 		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
 	}
+}
+
+// TestLoginFirstPinNoticeReachesWarnings exercises the production wiring
+// (newStore: config.OpenStoreWithNotice) on a fresh auto+usable-keychain
+// machine: the first-pin notice must appear in res.Warnings so it reaches
+// the JSON/YAML envelope, not just a raw stderr line. This covers the
+// regression where openStoreResolved probed and pinned the keychain before
+// RepinForLogin ran, making RepinForLogin return early with no notice.
+func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
+	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
+	// Isolate from the operator's shell so RANCHER_CLI_CREDENTIAL_STORE=file
+	// doesn't outrank the "auto" policy under test.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+
+	dir := t.TempDir() // fresh dir, no config → auto policy, no prior pin
+
+	cmd := &loginCmd{
+		dir:            dir,
+		newStore:       config.OpenStoreWithNotice,
+		rancherVersion: stubRancherVersion,
+	}
+	res, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Contains(t, res.Warnings, "pinned credential store: keychain",
+		"first-pin notice must reach res.Warnings on the production login path")
+	assert.Equal(t, "keychain", config.ReadPin(dir), "auto + usable keychain must pin to keychain")
+}
+
+// TestLoginFileToKeychainRepinNoticeReachesWarnings exercises the production
+// wiring (newStore: config.OpenStoreWithNotice) when the machine was previously
+// pinned to "file" (e.g. first login over SSH) and now has a usable keychain:
+// RepinForLogin must upgrade the pin and emit the re-pin notice into res.Warnings
+// so it appears in the JSON/YAML envelope, not only as a raw stderr line.
+func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
+	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	dir := t.TempDir()
+	require.NoError(t, config.WritePin(dir, "file"))
+
+	cmd := &loginCmd{
+		dir:            dir,
+		newStore:       config.OpenStoreWithNotice,
+		rancherVersion: stubRancherVersion,
+	}
+	res, err := cmd.Execute(context.Background(),
+		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Contains(t, res.Warnings, "credential store re-pinned: file → keychain",
+		"file→keychain re-pin notice must reach res.Warnings on the production login path")
+	assert.Equal(t, "keychain", config.ReadPin(dir), "pin must be upgraded to keychain after re-probe")
 }
 
 // extLoginFakeOpts configures the httptest fake server standing in for
@@ -717,7 +774,7 @@ func TestLoginVersionProbeUnreachableServerNeverFailsLogin(t *testing.T) {
 func TestLoginCanonicalizesStoredURL(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, error) { return store, nil }}
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
 	res, err := cmd.Execute(context.Background(),
 		args{s: map[string]string{"server": "HTTPS://Rancher2.Example.Local:443", "name": "canon"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
@@ -767,9 +824,9 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	defer restore()
 
 	var calledWith string
-	factory := func(policy, d string) (config.CredStore, error) {
+	factory := func(policy, d string) (config.CredStore, string, error) {
 		calledWith = policy
-		return config.NewFileStore(d), nil
+		return config.NewFileStore(d), "", nil
 	}
 	loginDone := make(chan error, 1)
 	go func() {

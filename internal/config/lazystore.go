@@ -1,6 +1,9 @@
 package config
 
 import (
+	"fmt"
+	"io"
+	"os"
 	"sync"
 	"time"
 )
@@ -29,7 +32,16 @@ func NewLazyStore(policy, dir string) (CredStore, error) {
 	if err := checkPolicy(p); err != nil {
 		return nil, err
 	}
-	return &lazyStore{resolve: func() (CredStore, error) { return openStoreResolved(p, dir) }}, nil
+	return &lazyStore{resolve: func() (CredStore, error) {
+		store, notice, err := openStoreResolved(p, dir)
+		// The lazy path resolves inside a credential operation (SetToken,
+		// GetToken, …), outside any pipeline Result — the notice cannot reach
+		// an envelope here. Write it to stderr directly in # warning: format.
+		if notice != "" {
+			writeWarningLine(os.Stderr, notice)
+		}
+		return store, err
+	}}, nil
 }
 
 func (l *lazyStore) backend() (CredStore, error) {
@@ -114,4 +126,13 @@ func (l *lazyStore) ListCachedCreds() ([]CachedCredInfo, error) {
 		return nil, err
 	}
 	return s.ListCachedCreds()
+}
+
+// writeWarningLine writes a single # warning: line to w. It is the canonical
+// format for user-visible notices in this package when a pipeline Result is not
+// available (e.g. the lazy-store resolution path). Keeping the format string
+// here avoids duplicating the literal across multiple call sites and lets a
+// wording change apply uniformly.
+func writeWarningLine(w io.Writer, msg string) {
+	_, _ = fmt.Fprintf(w, "# warning: %s\n", msg)
 }

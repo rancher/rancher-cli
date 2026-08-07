@@ -3,13 +3,13 @@ package config
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -100,12 +100,17 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "construction must not create the config dir or pin")
 }
 
-// TestLoginSequenceFreshAutoUsableKeychain drives login's store
-// sequence (NewLazyStore → RepinForLogin → SetToken) on a fresh auto
-// profile with a usable keychain: exactly one probe, keychain pin,
-// exactly one first-pin notice, token in the keychain and no plaintext
-// file — the lazy store never resolves (RepinForLogin returned the
-// concrete upgraded store).
+// TestLoginSequenceFreshAutoUsableKeychain drives a direct-call sequence
+// (NewLazyStore → RepinForLogin → SetToken) on a fresh auto profile with a
+// usable keychain: exactly one probe, keychain pin, first-pin notice, token in
+// the keychain and no plaintext file. The lazy store never resolves because
+// RepinForLogin returns the concrete upgraded store before SetToken runs.
+//
+// Note: this calls RepinForLogin directly on a never-pinned dir (no prior
+// openStoreResolved). This exercises RepinForLogin's else branch in isolation.
+// The production loginCmd.Execute path (OpenStoreWithNotice runs first, pins
+// the dir, then RepinForLogin sees pin="keychain" and returns early) is covered
+// by TestLoginFirstPinNoticeReachesWarnings in internal/commands/login_test.go.
 func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()
@@ -115,20 +120,15 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return true }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	var buf bytes.Buffer
-	origOut := logrus.StandardLogger().Out
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(origOut)
-
 	lazy, err := NewLazyStore("", dir)
 	require.NoError(t, err)
-	store, err := RepinForLogin(dir, "", lazy)
+	store, pinWarning, err := RepinForLogin(dir, "", lazy)
 	require.NoError(t, err)
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "keychain", ReadPin(dir))
-	assert.Equal(t, 1, strings.Count(buf.String(), "pinned credential store: keychain"))
+	assert.Equal(t, NoticeFirstPinKeychain, pinWarning, "expected first-pin notice from RepinForLogin")
 	tok, err := keyring.Get(keyringService, "prod")
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
@@ -151,21 +151,27 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return false }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	var buf bytes.Buffer
-	origOut := logrus.StandardLogger().Out
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(origOut)
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr; _ = w.Close(); _ = r.Close() })
 
-	lazy, err := NewLazyStore("", dir)
-	require.NoError(t, err)
-	store, err := RepinForLogin(dir, "", lazy)
-	require.NoError(t, err)
+	lazy, lazyErr := NewLazyStore("", dir)
+	require.NoError(t, lazyErr)
+	store, pinWarning, repinErr := RepinForLogin(dir, "", lazy)
+	require.NoError(t, repinErr)
 	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
+	assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
+
+	_ = w.Close()
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "file", ReadPin(dir))
-	assert.Equal(t, 1, strings.Count(buf.String(), "keychain unavailable; credentials will be stored in plaintext"))
+	assert.Equal(t, 1, strings.Count(buf.String(), "# warning: keychain unavailable; credentials will be stored in plaintext"), "must be exactly one plaintext-fallback notice on stderr")
 	assert.NotContains(t, buf.String(), "pinned credential store: keychain")
 	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)

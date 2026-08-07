@@ -104,7 +104,7 @@ func runLogin(t *testing.T, dir, name, server string) {
 	store := config.NewFileStore(dir)
 	cmd := &loginCmd{
 		dir:            dir,
-		newStore:       func(string, string) (config.CredStore, error) { return store, nil },
+		newStore:       func(string, string) (config.CredStore, string, error) { return store, "", nil },
 		rancherVersion: stubRancherVersion,
 	}
 	_, err := cmd.Execute(context.Background(),

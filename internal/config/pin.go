@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
 // The pin file records what `auto` resolved to on THIS machine. It is
@@ -16,6 +14,16 @@ import (
 // that the user chose auto. Single value, atomic write, last-writer-wins —
 // concurrent pinners compute the same probe result, so no lock is needed.
 const pinFileName = "credstore-pin"
+
+// NoticeFirstPinKeychain is the user-visible message returned when the auto
+// credential-store backend is pinned to the keychain for the first time on
+// this machine. The real emitter is openStoreResolved (credstore.go): it runs
+// before RepinForLogin on the production login path and handles the fresh-machine
+// first-pin case. RepinForLogin's else branch also references it, but that
+// branch is dead on the production path (see its own comment). Sharing the
+// const means a wording change applies uniformly and tests can reference it
+// without repeating the literal.
+const NoticeFirstPinKeychain = "pinned credential store: keychain"
 
 func PinPath(dir string) string { return filepath.Join(dir, pinFileName) }
 
@@ -65,13 +73,17 @@ func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
 // keychain pin is never re-probed, so a transient keychain hiccup can never
 // downgrade a machine to plaintext (a genuinely broken keychain fails loudly at
 // SetToken with the pinned-unusable hint). The read path never re-probes (CS-3).
-func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, error) {
+// The second return value carries any user-visible notice so callers can route
+// it through the warnings pipeline instead of writing to a logging framework.
+// Empty string means no action was taken (already keychain-pinned, explicit
+// policy, or unusable keychain).
+func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, string, error) {
 	if EffectivePolicy(cfgPolicy) != "auto" {
-		return current, nil
+		return current, "", nil
 	}
 	if ReadPin(dir) == "keychain" {
 		// Already on the keychain — never probe, never downgrade.
-		return current, nil
+		return current, "", nil
 	}
 	// Pin is "file" or absent: this is the only place we probe, and only to
 	// upgrade. If the keychain is unusable, keep the file backend as-is — no
@@ -79,22 +91,28 @@ func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, error) 
 	// memoized result with OpenStore's own auto-probe above, so a single
 	// `rancher login` process never pays the (bounded) probe cost twice.
 	if !keyringUsableOnce() {
-		return current, nil
+		return current, "", nil
 	}
 	pinned := ReadPin(dir)
 	if err := WritePin(dir, "keychain"); err != nil {
-		return nil, fmt.Errorf("writing credential store pin: %w", err)
+		return nil, "", fmt.Errorf("writing credential store pin: %w", err)
 	}
+	var msg string
 	if pinned != "" {
-		logrus.Warnf("credential store re-pinned: %s → keychain", pinned)
+		msg = fmt.Sprintf("credential store re-pinned: %s → keychain", pinned)
 	} else {
-		// First pin on the login path: login reaches here before any
-		// credential call resolves the lazy store, so this is where the
-		// notice fires for login. Non-login commands that do touch
-		// credentials get the notice from openStoreResolved when their
-		// lazy store first resolves. (Eager OpenStore used to emit it
-		// before any command ran.)
-		logrus.Warnf("pinned credential store: keychain")
+		// pinned == "": reachable only when RepinForLogin is called directly on
+		// a never-pinned dir without running openStoreResolved first (e.g. in
+		// unit tests or direct callers). Within loginCmd.Execute, openStoreResolved
+		// always runs before RepinForLogin and writes a pin, so this branch is
+		// dead on the production login path.
+		//
+		// Call-order coupling: if login.go ever reorders the two calls or replaces
+		// OpenStoreWithNotice with a bare OpenStore, RepinForLogin would see an
+		// empty pin here and produce a second NoticeFirstPinKeychain in res.Warnings
+		// alongside the one from openStoreResolved. The coupling is documented at
+		// the call site in login.go.
+		msg = NoticeFirstPinKeychain
 	}
-	return newPinnedKeyringStore(dir, true), nil
+	return newPinnedKeyringStore(dir, true), msg, nil
 }

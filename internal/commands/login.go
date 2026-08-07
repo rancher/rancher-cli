@@ -26,10 +26,12 @@ type loginCmd struct {
 	// URL, --cacert, and the just-resolved/stored token).
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
 	// newStore resolves the credential store FROM THE POLICY READ UNDER
-	// THE LOCK. Production wiring uses config.OpenStore; tests inject a
-	// factory returning their fake store. Replaces the removed store field
-	// (the dependency-resolution store snapshot this race was about).
-	newStore func(policy, dir string) (config.CredStore, error)
+	// THE LOCK. Production wiring uses config.OpenStoreWithNotice; tests
+	// inject a factory returning their fake store. The string return carries
+	// any first-pin notice so Execute can route it into res.Warnings rather
+	// than writing directly to stderr. Replaces the removed store field (the
+	// dependency-resolution store snapshot this race was about).
+	newStore func(policy, dir string) (config.CredStore, string, error)
 }
 
 // NewLogin builds the `auth login` command (local). The store is resolved
@@ -37,7 +39,7 @@ type loginCmd struct {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenStore, rancherVersion: provider.ServerVersionSetting}
+	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, rancherVersion: provider.ServerVersionSetting}
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -146,15 +148,28 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
 		cfg.CurrentContext = name
 
-		rawStore, err := l.newStore(cfg.CredentialStore, l.dir)
+		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
 		if err != nil {
 			return err
 		}
+		if storeNotice != "" {
+			warnings = append(warnings, storeNotice)
+		}
 		// Login is the one place auto may re-probe and upgrade a stale "file" pin
 		// to the keychain; the returned store is the one to write into.
-		store, err := config.RepinForLogin(l.dir, cfg.CredentialStore, rawStore)
+		// Call-order coupling: l.newStore (OpenStoreWithNotice) MUST run before
+		// RepinForLogin. OpenStoreWithNotice pins the dir on a fresh machine, so
+		// RepinForLogin sees a non-empty pin and takes the re-pin branch (not the
+		// first-pin else branch). Replacing l.newStore with bare OpenStore, or
+		// reordering the two calls, would cause RepinForLogin to emit a second
+		// NoticeFirstPinKeychain alongside the one already in storeNotice. See
+		// RepinForLogin's else-branch comment for the full coupling explanation.
+		store, pinNotice, err := config.RepinForLogin(l.dir, cfg.CredentialStore, rawStore)
 		if err != nil {
 			return err
+		}
+		if pinNotice != "" {
+			warnings = append(warnings, pinNotice)
 		}
 		if err := store.SetToken(config.ServerRef{Name: name, URL: serverURL}, token); err != nil {
 			if !errors.Is(err, config.ErrTokenStoreUnsupported) {

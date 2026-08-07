@@ -837,9 +837,20 @@ func ServerHost(raw string) string {
 // argument here can still resolve to the file backend under that env var.
 // Explicit policies ("keychain"/"file") are honored directly and never
 // consult the pin. "auto" reads the pin; when unpinned it probes ONCE, pins
-// the outcome, and notices on stderr — loudly when the outcome is plaintext.
+// the outcome, and produces a notice — discarded here (use OpenStoreWithNotice
+// on the login path, or NewLazyStore on the lazy path, to route the notice).
 // Unknown policies are hard errors (CS-6).
 func OpenStore(policy, dir string) (CredStore, error) {
+	store, _, err := openStoreResolved(EffectivePolicy(policy), dir)
+	return store, err
+}
+
+// OpenStoreWithNotice is like OpenStore but also returns any first-pin notice
+// as a plain string so callers that own a result pipeline (e.g. auth login)
+// can route it into their warnings envelope rather than writing directly to
+// stderr. An empty string means no notice was produced (already pinned, or an
+// explicit policy that never probes).
+func OpenStoreWithNotice(policy, dir string) (CredStore, string, error) {
 	return openStoreResolved(EffectivePolicy(policy), dir)
 }
 
@@ -876,37 +887,45 @@ func checkPolicy(p string) error {
 // at construction, and deferring through this function guarantees the
 // policy opened is the policy validated even if the environment changes
 // between construction and first use.
-func openStoreResolved(p, dir string) (CredStore, error) {
+//
+// The second return value is a non-empty user-visible notice when a first
+// pin is written during this call (keychain or plaintext-fallback). Callers
+// that own a result pipeline route it through warnings; callers that do not
+// (e.g. the lazy-store resolution path) write it to stderr as "# warning: …".
+func openStoreResolved(p, dir string) (CredStore, string, error) {
 	if err := checkPolicy(p); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if name, ok := execHelperName(p); ok {
-		return newExecStore(name, dir), nil
+		return newExecStore(name, dir), "", nil
 	}
 	switch p {
 	case "file":
-		return NewFileStore(dir), nil
+		return NewFileStore(dir), "", nil
 	case "keychain":
-		return newPinnedKeyringStore(dir, false), nil
+		return newPinnedKeyringStore(dir, false), "", nil
 	default: // "auto"
 		switch ReadPin(dir) {
 		case "keychain":
-			return newPinnedKeyringStore(dir, true), nil
+			return newPinnedKeyringStore(dir, true), "", nil
 		case "file":
-			return NewFileStore(dir), nil
+			return NewFileStore(dir), "", nil
 		}
 		if keyringUsableOnce() {
 			if err := WritePin(dir, "keychain"); err != nil {
-				return nil, fmt.Errorf("writing credential store pin: %w", err)
+				return nil, "", fmt.Errorf("writing credential store pin: %w", err)
 			}
-			logrus.Warnf("pinned credential store: keychain")
-			return newPinnedKeyringStore(dir, true), nil
+			return newPinnedKeyringStore(dir, true), NoticeFirstPinKeychain, nil
 		}
 		if err := WritePin(dir, "file"); err != nil {
-			return nil, fmt.Errorf("writing credential store pin: %w", err)
+			return nil, "", fmt.Errorf("writing credential store pin: %w", err)
 		}
-		logrus.Warnf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
-		return NewFileStore(dir), nil
+		// openStoreResolved cannot propagate to a result envelope from the lazy
+		// path (resolution is a side-effect of the first credential call, outside
+		// any pipeline Result). Callers that have an envelope (login via
+		// OpenStoreWithNotice) get the notice as a return value instead.
+		notice := fmt.Sprintf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
+		return NewFileStore(dir), notice, nil
 	}
 }
 
@@ -969,4 +988,23 @@ func keyringUsableOnce() bool {
 // process.
 func resetKeyringUsableCache() {
 	keyringUsableOnceGuard = sync.Once{}
+}
+
+// ResetKeyringUsableCacheForTest resets the memoized keyring-usability probe
+// so the next call to keyringUsableOnce re-runs the probe. It registers a
+// t.Cleanup that resets the cache again at test teardown, so later tests in
+// the same process get a fresh probe too. Call this from any package whose
+// tests need a clean probe — the unexported resetKeyringUsableCache is not
+// reachable outside this package.
+//
+// The calling test MUST NOT use t.Parallel(): keyringUsable and the cache are
+// process-global variables, and a parallel reset races with any other test
+// that probes the keychain.
+func ResetKeyringUsableCacheForTest(t interface {
+	Helper()
+	Cleanup(func())
+}) {
+	t.Helper()
+	resetKeyringUsableCache()
+	t.Cleanup(resetKeyringUsableCache)
 }

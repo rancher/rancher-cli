@@ -363,8 +363,8 @@ reachable command.
 ## Auth & credentials
 
 **Login and the credential store.** `auth login` records the server and stores a manually
-supplied token. The store backend is resolved by `config.OpenStore` with strict
-precedence:
+supplied token. The store backend is resolved by `config.OpenStoreWithNotice` (login's
+eager path) with strict precedence:
 
 `RANCHER_CLI_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`
 file > one-time probe.
@@ -372,8 +372,10 @@ file > one-time probe.
 Under the default `auto` policy the backend is probed **once per machine** and the result
 (`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) — never
 into `config.yaml`, which is a portable user declaration that must not carry
-machine-specific probe state. First resolution prints a loud stderr notice when it lands
-on plaintext. Re-probe happens **only at `auth login`** and is **upgrade-only**: a `file`
+machine-specific probe state. First resolution emits a notice: on the login path it is
+returned as a string and routed into `res.Warnings` (appears in the JSON/YAML envelope);
+on the lazy path (`NewLazyStore`, used by all other commands) it is written directly to
+stderr in `# warning:` format. Re-probe happens **only at `auth login`** and is **upgrade-only**: a `file`
 (or absent) pin may re-pin to `keychain` if the keychain is now usable; a `keychain` pin
 is never re-probed, so a transiently locked keychain can never silently downgrade to
 plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint

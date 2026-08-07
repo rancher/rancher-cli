@@ -1,13 +1,11 @@
 package config
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +40,7 @@ func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
 	cur := NewFileStore(dir)
-	s, err := RepinForLogin(dir, "", cur)
+	s, _, err := RepinForLogin(dir, "", cur)
 	require.NoError(t, err)
 	assert.Equal(t, "keychain", ReadPin(dir), "pin after login re-probe")
 	assert.IsType(t, &keyringStore{}, s, "store after upgrade")
@@ -65,7 +63,7 @@ func TestOpenStoreThenRepinForLoginShareOneProbe(t *testing.T) {
 	store, err := OpenStore("auto", dir)
 	require.NoError(t, err)
 	require.Equal(t, "file", ReadPin(dir), "pin after OpenStore")
-	_, err = RepinForLogin(dir, "", store)
+	_, _, err = RepinForLogin(dir, "", store)
 	require.NoError(t, err)
 	assert.Equal(t, 1, probes, "RepinForLogin must reuse OpenStore's memoized probe")
 }
@@ -74,7 +72,7 @@ func TestRepinForLoginNoopWhenExplicitPolicy(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // isolate: env would otherwise outrank the explicit "file" policy under test
 	dir := t.TempDir()
 	cur := NewFileStore(dir)
-	s, err := RepinForLogin(dir, "file", cur)
+	s, _, err := RepinForLogin(dir, "file", cur)
 	require.NoError(t, err, "explicit policy must not re-probe")
 	require.Equal(t, cur, s, "explicit policy must not re-probe")
 }
@@ -89,17 +87,20 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 	defer func() { keyringUsable = orig }()
 
 	cur := NewFileStore(dir)
-	s, err := RepinForLogin(dir, "", cur)
+	s, _, err := RepinForLogin(dir, "", cur)
 	require.NoError(t, err)
 	assert.Equal(t, 0, probes, "keychain-pinned login must not probe")
 	assert.Equal(t, "keychain", ReadPin(dir), "pin downgraded; a transient keychain hiccup must not flip to plaintext")
 	assert.Equal(t, cur, s, "expected the injected store returned unchanged")
 }
 
-// TestRepinForLoginFreshPinNotices pins the R1-1 contract: the FIRST pin
-// written by a fresh-auto login emits the same notice eager OpenStore used
-// to emit before login ran — without it, lazy resolution silently loses
-// the e2e-asserted "pinned credential store: keychain" line.
+// TestRepinForLoginFreshPinNotices pins the direct-call contract: calling
+// RepinForLogin on a never-pinned dir (no prior openStoreResolved) returns a
+// first-pin notice. This covers RepinForLogin's else branch in isolation.
+// The production loginCmd.Execute path is covered by
+// TestLoginFirstPinNoticeReachesWarnings in internal/commands/login_test.go,
+// where OpenStoreWithNotice always runs before RepinForLogin and pins the dir
+// first — so the else branch is dead on that path.
 func TestRepinForLoginFreshPinNotices(t *testing.T) {
 	dir := t.TempDir()
 	resetKeyringUsableCache()
@@ -107,16 +108,12 @@ func TestRepinForLoginFreshPinNotices(t *testing.T) {
 	keyringUsable = func() bool { return true }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	var buf bytes.Buffer
-	origOut := logrus.StandardLogger().Out
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(origOut)
-
 	current := NewFileStore(dir)
-	store, err := RepinForLogin(dir, "", current)
+	store, warning, err := RepinForLogin(dir, "", current)
 	require.NoError(t, err, "RepinForLogin")
 	require.NotEqual(t, current, store, "expected an upgraded keyring store, got the input store")
 	assert.Equal(t, "keychain", ReadPin(dir))
-	assert.Contains(t, buf.String(), "pinned credential store: keychain", "missing first-pin notice")
-	assert.NotContains(t, buf.String(), "re-pinned", "fresh pin must not use the re-pin message")
+	require.NotEmpty(t, warning, "expected first-pin notice")
+	assert.Equal(t, NoticeFirstPinKeychain, warning, "missing first-pin notice")
+	assert.NotContains(t, warning, "re-pinned", "fresh pin must not use the re-pin message")
 }
