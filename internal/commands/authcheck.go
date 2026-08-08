@@ -30,6 +30,10 @@ type authCheckCmd struct {
 	// by name (the id after its "ext/" prefix), injectable for tests;
 	// defaults to provider.EffectiveTokenMetadata.
 	token func(ctx context.Context, eff config.Effective, name string) (provider.TokenMetadata, error)
+	// v3token reads back the effective token's management.cattle.io/v3 Token
+	// metadata by name (the id before the ':') for non-ext tokens, injectable
+	// for tests; defaults to provider.V3TokenMetadata in NewAuthCheck.
+	v3token func(ctx context.Context, eff config.Effective, name string) (provider.TokenMetadata, error)
 }
 
 // NewAuthCheck builds the `auth check` command (local; makes a server preflight call).
@@ -40,6 +44,7 @@ func NewAuthCheck(dir string, store config.CredStore) runtime.Command {
 		rancherVersion: provider.RancherVersion,
 		identity:       provider.Identity,
 		token:          provider.EffectiveTokenMetadata,
+		v3token:        provider.V3TokenMetadata,
 	}
 }
 
@@ -170,30 +175,45 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 	return map[string]any{"userID": userID}, ""
 }
 
-// errLegacyToken signals probeToken's no-v3-fallback case: a non-ext
-// (legacy/norman) effective token skips the probe entirely and degrades
-// with a fixed naming warning, never the ext.cattle.io lookup.
-var errLegacyToken = errors.New("legacy token — no ext metadata")
+// errV3TokenNotFound signals that the management.cattle.io/v3 Token object was
+// absent — the management API is always present on a running Rancher server, so
+// this unambiguously means the token was revoked or rotated, never a missing
+// API group. tokenWarning treats this specially to emit the "re-authenticate"
+// advisory rather than the ext.cattle.io group-absent wording.
+var errV3TokenNotFound = errors.New("v3 token not found on the server")
+
+// rotatedTokenAdvisory is the warning text for a token whose server-side
+// record is absent — shared by the v3 and ext NotFound branches of
+// tokenWarning so the two messages cannot drift independently as the probe
+// grows.
+const rotatedTokenAdvisory = "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login"
 
 // probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
 // never the stored credential directly, so a RANCHER_CLI_TOKEN override is
 // always the one reported on). The "ext/" prefix sniff mirrors
 // login_ext.go's revokeSessionToken, applied here to the long-lived
-// effective credential rather than the transient session token. A
-// non-ext (legacy/norman) token returns errLegacyToken and never reaches the
-// probe at all — no v3/legacy fallback lookup. An empty eff.Token (no token
-// at all) is not "legacy" — there is nothing to report on, so this returns
-// (nil, nil): in practice unreachable once preflight has actually succeeded
-// (RESTConfig refuses an empty token before any of this runs), but reachable
-// in tests that stub preflight without a token. A nil token field is the
-// same "not wired for this check" case checkIdentity documents for
-// a.identity == nil.
+// effective credential rather than the transient session token.
 //
-// probeToken returns the raw probe outcome rather than a classified
-// warning: classifying a NotFound (see tokenWarning) needs the version
-// probe's result, which — now that all three probes run concurrently
-// (finding 4) — is only known once every probe has joined, not from inside
-// this one.
+// For ext/ tokens the probe delegates to a.token (EffectiveTokenMetadata).
+// For all other tokens (management.cattle.io/v3, the common case for Rancher
+// 2.15 UI-created sessions) the probe delegates to a.v3token (V3TokenMetadata)
+// and reports the same five-field shape — name, kind (derived/session),
+// provider, expiresAt, current.
+//
+// A nil a.token or a.v3token (possible when a test builds authCheckCmd directly
+// without going through NewAuthCheck) is treated as "not wired for this check"
+// and stays silently null — the same "not wired" posture checkIdentity documents
+// for a.identity == nil.
+//
+// An empty eff.Token (no token at all) returns (nil, nil): in practice
+// unreachable once preflight has actually succeeded (RESTConfig refuses an
+// empty token before any of this runs), but reachable in tests that stub
+// preflight without a token.
+//
+// probeToken returns the raw probe outcome rather than a classified warning:
+// classifying a NotFound (see tokenWarning) needs the version probe's result,
+// which — now that all three probes run concurrently — is only known once every
+// probe has joined, not from inside this one.
 func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any, error) {
 	if eff.Token == "" {
 		return nil, nil
@@ -201,7 +221,23 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 	id, _, _ := strings.Cut(eff.Token, ":")
 	name, ok := strings.CutPrefix(id, "ext/")
 	if !ok {
-		return nil, errLegacyToken
+		// Non-ext (management.cattle.io/v3) token: fall through to the v3 probe.
+		if a.v3token == nil {
+			return nil, nil
+		}
+		meta, err := a.v3token(ctx, eff, id)
+		if err != nil {
+			if clierr.IsNotFound(err) {
+				return nil, errV3TokenNotFound
+			}
+			return nil, err
+		}
+		// V3TokenMetadata maps isDerived → Kind ("derived"/"session") before
+		// returning, so no further translation is needed here.
+		return map[string]any{
+			"name": meta.Name, "kind": meta.Kind, "provider": meta.Provider,
+			"expiresAt": meta.ExpiresAt, "current": meta.Current,
+		}, nil
 	}
 	if a.token == nil {
 		return nil, nil
@@ -220,27 +256,28 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 	}, nil
 }
 
-// tokenWarning turns probeToken's raw outcome into the null-plus-warning
-// text (finding 1): a CodeNotFound on the token GET is ambiguous by error
-// code alone — it means either the ext.cattle.io group itself is absent
-// (below the 2.14 floor) or the group is present but the specific named
-// token object was deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or
-// credential-store id). supported (the version probe's PS-8 floor verdict)
-// resolves the ambiguity: once it has confirmed the server IS at or above
-// the floor, the same 404 can only be the latter, and the caller must
-// re-authenticate — it must never also be told the group requires a newer
-// Rancher when the version probe just said otherwise. When supported is nil
-// or false, the group-absent wording (shared with degradeWarning's identity
-// case) is the only thing that can honestly be said.
+// tokenWarning turns probeToken's raw outcome into the null-plus-warning text.
+// errV3TokenNotFound (a missing management.cattle.io/v3 Token object) always
+// maps to the "re-authenticate" advisory — the management API is always present,
+// so the absent object is unambiguously stale/revoked, not a missing API group.
+//
+// A CodeNotFound on the ext token GET is ambiguous by error code alone — it
+// means either the ext.cattle.io group itself is absent (below the 2.14 floor)
+// or the group is present but the specific named token object was
+// deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store
+// id). supported (the version probe's PS-8 floor verdict) resolves the
+// ambiguity: once it has confirmed the server IS at or above the floor, the
+// same 404 can only be the latter. When supported is nil or false, the
+// group-absent wording is the only thing that can honestly be said.
 func tokenWarning(err error, supported *bool) string {
 	if err == nil {
 		return ""
 	}
-	if errors.Is(err, errLegacyToken) {
-		return err.Error()
+	if errors.Is(err, errV3TokenNotFound) {
+		return rotatedTokenAdvisory
 	}
 	if clierr.IsNotFound(err) && supported != nil && *supported {
-		return "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login"
+		return rotatedTokenAdvisory
 	}
 	return degradeWarning("token", err)
 }

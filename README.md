@@ -445,11 +445,12 @@ Two caveats:
 
 The CLI declares a minimum supported Rancher version, `>= 2.14`
 (`rancher schema -o json` → `minRancherVersion`). Enforcement today is
-warn-only: `auth login` and `auth check` read the server's `server-version`
-setting and emit a warning — never a failure — when the connected server is
-below the floor, or when the version can't be determined at all. RBAC
-denial, a missing setting, or an unparseable value (e.g. a dev/head build)
-all assume "supported" and warn instead of refusing.
+warn-only: `auth login` and `auth check` call the unauthenticated
+`GET /rancherversion` endpoint and emit a warning — never a failure — when
+the connected server is below the floor, or when the version can't be
+determined at all. An unreachable endpoint, a non-200 response, or an
+unparseable value (e.g. a dev/head build) all assume "supported" and warn
+instead of refusing. No RBAC permissions are required.
 
 Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
 `--allow-unsupported-server`-style flag) once there's real-use feedback on
@@ -459,12 +460,13 @@ the warn-only period. Ledgered, future work.
 reports `rancherVersion`/`supported` (the version-floor check above),
 `identity` (the caller's `userID`, from a create-verb identity probe against
 `ext.cattle.io`), and `token` (the effective token's
-name/kind/provider/expiry/`current` marker — only for an `ext.cattle.io`
-token; a legacy/non-ext token reports `token: null` with a warning). Any of
-these fields degrading to `null` with a warning is expected, not a bug —
-including `identity` under a read-only-RBAC token, since the identity probe
-is itself a create-verb request. `auth check`'s connectivity result (`ok`)
-never depends on them.
+name/kind/provider/expiry/`current` marker — for both `ext.cattle.io` tokens
+and management.cattle.io/v3 tokens; `token: null` with a warning appears only
+on a probe failure such as a revoked/rotated token). Any of these fields
+degrading to `null` with a warning is expected, not a bug — including
+`identity` under a read-only-RBAC token, since the identity probe is itself a
+create-verb request. `auth check`'s connectivity result (`ok`) never depends
+on them.
 
 ## Configuration
 

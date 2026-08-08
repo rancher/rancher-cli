@@ -177,6 +177,7 @@ func TestMain(m *testing.M) {
 	seedCloudCredential()
 	seedRoleObjects()
 	seedUserObjects()
+	seedManagementToken()
 
 	code := m.Run()
 	srv.Close()
@@ -539,6 +540,27 @@ func seedUserObjects() {
 		if _, err := dynCli.Resource(userGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
 			panic("seeding user " + u.id + ": " + err.Error())
 		}
+	}
+}
+
+// seedManagementToken creates the management.cattle.io/v3 Token whose name
+// matches the harness credential id ("e2e" — the id portion of
+// testToken "e2e:secret"). Seeding it globally (rather than per-script)
+// ensures auth check's PS-2 v3 fallback probe returns deterministic metadata
+// regardless of script execution order, and lets management-token.txtar's
+// session-guard test rely on it without its own seedobj call racing other
+// scripts on the shared apiserver.
+func seedManagementToken() {
+	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion":   "management.cattle.io/v3",
+		"kind":         "Token",
+		"metadata":     map[string]any{"name": "e2e"},
+		"userId":       "u-session",
+		"authProvider": "local",
+	}}
+	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		panic("seeding management token e2e: " + err.Error())
 	}
 }
 

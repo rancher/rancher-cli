@@ -314,29 +314,34 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 	assert.Equal(t, "env-1", token["name"])
 }
 
-// TestAuthCheckLegacyTokenDegradesToNullWithWarning pins PS-2's no-v3-fallback
-// rule: a non-ext (legacy/norman) effective token nulls the token field with
-// a naming warning, and never calls the injected probe at all.
-func TestAuthCheckLegacyTokenDegradesToNullWithWarning(t *testing.T) {
+// TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe pins PS-2's v3 fallback: a
+// non-ext (management.cattle.io/v3) effective token routes to the v3token probe
+// and never touches the ext probe. Here the v3 probe returns RBAC denial, so
+// token degrades to null with the RBAC warning — the same posture the ext probe
+// uses on the same error code.
+func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
 	dir := t.TempDir()
 
-	called := false
+	extCalled := false
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight:      alwaysOKPreflight,
 		rancherVersion: alwaysOKVersion,
 		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
 		token: func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
-			called = true
+			extCalled = true
 			return provider.TokenMetadata{}, nil
+		},
+		v3token: func(_ context.Context, _ config.Effective, _ string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "tokens.management.cattle.io is forbidden")
 		},
 	}
 	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
-	assert.False(t, called, "a legacy token must never reach the ext token probe")
+	assert.False(t, extCalled, "a non-ext token must never reach the ext probe")
 	assert.Nil(t, res.Data.(map[string]any)["token"])
-	assert.Contains(t, res.Warnings, "legacy token — no ext metadata")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: denied by RBAC")
 }
 
 // TestAuthCheckNoTokenAtAllIsNotLegacy pins checkToken's distinct empty-token
@@ -364,7 +369,7 @@ func TestAuthCheckNoTokenAtAllIsNotLegacy(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, called, "no token at all must never reach the ext token probe")
 	assert.Nil(t, res.Data.(map[string]any)["token"])
-	assert.NotContains(t, res.Warnings, "legacy token — no ext metadata")
+	assert.Empty(t, res.Warnings)
 }
 
 // TestAuthCheckIdentityDegradation covers PS-2's null+warning posture for
@@ -578,4 +583,96 @@ func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 	assert.True(t, data["ok"].(bool))
 	assert.Nil(t, data["identity"])
 	assert.Contains(t, res.Warnings, "identity metadata unavailable: denied by RBAC")
+}
+
+// TestAuthCheckV3TokenFoundReturnsMetadata pins the v3 fallback happy path: a
+// non-ext effective token whose management.cattle.io/v3 Token object is present
+// returns the same five-field shape as the ext probe — name, kind, provider,
+// expiresAt, current — mapped 1:1 from the root-level v3 fields.
+func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "token-nmfmf:secret")
+	dir := t.TempDir()
+
+	var gotName string
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion,
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		v3token: func(_ context.Context, _ config.Effective, name string) (provider.TokenMetadata, error) {
+			gotName = name
+			return provider.TokenMetadata{
+				Name: name, Kind: "derived", Provider: "local",
+				ExpiresAt: "2026-10-19T14:45:05-04:00", Current: true,
+			}, nil
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+	assert.Empty(t, res.Warnings)
+	assert.Equal(t, "token-nmfmf", gotName)
+
+	token, ok := res.Data.(map[string]any)["token"].(map[string]any)
+	require.True(t, ok, "token must be a populated object")
+	assert.Equal(t, "token-nmfmf", token["name"])
+	assert.Equal(t, "derived", token["kind"])
+	assert.Equal(t, "local", token["provider"])
+	assert.Equal(t, "2026-10-19T14:45:05-04:00", token["expiresAt"])
+	assert.Equal(t, true, token["current"])
+}
+
+// TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning pins the v3 fallback
+// 404 path: when the management.cattle.io/v3 Token object is absent (revoked
+// or rotated) the token field degrades to null with the "re-authenticate"
+// advisory. Unlike the ext 404 disambiguation this warning is unconditional —
+// the management API is always present, so 404 unambiguously means a stale id.
+func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "token-stale:secret")
+	dir := t.TempDir()
+
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion,
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		v3token: func(_ context.Context, _ config.Effective, _ string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, `tokens.management.cattle.io "token-stale" not found`)
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+	assert.Nil(t, res.Data.(map[string]any)["token"])
+	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
+}
+
+// TestAuthCheckExtTokenProbeUnchanged pins that an ext/ effective token still
+// routes to the ext probe only, and the v3token probe is never called — FIX 2
+// must not disturb the pre-existing ext path.
+func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
+	dir := t.TempDir()
+
+	v3Called := false
+	cmd := &authCheckCmd{
+		dir: dir, store: config.NewFileStore(dir),
+		preflight:      alwaysOKPreflight,
+		rancherVersion: alwaysOKVersion,
+		identity:       func(context.Context, config.Effective) (string, error) { return "u-1", nil },
+		token: func(_ context.Context, _ config.Effective, name string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{
+				Name: name, Kind: "derived", Provider: "local",
+				ExpiresAt: "2030-01-01T00:00:00Z", Current: true,
+			}, nil
+		},
+		v3token: func(_ context.Context, _ config.Effective, _ string) (provider.TokenMetadata, error) {
+			v3Called = true
+			return provider.TokenMetadata{}, nil
+		},
+	}
+	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+	assert.False(t, v3Called, "an ext token must never reach the v3 probe")
+	token, ok := res.Data.(map[string]any)["token"].(map[string]any)
+	require.True(t, ok, "token must be a populated object")
+	assert.Equal(t, "derived-1", token["name"])
 }

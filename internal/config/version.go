@@ -14,11 +14,11 @@ import (
 const MinRancherVersion = "2.14"
 
 // UnknownServerVersionWarning is PS-8's warn-only text for when a server's
-// Rancher version cannot be determined at all: RBAC denial reading the
-// server-version Setting, the setting being missing, or (via
-// EvalMinVersionSupport) a value with no parseable major.minor prefix
-// (dev/head builds). This posture is never a failure — the caller assumes
-// supported and moves on.
+// Rancher version cannot be determined at all: GET /rancherversion failing
+// (unreachable, non-200, unrecognized body), or (via EvalMinVersionSupport)
+// a successfully read value with no parseable major.minor prefix (dev/head
+// builds). This posture is never a failure — the caller assumes supported
+// and moves on.
 const UnknownServerVersionWarning = "cannot determine server version, assuming supported"
 
 var versionPrefix = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.(\d+))?`)

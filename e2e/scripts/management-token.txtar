@@ -32,11 +32,10 @@ jsonquery stderr 'data.error.code' VALIDATION
 ! exec rancher create resource -f mtoken.yaml --apply --yes
 jsonquery stderr 'data.error.code' VALIDATION
 
-# Fix 3 — session guard: seed a token whose name matches the harness
-# credential id ("e2e" — the id part of testToken "e2e:secret") and verify
-# that deleting it is refused with a VALIDATION error.
-seedobj management.cattle.io/v3/tokens . session-token.yaml
-
+# Fix 3 — session guard: the "e2e" token matching the harness credential id
+# ("e2e" — the id part of testToken "e2e:secret") is seeded globally in
+# harness_test.go so this test remains deterministic regardless of script
+# execution order. Verify that deleting it is refused with a VALIDATION error.
 ! exec rancher delete management-token e2e --apply --yes --allow-deprecated
 jsonquery stderr 'data.error.code' VALIDATION
 
@@ -58,12 +57,3 @@ authProvider: local
 description: management-token-e2e-test
 token: live-credential-value
 
--- session-token.yaml --
-apiVersion: management.cattle.io/v3
-kind: Token
-metadata:
-  name: e2e
-userId: u-session
-authProvider: local
-description: session-token-for-guard-test
-token: session-credential
