@@ -617,6 +617,22 @@ func livePositionalCandidates(
 			// commands. Grant/revoke subject completion (above) keeps the full
 			// id+username union. System accounts filtered.
 			return fetchUserIDs(ctx, hc, cap)
+		case "provisioning-cluster":
+			// NSWorkspace kind on the local management cluster; namespace comes
+			// from the --namespace flag or falls back to the kind's DefaultNamespace
+			// ("fleet-default"). Requires a full management token — IDOnly exec-cred
+			// tokens cannot authorize management-plane lists (same boundary as nodedriver).
+			if cap.IDOnly {
+				return nil
+			}
+			ns := extractFlagValue(tail, "namespace")
+			if ns == "" {
+				ns = k.DefaultNamespace
+			}
+			if !isValidSegment(ns) {
+				return nil
+			}
+			return fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), ns)
 		default:
 			// Other management kinds: no generic downstream path applies.
 			return nil

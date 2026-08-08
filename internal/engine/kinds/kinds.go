@@ -493,7 +493,7 @@ var table = []Kind{
 	{
 		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters", "provisioning-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
-		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Completable: true, Sensitive: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{

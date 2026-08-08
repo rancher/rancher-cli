@@ -9635,6 +9635,7 @@
         "provisioningclusters",
         "provisioning-clusters"
       ],
+      "completable": true,
       "defaultNamespace": "fleet-default",
       "group": "provisioning.cattle.io",
       "key": "provisioningcluster",
