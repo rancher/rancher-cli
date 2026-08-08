@@ -180,6 +180,13 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		// flags are untouched.
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
+		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
+			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
+				_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+				return ctx, exit(ce)
+			}
+			return ctx, nil
+		},
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			status, ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b)
 			if ce != nil {

@@ -15,10 +15,17 @@ const (
 )
 
 var (
-	rawArgv        []string
-	rawCurrentWord string
-	rawProtoV2     bool
+	rawArgv         []string
+	rawCurrentWord  string
+	rawProtoV2      bool
+	rawV1Completion bool // --generate-shell-completion seen in CaptureArgv (v1 path)
 )
+
+// completionActive reports whether the current invocation is a shell-completion
+// request on either the v2 protocol (rawProtoV2) or urfave's built-in v1
+// --generate-shell-completion flag (rawV1Completion). The guard must not fire
+// on either path.
+func completionActive() bool { return rawProtoV2 || rawV1Completion }
 
 // SetRawArgv replaces the package-level argv capture (test seam).
 func SetRawArgv(args []string) { rawArgv = args }
@@ -42,11 +49,13 @@ func CaptureArgv(args []string) {
 		args = args[1:]
 	}
 	rawProtoV2 = proto2
+	rawV1Completion = false
 	rawCurrentWord = ""
 
 	out := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == "--generate-shell-completion" {
+			rawV1Completion = true
 			continue
 		}
 		if strings.HasPrefix(a, curPrefix) {

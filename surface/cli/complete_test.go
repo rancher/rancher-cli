@@ -289,8 +289,13 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
-	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() {
+		rawArgv = origArgv
+		rawCurrentWord = origWord
+		rawProtoV2 = origProto
+		rawV1Completion = origV1
+	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "schema", "--verb",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
 	CaptureArgv(scriptArgs)
@@ -326,8 +331,13 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
-	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() {
+		rawArgv = origArgv
+		rawCurrentWord = origWord
+		rawProtoV2 = origProto
+		rawV1Completion = origV1
+	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "auth", "get-token", "--auth-flow",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
 	CaptureArgv(scriptArgs)
@@ -360,8 +370,13 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawProtoV2
-	t.Cleanup(func() { rawArgv = origArgv; rawCurrentWord = origWord; rawProtoV2 = origProto })
+	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() {
+		rawArgv = origArgv
+		rawCurrentWord = origWord
+		rawProtoV2 = origProto
+		rawV1Completion = origV1
+	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "token", "--auth-flow",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
 	CaptureArgv(scriptArgs)

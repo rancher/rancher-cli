@@ -139,6 +139,8 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 
 	// v2 protocol (round-5): proto sentinel + words + self-prefixed empty cur field.
 	// --rancher-completion-cur= (no value after =) → cursor after space, no partial typed.
+	origV1 := surfacecli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
 	surfacecli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
@@ -202,6 +204,8 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 	// v2 protocol (round-5): proto sentinel + words (--namespace flag last in argv,
 	// no value in args) + self-prefixed cur field for partial "kube-".
 	// ParseArgTail: currentWord="kube-" non-flag, --namespace is last in args → SiteFlagValue(namespace).
+	origV1b := surfacecli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1b) })
 	surfacecli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
 		"--rancher-completion-cur=kube-",
@@ -306,6 +310,8 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 	// strips both protocol fields for urfave.
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
+		origV1 := surfacecli.GetRawV1CompletionForTest()
+		t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
 		// Script-shaped request: proto sentinel + words + cur field + completion trigger.
 		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
@@ -423,6 +429,8 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	before := hashDir(t, dir)
 
 	// v2 protocol: proto sentinel + words + empty currentWord (completing namespace positional).
+	origV1c := surfacecli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1c) })
 	surfacecli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",

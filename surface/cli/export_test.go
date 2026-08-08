@@ -39,4 +39,6 @@ func SetRawArgvForTest(argv []string)             { SetRawArgv(argv) }
 func SanitizedArgsForTest(args []string) []string { return SanitizedArgs(args) }
 func CaptureArgvForTest(args []string)            { CaptureArgv(args) }
 func GetRawProtoV2ForTest() bool                  { return rawProtoV2 }
+func GetRawV1CompletionForTest() bool             { return rawV1Completion }
+func SetRawV1CompletionForTest(v bool)            { rawV1Completion = v }
 func GlobalArgSpecsForTest() []runtime.ArgSpec    { return globalArgSpecs }
