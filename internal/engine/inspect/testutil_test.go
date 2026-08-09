@@ -27,6 +27,11 @@ func (i input) Strings(k string) []string { return i.ss[k] }
 func (i input) IsSet(string) bool         { return false }
 func (i input) Args() []string            { return i.args }
 
+// registrationInput returns an input for a named cluster with --registration set.
+func registrationInput(name string) input {
+	return input{args: []string{name}, b: map[string]bool{"registration": true}}
+}
+
 type objKey struct {
 	gvr  schema.GroupVersionResource
 	ns   string

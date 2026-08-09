@@ -146,11 +146,11 @@ dry-run denial as final: a real `--apply` create is still expected to
 succeed because the mutator stamps identity server-side on real creates.
 
 Follow through to readiness and access — and read the registration
-(join) commands from `inspect cluster`, never from the UI:
+(join) commands from `inspect cluster --registration`, never from the UI:
 
 ```
 rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
-rancher inspect cluster web -o json      # data.registration.nodeCommand: run on each node to join
+rancher inspect cluster web --registration -o json      # data.registration.nodeCommand: run on each node to join
 rancher get cluster web --wait --timeout 15m   # kind default: condition=Ready
 rancher kubeconfig --cluster web > kc.yaml
 ```
@@ -165,7 +165,14 @@ to `warnings`, or a `provisioningNote` for a confirmed missing
 provisioning CR. Check `data.status` presence before reading conditions.
 `data.agent` carries the management Cluster's agent connectivity
 (`connected`/`ready` + failing message) — a disconnected or not-ready agent also lands
-in `warnings`, so check it before trusting `data.status.ready`. On an
+in `warnings`, so check it before trusting `data.status.ready`. The
+registration section is withheld by default (it contains live join
+credentials); pass `--registration` to fetch and show it. The credential
+is also available via `rancher get clusterregistrationtoken default-token
+--namespace <cluster-id>`.
+Without the
+flag `data.registration` carries `{"withheld":true,"hint":"..."}` — check
+`data.registration.withheld` before reading `nodeCommand`. On an
 imported cluster `data.registration.notApplicable` names the node-join
 fields that do not apply (they stay present — pick the import
 `command`/`manifestUrl` instead), and member entries with `system: true`

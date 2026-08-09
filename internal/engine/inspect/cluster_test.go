@@ -154,7 +154,7 @@ func TestInspectClusterHappyPathEnvelope(t *testing.T) {
 	t.Parallel()
 	client, root := inspectClusterFixture(t)
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "ClusterInspection", res.Kind)
@@ -221,7 +221,7 @@ func TestInspectClusterCorrelatesRenamedClusterByStatusClusterName(t *testing.T)
 		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*other, *match}})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -258,7 +258,7 @@ func TestInspectClusterVersionPrecedence(t *testing.T) {
 		client := newFakeClient().
 			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "provisioning", mgmtVersion)).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
 		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 		require.NoError(t, err)
 		doc, _ := marshaledDoc(t, res.Data)
@@ -296,7 +296,7 @@ func TestInspectClusterProvisioningAbsent(t *testing.T) {
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings, "confirmed absence is the note's job, never a warning")
 
@@ -321,7 +321,7 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListErr(provKind.GVR, errors.New("clusters.provisioning.cattle.io is forbidden"))
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err, "a failed provisioning lookup degrades, never errors")
 
@@ -351,7 +351,7 @@ func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*a, *b}})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -381,7 +381,7 @@ func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
 		cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err, "a registration failure degrades, never errors")
 		require.Len(t, res.Warnings, 1)
 		assert.Contains(t, res.Warnings[0], "registration token unavailable")
@@ -423,7 +423,9 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 			root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 
 			cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-			res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+			// Pass --registration so root.path="" proves the cancellation stopped
+			// the fetch, not the gate.
+			res, err := execRead(t, cmd, registrationInput("c-abc"))
 			require.Error(t, err, "%v during the provisioning LIST must propagate, not degrade", ctxErr)
 			assert.ErrorIs(t, err, ctxErr)
 			assert.Equal(t, "", root.path, "no registration fetch after cancellation")
@@ -442,7 +444,7 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 			root := &fakeRoot{err: fmt.Errorf("fetch default-token: %w", ctxErr)}
 
 			cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-			res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+			res, err := execRead(t, cmd, registrationInput("c-abc"))
 			require.Error(t, err, "%v during the registration fetch must propagate, not degrade", ctxErr)
 			assert.ErrorIs(t, err, ctxErr)
 			assert.Empty(t, res.Warnings, "cancellation is the command's error, never a section warning")
@@ -493,7 +495,9 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
 	rcmd, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok, "command must be a ReadCommand")
-	res, err := rcmd.Execute(ctx, input{args: []string{"c-abc"}}, nil)
+	// Pass --registration so root.path="" proves the cancellation stopped
+	// the fetch, not the gate.
+	res, err := rcmd.Execute(ctx, registrationInput("c-abc"), nil)
 	require.Error(t, err, "a canceled provisioning LIST through the real provider client must propagate, not degrade")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce, "the provider's structured error propagates")
@@ -548,7 +552,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 
 	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 	cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
 	require.Len(t, res.Warnings, 1)
@@ -583,7 +587,7 @@ func TestInspectClusterRegistrationPlaceholderFieldDropped(t *testing.T) {
 	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", map[string]any{"command": "{token}"})}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 
 	require.Len(t, res.Warnings, 1)
@@ -618,7 +622,7 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
 		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", overrides)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 		doc, raw := marshaledDoc(t, res.Data)
 		return res, doc, raw
@@ -678,7 +682,7 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 	})}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 
 	assert.Empty(t, res.Warnings, "Windows-only placeholders must NOT produce warnings (they are not surfaced in the envelope)")
@@ -799,7 +803,7 @@ func TestInspectClusterTextSections(t *testing.T) {
 	longToken := "tok-" + strings.Repeat("x", 160)
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", longToken, nil)}})
 
-	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 	text := res.Text
 	require.NotEmpty(t, text)
@@ -847,7 +851,9 @@ func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "no token")}})
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		// Pass --registration so the unavailable path is reachable (otherwise the
+		// gate withholds the section before any fetch is attempted).
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 		assert.Contains(t, res.Text, "no provisioning.cattle.io Cluster for this cluster in fleet-default")
 		assert.Contains(t, res.Text, "registration: not available")
@@ -1151,20 +1157,53 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 	client := newFakeClient().
 		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 
-	var out, errBuf bytes.Buffer
-	_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
-		runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
-	require.Nil(t, ce)
+	t.Run("withheld default: marker on stdout, no registration warning on stderr", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
+		var out, errBuf bytes.Buffer
+		_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
+			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		require.Nil(t, ce)
 
-	stdout, stderr := out.String(), errBuf.String()
-	assert.Contains(t, stdout, "CLUSTER\n")
-	assert.Contains(t, stdout, "registration: not available")
-	assert.NotContains(t, stdout, "# warning:", "warnings never print to stdout")
-	assert.NotContains(t, stdout, "default-token vanished", "the cause never prints to stdout")
-	assert.Contains(t, stderr, "# warning: registration token unavailable")
-	assert.Contains(t, stderr, "default-token vanished")
+		stdout, stderr := out.String(), errBuf.String()
+		assert.Contains(t, stdout, "CLUSTER\n")
+		assert.Contains(t, stdout, "registration: withheld (contains join credentials)")
+		assert.NotContains(t, stdout, "default-token vanished", "the cause of any fetch failure never prints to stdout")
+		assert.NotContains(t, stderr, "registration token unavailable", "no fetch was attempted; no warning")
+	})
+
+	t.Run("withheld default: token absent from stdout when root serves live data", func(t *testing.T) {
+		t.Parallel()
+		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		var out, errBuf bytes.Buffer
+		_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
+			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		require.Nil(t, ce)
+
+		assert.Equal(t, "", root.path, "no fetch issued when --registration absent")
+		assert.NotContains(t, out.String(), "tok-abc", "token never appears without --registration")
+		assert.Contains(t, out.String(), "registration: withheld (contains join credentials)")
+	})
+
+	t.Run("with --registration: unavailable marker on stdout, cause on stderr", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
+		var out, errBuf bytes.Buffer
+		_, ce := runtime.Run(context.Background(), cmd,
+			registrationInput("c-abc"),
+			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		require.Nil(t, ce)
+
+		stdout, stderr := out.String(), errBuf.String()
+		assert.Contains(t, stdout, "CLUSTER\n")
+		assert.Contains(t, stdout, "registration: not available")
+		assert.NotContains(t, stdout, "# warning:", "warnings never print to stdout")
+		assert.NotContains(t, stdout, "default-token vanished", "the cause never prints to stdout")
+		assert.Contains(t, stderr, "# warning: registration token unavailable")
+		assert.Contains(t, stderr, "default-token vanished")
+	})
 }
 
 func TestAgentFrom(t *testing.T) {
@@ -1255,7 +1294,7 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 		t.Parallel()
 		client, root := importedFixture(t)
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 
 		doc, _ := marshaledDoc(t, res.Data)
@@ -1275,7 +1314,7 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 		t.Parallel()
 		client, root := inspectClusterFixture(t) // fixture has spec.rkeConfig.machinePools
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 
 		doc, _ := marshaledDoc(t, res.Data)
@@ -1297,7 +1336,7 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
 		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 
 		doc, _ := marshaledDoc(t, res.Data)
@@ -1498,4 +1537,65 @@ func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 	text := renderClusterText(r)
 	assert.Contains(t, text, "  system://provisioning/fleet-default/imp  cluster-owner [system]\n")
 	assert.Contains(t, text, "  okta_user://operator  cluster-member\n")
+}
+
+// TestInspectClusterRegistrationWithheldByDefault pins the gate: without
+// --registration the section is withheld (no fetch issued), the text view
+// shows the withheld line, the JSON shape is {"withheld":true,...}, and
+// the real join token is absent from both outputs.
+func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
+	t.Parallel()
+	client, root := inspectClusterFixture(t)
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+	// No b map — default behavior.
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Warnings, "withheld is intentional — no warning")
+	assert.Equal(t, "", root.path, "no fetch issued when --registration is absent")
+
+	doc, raw := marshaledDoc(t, res.Data)
+
+	reg, ok := doc["registration"].(map[string]any)
+	require.True(t, ok, "registration key must be present with the withheld shape")
+	assert.Equal(t, true, reg["withheld"], "registration.withheld must be true")
+	hint, _ := reg["hint"].(string)
+	assert.Equal(t, withheldHint("c-abc"), hint, "hint must be the canonical rerun suggestion")
+	for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
+		_, has := reg[field]
+		assert.False(t, has, "registration.%s must be absent from the withheld shape", field)
+	}
+
+	assert.NotContains(t, raw, "tok-abc", "join token must not appear in the JSON output when withheld")
+	assert.Contains(t, res.Text, "registration: withheld (contains join credentials)")
+	assert.Contains(t, res.Text, "--registration")
+	assert.NotContains(t, res.Text, "tok-abc", "join token must not appear in the text output when withheld")
+}
+
+// TestInspectClusterRegistrationFlagRestoresSection pins the --registration
+// flag: when set, the section is fetched and carries the full live-data shape
+// (no withheld marker, all surfaced fields present).
+func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
+	t.Parallel()
+	client, root := inspectClusterFixture(t)
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Warnings)
+	assert.NotEqual(t, "", root.path, "fetch was issued when --registration is set")
+
+	doc, _ := marshaledDoc(t, res.Data)
+	reg, ok := doc["registration"].(map[string]any)
+	require.True(t, ok, "registration section must be present with --registration")
+	_, hasWithheld := reg["withheld"]
+	assert.False(t, hasWithheld, "withheld must be absent from the live-data shape")
+	for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
+		v, ok := reg[field].(string)
+		require.True(t, ok, "registration.%s must be present with --registration", field)
+		assert.Contains(t, v, "tok-abc", "registration.%s must carry the real token", field)
+	}
+
+	assert.Contains(t, res.Text, "node join:")
+	assert.Contains(t, res.Text, "tok-abc")
 }

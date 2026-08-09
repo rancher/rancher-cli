@@ -129,10 +129,13 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 
 // argsInput is a minimal runtime.Input for driving a command's Execute
 // directly, outside the urfave adapter.
-type argsInput struct{ args []string }
+type argsInput struct {
+	args  []string
+	bools map[string]bool
+}
 
 func (i argsInput) String(string) string    { return "" }
-func (i argsInput) Bool(string) bool        { return false }
+func (i argsInput) Bool(k string) bool      { return i.bools[k] }
 func (i argsInput) Strings(string) []string { return nil }
 func (i argsInput) IsSet(string) bool       { return false }
 func (i argsInput) Args() []string          { return i.args }
@@ -192,6 +195,9 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 	t.Run("canceled registration fetch propagates through the root client", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
+		// Pass --registration so the fetch is attempted and the cancellation
+		// gate is exercised (without the flag the structural gate prevents the
+		// fetch and the test would never see the error).
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.URL.Path {
@@ -211,7 +217,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 		f := seedRootConfig(t, srv)
 		cmd, ok := inspect.NewInspectCluster(f, f).(runtime.ReadCommand)
 		require.True(t, ok, "inspect cluster must be a ReadCommand")
-		res, err := cmd.Execute(ctx, argsInput{args: []string{"local"}}, nil)
+		res, err := cmd.Execute(ctx, argsInput{args: []string{"local"}, bools: map[string]bool{"registration": true}}, nil)
 		require.Error(t, err, "a canceled registration fetch must propagate, not degrade")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce, "the structured error propagates")
@@ -276,7 +282,10 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 
 	cmd, ok := inspect.NewInspectCluster(f, f).(runtime.ReadCommand)
 	require.True(t, ok, "inspect cluster must be a ReadCommand")
-	res, err := cmd.Execute(context.Background(), argsInput{args: []string{"local"}}, nil)
+	// Pass --registration so the fetch is attempted and the timeout path is
+	// exercised (without the flag the structural gate prevents the fetch and
+	// no warning would be issued).
+	res, err := cmd.Execute(context.Background(), argsInput{args: []string{"local"}, bools: map[string]bool{"registration": true}}, nil)
 	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
 	require.Len(t, res.Warnings, 1)

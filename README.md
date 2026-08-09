@@ -165,7 +165,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — dry-run/apply |
 | `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
 | `revoke <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) [--role <r>] [--type user\|group]` | Revoke role binding(s) at project, cluster, or global scope — destructive; dry-run/apply --yes; omitting --role revokes every role at the scope; partial failures leave already-deleted bindings removed |
-| `inspect cluster <name-or-id>` | Composite cluster read: management identity + agent connectivity (management Connected/Ready conditions; a disconnect warns) + provisioning status/conditions (ready derived from the Ready condition), machine pools, members (ClusterRoleTemplateBindings with display names resolved), machines (CAPI Machines with phase and first failing condition message — surfacing provider errors invisible to other commands), and node-join/import registration commands; the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); provisioning, members, machines, and registration sections degrade independently to notes/warnings |
+| `inspect cluster <name-or-id> [--registration]` | Composite cluster read: management identity + agent connectivity (management Connected/Ready conditions; a disconnect warns) + provisioning status/conditions (ready derived from the Ready condition), machine pools, members (ClusterRoleTemplateBindings with display names resolved), machines (CAPI Machines with phase and first failing condition message — surfacing provider errors invisible to other commands), and node-join/import registration commands (withheld by default — contains join credentials; pass `--registration` to fetch, or use `get clusterregistrationtoken default-token --namespace <cluster-id>`); the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); provisioning, members, machines, and registration sections degrade independently to notes/warnings |
 | `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
 | `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: sectioned text card (PROJECT, NAMESPACES, MEMBERS, QUOTA, USAGE); members are ProjectRoleTemplateBindings with display names resolved from Users/UserAttributes; members section degrades independently to a warning |
@@ -199,7 +199,7 @@ and `inspect cluster` carries the registration commands custom-cluster
 nodes join with:
 
     rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
-    rancher inspect cluster web -o json     # registration.nodeCommand → run on each node
+    rancher inspect cluster web --registration -o json     # registration.nodeCommand → run on each node
     rancher get cluster web --wait --timeout 15m
     rancher kubeconfig --cluster web > web.yaml
 

@@ -15,7 +15,7 @@ flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-custom {"
 
 # IC-17 custom-cluster shape: status present, join commands present
 # (real spliced token, never the placeholder), pools EMPTY (present-[]).
-exec rancher inspect cluster c-fixture -o json
+exec rancher inspect cluster c-fixture --registration -o json
 jsonquery stdout data.cluster.id c-fixture
 jsonquery stdout data.cluster.kubernetesVersion v1.30.5+rke2r1
 jsonquery stdout data.status.ready true
@@ -25,12 +25,17 @@ jsonquery stdout data.machines '[]'
 stdout e2e-crt-real-token-c-fixture
 ! stdout '\{token\}'
 
+# Without --registration the section is withheld (no token, withheld shape).
+exec rancher inspect cluster c-fixture -o json
+jsonquery stdout data.registration.withheld true
+! stdout e2e-crt-real-token-c-fixture
+
 # Node-driver cluster: pools carry the machineConfigRef from the create
 # cluster flow.
 exec rancher create cluster insp-node --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-node '{"clusterName":"c-other","ready":false,"conditions":[{"type":"Ready","status":"False","reason":"Provisioning","message":"waiting for nodes"}]}'
 
-exec rancher inspect cluster c-other -o json
+exec rancher inspect cluster c-other --registration -o json
 jsonquery stdout data.status.ready false
 jsonquery stdout data.status.conditions.0.reason Provisioning
 jsonquery stdout data.machinePools.0.name pool1
@@ -43,14 +48,20 @@ stdout e2e-crt-real-token-c-other
 
 # Confirmed absence (IC-7) by display name: the harness's c-test has no
 # provisioning CR and no facade token fixture — the reserved note plus a
-# registration warning, sections absent, exit 0.
-exec rancher inspect cluster testcluster -o json
+# registration warning (--registration flag triggers the fetch), sections
+# absent, exit 0.
+exec rancher inspect cluster testcluster --registration -o json
 jsonquery stdout data.cluster.id c-test
 jsonquery stdout data.provisioningNote 'no provisioning.cattle.io Cluster for this cluster in fleet-default'
 jsonquery stdout data.status ''
 jsonquery stdout data.machinePools ''
 jsonquery stdout data.registration ''
 jsonquery stdout 'warnings.#' 1
+
+# Without --registration: section withheld (no warning, withheld shape).
+exec rancher inspect cluster testcluster -o json
+jsonquery stdout data.registration.withheld true
+jsonquery stdout warnings ''
 
 # imported cluster: machines note, notApplicable, system member
 # Agent-connectivity flipstatus is omitted: the empty namespace in
@@ -64,7 +75,7 @@ jsonquery stdout 'warnings.#' 1
 exec rancher create cluster insp-import --import --apply -o json
 flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-import {"clusterName":"c-import","ready":true,"conditions":[{"type":"Ready","status":"True"}]}
 
-exec rancher inspect cluster c-import -o json
+exec rancher inspect cluster c-import --registration -o json
 jsonquery stdout data.cluster.id c-import
 jsonquery stdout data.machinePools '[]'
 jsonquery stdout data.machines '[]'
@@ -72,7 +83,7 @@ jsonquery stdout data.registration.notApplicable.0 nodeCommand
 jsonquery stdout data.registration.notApplicable.1 insecureNodeCommand
 stdout e2e-crt-real-token-c-import
 
-exec rancher inspect cluster c-import
+exec rancher inspect cluster c-import --registration
 stdout 'none \(imported or custom cluster\)'
 stdout 'node join \[not applicable: imported cluster\]:'
 
