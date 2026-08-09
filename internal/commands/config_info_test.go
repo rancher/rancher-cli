@@ -11,12 +11,104 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func execConfigInfo(t *testing.T, dir string) map[string]any {
+func execConfigInfoResult(t *testing.T, dir string) runtime.Result {
 	t.Helper()
 	res, err := NewConfigInfo(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigInfo", res.Kind)
-	return res.Data.(map[string]any)
+	return res
+}
+
+func execConfigInfo(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	return execConfigInfoResult(t, dir).Data.(map[string]any)
+}
+
+// TestConfigInfoCompletionBlock pins the completion fields: effective timeout
+// (after clamping/default), raw timeout when it diverges, and network.
+// Completion fields are flat keys (completion.network, completion.timeout,
+// completion.timeoutRaw) in both JSON data and text output.
+// No t.Parallel(): t.Setenv.
+func TestConfigInfoCompletionBlock(t *testing.T) {
+	t.Run("defaults when no completion config set", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+		data := execConfigInfo(t, dir)
+		assert.Equal(t, false, data["completion.network"])
+		assert.Equal(t, "500ms", data["completion.timeout"])
+		_, hasRaw := data["completion.timeoutRaw"]
+		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when no config is set")
+	})
+
+	t.Run("configured network true and in-range timeout", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+		cfg := &config.Config{}
+		cfg.Completion.Network = true
+		cfg.Completion.Timeout = "1s"
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		data := execConfigInfo(t, dir)
+		assert.Equal(t, true, data["completion.network"])
+		assert.Equal(t, "1s", data["completion.timeout"])
+		_, hasRaw := data["completion.timeoutRaw"]
+		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when raw equals effective")
+	})
+
+	t.Run("clamped timeout reports both effective and raw", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+		cfg := &config.Config{}
+		cfg.Completion.Timeout = "10s"
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		res := execConfigInfoResult(t, dir)
+		data := res.Data.(map[string]any)
+		assert.Equal(t, false, data["completion.network"])
+		assert.Equal(t, "2s", data["completion.timeout"])
+		assert.Equal(t, "10s", data["completion.timeoutRaw"])
+		// Text view must carry the same lines — a typo in the format strings
+		// would pass all data assertions silently.
+		assert.Contains(t, res.Text, "completion.network: false\n")
+		assert.Contains(t, res.Text, "completion.timeout: 2s\n")
+		assert.Contains(t, res.Text, "completion.timeoutRaw: 10s\n")
+	})
+
+	t.Run("non-canonical but equal raw suppresses timeoutRaw", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+		cfg := &config.Config{}
+		cfg.Completion.Timeout = "1000ms" // same as 1s after parse
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		res := execConfigInfoResult(t, dir)
+		data := res.Data.(map[string]any)
+		assert.Equal(t, "1s", data["completion.timeout"])
+		_, hasRaw := data["completion.timeoutRaw"]
+		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when raw parses to the effective duration")
+		assert.Contains(t, res.Text, "completion.network: false\n")
+		assert.Contains(t, res.Text, "completion.timeout: 1s\n")
+		assert.NotContains(t, res.Text, "completion.timeoutRaw")
+	})
+
+	t.Run("unparseable raw surfaces as timeoutRaw with default effective", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+		cfg := &config.Config{}
+		cfg.Completion.Timeout = "malformed"
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+
+		res := execConfigInfoResult(t, dir)
+		data := res.Data.(map[string]any)
+		assert.Equal(t, "500ms", data["completion.timeout"])
+		assert.Equal(t, "malformed", data["completion.timeoutRaw"])
+		assert.Contains(t, res.Text, "completion.timeout: 500ms\n")
+		assert.Contains(t, res.Text, "completion.timeoutRaw: malformed\n")
+	})
 }
 
 // TestConfigInfoEffectiveStoreSources pins the env > config > default

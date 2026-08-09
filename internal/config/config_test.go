@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
@@ -59,6 +60,47 @@ func TestCurrentServerUnsetIsContextNotSet(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+}
+
+// TestCompletionTimeoutWithRaw pins the floor/cap/default contract for
+// CompletionTimeoutWithRaw, and indirectly EffectiveCompletionTimeout (now a
+// thin wrapper). Covers the pre-existing gap noted in the review: the contract
+// was previously only exercised indirectly via set_completion_test.go.
+func TestCompletionTimeoutWithRaw(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		effective time.Duration
+		diverges  bool
+	}{
+		{"empty uses default", "", CompletionTimeoutDefault, false},
+		{"in-range is unchanged", "1s", time.Second, false},
+		{"non-canonical equal suppressed", "1000ms", time.Second, false},
+		{"at cap is unchanged", "2s", CompletionTimeoutMax, false},
+		{"at floor is unchanged", "500ms", CompletionTimeoutDefault, false},
+		{"over cap is clamped", "10s", CompletionTimeoutMax, true},
+		{"unparseable falls to default", "bad", CompletionTimeoutDefault, true},
+		{"zero falls to default", "0", CompletionTimeoutDefault, true},
+		{"negative falls to default", "-1s", CompletionTimeoutDefault, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{Completion: CompletionConfig{Timeout: tc.raw}}
+			eff, raw, div := CompletionTimeoutWithRaw(cfg)
+			assert.Equal(t, tc.effective, eff)
+			assert.Equal(t, tc.raw, raw)
+			assert.Equal(t, tc.diverges, div)
+			// EffectiveCompletionTimeout must agree — it is now a thin wrapper.
+			assert.Equal(t, tc.effective, EffectiveCompletionTimeout(cfg))
+		})
+	}
+
+	t.Run("nil config uses default no divergence", func(t *testing.T) {
+		eff, raw, div := CompletionTimeoutWithRaw(nil)
+		assert.Equal(t, CompletionTimeoutDefault, eff)
+		assert.Equal(t, "", raw)
+		assert.False(t, div)
+	})
 }
 
 func TestResolveDirPrecedence(t *testing.T) {

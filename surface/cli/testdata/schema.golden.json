@@ -281,7 +281,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present.",
+      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present. Also reports completion settings: completion.network (live API completion on/off) and completion.timeout (effective per-TAB budget after clamping/default), with completion.timeoutRaw when the stored value was clamped or unparseable. The first place to check when tab-completion shows no candidates.",
       "examples": [
         "rancher config info"
       ],

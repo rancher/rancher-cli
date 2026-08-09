@@ -29,7 +29,12 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"and the effective credential-store policy with its source: the " +
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
-			"Under auto, also reports the probed backend pin when present.",
+			"Under auto, also reports the probed backend pin when present. " +
+			"Also reports completion settings: completion.network (live API " +
+			"completion on/off) and completion.timeout (effective per-TAB " +
+			"budget after clamping/default), with completion.timeoutRaw when " +
+			"the stored value was clamped or unparseable. The first place to " +
+			"check when tab-completion shows no candidates.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config info"},
 	}
@@ -56,7 +61,9 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 
 	// One ordered field list drives BOTH output shapes, so -o json and the
-	// plain-text rendering cannot drift apart.
+	// plain-text rendering cannot drift apart. Conditional fields follow the
+	// append-if idiom: pin and completion.timeoutRaw are added only when they
+	// carry information.
 	type field struct {
 		key string
 		val any
@@ -70,6 +77,20 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	if pin != "" {
 		fields = append(fields, field{"pin", pin})
 	}
+
+	// Completion settings — always present so `config info` can answer
+	// "why does TAB show no candidates?" without knowing whether completion
+	// was ever configured. CompletionTimeoutWithRaw resolves effective vs.
+	// raw in one pass so the two cannot disagree.
+	effectiveTimeout, rawTimeout, diverges := config.CompletionTimeoutWithRaw(cfg)
+	fields = append(fields,
+		field{"completion.network", cfg.Completion.Network},
+		field{"completion.timeout", effectiveTimeout.String()},
+	)
+	if diverges {
+		fields = append(fields, field{"completion.timeoutRaw", rawTimeout})
+	}
+
 	data := make(map[string]any, len(fields))
 	var text strings.Builder
 	for _, f := range fields {

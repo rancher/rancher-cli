@@ -325,10 +325,13 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - **`config path` / `config info` / `config edit`:** `config path` prints the
   resolved config file path — point other tooling at it. `config info` adds
   the effective credential store and its source (env > config > auto default,
-  plus the probed pin) — the answer to "which store am I actually using",
-  which config.yaml alone cannot give when the store comes from env. `config edit` opens the
-  config in `$VISUAL`/`$EDITOR` on a temp copy, validating referential
-  integrity before writing back — reach for it over several individual
+  plus the probed pin), and the completion settings (completion.network on/off,
+  completion.timeout effective value, completion.timeoutRaw when the stored
+  value was clamped or unparseable) — the first place to check when TAB shows
+  no candidates; config.yaml alone cannot reveal an env-supplied store or
+  diagnose a misconfigured completion timeout. `config edit` opens the config
+  in `$VISUAL`/`$EDITOR` on a temp copy, validating referential integrity
+  before writing back — reach for it over several individual
   `set-context`/`use-server` calls when reshaping multiple contexts/servers
   at once; needs a TTY and `$VISUAL`/`$EDITOR` set.
 - **Secrets:** never echo tokens into commands or logs; use `--token-stdin` or

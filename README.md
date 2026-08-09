@@ -148,7 +148,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `config use-server [name]` | Switch the active server |
 | `config delete-server <name>` | Remove a configured server, every context that targets it, and delete its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
 | `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
-| `config info` | Print config diagnostics: the file path and the effective credential store with its source (env, config, or the auto default), plus the probed pin under auto |
+| `config info` | Print config diagnostics: the file path, effective credential store with its source (env, config, or the auto default), probed pin under auto, and completion settings (network on/off, effective timeout, raw timeout when clamped) — the first place to check when tab-completion shows no candidates |
 | `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
 | `config set-completion [--network true\|false] [--timeout <budget>]` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 | `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — dry-run/apply |

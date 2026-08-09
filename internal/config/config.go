@@ -59,17 +59,28 @@ const (
 // Called by both the set-completion command and TAB dispatch so hand-edited
 // values in config.yaml are always clamped at use.
 func EffectiveCompletionTimeout(cfg *Config) time.Duration {
+	d, _, _ := CompletionTimeoutWithRaw(cfg)
+	return d
+}
+
+// CompletionTimeoutWithRaw returns the effective timeout, the raw configured
+// string, and whether the raw value diverges from the effective (clamped,
+// defaulted, or unparseable). Computed in one resolution so the effective and
+// divergence sides can never disagree. `config info` reports this triple;
+// EffectiveCompletionTimeout is the value-only form every other path uses.
+func CompletionTimeoutWithRaw(cfg *Config) (effective time.Duration, raw string, diverges bool) {
 	if cfg == nil || cfg.Completion.Timeout == "" {
-		return CompletionTimeoutDefault
+		return CompletionTimeoutDefault, "", false
 	}
-	d, err := time.ParseDuration(cfg.Completion.Timeout)
+	raw = cfg.Completion.Timeout
+	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		return CompletionTimeoutDefault
+		return CompletionTimeoutDefault, raw, true
 	}
 	if d > CompletionTimeoutMax {
-		return CompletionTimeoutMax
+		return CompletionTimeoutMax, raw, true
 	}
-	return d
+	return d, raw, false
 }
 
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
