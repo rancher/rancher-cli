@@ -12,9 +12,13 @@ fi
 
 go vet ./...
 
-# golangci-lint if available; otherwise warn (go vet already ran).
+# golangci-lint if available; otherwise warn (go vet already ran). In CI the
+# soft fallback would silently weaken the commit gate, so there it is an error.
 if command -v golangci-lint >/dev/null 2>&1; then
   golangci-lint run
+elif [ -n "${CI:-}" ]; then
+  echo "error: golangci-lint is required in CI" >&2
+  exit 1
 else
   echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
 fi

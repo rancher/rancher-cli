@@ -1,0 +1,22 @@
+name: setup-tools
+description: >-
+  Install the pinned golangci-lint (sumdb-verified via go install) and the
+  shells the completion tests exercise, and expose GOPATH/bin to later steps.
+  Shared by ci and release so the two pipelines cannot drift.
+
+runs:
+  using: composite
+  steps:
+    - name: Install golangci-lint and completion shells
+      shell: bash
+      # The GITHUB_PATH write below is the static $(go env GOPATH)/bin,
+      # derived from no untrusted input.
+      run: | # zizmor: ignore[github-env]
+        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+        # Later steps must find the binary: GOPATH/bin being on PATH is an
+        # image detail we refuse to rely on. The version call also fails the
+        # job here, loudly, if the install produced nothing.
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        "$(go env GOPATH)/bin/golangci-lint" version
+        sudo apt-get update
+        sudo apt-get install -y fish zsh

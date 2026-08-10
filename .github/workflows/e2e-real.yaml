@@ -1,0 +1,32 @@
+name: e2e-real
+
+# Fidelity oracle: boots the digest-pinned rancher/rancher image in Docker
+# and verifies the recorded goldens against it (~15 min). Too heavy for PRs:
+# on-demand via workflow_dispatch, plus one weekly scheduled run to surface
+# golden rot early.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+# The oracle is a singleton (scripts/e2e-real holds a host lock); never run
+# two at once, and never cancel a run that is mid-boot.
+concurrency:
+  group: e2e-real
+  cancel-in-progress: false
+
+jobs:
+  fidelity-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make e2e-real
