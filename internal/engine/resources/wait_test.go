@@ -135,20 +135,29 @@ func TestParseWaitCondition(t *testing.T) {
 	}
 }
 
-func TestWaitForPollsUntilState(t *testing.T) {
+// withFastPoll shrinks the package-global pollInterval to a millisecond for
+// the duration of the test. The global is shared state: tests calling this
+// must not run in parallel.
+func withFastPoll(t *testing.T) {
+	t.Helper()
 	orig := pollInterval
 	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	t.Cleanup(func() { pollInterval = orig })
+}
 
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		stateObj("provisioning", "yes"),
-		stateObj("active", "no"),
-	}}
-	cond := waitCond{kind: "state", name: "active"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
-	require.NoError(t, err)
-	assert.Equal(t, "active", mustState(got))
-	assert.Equal(t, 2, client.calls)
+func TestWaitForPollsUntilState(t *testing.T) {
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			stateObj("provisioning", "yes"),
+			stateObj("active", "no"),
+		}}
+		cond := waitCond{kind: "state", name: "active"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		require.NoError(t, err)
+		assert.Equal(t, "active", mustState(got))
+		assert.Equal(t, 2, client.calls)
+	})
 }
 
 func TestWaitSatisfiedFallsBackToPodPhase(t *testing.T) {
@@ -159,18 +168,17 @@ func TestWaitSatisfiedFallsBackToPodPhase(t *testing.T) {
 }
 
 func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{phaseObj("Pending")}}
-	cond := waitCond{kind: "state", name: "running"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Pending", "timeout message shows the real phase, not <no state>")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{phaseObj("Pending")}}
+		cond := waitCond{kind: "state", name: "running"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Pending", "timeout message shows the real phase, not <no state>")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	})
 }
 
 func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
@@ -194,101 +202,99 @@ func TestWaitSatisfiedStatusStateIsCaseSensitive(t *testing.T) {
 }
 
 func TestWaitForFailsFastOnTransitioningError(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		stateObj("provisioning", "yes"),
-		errorObj("quota exceeded"),
-	}}
-	cond := waitCond{kind: "state", name: "active"}
-	start := time.Now()
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
-	elapsed := time.Since(start)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "quota exceeded")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.False(t, ce.Retryable)
-	assert.Less(t, elapsed, 5*time.Second, "fail-fast must not burn the timeout")
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			stateObj("provisioning", "yes"),
+			errorObj("quota exceeded"),
+		}}
+		cond := waitCond{kind: "state", name: "active"}
+		start := time.Now()
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
+		elapsed := time.Since(start)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "quota exceeded")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.False(t, ce.Retryable)
+		assert.Less(t, elapsed, 5*time.Second, "fail-fast must not burn the timeout")
+	})
 }
 
 func TestWaitForConditionStatus(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObj("Ready", "False"),
-		conditionObj("Ready", "True"),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, 2, client.calls)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObj("Ready", "False"),
+			conditionObj("Ready", "True"),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, 2, client.calls)
+	})
 }
 
 func TestWaitForTimeoutCarriesLastState(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{stateObj("provisioning", "yes")}}
-	cond := waitCond{kind: "state", name: "active"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.True(t, ce.Retryable)
-	assert.Contains(t, err.Error(), "provisioning")
-	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{stateObj("provisioning", "yes")}}
+		cond := waitCond{kind: "state", name: "active"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.True(t, ce.Retryable)
+		assert.Contains(t, err.Error(), "provisioning")
+		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	})
 }
 
 func TestWaitForNotFoundFailsImmediately(t *testing.T) {
-	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{clierr.New(clierr.CodeNotFound, "x not found")}}
-	cond := waitCond{kind: "state", name: "active"}
-	start := time.Now()
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
-	elapsed := time.Since(start)
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Less(t, elapsed, 5*time.Second, "NOT_FOUND must fail fast, not burn the timeout")
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{clierr.New(clierr.CodeNotFound, "x not found")}}
+		cond := waitCond{kind: "state", name: "active"}
+		start := time.Now()
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
+		elapsed := time.Since(start)
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Less(t, elapsed, 5*time.Second, "NOT_FOUND must fail fast, not burn the timeout")
+	})
 }
 
 func TestWaitForRetriesTransientGetError(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{
-		objs: []*unstructured.Unstructured{stateObj("provisioning", "yes"), nil, stateObj("active", "no")},
-		errs: []error{nil, errors.New("transient network blip"), nil},
-	}
-	cond := waitCond{kind: "state", name: "active"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
-	require.NoError(t, err)
-	assert.Equal(t, "active", mustState(got))
-	assert.Equal(t, 3, client.calls)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{
+			objs: []*unstructured.Unstructured{stateObj("provisioning", "yes"), nil, stateObj("active", "no")},
+			errs: []error{nil, errors.New("transient network blip"), nil},
+		}
+		cond := waitCond{kind: "state", name: "active"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		require.NoError(t, err)
+		assert.Equal(t, "active", mustState(got))
+		assert.Equal(t, 3, client.calls)
+	})
 }
 
 func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{errors.New("down")}}
-	cond := waitCond{kind: "state", name: "active"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, false)
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.True(t, ce.Retryable)
-	assert.Contains(t, err.Error(), "no state observed")
-	assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{errors.New("down")}}
+		cond := waitCond{kind: "state", name: "active"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, false)
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.True(t, ce.Retryable)
+		assert.Contains(t, err.Error(), "no state observed")
+		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+	})
 }
 
 // TestGetClusterBareWaitAppliesRowDefault is IC-11's command-boundary pin:
@@ -298,26 +304,25 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 // polling fake satisfies the condition only on the THIRD Get, so a
 // non-polling shortcut or a wrong default expression fails loudly.
 func TestGetClusterBareWaitAppliesRowDefault(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		k := mustKind(t, "cluster")
+		require.Equal(t, "condition=Ready", k.WaitDefault, "the row default this test proves is applied")
 
-	k := mustKind(t, "cluster")
-	require.Equal(t, "condition=Ready", k.WaitDefault, "the row default this test proves is applied")
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObj("Ready", "False"),
-		conditionObj("Ready", "False"),
-		conditionObj("Ready", "True"),
-	}}
-	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(), input{
-		args: []string{"c-abc"},
-		b:    map[string]bool{"wait": true},
-	}, nil)
-	require.NoError(t, err)
-	assert.Equal(t, "Cluster", res.Kind)
-	assert.Equal(t, 3, client.calls, "the wait must POLL to the flip, not read once")
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObj("Ready", "False"),
+			conditionObj("Ready", "False"),
+			conditionObj("Ready", "True"),
+		}}
+		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+		res, err := cmd.Execute(context.Background(), input{
+			args: []string{"c-abc"},
+			b:    map[string]bool{"wait": true},
+		}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Cluster", res.Kind)
+		assert.Equal(t, 3, client.calls, "the wait must POLL to the flip, not read once")
+	})
 }
 
 func mustState(obj *unstructured.Unstructured) string {
@@ -407,17 +412,16 @@ func TestGetWaitStatefulSetExplicitForProceeds(t *testing.T) {
 // awaited condition carries a non-empty message, the timeout error shows it
 // parenthesized: Ready=Unknown (waiting for probes: calico, kube-apiserver).
 func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObjMsg("Ready", "Unknown", "waiting for probes: calico, kube-apiserver"),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Ready=Unknown (waiting for probes: calico, kube-apiserver)")
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObjMsg("Ready", "Unknown", "waiting for probes: calico, kube-apiserver"),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Ready=Unknown (waiting for probes: calico, kube-apiserver)")
+	})
 }
 
 // TestWaitTimeoutConditionMessageSanitized pins defense-in-depth: a condition
@@ -426,40 +430,38 @@ func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
 // JSON error envelope (which escapes control chars anyway), so this is
 // consistency with the text-rendering sanitizer, not an exploitable hole.
 func TestWaitTimeoutConditionMessageSanitized(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	// \x1b[2J is an ANSI clear-screen sequence: only the ESC byte (0x1b) is a
-	// C0 control character and is stripped; the printable "[2J" suffix remains.
-	// \u202e (U+202E) is a Unicode bidi override (Cf category) and is stripped.
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObjMsg("Ready", "Unknown", "bad\x1b[2Jmsg with \u202ebidi"),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
-	assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
-	assert.NotContains(t, err.Error(), "\u202e", "bidi override must be stripped")
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		// \x1b[2J is an ANSI clear-screen sequence: only the ESC byte (0x1b) is a
+		// C0 control character and is stripped; the printable "[2J" suffix remains.
+		// \u202e (U+202E) is a Unicode bidi override (Cf category) and is stripped.
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObjMsg("Ready", "Unknown", "bad\x1b[2Jmsg with \u202ebidi"),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
+		assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
+		assert.NotContains(t, err.Error(), "\u202e", "bidi override must be stripped")
+	})
 }
 
 // TestWaitTimeoutConditionWithoutMessageUnchanged asserts that when the
 // awaited condition has no message, the timeout error keeps the current shape.
 func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObj("Ready", "Unknown"),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Ready=Unknown")
-	assert.NotContains(t, err.Error(), "Ready=Unknown (",
-		"an empty condition message must not open a parenthesized suffix")
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObj("Ready", "Unknown"),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Ready=Unknown")
+		assert.NotContains(t, err.Error(), "Ready=Unknown (",
+			"an empty condition message must not open a parenthesized suffix")
+	})
 }
 
 func TestConditionStatusFirstMatchWins(t *testing.T) {
@@ -493,71 +495,67 @@ func multiConditionObj(conds ...[3]string) *unstructured.Unstructured {
 // wait must fail with the Stalled message instead of declaring the Ready
 // condition satisfied.
 func TestWaitForFailsFastOnStalled(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		multiConditionObj(
-			[3]string{"Ready", "True", ""},
-			[3]string{"Stalled", "True", "authentication required: Repository not found."},
-		),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "x stalled: authentication required")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.False(t, ce.Retryable)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			multiConditionObj(
+				[3]string{"Ready", "True", ""},
+				[3]string{"Stalled", "True", "authentication required: Repository not found."},
+			),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "x stalled: authentication required")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.False(t, ce.Retryable)
+	})
 }
 
 func TestWaitForStalledFalseDoesNotTrip(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		multiConditionObj(
-			[3]string{"Ready", "True", ""},
-			[3]string{"Stalled", "False", ""},
-		),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.NoError(t, err)
-	require.NotNil(t, got)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			multiConditionObj(
+				[3]string{"Ready", "True", ""},
+				[3]string{"Stalled", "False", ""},
+			),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+	})
 }
 
 func TestWaitForExplicitStalledTargetStillWaitable(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		multiConditionObj([3]string{"Stalled", "True", "boom"}),
-	}}
-	cond := waitCond{kind: "condition", name: "Stalled", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.NoError(t, err, "waiting FOR Stalled must not be aborted by the Stalled fail-fast")
-	require.NotNil(t, got)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			multiConditionObj([3]string{"Stalled", "True", "boom"}),
+		}}
+		cond := waitCond{kind: "condition", name: "Stalled", status: "True"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.NoError(t, err, "waiting FOR Stalled must not be aborted by the Stalled fail-fast")
+		require.NotNil(t, got)
+	})
 }
 
 func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		multiConditionObj(
-			[3]string{"Ready", "True", ""},
-			[3]string{"Stalled", "True", ""},
-		),
-	}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "x stalled: condition Stalled=True")
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			multiConditionObj(
+				[3]string{"Ready", "True", ""},
+				[3]string{"Stalled", "True", ""},
+			),
+		}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "x stalled: condition Stalled=True")
+	})
 }
 
 // TestWaitForSkipsUnsettledGenerations pins the exercise-11 settle gate: an
@@ -565,34 +563,33 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 // conditions from an older spec — the wait must keep polling instead of
 // trusting a satisfied condition or a Stalled abort on it.
 func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		stale := multiConditionObj([3]string{"Ready", "True", ""})
+		stale.SetGeneration(2)
+		require.NoError(t, unstructured.SetNestedField(stale.Object, int64(1), "status", "observedGeneration"))
 
-	stale := multiConditionObj([3]string{"Ready", "True", ""})
-	stale.SetGeneration(2)
-	require.NoError(t, unstructured.SetNestedField(stale.Object, int64(1), "status", "observedGeneration"))
+		settledObj := multiConditionObj([3]string{"Ready", "True", ""})
+		settledObj.SetGeneration(2)
+		require.NoError(t, unstructured.SetNestedField(settledObj.Object, int64(2), "status", "observedGeneration"))
 
-	settledObj := multiConditionObj([3]string{"Ready", "True", ""})
-	settledObj.SetGeneration(2)
-	require.NoError(t, unstructured.SetNestedField(settledObj.Object, int64(2), "status", "observedGeneration"))
+		client := &seqClient{objs: []*unstructured.Unstructured{stale, settledObj}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, 2, client.calls, "the unsettled first observation must not satisfy the wait")
 
-	client := &seqClient{objs: []*unstructured.Unstructured{stale, settledObj}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, 2, client.calls, "the unsettled first observation must not satisfy the wait")
-
-	// The stale generation must not trigger the Stalled abort either.
-	staleStalled := multiConditionObj([3]string{"Stalled", "True", "old spec"})
-	staleStalled.SetGeneration(3)
-	require.NoError(t, unstructured.SetNestedField(staleStalled.Object, int64(2), "status", "observedGeneration"))
-	ready := multiConditionObj([3]string{"Ready", "True", ""})
-	client2 := &seqClient{objs: []*unstructured.Unstructured{staleStalled, ready}}
-	got, err = waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.NoError(t, err, "a stale Stalled=True must not abort the wait")
-	require.NotNil(t, got)
+		// The stale generation must not trigger the Stalled abort either.
+		staleStalled := multiConditionObj([3]string{"Stalled", "True", "old spec"})
+		staleStalled.SetGeneration(3)
+		require.NoError(t, unstructured.SetNestedField(staleStalled.Object, int64(2), "status", "observedGeneration"))
+		ready := multiConditionObj([3]string{"Ready", "True", ""})
+		client2 := &seqClient{objs: []*unstructured.Unstructured{staleStalled, ready}}
+		got, err = waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.NoError(t, err, "a stale Stalled=True must not abort the wait")
+		require.NotNil(t, got)
+	})
 }
 
 // TestWaitTimeoutWithUnsettledObservationShowsCaveat pins the round-2 High-1
@@ -601,23 +598,22 @@ func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 // include the generation caveat so operators know the reported state is stale.
 // The caveat is scoped to failOnStalled kinds; non-opted kinds omit it.
 func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		unsettled := multiConditionObj([3]string{"Ready", "False", ""})
+		unsettled.SetGeneration(2)
+		require.NoError(t, unstructured.SetNestedField(unsettled.Object, int64(1), "status", "observedGeneration"))
 
-	unsettled := multiConditionObj([3]string{"Ready", "False", ""})
-	unsettled.SetGeneration(2)
-	require.NoError(t, unstructured.SetNestedField(unsettled.Object, int64(1), "status", "observedGeneration"))
-
-	client := &seqClient{objs: []*unstructured.Unstructured{unsettled}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, true)
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.True(t, ce.Retryable)
-	assert.Contains(t, err.Error(), "not yet reconciled",
-		"timeout with only an unsettled observation must include the generation caveat")
+		client := &seqClient{objs: []*unstructured.Unstructured{unsettled}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, true)
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.True(t, ce.Retryable)
+		assert.Contains(t, err.Error(), "not yet reconciled",
+			"timeout with only an unsettled observation must include the generation caveat")
+	})
 }
 
 // TestWaitForUnsettledUnstalledSucceedsImmediately pins that the generation
@@ -628,22 +624,21 @@ func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
 // polling until timeout (which was the pre-settlement-gate behaviour and must
 // be preserved for non-opted kinds).
 func TestWaitForUnsettledUnstalledSucceedsImmediately(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		// Object has generation=2 but observedGeneration=1 (unsettled) and
+		// already carries the satisfied condition.
+		unsettledReady := multiConditionObj([3]string{"Ready", "True", ""})
+		unsettledReady.SetGeneration(2)
+		require.NoError(t, unstructured.SetNestedField(unsettledReady.Object, int64(1), "status", "observedGeneration"))
 
-	// Object has generation=2 but observedGeneration=1 (unsettled) and
-	// already carries the satisfied condition.
-	unsettledReady := multiConditionObj([3]string{"Ready", "True", ""})
-	unsettledReady.SetGeneration(2)
-	require.NoError(t, unstructured.SetNestedField(unsettledReady.Object, int64(1), "status", "observedGeneration"))
-
-	client := &seqClient{objs: []*unstructured.Unstructured{unsettledReady}}
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-	got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
-	require.NoError(t, err, "non-opted kind must succeed when condition is satisfied, regardless of observedGeneration lag")
-	require.NotNil(t, got)
-	assert.Equal(t, 1, client.calls, "wait must succeed on the first Get, not poll")
+		client := &seqClient{objs: []*unstructured.Unstructured{unsettledReady}}
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		got, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		require.NoError(t, err, "non-opted kind must succeed when condition is satisfied, regardless of observedGeneration lag")
+		require.NotNil(t, got)
+		assert.Equal(t, 1, client.calls, "wait must succeed on the first Get, not poll")
+	})
 }
 
 // TestSettledAbsentFieldIsSettled documents the deliberate choice: a
@@ -695,22 +690,27 @@ func TestFreshSuccessWarningElapsedFormatting(t *testing.T) {
 // object warns; an aged object does not.
 func TestFreshSuccessWarning(t *testing.T) {
 	t.Parallel()
-	young := multiConditionObj([3]string{"Ready", "True", ""})
-	young.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-2 * time.Second)))
-	w := freshSuccessWarning(young, "gitrepo", "repo-1", "team-a")
-	assert.Contains(t, w, "re-check shortly")
-	assert.Contains(t, w, "rancher get gitrepo repo-1 --namespace team-a",
-		"the re-check must target the namespace the wait resolved")
-	assert.NotContains(t, w, "conditions", "the advisory is condition-agnostic — state= waits satisfy it too")
+	synctest.Test(t, func(t *testing.T) {
+		young := multiConditionObj([3]string{"Ready", "True", ""})
+		young.SetCreationTimestamp(metav1.NewTime(time.Now()))
+		old := multiConditionObj([3]string{"Ready", "True", ""})
+		old.SetCreationTimestamp(metav1.NewTime(time.Now()))
+		time.Sleep(2 * time.Second)
 
-	clusterScoped := freshSuccessWarning(young, "gitrepo", "repo-1", "")
-	assert.Contains(t, clusterScoped, "rancher get gitrepo repo-1")
-	assert.NotContains(t, clusterScoped, "--namespace")
+		w := freshSuccessWarning(young, "gitrepo", "repo-1", "team-a")
+		assert.Contains(t, w, "re-check shortly")
+		assert.Contains(t, w, "rancher get gitrepo repo-1 --namespace team-a",
+			"the re-check must target the namespace the wait resolved")
+		assert.NotContains(t, w, "conditions", "the advisory is condition-agnostic — state= waits satisfy it too")
 
-	old := multiConditionObj([3]string{"Ready", "True", ""})
-	old.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-5 * time.Minute)))
-	assert.Empty(t, freshSuccessWarning(old, "gitrepo", "repo-1", "team-a"))
+		clusterScoped := freshSuccessWarning(young, "gitrepo", "repo-1", "")
+		assert.Contains(t, clusterScoped, "rancher get gitrepo repo-1")
+		assert.NotContains(t, clusterScoped, "--namespace")
 
-	noTimestamp := multiConditionObj([3]string{"Ready", "True", ""})
-	assert.Empty(t, freshSuccessWarning(noTimestamp, "gitrepo", "repo-1", "team-a"))
+		time.Sleep(5 * time.Minute)
+		assert.Empty(t, freshSuccessWarning(old, "gitrepo", "repo-1", "team-a"))
+
+		noTimestamp := multiConditionObj([3]string{"Ready", "True", ""})
+		assert.Empty(t, freshSuccessWarning(noTimestamp, "gitrepo", "repo-1", "team-a"))
+	})
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -764,24 +765,23 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 // TestGetWaitStampsSummary proves that a successful --wait stamps res.Summary
 // with the "wait: <expr> satisfied after <duration>" triage line.
 func TestGetWaitStampsSummary(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
-
-	k := mustKind(t, "cluster")
-	client := &seqClient{objs: []*unstructured.Unstructured{
-		conditionObj("Ready", "False"),
-		conditionObj("Ready", "True"),
-	}}
-	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(), input{
-		args: []string{"c-abc"},
-		b:    map[string]bool{"wait": true},
-	}, nil)
-	require.NoError(t, err)
-	const wantPrefix = "wait: condition=Ready satisfied after "
-	assert.True(t, strings.HasPrefix(res.Summary, wantPrefix),
-		"want summary prefix %q, got %q", wantPrefix, res.Summary)
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		k := mustKind(t, "cluster")
+		client := &seqClient{objs: []*unstructured.Unstructured{
+			conditionObj("Ready", "False"),
+			conditionObj("Ready", "True"),
+		}}
+		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+		res, err := cmd.Execute(context.Background(), input{
+			args: []string{"c-abc"},
+			b:    map[string]bool{"wait": true},
+		}, nil)
+		require.NoError(t, err)
+		const wantPrefix = "wait: condition=Ready satisfied after "
+		assert.True(t, strings.HasPrefix(res.Summary, wantPrefix),
+			"want summary prefix %q, got %q", wantPrefix, res.Summary)
+	})
 }
 
 // TestGetWaitFreshSuccessWarning covers the Execute-level fresh-success wiring:
@@ -790,9 +790,7 @@ func TestGetWaitStampsSummary(t *testing.T) {
 // Result.Warnings; a non-WaitFailsOnStalled kind (pod) under the same
 // conditions must carry no warnings (the fresh-success gate is opt-in per kind).
 func TestGetWaitFreshSuccessWarning(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
 
 	// freshReadyObj returns a settled (no observedGeneration), freshly created
 	// (creationTimestamp=now), satisfied (Ready=True) unstructured object.
@@ -806,52 +804,58 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 	}
 
 	t.Run("WaitFailsOnStalled kind carries fresh-success advisory", func(t *testing.T) {
-		k := mustKind(t, "gitrepo")
-		client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
-		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-		res, err := cmd.Execute(context.Background(), input{
-			args: []string{"my-repo"},
-			b:    map[string]bool{"wait": true},
-		}, nil)
-		require.NoError(t, err)
-		require.Len(t, res.Warnings, 1, "one fresh-success advisory expected")
-		assert.Contains(t, res.Warnings[0], "gitrepo")
-		assert.Contains(t, res.Warnings[0], "my-repo")
-		assert.Contains(t, res.Warnings[0], "fleet-default", "re-check hint must name the resolved namespace")
+		synctest.Test(t, func(t *testing.T) {
+			k := mustKind(t, "gitrepo")
+			client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
+			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+			res, err := cmd.Execute(context.Background(), input{
+				args: []string{"my-repo"},
+				b:    map[string]bool{"wait": true},
+			}, nil)
+			require.NoError(t, err)
+			require.Len(t, res.Warnings, 1, "one fresh-success advisory expected")
+			assert.Contains(t, res.Warnings[0], "gitrepo")
+			assert.Contains(t, res.Warnings[0], "my-repo")
+			assert.Contains(t, res.Warnings[0], "fleet-default", "re-check hint must name the resolved namespace")
+		})
 	})
 
 	t.Run("non-WaitFailsOnStalled kind carries no warnings", func(t *testing.T) {
-		k := mustKind(t, "pod")
-		client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
-		cmd := NewGet(k, &recFactory{client: client, ctxCluster: "local"}).(runtime.ReadCommand)
-		res, err := cmd.Execute(context.Background(), input{
-			args: []string{"my-pod"},
-			b:    map[string]bool{"wait": true},
-			s:    map[string]string{"namespace": "default", "for": "condition=Ready"},
-		}, nil)
-		require.NoError(t, err)
-		assert.Empty(t, res.Warnings, "pod has WaitFailsOnStalled=false; no fresh-success advisory expected")
+		synctest.Test(t, func(t *testing.T) {
+			k := mustKind(t, "pod")
+			client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
+			cmd := NewGet(k, &recFactory{client: client, ctxCluster: "local"}).(runtime.ReadCommand)
+			res, err := cmd.Execute(context.Background(), input{
+				args: []string{"my-pod"},
+				b:    map[string]bool{"wait": true},
+				s:    map[string]string{"namespace": "default", "for": "condition=Ready"},
+			}, nil)
+			require.NoError(t, err)
+			assert.Empty(t, res.Warnings, "pod has WaitFailsOnStalled=false; no fresh-success advisory expected")
+		})
 	})
 
 	t.Run("WaitFailsOnStalled kind waiting for Stalled carries no advisory", func(t *testing.T) {
-		// A satisfied Stalled=True wait is the controller's real verdict, not a
-		// stale birth default — the freshSuccessWarning must be suppressed when
-		// the wait target is condition=Stalled.
-		freshStalledObj := func() *unstructured.Unstructured {
-			obj := conditionObj("Stalled", "True")
-			obj.SetCreationTimestamp(metav1.Now())
-			return obj
-		}
-		k := mustKind(t, "gitrepo")
-		client := &seqClient{objs: []*unstructured.Unstructured{freshStalledObj()}}
-		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-		res, err := cmd.Execute(context.Background(), input{
-			args: []string{"my-repo"},
-			b:    map[string]bool{"wait": true},
-			s:    map[string]string{"for": "condition=Stalled=True"},
-		}, nil)
-		require.NoError(t, err)
-		assert.Empty(t, res.Warnings, "condition=Stalled wait satisfied immediately must carry no fresh-success advisory")
+		synctest.Test(t, func(t *testing.T) {
+			// A satisfied Stalled=True wait is the controller's real verdict, not a
+			// stale birth default — the freshSuccessWarning must be suppressed when
+			// the wait target is condition=Stalled.
+			freshStalledObj := func() *unstructured.Unstructured {
+				obj := conditionObj("Stalled", "True")
+				obj.SetCreationTimestamp(metav1.Now())
+				return obj
+			}
+			k := mustKind(t, "gitrepo")
+			client := &seqClient{objs: []*unstructured.Unstructured{freshStalledObj()}}
+			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+			res, err := cmd.Execute(context.Background(), input{
+				args: []string{"my-repo"},
+				b:    map[string]bool{"wait": true},
+				s:    map[string]string{"for": "condition=Stalled=True"},
+			}, nil)
+			require.NoError(t, err)
+			assert.Empty(t, res.Warnings, "condition=Stalled wait satisfied immediately must carry no fresh-success advisory")
+		})
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -353,28 +354,27 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 // (fleet's kstatus kinds), never for kinds whose controllers may use
 // Stalled transiently.
 func TestWaitStalledScopedToOptInKinds(t *testing.T) {
-	orig := pollInterval
-	pollInterval = time.Millisecond
-	defer func() { pollInterval = orig }()
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		stalledReady := multiConditionObj(
+			[3]string{"Ready", "False", ""},
+			[3]string{"Stalled", "True", "boom"},
+		)
+		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
 
-	stalledReady := multiConditionObj(
-		[3]string{"Ready", "False", ""},
-		[3]string{"Stalled", "True", "boom"},
-	)
-	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+		// Opt-in kind: aborts immediately.
+		client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
+		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "stalled")
 
-	// Opt-in kind: aborts immediately.
-	client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
-	_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "stalled")
-
-	// Non-opt-in kind: keeps polling to the eventual Ready.
-	ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})
-	client2 := &seqClient{objs: []*unstructured.Unstructured{stalledReady, ready}}
-	got, err := waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
-	require.NoError(t, err, "without the opt-in, Stalled=True must not abort the wait")
-	require.NotNil(t, got)
+		// Non-opt-in kind: keeps polling to the eventual Ready.
+		ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})
+		client2 := &seqClient{objs: []*unstructured.Unstructured{stalledReady, ready}}
+		got, err := waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		require.NoError(t, err, "without the opt-in, Stalled=True must not abort the wait")
+		require.NotNil(t, got)
+	})
 }
 
 // TestWaitFlagWiredFromKindRow pins the row->waitFor plumbing: gitrepo,
