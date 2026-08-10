@@ -5,7 +5,8 @@ package kinds
 // (validation) and the completion surface (--set key candidates), the
 // OutputFormats one-source pattern (MC-16).
 //
-// Source of truth — verify against ~/src/rancher when editing:
+// Source of truth — verify against https://github.com/rancher/rancher
+// when editing:
 //   - credential fields: pkg/data/management/machinedriver_data.go,
 //     DriverData (Public+Private+Optional credential fields per driver).
 //   - field names/casings: lower-camel of the docker-machine flag minus
@@ -14,7 +15,7 @@ package kinds
 //     renames applied (machine_driver.go: DO publishes sshKeyContents,
 //     never sshKeyPath; rancher's clusters/node_test.go pins that).
 //   - DO driver flags: the rancher/machine module (go.mod pin in
-//     ~/src/rancher), drivers/digitalocean/digitalocean.go GetCreateFlags.
+//     rancher/rancher), drivers/digitalocean/digitalocean.go GetCreateFlags.
 type MachineConfigFields struct {
 	// Curated driver fields carried by dedicated create machine-config
 	// flags (MC-5). Empty for the four kinds not yet curated.
