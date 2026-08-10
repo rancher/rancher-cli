@@ -30,11 +30,11 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
 			"Under auto, also reports the probed backend pin when present. " +
-			"Also reports completion settings: completion.network (live API " +
-			"completion on/off) and completion.timeout (effective per-TAB " +
-			"budget after clamping/default), with completion.timeoutRaw when " +
-			"the stored value was clamped or unparseable. The first place to " +
-			"check when tab-completion shows no candidates.",
+			"Also reports a nested completion section (network: live API " +
+			"completion on/off; timeout: effective per-TAB budget after " +
+			"clamping/default; timeoutRaw: only when the stored value was " +
+			"clamped or unparseable). The first place to check when " +
+			"tab-completion shows no candidates.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config info"},
 	}
@@ -60,14 +60,15 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		pin = config.ReadPin(c.dir)
 	}
 
-	// One ordered field list drives BOTH output shapes, so -o json and the
-	// plain-text rendering cannot drift apart. Conditional fields follow the
-	// append-if idiom: pin and completion.timeoutRaw are added only when they
-	// carry information.
+	// field is either a scalar (key: val) or a nested section
+	// (key: []field) rendered as an indented block. One declaration drives
+	// both the JSON data map and the plain-text output, so -o json and text
+	// cannot drift apart for any field — flat or nested.
 	type field struct {
 		key string
-		val any
+		val any // scalar any, or []field for a nested section
 	}
+
 	fields := []field{
 		{"path", path},
 		{"exists", exists},
@@ -83,19 +84,30 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	// was ever configured. CompletionTimeoutWithRaw resolves effective vs.
 	// raw in one pass so the two cannot disagree.
 	effectiveTimeout, rawTimeout, diverges := config.CompletionTimeoutWithRaw(cfg)
-	fields = append(fields,
-		field{"completion.network", cfg.Completion.Network},
-		field{"completion.timeout", effectiveTimeout.String()},
-	)
-	if diverges {
-		fields = append(fields, field{"completion.timeoutRaw", rawTimeout})
+	completionFields := []field{
+		{"network", cfg.Completion.Network},
+		{"timeout", effectiveTimeout.String()},
 	}
+	if diverges {
+		completionFields = append(completionFields, field{"timeoutRaw", rawTimeout})
+	}
+	fields = append(fields, field{"completion", completionFields})
 
 	data := make(map[string]any, len(fields))
 	var text strings.Builder
 	for _, f := range fields {
-		data[f.key] = f.val
-		fmt.Fprintf(&text, "%s: %v\n", f.key, f.val)
+		if sub, ok := f.val.([]field); ok {
+			subData := make(map[string]any, len(sub))
+			fmt.Fprintf(&text, "%s:\n", f.key)
+			for _, s := range sub {
+				subData[s.key] = s.val
+				fmt.Fprintf(&text, "  %s: %v\n", s.key, s.val)
+			}
+			data[f.key] = subData
+		} else {
+			data[f.key] = f.val
+			fmt.Fprintf(&text, "%s: %v\n", f.key, f.val)
+		}
 	}
 	return runtime.Result{Kind: "ConfigInfo", Data: data, Text: text.String()}, nil
 }

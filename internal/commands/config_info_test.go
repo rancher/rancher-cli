@@ -24,20 +24,56 @@ func execConfigInfo(t *testing.T, dir string) map[string]any {
 	return execConfigInfoResult(t, dir).Data.(map[string]any)
 }
 
-// TestConfigInfoCompletionBlock pins the completion fields: effective timeout
-// (after clamping/default), raw timeout when it diverges, and network.
-// Completion fields are flat keys (completion.network, completion.timeout,
-// completion.timeoutRaw) in both JSON data and text output.
-// No t.Parallel(): t.Setenv.
+// assertCompletion extracts the nested completion map from res, asserts the
+// nested JSON structure, guards against both dead key shapes (flat dotted and
+// camelCase), and verifies the text indentation header. Called by every
+// completion sub-test so the contract holds for all cases.
+func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
+	t.Helper()
+	data := res.Data.(map[string]any)
+
+	c, ok := data["completion"].(map[string]any)
+	require.True(t, ok, "completion must be a nested map[string]any")
+
+	// Regression guard against two real prior shapes:
+	//   flat-dotted (completion.network etc.) — shipped briefly on main before
+	//     the nested shape was settled;
+	//   camelCase (completionNetwork etc.) — existed as a working-tree
+	//     changeset on 2026-08-10, dropped before merge.
+	// Both forms were concrete code, not speculation.
+	for _, dead := range []string{
+		"completion.network", "completion.timeout", "completion.timeoutRaw",
+		"completionNetwork", "completionTimeout", "completionTimeoutRaw",
+	} {
+		_, present := data[dead]
+		assert.False(t, present, "%q must not appear as a top-level key (nested shape required)", dead)
+	}
+
+	// Text must open the indented section.
+	assert.Contains(t, res.Text, "completion:\n")
+
+	return c
+}
+
+// TestConfigInfoCompletionBlock pins the completion section as a nested object
+// in JSON data and an indented block in text. Both views are asserted for every
+// scenario (auth-check precedent: parity is guaranteed by tests, not a shared
+// loop). No t.Parallel(): t.Setenv.
 func TestConfigInfoCompletionBlock(t *testing.T) {
 	t.Run("defaults when no completion config set", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Setenv(config.EnvCredentialStore, "")
-		data := execConfigInfo(t, dir)
-		assert.Equal(t, false, data["completion.network"])
-		assert.Equal(t, "500ms", data["completion.timeout"])
-		_, hasRaw := data["completion.timeoutRaw"]
-		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when no config is set")
+		res := execConfigInfoResult(t, dir)
+		c := assertCompletion(t, res)
+
+		assert.Equal(t, false, c["network"])
+		assert.Equal(t, "500ms", c["timeout"])
+		_, hasRaw := c["timeoutRaw"]
+		assert.False(t, hasRaw, "timeoutRaw must be absent when no config is set")
+
+		assert.Contains(t, res.Text, "  network: false\n")
+		assert.Contains(t, res.Text, "  timeout: 500ms\n")
+		assert.NotContains(t, res.Text, "timeoutRaw")
 	})
 
 	t.Run("configured network true and in-range timeout", func(t *testing.T) {
@@ -49,11 +85,17 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
 
-		data := execConfigInfo(t, dir)
-		assert.Equal(t, true, data["completion.network"])
-		assert.Equal(t, "1s", data["completion.timeout"])
-		_, hasRaw := data["completion.timeoutRaw"]
-		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when raw equals effective")
+		res := execConfigInfoResult(t, dir)
+		c := assertCompletion(t, res)
+
+		assert.Equal(t, true, c["network"])
+		assert.Equal(t, "1s", c["timeout"])
+		_, hasRaw := c["timeoutRaw"]
+		assert.False(t, hasRaw, "timeoutRaw must be absent when raw equals effective")
+
+		assert.Contains(t, res.Text, "  network: true\n")
+		assert.Contains(t, res.Text, "  timeout: 1s\n")
+		assert.NotContains(t, res.Text, "timeoutRaw")
 	})
 
 	t.Run("clamped timeout reports both effective and raw", func(t *testing.T) {
@@ -65,15 +107,15 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 		require.NoError(t, cfg.Write())
 
 		res := execConfigInfoResult(t, dir)
-		data := res.Data.(map[string]any)
-		assert.Equal(t, false, data["completion.network"])
-		assert.Equal(t, "2s", data["completion.timeout"])
-		assert.Equal(t, "10s", data["completion.timeoutRaw"])
-		// Text view must carry the same lines — a typo in the format strings
-		// would pass all data assertions silently.
-		assert.Contains(t, res.Text, "completion.network: false\n")
-		assert.Contains(t, res.Text, "completion.timeout: 2s\n")
-		assert.Contains(t, res.Text, "completion.timeoutRaw: 10s\n")
+		c := assertCompletion(t, res)
+
+		assert.Equal(t, false, c["network"])
+		assert.Equal(t, "2s", c["timeout"])
+		assert.Equal(t, "10s", c["timeoutRaw"])
+
+		assert.Contains(t, res.Text, "  network: false\n")
+		assert.Contains(t, res.Text, "  timeout: 2s\n")
+		assert.Contains(t, res.Text, "  timeoutRaw: 10s\n")
 	})
 
 	t.Run("non-canonical but equal raw suppresses timeoutRaw", func(t *testing.T) {
@@ -85,13 +127,15 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 		require.NoError(t, cfg.Write())
 
 		res := execConfigInfoResult(t, dir)
-		data := res.Data.(map[string]any)
-		assert.Equal(t, "1s", data["completion.timeout"])
-		_, hasRaw := data["completion.timeoutRaw"]
-		assert.False(t, hasRaw, "completion.timeoutRaw must be absent when raw parses to the effective duration")
-		assert.Contains(t, res.Text, "completion.network: false\n")
-		assert.Contains(t, res.Text, "completion.timeout: 1s\n")
-		assert.NotContains(t, res.Text, "completion.timeoutRaw")
+		c := assertCompletion(t, res)
+
+		assert.Equal(t, "1s", c["timeout"])
+		_, hasRaw := c["timeoutRaw"]
+		assert.False(t, hasRaw, "timeoutRaw must be absent when raw parses to the effective duration")
+
+		assert.Contains(t, res.Text, "  network: false\n")
+		assert.Contains(t, res.Text, "  timeout: 1s\n")
+		assert.NotContains(t, res.Text, "timeoutRaw")
 	})
 
 	t.Run("unparseable raw surfaces as timeoutRaw with default effective", func(t *testing.T) {
@@ -103,11 +147,13 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 		require.NoError(t, cfg.Write())
 
 		res := execConfigInfoResult(t, dir)
-		data := res.Data.(map[string]any)
-		assert.Equal(t, "500ms", data["completion.timeout"])
-		assert.Equal(t, "malformed", data["completion.timeoutRaw"])
-		assert.Contains(t, res.Text, "completion.timeout: 500ms\n")
-		assert.Contains(t, res.Text, "completion.timeoutRaw: malformed\n")
+		c := assertCompletion(t, res)
+
+		assert.Equal(t, "500ms", c["timeout"])
+		assert.Equal(t, "malformed", c["timeoutRaw"])
+
+		assert.Contains(t, res.Text, "  timeout: 500ms\n")
+		assert.Contains(t, res.Text, "  timeoutRaw: malformed\n")
 	})
 }
 
