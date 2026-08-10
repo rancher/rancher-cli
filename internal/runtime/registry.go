@@ -232,8 +232,11 @@ type Manifest struct {
 // root-assembly order with commands in registration order. The two
 // positional-root sections — the leading fixed top-level commands and the
 // ungrouped-entry run — carry Name "" and are distinguished by position.
+// Named groups carry a Desc that rancher schema <group> surfaces as the
+// group card; unnamed sections are desc-less.
 type SchemaGroup struct {
 	Name     string   `json:"name"`
+	Desc     string   `json:"desc,omitempty"`
 	Commands []string `json:"commands"`
 }
 

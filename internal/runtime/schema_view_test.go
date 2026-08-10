@@ -56,15 +56,18 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	assert.Equal(t, []any{"pod", "cluster"}, got["kinds"])
 
 	// Generated commands are COLLAPSED on the bare path: absent from the
-	// group walk, present only via kindCount/kinds/generatedCommandCount —
-	// exactly what renderTOC does (spec'd collapse mirror).
+	// per-group commands list, represented instead by a generated summary
+	// object — exactly what renderTOC does (spec'd collapse mirror).
+	// All-generated groups carry no commands key (omitempty), so the
+	// iteration uses a nil-safe type assertion.
 	var flat []string
 	for _, g := range got["groups"].([]any) {
-		for _, e := range g.(map[string]any)["commands"].([]any) {
+		cmds, _ := g.(map[string]any)["commands"].([]any)
+		for _, e := range cmds {
 			flat = append(flat, e.(map[string]any)["name"].(string))
 		}
 	}
-	assert.Equal(t, []string{"auth login"}, flat, "only non-generated commands list per line on the bare TOC")
+	assert.Equal(t, []string{"auth login"}, flat, "only non-generated commands appear in the per-group commands list on the bare TOC")
 
 	// Full-manifest sections must be absent — the mirror rule.
 	for _, absent := range []string{"commands", "kindsDetail", "envVars", "globalFlags", "effectSchema", "errorCodes", "exitCodes"} {

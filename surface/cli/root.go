@@ -659,6 +659,28 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	completionCmd := commands.NewCompletion()
 	reg.Register(completionCmd)
 
+	// groupDescs carries the operator-facing desc for each named group.
+	// Unnamed ("") sections are positional bookmarks — no desc.
+	groupDescs := map[string]string{
+		"auth":   "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
+		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
+		"skill":  "Install, remove, and inspect agent skills packaged with this CLI.",
+		"create": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
+		// "project" is shadowed at the schema selector tier by the "project" kind
+		// (resolution order: command → kind → group; kind wins at tier 2). The
+		// group desc is set here and is visible in the manifest and the TOC JSON,
+		// but rancher schema project returns the kind card, not the group card.
+		// The group's members — project add-namespace and project remove-namespace
+		// — remain discoverable via the bare TOC and --verb project filtering.
+		// The shadowing is deliberate: renaming the group would churn the TOC
+		// section layout and every agent prompt that references it.
+		"project": "Manage project membership: add or remove downstream namespaces from a Rancher project.",
+		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
+		"get":     "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+		"patch":   "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+		"delete":  "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+	}
+
 	// The manifest's ordered sections mirror assembleCommands below exactly
 	// (SE-18): the fixed top-level commands lead, then each entry group at
 	// first appearance — the ungrouped ("") run at its real position — with
@@ -671,7 +693,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		if len(sectionCmds[g]) == 0 {
 			continue
 		}
-		sections = append(sections, runtime.SchemaGroup{Name: g, Commands: sectionCmds[g]})
+		sections = append(sections, runtime.SchemaGroup{Name: g, Desc: groupDescs[g], Commands: sectionCmds[g]})
 	}
 	reg.SetGroups(sections)
 

@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -67,7 +71,21 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 		expected = append(expected, runtime.SchemaGroup{Name: "", Commands: []string{c.name}})
 	}
 
-	require.Equal(t, expected, m.Groups)
+	// SE-18 is a structural invariant (section order, per-section command
+	// order). For named groups, strip Desc before comparing — descs are set
+	// separately in buildWiredRegistry and are not part of the assembly
+	// alignment contract. Unnamed ("") sections must never carry a Desc
+	// (they are positional bookmarks), so their full struct is compared
+	// directly: a stray Desc assignment fails here rather than being masked.
+	got := make([]runtime.SchemaGroup, len(m.Groups))
+	for i, g := range m.Groups {
+		if g.Name != "" {
+			got[i] = runtime.SchemaGroup{Name: g.Name, Commands: g.Commands}
+		} else {
+			got[i] = g
+		}
+	}
+	require.Equal(t, expected, got)
 
 	// Position pins: the fixed top-level section leads; the ungrouped-entry
 	// section is a SECOND "" section at its own later position.
@@ -86,6 +104,77 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 	assert.Contains(t, laterUngrouped.Commands, "grant")
 }
 
+// TestSchemaProjectShadowing pins the deliberate collision between the
+// "project" kind and the "project" group. Resolution order is command →
+// kind → group, so rancher schema project returns the kind card, not the
+// group card. The group desc and its members remain in the manifest and
+// the TOC JSON; see root.go groupDescs for the rationale.
+//
+// (c) see-also on the project kind card was considered and declined: the kind
+// card shape has no natural extension point for group membership, and adding
+// special-case logic for one kind would be fragile.
+func TestSchemaProjectShadowing(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+
+	// Precondition: both a "project" kind and a "project" group exist in the
+	// real manifest — if either disappears this test needs revisiting.
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	var hasKind bool
+	for _, k := range m.Kinds {
+		if k.Name == "project" {
+			hasKind = true
+			break
+		}
+	}
+	require.True(t, hasKind, "project kind must exist in the manifest")
+	var hasGroup bool
+	for _, g := range m.Groups {
+		if g.Name == "project" {
+			hasGroup = true
+			break
+		}
+	}
+	require.True(t, hasGroup, "project group must exist in the manifest")
+
+	// rancher schema project → kind card (kind wins at tier 2).
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(context.Background(),
+		[]string{"rancher", "--config", dir, "schema", "project", "-o", "json"}))
+
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	var card map[string]any
+	require.NoError(t, json.Unmarshal(env.Data, &card))
+	assert.Equal(t, "project", card["name"])
+	assert.Contains(t, card, "verbs", "kind card carries verbs; group card does not")
+	assert.NotContains(t, card, "commands", "group card carries commands; kind card does not")
+}
+
+// TestSchemaGroupDescsComplete is the conformance guard for groupDescs in
+// root.go: every named group in the built manifest must carry a non-empty
+// Desc. A group added to buildEntries without a matching groupDescs entry
+// silently ships a desc-less card — Desc has omitempty, renderGroupCard skips
+// an empty desc, the SE-18 structural test strips Desc before comparing, and
+// golden -update would bless the gap. This test turns that silent gap into a
+// build failure at the moment the group is added.
+func TestSchemaGroupDescsComplete(t *testing.T) {
+	m := schemaManifest(t)
+	for _, g := range m.Groups {
+		if g.Name == "" {
+			continue // unnamed sections are positional bookmarks, not selectable
+		}
+		assert.NotEmpty(t, g.Desc,
+			"group %q has no desc — add it to groupDescs in buildWiredRegistry", g.Name)
+	}
+}
+
 // TestSchemaCommandGroupField pins SE-18's informational per-command Group:
 // grouped commands carry their section name; the two positional-root
 // sections' commands carry "".
@@ -100,4 +189,58 @@ func TestSchemaCommandGroupField(t *testing.T) {
 	assert.Equal(t, "auth", byName["auth login"].Group)
 	assert.Equal(t, "", byName["schema"].Group)
 	assert.Equal(t, "", byName["grant"].Group)
+}
+
+// TestSchemaKindGroupCollisionSweep iterates all kind names, keys, and aliases
+// against all named group names, then iterates all single-token command names
+// against the same set. Any overlap must be in the knownShadowings allowlist —
+// a new collision that is not listed here fails the build, forcing the author
+// to make the shadowing deliberate and documented.
+//
+// Resolution order is command → kind → group, so:
+//   - A single-token command name shadowing a group name means the group card
+//     for that name is unreachable (command wins at tier 1).
+//   - A kind identifier shadowing a group name means the group card is
+//     unreachable without --kind (kind wins at tier 2).
+//
+// Currently "project" is the only known collision (kind wins; TestSchemaProject
+// Shadowing pins the behavior). Single-token command × group: zero overlaps.
+func TestSchemaKindGroupCollisionSweep(t *testing.T) {
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+
+	// knownShadowings maps each known collision name to a rationale comment.
+	// Add an entry here whenever a new deliberate collision is introduced —
+	// the test enforces that every collision is reviewed.
+	knownShadowings := map[string]string{
+		"project": "project kind shadows project group at tier 2 (kind wins); group members remain discoverable via bare TOC and --verb filtering; renaming would churn the TOC layout",
+	}
+
+	groupNames := map[string]bool{}
+	for _, g := range m.Groups {
+		if g.Name != "" {
+			groupNames[g.Name] = true
+		}
+	}
+
+	// Tier 2: kind identifiers × group names.
+	for _, k := range m.Kinds {
+		identifiers := append([]string{k.Name, k.Key}, k.Aliases...)
+		for _, id := range identifiers {
+			if groupNames[id] {
+				assert.Contains(t, knownShadowings, id,
+					"kind %q (identifier %q) collides with group %q — add to knownShadowings with a rationale comment",
+					k.Name, id, id)
+			}
+		}
+	}
+
+	// Tier 1: single-token command names × group names (command wins first).
+	for _, c := range m.Commands {
+		if !strings.Contains(c.Name, " ") && groupNames[c.Name] {
+			assert.Contains(t, knownShadowings, c.Name,
+				"command %q collides with group %q — command wins at tier 1, group card unreachable; add to knownShadowings with a rationale comment",
+				c.Name, c.Name)
+		}
+	}
 }

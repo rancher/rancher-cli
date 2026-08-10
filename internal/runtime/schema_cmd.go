@@ -106,6 +106,13 @@ func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView) []string {
 			add(a)
 		}
 	}
+	// Named group selectors — every group name resolves via Execute's third
+	// tier; unnamed ("") sections are not selectable.
+	for _, g := range m.Groups {
+		if g.Name != "" {
+			add(g.Name)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -168,6 +175,18 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	}
 	if k, ok := lookupKind(m.Kinds, want); ok {
 		return Result{Kind: "Schema", Data: newKindView(m, k), Text: renderKindCard(m, k)}, nil
+	}
+	// Resolution order (SE-5/SE-6 extended): group lookup is the THIRD tier —
+	// after command and kind — so a command or kind name always wins a
+	// collision. Named groups only: the unnamed ("") sections are positional
+	// bookmarks, not selectable. The group tier is gated under !asKind: with
+	// --kind set the selector must name a kind; falling through to a group
+	// would contradict "resolve the selector as a kind, not a command".
+	if !asKind {
+		if g, ok := lookupGroup(m.Groups, want); ok {
+			gv := newGroupView(m, g)
+			return Result{Kind: "Schema", Data: gv, Text: renderGroupCard(m, gv)}, nil
+		}
 	}
 	return Result{}, unknownSelection(m, want, asKind)
 }
@@ -312,7 +331,9 @@ func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 
 // filterGroups prunes each ordered section to the retained command names and
 // drops empty sections, preserving relative order (SE-18's consistency rule:
-// the manifest never carries two contradictory command sets).
+// the manifest never carries two contradictory command sets). Desc is
+// intentionally omitted from filtered sections — a filtered section covers
+// only the retained commands, not the full set the group desc was written for.
 func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 	var out []SchemaGroup
 	for _, g := range gs {
@@ -327,6 +348,21 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 		}
 	}
 	return out
+}
+
+// lookupGroup resolves a positional selector against the manifest's named
+// group sections. Unnamed ("") sections are not selectable — they are
+// positional bookmarks, not identifiers.
+func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
+	if want == "" {
+		return SchemaGroup{}, false
+	}
+	for _, g := range gs {
+		if g.Name == want {
+			return g, true
+		}
+	}
+	return SchemaGroup{}, false
 }
 
 // maxNearestMatches caps SE-4's candidate list: a short query can substring-
@@ -406,6 +442,17 @@ func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []str
 		for _, k := range m.Kinds {
 			if kindMatchesSubstring(k, q) {
 				add(k.Name)
+			}
+		}
+	}
+	// Named group selectors are single-token (like kinds) and now directly
+	// resolvable. Include them when neither --kind (groups are not kinds) nor
+	// commandOnly (multi-token query cannot substring-match a group name in a
+	// useful way) is active — consistent with the group-tier guard in Execute.
+	if !kindOnly && !commandOnly {
+		for _, g := range m.Groups {
+			if g.Name != "" && strings.Contains(strings.ToLower(g.Name), q) {
+				add(g.Name)
 			}
 		}
 	}

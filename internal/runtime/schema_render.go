@@ -159,6 +159,34 @@ func gateLine(ct CommandType, destructive, stability string) string {
 	}
 }
 
+// renderGroupCard builds the operator-facing card for one command group:
+// the group name, its desc (when set), bespoke member commands as individual
+// name — usage lines, and generated per-kind commands collapsed to one summary
+// line (reusing generatedCommandNames/countGenerated via groupView.generatedCount
+// so the collapse is consistent with the TOC). Rendered via Result.Text under
+// default/table only; the structured formats keep serving Result.Data.
+func renderGroupCard(m Manifest, gv groupView) string {
+	g := gv.group
+	var b strings.Builder
+	b.WriteString("group: " + g.Name + "\n")
+	b.WriteString(readOnlyLine(m))
+	if g.Desc != "" {
+		b.WriteString(g.Desc + "\n")
+	}
+	hasContent := len(gv.bespoke) > 0 || gv.generatedCount > 0
+	if hasContent {
+		b.WriteString("\ncommands:\n")
+		for _, c := range gv.bespoke {
+			b.WriteString("  " + tocLine(c) + "\n")
+		}
+		if gv.generatedCount > 0 {
+			fmt.Fprintf(&b, "  %s — generated for %d kinds; rancher schema <kind> for any kind's card\n",
+				gv.generatedPattern, gv.generatedCount)
+		}
+	}
+	return b.String()
+}
+
 // renderKindCard builds the operator-facing card for one kind (SE-5):
 // identity (canonical name, key, aliases), the GVR, scope, the namespace
 // policy with the routing flags a named op needs, wait default, traits
@@ -283,37 +311,38 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 	b.WriteString(readOnlyLine(m))
 	blockDone := false
 	for _, g := range m.Groups {
+		bespoke, pGenCount := partitionGroup(g, byName, generated)
 		indent := ""
 		if g.Name != "" {
 			indent = "  "
 		}
-		var lines []string
-		hasGenerated := false
-		for _, name := range g.Commands {
-			if generated[name] {
-				hasGenerated = true
-				continue
-			}
-			c, ok := byName[name]
-			if !ok {
-				c = SchemaCommand{Name: name}
-			}
-			lines = append(lines, indent+tocLine(c))
-		}
-		if hasGenerated && !blockDone {
+		// Render the global generated vocabulary block at the first group that
+		// contains generated commands (SE-9: one collapsed line for all of them).
+		if pGenCount > 0 && !blockDone {
 			blockDone = true
 			fmt.Fprintf(&b, "\nget/patch/delete <kind> — %d generated commands across %d kinds\n",
 				genCount, len(m.Kinds))
 			b.WriteString("  kind view: rancher schema <kind>\n")
 		}
-		if len(lines) > 0 {
-			b.WriteString("\n")
-			if g.Name != "" {
-				b.WriteString(g.Name + ":\n")
+		hasContent := len(bespoke) > 0 || pGenCount > 0
+		if !hasContent {
+			continue
+		}
+		b.WriteString("\n")
+		if g.Name != "" {
+			b.WriteString(g.Name + ":\n")
+		}
+		for _, c := range bespoke {
+			b.WriteString(indent + tocLine(c) + "\n")
+		}
+		// All-generated section: show desc so users know what the section covers,
+		// then a per-group collapsed summary — analogous to the group card's treatment.
+		if len(bespoke) == 0 && pGenCount > 0 {
+			if g.Desc != "" {
+				b.WriteString(indent + g.Desc + "\n")
 			}
-			for _, l := range lines {
-				b.WriteString(l + "\n")
-			}
+			fmt.Fprintf(&b, "%s%s <kind> — generated for %d kinds; rancher schema <kind> for any kind's card\n",
+				indent, g.Name, pGenCount)
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")

@@ -40,8 +40,10 @@ type tocEntry struct {
 }
 
 type tocGroup struct {
-	Name     string     `json:"name,omitempty"`
-	Commands []tocEntry `json:"commands"`
+	Name      string                 `json:"name,omitempty"`
+	Desc      string                 `json:"desc,omitempty"`
+	Commands  []tocEntry             `json:"commands,omitempty"`
+	Generated *groupGeneratedSummary `json:"generated,omitempty"`
 }
 
 // readOnlyJSON is the session read-only pair shared by all three JSON shapes
@@ -81,28 +83,26 @@ func (v tocView) toc() tocJSON {
 		readOnlyJSON:      newReadOnlyJSON(m.ReadOnly, m.ReadOnlySources),
 		CommandCount:      len(m.Commands),
 	}
-	// The bare text TOC collapses generated get/patch/delete <kind>
-	// commands into one summary line instead of listing them; the bare
-	// JSON mirrors both halves — skip them in groups, carry the count
-	// (schema disclosure spec). The filtered TOC never collapses: the matches ARE
-	// the content.
+	// The bare text TOC collapses generated get/patch/delete <kind> commands
+	// into one summary line instead of listing them individually; the bare JSON
+	// mirrors both halves — skip generated in the per-command list, add a
+	// Generated summary to all-generated sections so they remain visible
+	// (schema disclosure spec). The filtered TOC never collapses: the matches
+	// ARE the content.
 	generated := map[string]bool{}
 	if v.bare {
 		generated = generatedCommandNames(m.Kinds)
 	}
 	for _, g := range m.Groups {
-		tg := tocGroup{Name: g.Name}
-		for _, name := range g.Commands {
-			if generated[name] {
-				continue
-			}
-			c, ok := byName[name]
-			if !ok {
-				c = SchemaCommand{Name: name}
-			}
+		bespoke, genCount := partitionGroup(g, byName, generated)
+		tg := tocGroup{Name: g.Name, Desc: g.Desc}
+		for _, c := range bespoke {
 			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage})
 		}
-		if len(tg.Commands) > 0 {
+		if v.bare && genCount > 0 {
+			tg.Generated = &groupGeneratedSummary{Count: genCount, Pattern: g.Name + " <kind>"}
+		}
+		if len(tg.Commands) > 0 || tg.Generated != nil {
 			out.Groups = append(out.Groups, tg)
 		}
 	}
@@ -208,6 +208,106 @@ func (v kindView) Rows() [][]string { return [][]string{{v.kind.Name}} }
 
 func (v kindView) MarshalJSON() ([]byte, error) {
 	return json.Marshal(kindJSON{SchemaKind: v.kind, readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources)})
+}
+
+// groupView is a group selection's Result.Data: the group name, desc, bespoke
+// member commands, and — when the group contains generated per-kind commands
+// — a collapsed count+pattern rather than N per-kind lines. Generated commands
+// are identified via the same generatedCommandNames map the TOC uses, so the
+// two collapse paths are always consistent. The session's read-only state is
+// included, mirroring the other card shapes.
+type groupView struct {
+	group            SchemaGroup
+	bespoke          []SchemaCommand // non-generated members, listed individually
+	generatedCount   int             // 0 for groups with no generated members
+	generatedPattern string          // e.g. "get <kind>"; empty when generatedCount == 0
+	readOnly         bool
+	readOnlySources  []string
+}
+
+// partitionGroup splits g's Commands into bespoke (non-generated) commands
+// and a count of generated per-kind commands. Commands not found in idx fall
+// back to SchemaCommand{Name: name} — consistent with tocView.toc() and
+// renderTOCText, so no member is silently dropped. The caller builds both
+// maps once per manifest and passes them in to avoid per-group recomputation.
+func partitionGroup(g SchemaGroup, idx map[string]SchemaCommand, generated map[string]bool) (bespoke []SchemaCommand, genCount int) {
+	for _, name := range g.Commands {
+		if generated[name] {
+			genCount++
+			continue
+		}
+		c, ok := idx[name]
+		if !ok {
+			c = SchemaCommand{Name: name}
+		}
+		bespoke = append(bespoke, c)
+	}
+	return
+}
+
+// newGroupView splits g's members into bespoke and generated using the shared
+// partitionGroup helper, ensuring text and JSON cards are consistent with the
+// TOC. partitionGroup falls back to SchemaCommand{Name: name} for unknown
+// members — matching tocView.toc()/renderTOCText — so no member is silently
+// dropped.
+func newGroupView(m Manifest, g SchemaGroup) groupView {
+	generated := generatedCommandNames(m.Kinds)
+	idx := commandIndex(m.Commands)
+	bespoke, genCount := partitionGroup(g, idx, generated)
+	pattern := ""
+	if genCount > 0 {
+		pattern = g.Name + " <kind>"
+	}
+	return groupView{
+		group:            g,
+		bespoke:          bespoke,
+		generatedCount:   genCount,
+		generatedPattern: pattern,
+		readOnly:         m.ReadOnly,
+		readOnlySources:  m.ReadOnlySources,
+	}
+}
+
+// groupGeneratedSummary is the collapsed representation of per-kind generated
+// commands in the group card's JSON shape — mirrors the TOC's
+// GeneratedCommandCount/Kinds treatment at the per-group level.
+type groupGeneratedSummary struct {
+	Count   int    `json:"count"`
+	Pattern string `json:"pattern"`
+}
+
+// groupJSON is the typed marshal shape for a group selection: name, desc,
+// bespoke commands as {name,usage} pairs reusing tocEntry (byte-identical to
+// the TOC's per-entry shape), an optional generated summary, and the session
+// read-only state — consistent with cardJSON and kindJSON.
+type groupJSON struct {
+	Name      string                 `json:"name"`
+	Desc      string                 `json:"desc,omitempty"`
+	Commands  []tocEntry             `json:"commands"`
+	Generated *groupGeneratedSummary `json:"generated,omitempty"`
+	readOnlyJSON
+}
+
+func (v groupView) Columns() []string { return []string{"NAME"} }
+
+func (v groupView) Rows() [][]string { return [][]string{{v.group.Name}} }
+
+func (v groupView) MarshalJSON() ([]byte, error) {
+	entries := make([]tocEntry, len(v.bespoke))
+	for i, c := range v.bespoke {
+		entries[i] = tocEntry{Name: c.Name, Usage: c.Usage}
+	}
+	var gen *groupGeneratedSummary
+	if v.generatedCount > 0 {
+		gen = &groupGeneratedSummary{Count: v.generatedCount, Pattern: v.generatedPattern}
+	}
+	return json.Marshal(groupJSON{
+		Name:         v.group.Name,
+		Desc:         v.group.Desc,
+		Commands:     entries,
+		Generated:    gen,
+		readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources),
+	})
 }
 
 // commandNames lists m's command names in manifest order — the bare and

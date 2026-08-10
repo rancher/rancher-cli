@@ -340,7 +340,9 @@ func tocManifest() Manifest {
 // command, with generated get/patch/delete collapsed into ONE kind-vocabulary
 // block at the position of the first generated command's group, counts
 // derived from the manifest, a version+counts header, and the exit-code +
-// `-o json` footer.
+// `-o json` footer. All-generated sections (patch in this fixture) still
+// render their header and a per-group collapsed summary line so they are
+// discoverable; they do NOT produce a second vocabulary block.
 func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	t.Parallel()
 	text := renderTOC(tocManifest())
@@ -363,6 +365,8 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	getHdrAt := idx("get:")
 	kvAt := idx("  get kubernetes-versions — List installable versions")
 	grantAt := idx("grant — Grant a role")
+	patchHdrAt := idx("patch:")
+	patchSummaryAt := idx("  patch <kind> — generated for 1 kinds; rancher schema <kind> for any kind's card")
 	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
 	pointerAt := idx("full manifest: rancher schema --all -o json")
 
@@ -374,12 +378,13 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	assert.Less(t, blockPointerAt, getHdrAt, "the generated group's own non-generated commands follow the block")
 	assert.Less(t, getHdrAt, kvAt)
 	assert.Less(t, kvAt, grantAt, "the later unnamed section renders at its own position")
-	assert.Less(t, grantAt, stripAt)
+	assert.Less(t, grantAt, patchHdrAt, "all-generated section renders after the unnamed section")
+	assert.Equal(t, patchHdrAt+1, patchSummaryAt, "collapsed summary immediately follows the section header")
+	assert.Less(t, patchSummaryAt, stripAt)
 	assert.Less(t, stripAt, pointerAt)
 
-	assert.NotContains(t, lines, "  get pod — List pods", "generated commands collapse into the block")
-	assert.NotContains(t, lines, "patch:", "a fully generated section renders nothing of its own")
-	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one vocabulary block")
+	assert.NotContains(t, lines, "  get pod — List pods", "generated commands collapse into the block, not individual lines")
+	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one global vocabulary block")
 }
 
 // TestSchemaSearchFragment covers SE-11's fragment rendering: a match visible

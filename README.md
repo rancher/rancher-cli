@@ -175,7 +175,7 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 | `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
 | `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
 | `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
-| `schema [command\|kind] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability (`--kind` forces the kind reading on a name collision); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` emits the TOC as JSON; `--all -o json` is the full manifest |
+| `schema [command\|kind\|group] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability; `<group>`: group card with member commands and descriptions (resolution order: command → kind → group; `--kind` forces the kind reading); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` emits the TOC as JSON; `--all -o json` is the full manifest |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 | `skill install [--agent <claude\|codex\|copilot\|agents\|all>] [--scope <user\|project>] [--force]` | Install the rancher agents skill into coding-agent harnesses |
 | `skill uninstall [--agent AGENT] [--scope SCOPE]` | Remove rancher-installed agents skills (only exact owner-marked installations) |
@@ -342,10 +342,12 @@ Every command emits one JSON document per invocation under `-o json` — an
   `gates`, `successExitCodes`, and (for server ops) `contract`/`stability`,
   as one document. The schema manifest is the single source for contract and
   stability — these fields are NOT in Effect or Result envelopes.
-  `rancher schema <command|kind>` narrows to one command (e.g.
-  `rancher schema get pod`) or one kind (e.g.
-  `rancher schema clusterregistrationtoken`) — a name that is both
-  (`kubeconfig`) resolves as the command; `--kind` forces the kind reading.
+  `rancher schema <command|kind|group>` narrows to one command (e.g.
+  `rancher schema get pod`), one kind (e.g.
+  `rancher schema clusterregistrationtoken`), or one group (e.g.
+  `rancher schema auth`) — resolution order is command → kind → group; a name
+  that is both a command and a kind (`kubeconfig`) resolves as the command;
+  `--kind` forces the kind reading.
   `--verb`, `--destructive`, `--contract`, `--mutating`, and `--search <term>`
   filter the whole surface instead (they don't combine with a selector);
   zero hits still exit `0`. Under the default format, bare `schema` prints

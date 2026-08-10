@@ -69,13 +69,24 @@ func groupCommandNames(t *testing.T, toc map[string]any) []string {
 	for _, g := range groups {
 		gm, ok := g.(map[string]any)
 		require.True(t, ok, "group must be a JSON object")
-		for _, e := range gm["commands"].([]any) {
+		// All-generated groups carry no commands key (omitempty); use a
+		// nil-safe assertion so they contribute zero names rather than panic.
+		cmds, _ := gm["commands"].([]any)
+		for _, e := range cmds {
 			em, ok := e.(map[string]any)
 			require.True(t, ok, "command entry must be a JSON object")
 			out = append(out, em["name"].(string))
 		}
 	}
 	return out
+}
+
+// viewGroup extracts the groupView a group-selection Result carries as Data.
+func viewGroup(t *testing.T, res Result) groupView {
+	t.Helper()
+	v, ok := res.Data.(groupView)
+	require.True(t, ok, "schema Result.Data must be groupView for group selections, got %T", res.Data)
+	return v
 }
 
 // viewKind extracts the SchemaKind from the kindView a kind-selection Result carries as Data.
@@ -1054,6 +1065,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 		"commands only":         cardRegistry(),
 		"kinds plus collision":  kindRegistry(),
 		"aliased verb commands": completionRegistry(),
+		"groups":                groupCardRegistry(),
 	}
 	for name, reg := range regs {
 		t.Run(name, func(t *testing.T) {
@@ -1070,6 +1082,8 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 					assert.NotEmpty(t, cv.cmd.Name, "candidate %q must resolve to a named command", cand)
 				} else if kv, ok := res.Data.(kindView); ok {
 					assert.NotEmpty(t, kv.kind.Name, "candidate %q must select one kind", cand)
+				} else if gv, ok := res.Data.(groupView); ok {
+					assert.NotEmpty(t, gv.group.Name, "candidate %q must select one group", cand)
 				} else {
 					t.Fatalf("unexpected view type %T for candidate %q", res.Data, cand)
 				}
@@ -1155,4 +1169,351 @@ func TestSchemaPositionalCompletionShape(t *testing.T) {
 		assert.Contains(t, cands, want, "kind names, aliases, and keys are bare-token candidates")
 	}
 	assert.Equal(t, 1, counts["kubeconfig"], "the command/kind collision dedupes to one candidate")
+}
+
+// groupCardRegistry builds a registry with two named groups — enough surface
+// to exercise group card resolution, structured output, and completion.
+func groupCardRegistry() *Registry {
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "create project", Usage: "Create a project", CommandType: ReadOnly,
+	}})
+	reg.Register(fakeRead{d: Descriptor{
+		Name:        "create resource",
+		Usage:       "Create a resource from a manifest file or stdin",
+		CommandType: ReadOnly,
+	}})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "auth login", Usage: "Log in to a Rancher server", CommandType: ReadOnly,
+	}})
+	reg.SetGroups([]SchemaGroup{
+		{
+			Name:     "create",
+			Desc:     "Create Rancher resources. `create resource -f <file|->` is the generic path for any kind the kind table knows — one document per invocation.",
+			Commands: []string{"create project", "create resource"},
+		},
+		{
+			Name:     "auth",
+			Desc:     "Authenticate with a Rancher server and manage API tokens.",
+			Commands: []string{"auth login"},
+		},
+	})
+	return reg
+}
+
+// TestSchemaGroupCardResolution covers the group card path: a positional that
+// names a group (and matches no command or kind) resolves to a group card.
+// Text carries the group name, desc, and member commands; JSON shape is
+// {name, desc, commands:[{name,usage}], readOnly, readOnlySources}.
+func TestSchemaGroupCardResolution(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+
+	t.Run("group name resolves to group card text", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(res.Text, "group: create\n"),
+			"group card text starts with the group name line")
+		assert.Contains(t, res.Text, "create resource -f", "create desc mentions the generic -f path")
+		assert.Contains(t, res.Text, "create project", "member command listed")
+		assert.Contains(t, res.Text, "create resource", "member command listed")
+	})
+
+	t.Run("group card JSON shape", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		require.NoError(t, err)
+		gv := viewGroup(t, res)
+		b, err := json.Marshal(gv)
+		require.NoError(t, err)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(b, &got))
+		assert.Equal(t, "create", got["name"])
+		desc, _ := got["desc"].(string)
+		assert.NotEmpty(t, desc, "desc present in group JSON")
+		assert.Contains(t, desc, "create resource -f", "create desc mentions the generic -f path")
+		cmds, ok := got["commands"].([]any)
+		require.True(t, ok, "commands must be a JSON array")
+		assert.Len(t, cmds, 2)
+		var names []string
+		for i, e := range cmds {
+			em, ok := e.(map[string]any)
+			require.True(t, ok, "cmds[%d] must be a JSON object", i)
+			name, ok := em["name"].(string)
+			require.True(t, ok, "cmds[%d].name must be a string", i)
+			names = append(names, name)
+		}
+		assert.Equal(t, []string{"create project", "create resource"}, names,
+			"commands in registration order")
+		_, hasReadOnly := got["readOnly"]
+		assert.True(t, hasReadOnly, "readOnly present in group JSON (mirrors card and kind views)")
+	})
+
+	t.Run("Result.Kind is Schema", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Schema", res.Kind)
+		gv := viewGroup(t, res)
+		assert.Equal(t, "auth", gv.group.Name)
+	})
+}
+
+// TestSchemaGroupResolutionPrecedence covers the resolution-order contract:
+// command match wins over a same-name group; kind match wins over a same-name
+// group. Group lookup is the third tier — after command and kind.
+func TestSchemaGroupResolutionPrecedence(t *testing.T) {
+	t.Parallel()
+
+	t.Run("command wins over same-name group", func(t *testing.T) {
+		t.Parallel()
+		reg := NewRegistry(stubResolver{})
+		reg.Register(fakeRead{d: Descriptor{Name: "auth", Usage: "Auth command", CommandType: Local}})
+		reg.Register(fakeRead{d: Descriptor{Name: "auth login", Usage: "Log in", CommandType: ReadOnly}})
+		reg.SetGroups([]SchemaGroup{
+			{Name: "auth", Desc: "Auth group", Commands: []string{"auth login"}},
+			{Name: "", Commands: []string{"auth"}},
+		})
+		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		require.NoError(t, err)
+		_, isCard := res.Data.(cardView)
+		assert.True(t, isCard, "command wins: must resolve to command card, not group card")
+	})
+
+	t.Run("kind wins over same-name group", func(t *testing.T) {
+		t.Parallel()
+		reg := NewRegistry(stubResolver{})
+		reg.Register(fakeRead{d: Descriptor{
+			Name: "create project", Usage: "Create a project", CommandType: ReadOnly,
+		}})
+		reg.SetKinds([]SchemaKind{{
+			Name: "create", Key: "create", Resource: "creates",
+			Scope: "management", NamespacePolicy: "none",
+			Verbs: map[string]VerbState{"get": {State: VerbAbsent}},
+		}})
+		reg.SetGroups([]SchemaGroup{
+			{Name: "create", Desc: "Create group", Commands: []string{"create project"}},
+		})
+		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		require.NoError(t, err)
+		_, isKind := res.Data.(kindView)
+		assert.True(t, isKind, "kind wins: must resolve to kind card, not group card")
+	})
+}
+
+// TestSchemaGroupKindFlagBlocksGroupResolution pins finding 1 of the
+// independent review: --kind forces the kind-only interpretation, so a
+// group-only selector with --kind must return kind-not-found (the kindOnly
+// unknownSelection path), never fall through to the group tier.
+// A positive case (kind selector + --kind) is already covered by
+// TestSchemaSelectionCommandWinsCollision ("--kind flips the collision").
+func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+
+	t.Run("group-only selector with --kind → kind-not-found VALIDATION", func(t *testing.T) {
+		t.Parallel()
+		_, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"auth"}, flags: map[string]bool{"kind": true}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, "auth", "selector named in the error")
+	})
+
+	t.Run("group selector without --kind still resolves to group card", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"auth"}}, nil)
+		require.NoError(t, err)
+		_, isGroup := res.Data.(groupView)
+		assert.True(t, isGroup, "without --kind: group selector returns group card")
+	})
+}
+
+// TestSchemaUnknownSelectionSuggestsGroups covers SE-4's nearest-match
+// extension: a partial selector that substring-matches a group name returns
+// the group as a candidate alongside command candidates. --kind excludes
+// groups from the candidate set (consistent with the group-tier guard).
+func TestSchemaUnknownSelectionSuggestsGroups(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+
+	t.Run("partial group name appears in candidates", func(t *testing.T) {
+		t.Parallel()
+		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"aut"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		var found bool
+		for _, cand := range ce.Candidates {
+			if cand.ID == "auth" {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, `candidate "auth" must appear in nearest matches for "aut"`)
+	})
+
+	t.Run("--kind excludes groups from candidates", func(t *testing.T) {
+		t.Parallel()
+		_, err := cmd.(ReadCommand).Execute(context.Background(),
+			tin{a: []string{"aut"}, flags: map[string]bool{"kind": true}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		for _, cand := range ce.Candidates {
+			assert.NotEqual(t, "auth", cand.ID, "groups excluded from candidates under --kind")
+		}
+	})
+}
+
+// mixedGroupRegistry builds a registry whose "get" group contains both a
+// bespoke command and generated per-kind commands — enough to pin the
+// collapse behavior in text and JSON.
+func mixedGroupRegistry() *Registry {
+	ks := []SchemaKind{
+		{
+			Name: "pod", Key: "pod", Resource: "pods",
+			Scope: "downstream", NamespacePolicy: "plain",
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Contract: "internal", Stability: "beta"}},
+		},
+		{
+			Name: "cluster", Key: "managementcluster", Resource: "clusters",
+			Scope: "management", NamespacePolicy: "none",
+			Verbs: map[string]VerbState{"get": {State: VerbAvailable, Contract: "internal", Stability: "beta"}},
+		},
+	}
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{
+		Name: "get cloud-credential", Usage: "Get a cloud credential", CommandType: ReadOnly,
+	}})
+	for _, k := range ks {
+		k := k
+		reg.Register(fakeRead{d: Descriptor{Name: "get " + k.Name, CommandType: ReadOnly}})
+	}
+	reg.SetKinds(ks)
+	reg.SetGroups([]SchemaGroup{
+		{
+			Name:     "get",
+			Desc:     "Fetch resources.",
+			Commands: []string{"get cloud-credential", "get pod", "get cluster"},
+		},
+	})
+	return reg
+}
+
+// TestSchemaGroupCardCollapsesGeneratedCommands pins finding 2 of the
+// independent review: the group card reuses the TOC's generated-command
+// collapse — bespoke commands listed individually; generated per-kind
+// commands collapsed to one summary line. Both text and JSON are covered.
+func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
+	t.Parallel()
+
+	t.Run("text lists bespoke and collapses generated", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		require.NoError(t, err)
+		assert.Contains(t, res.Text, "get cloud-credential", "bespoke command listed")
+		assert.Contains(t, res.Text, "Get a cloud credential", "bespoke usage listed")
+		assert.Contains(t, res.Text, "get <kind>", "generated commands collapsed to pattern")
+		assert.Contains(t, res.Text, "generated for 2 kinds", "count in collapsed line")
+		assert.NotContains(t, res.Text, "\n  get pod\n", "generated command not expanded")
+		assert.NotContains(t, res.Text, "\n  get cluster\n", "generated command not expanded")
+	})
+
+	t.Run("JSON has bespoke commands array + generated summary", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		require.NoError(t, err)
+		gv := viewGroup(t, res)
+		b, err := json.Marshal(gv)
+		require.NoError(t, err)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(b, &got))
+		cmds, ok := got["commands"].([]any)
+		require.True(t, ok, "commands must be a JSON array")
+		assert.Len(t, cmds, 1, "only bespoke commands in the commands array")
+		em, ok := cmds[0].(map[string]any)
+		require.True(t, ok, "command entry must be a JSON object")
+		assert.Equal(t, "get cloud-credential", em["name"])
+		gen, ok := got["generated"].(map[string]any)
+		require.True(t, ok, "generated summary must be present in JSON")
+		assert.Equal(t, float64(2), gen["count"], "generated count")
+		assert.Equal(t, "get <kind>", gen["pattern"], "generated pattern")
+	})
+
+	t.Run("all-bespoke group has no generated key in JSON", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		require.NoError(t, err)
+		gv := viewGroup(t, res)
+		b, err := json.Marshal(gv)
+		require.NoError(t, err)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(b, &got))
+		assert.NotContains(t, got, "generated", "all-bespoke group omits generated key")
+		cmds, ok := got["commands"].([]any)
+		require.True(t, ok)
+		assert.Len(t, cmds, 1, "auth group has one bespoke command")
+	})
+
+	t.Run("size sanity: mixed get-group card stays small", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		require.NoError(t, err)
+		lines := strings.Split(strings.TrimRight(res.Text, "\n"), "\n")
+		assert.Less(t, len(lines), 15, "group card stays compact even with many generated commands")
+	})
+}
+
+// TestSchemaGroupCompletionCandidates covers SE-12 for groups: every named
+// group is offered as a completion candidate, unnamed ("") sections are not,
+// and every group candidate resolves through Execute.
+func TestSchemaGroupCompletionCandidates(t *testing.T) {
+	t.Parallel()
+	reg := groupCardRegistry()
+	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+	sc, ok := cmd.(ShellCompleter)
+	require.True(t, ok)
+
+	cands := sc.CompleteArgs(context.Background(), nil)
+	assert.Contains(t, cands, "create", "named group is a completion candidate")
+	assert.Contains(t, cands, "auth", "named group is a completion candidate")
+
+	for _, cand := range cands {
+		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: strings.Fields(cand)}, nil)
+		require.NoError(t, err, "candidate %q must resolve", cand)
+		switch res.Data.(type) {
+		case cardView, kindView, groupView:
+			// all valid view types
+		default:
+			t.Fatalf("unexpected view type %T for candidate %q", res.Data, cand)
+		}
+	}
+}
+
+// TestSchemaFilterGroupsStripsDesc verifies that filterGroups omits Desc from
+// filtered sections. A filtered section covers only the retained commands, not
+// the full set the group desc was written for — carrying the desc would mislead
+// a reader whose filter pruned the commands the desc describes.
+func TestSchemaFilterGroupsStripsDesc(t *testing.T) {
+	gs := []SchemaGroup{
+		{Name: "auth", Desc: "Auth group desc", Commands: []string{"auth login", "auth logout"}},
+		{Name: "", Desc: "Should also strip", Commands: []string{"schema"}},
+	}
+	keep := map[string]bool{"auth login": true, "schema": true}
+	got := filterGroups(gs, keep)
+	require.Len(t, got, 2)
+	assert.Empty(t, got[0].Desc, "named section Desc must be stripped on the filtered path")
+	assert.Empty(t, got[1].Desc, "unnamed section Desc must be stripped on the filtered path")
+	assert.Equal(t, []string{"auth login"}, got[0].Commands)
+	assert.Equal(t, []string{"schema"}, got[1].Commands)
 }

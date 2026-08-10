@@ -55,6 +55,7 @@
           "usage": "Delete cached exec-credential token(s)"
         }
       ],
+      "desc": "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
       "name": "auth"
     },
     {
@@ -100,6 +101,7 @@
           "usage": "Configure live shell completion (network on/off, timeout)"
         }
       ],
+      "desc": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
       "name": "config"
     },
     {
@@ -117,6 +119,7 @@
           "usage": "Report installed skill versions and integrity per harness"
         }
       ],
+      "desc": "Install, remove, and inspect agent skills packaged with this CLI.",
       "name": "skill"
     },
     {
@@ -154,6 +157,7 @@
           "usage": "Create a machine config for a node-driver cluster pool"
         }
       ],
+      "desc": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
       "name": "create"
     },
     {
@@ -167,6 +171,7 @@
           "usage": "Remove a namespace from a project"
         }
       ],
+      "desc": "Manage project membership: add or remove downstream namespaces from a Rancher project.",
       "name": "project"
     },
     {
@@ -188,6 +193,7 @@
           "usage": "Inspect a project: namespaces, members, quota, and usage"
         }
       ],
+      "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
       "name": "inspect"
     },
     {
@@ -201,6 +207,11 @@
           "usage": "List available Kubernetes versions (rke2/k3s)"
         }
       ],
+      "desc": "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+      "generated": {
+        "count": 48,
+        "pattern": "get <kind>"
+      },
       "name": "get"
     },
     {
@@ -238,6 +249,22 @@
           "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
         }
       ]
+    },
+    {
+      "desc": "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+      "generated": {
+        "count": 48,
+        "pattern": "patch <kind>"
+      },
+      "name": "patch"
+    },
+    {
+      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+      "generated": {
+        "count": 30,
+        "pattern": "delete <kind>"
+      },
+      "name": "delete"
     }
   ],
   "kindCount": 48,
