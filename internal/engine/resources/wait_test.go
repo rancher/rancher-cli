@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -662,21 +663,30 @@ func TestSettledAbsentFieldIsSettled(t *testing.T) {
 // a sub-second-old object and a future creationTimestamp (server/client clock
 // skew) both render "immediately after creation" instead of "0s after creation"
 // or a negative duration.
+//
+// The synctest bubble makes the elapsed time deterministic. Two real-clock
+// hazards force its shape: creationTimestamp survives serialization only at
+// second precision, so the stamp must land on a whole second (the bubble
+// clock starts on one) or truncation inflates elapsed to 1s; and the age must
+// come from advancing the clock after stamping, not from back-dating the
+// stamp.
 func TestFreshSuccessWarningElapsedFormatting(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		subSecond := multiConditionObj([3]string{"Ready", "True", ""})
+		subSecond.SetCreationTimestamp(metav1.NewTime(time.Now()))
+		time.Sleep(100 * time.Millisecond)
+		w := freshSuccessWarning(subSecond, "gitrepo", "repo-1", "")
+		assert.Contains(t, w, "immediately after creation",
+			"sub-second elapsed must render as 'immediately after creation'")
+		assert.NotContains(t, w, "0s after creation")
 
-	subSecond := multiConditionObj([3]string{"Ready", "True", ""})
-	subSecond.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-100 * time.Millisecond)))
-	w := freshSuccessWarning(subSecond, "gitrepo", "repo-1", "")
-	assert.Contains(t, w, "immediately after creation",
-		"sub-second elapsed must render as 'immediately after creation'")
-	assert.NotContains(t, w, "0s after creation")
-
-	skewed := multiConditionObj([3]string{"Ready", "True", ""})
-	skewed.SetCreationTimestamp(metav1.NewTime(time.Now().Add(5 * time.Second)))
-	w2 := freshSuccessWarning(skewed, "gitrepo", "repo-1", "")
-	assert.Contains(t, w2, "immediately after creation",
-		"future creationTimestamp (clock skew) must render as 'immediately after creation'")
+		skewed := multiConditionObj([3]string{"Ready", "True", ""})
+		skewed.SetCreationTimestamp(metav1.NewTime(time.Now().Add(5 * time.Second)))
+		w2 := freshSuccessWarning(skewed, "gitrepo", "repo-1", "")
+		assert.Contains(t, w2, "immediately after creation",
+			"future creationTimestamp (clock skew) must render as 'immediately after creation'")
+	})
 }
 
 // TestFreshSuccessWarning pins the advisory covering the window generation
