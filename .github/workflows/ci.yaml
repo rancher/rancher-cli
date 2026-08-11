@@ -26,6 +26,10 @@ jobs:
           go-version-file: go.mod
       - uses: ./.github/actions/setup-tools
       - run: make validate
+      - name: Shellcheck installer scripts
+        run: |
+          for f in install.sh scripts/check-release-tag; do sh -n "$f"; done
+          shellcheck --shell=sh install.sh scripts/check-release-tag
 
   # Compile-check every release platform so an arch-specific break (endian,
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must

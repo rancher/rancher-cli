@@ -21,6 +21,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Enforce release tag grammar
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./scripts/check-release-tag "$TAG"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -38,6 +42,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           mkdir -p dist
+          # Asset names must match install.sh's CLI_ASSET/HELPER_ASSET construction — the two lists stay in lockstep.
           for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
             goos="${platform%/*}"
             goarch="${platform#*/}"
@@ -47,11 +52,17 @@ jobs:
             mv "bin/rancher${ext}" "dist/rancher-${goos}-${goarch}${ext}"
             mv "bin/rancher-credential-vault${ext}" "dist/rancher-credential-vault-${goos}-${goarch}${ext}"
           done
+          # install.sh ships as a versioned release asset too: checksummed
+          # and attested like the binaries. raw@main stays the canonical
+          # living copy; this is the pinned, auditable one.
+          cp install.sh dist/
           (cd dist && sha256sum -- * > SHA256SUMS)
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
-          subject-path: dist/rancher-*
+          subject-path: |
+            dist/rancher-*
+            dist/install.sh
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}

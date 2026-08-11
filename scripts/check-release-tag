@@ -1,0 +1,14 @@
+#!/bin/sh
+# Validates a release tag against the project tag grammar — deliberately
+# narrower than SemVer: no leading zeros, prerelease only (alpha|beta|rc).N,
+# no build metadata, no slash. install.sh carries a byte-identical copy of
+# this regex (it is downloaded standalone and cannot source this file); a Go
+# test asserts the two stay identical.
+set -eu
+[ $# -eq 1 ] || { echo "usage: check-release-tag <tag>" >&2; exit 2; }
+TAG_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?$'
+if printf '%s' "$1" | grep -Eq "$TAG_RE"; then
+  exit 0
+fi
+echo "error: tag '$1' violates the release tag grammar (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)" >&2
+exit 1
