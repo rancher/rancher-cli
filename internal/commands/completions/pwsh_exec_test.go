@@ -272,8 +272,10 @@ func buildRancherRecorder(t *testing.T) string {
 // the recorder captures argv so the test asserts the EXACT argv vector and
 // order - not just that some element matches. That catches whitespace
 // splitting, a duplicated or retained token, or any other surrounding-argv
-// corruption. The in-progress word "po" must be dropped, leaving exactly
-// [get, <payload>, --generate-shell-completion].
+// corruption. The in-progress word "po" moves into the
+// --rancher-completion-cur field, leaving exactly the v2 vector
+// [--rancher-completion-proto=2, get, <payload>,
+// --rancher-completion-cur=po, --generate-shell-completion].
 func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
 	shell, ok := findPowerShell(t)
 	if !ok {
@@ -291,7 +293,12 @@ func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
 	// content as one argument. Spaces + a $(...) make split-or-eval visible.
 	payload := "a b $(Get-Date)"
 	line := "rancher get '" + payload + "' po"
-	want := []string{"get", payload, "--generate-shell-completion"}
+	want := []string{
+		"--rancher-completion-proto=2",
+		"get", payload,
+		"--rancher-completion-cur=po",
+		"--generate-shell-completion",
+	}
 
 	driver := fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'

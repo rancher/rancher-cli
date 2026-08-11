@@ -34,8 +34,10 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
         $tokens = @(foreach ($element in $inRange) {
             if ($null -ne $element.Value) { $element.Value.ToString() } else { $element.Extent.Text }
         })
+        $lastInRangeText = $inRange[$inRange.Count - 1].Extent.Text
     } else {
         $tokens = @('rancher', $wordToComplete)
+        $lastInRangeText = $null
     }
 
     # Protocol v2: self-prefixed current-word field (round-5 collapse-proof encoding).
@@ -46,16 +48,31 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     # trailing whitespace, so $wordToComplete is '' when cursor is after a space.
     # When empty, every AST token after the binary is a completed word; when non-empty,
     # the final AST token is the current (partial) word and must be excluded.
-    $middle = if ([string]::IsNullOrEmpty($wordToComplete)) {
-        if ($tokens.Count -gt 1) { @($tokens[1..($tokens.Count - 1)]) } else { @() }
+    # The whole if-expression is wrapped in @(): PowerShell unrolls a
+    # single-element array result of an if-expression to a bare String, and
+    # splatting a String enumerates its CHARACTERS — "get" would reach the
+    # binary as three arguments g, e, t. The outer @() re-wraps every branch.
+    $middle = @(if ([string]::IsNullOrEmpty($wordToComplete)) {
+        if ($tokens.Count -gt 1) { $tokens[1..($tokens.Count - 1)] }
     } else {
-        if ($tokens.Count -gt 2) { @($tokens[1..($tokens.Count - 2)]) } else { @() }
-    }
+        if ($tokens.Count -gt 2) { $tokens[1..($tokens.Count - 2)] }
+    })
     $cur = if ($null -ne $wordToComplete) { $wordToComplete } else { '' }
+    # A -Native completer receives the current word's RAW extent text, so a
+    # quoted word arrives WITH its quotes ('a b c'). The parser's .Value —
+    # already collected into $tokens — is the unquoted form the binary must
+    # see. Applied only when the last in-range element is the current word
+    # (extent text matches), so a mid-word cursor or the no-AST fallback
+    # keeps the raw text.
+    if (-not [string]::IsNullOrEmpty($cur) -and $lastInRangeText -eq $wordToComplete) {
+        $cur = $tokens[$tokens.Count - 1]
+    }
     # "--rancher-completion-cur=$cur" is one token even when $cur is "".
     $currentWordToken = "--rancher-completion-cur=$cur"
 
-    $escapedWord = [System.Management.Automation.WildcardPattern]::Escape($wordToComplete)
+    # Match against the unquoted current word: the raw $wordToComplete keeps
+    # its quotes, and a quoted word can never prefix-match a candidate.
+    $escapedWord = [System.Management.Automation.WildcardPattern]::Escape($cur)
 
     & $exe '--rancher-completion-proto=2' @middle $currentWordToken '--generate-shell-completion' 2>$null | ForEach-Object {
         $parts = $_.Split(':', 2)
