@@ -37,21 +37,27 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 	lines := make(chan string, 32)
 	wait := make(chan error, 1)
 
+	// One goroutine, strictly ordered: drain stdout to EOF, only then Wait.
+	// Wait closes the StdoutPipe when the process exits, so a concurrent
+	// Wait races the scanner and can kill it mid-drain ("read |0: file
+	// already closed"), silently dropping the child's final lines — the
+	// os/exec-documented misuse this harness shipped with, caught in CI by
+	// the in-band scanner-error instrumentation.
 	go func() {
-		defer close(lines)
 		sc := bufio.NewScanner(out)
 		for sc.Scan() {
 			lines <- sc.Text()
 		}
-		// A scanner read error closes the lines channel while the child may
-		// still be running — indistinguishable from a silent child exit.
+		// A scanner read error would close the lines channel while the child
+		// may still be running — indistinguishable from a silent child exit.
 		// Surface it as an in-band line so whatever assertion trips next
 		// names the real cause.
 		if err := sc.Err(); err != nil {
 			lines <- "scanner-error: " + err.Error()
 		}
+		close(lines)
+		wait <- cmd.Wait()
 	}()
-	go func() { wait <- cmd.Wait() }()
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	return lines, wait
