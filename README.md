@@ -66,6 +66,64 @@ standard: install it into any skill-supporting harness — Claude Code
 (`~/.claude/skills/rancher/`) and GitHub Copilot CLI both load it natively —
 or point any other agent's instructions file at it.
 
+### Install
+
+    (
+      t="$(mktemp)" || exit 1
+      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
+      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+      curl --proto '=https' --tlsv1.2 -fsSL \
+        -o "$t" \
+        https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
+        && sh "$t"
+    )
+
+Installs the `rancher` CLI and its credential helper to `~/.local/bin`
+(rootless, no shell-profile edits; the script prints the PATH line if
+needed). Checksums are always verified; build provenance is verified
+when an authenticated `gh` CLI is available. Flags (append to the
+`sh "$t"` line): `--version <tag>` pins a release (`RANCHER_CLI_VERSION`
+env twin; flag wins), `--pre` selects the newest prerelease,
+`--bin-dir <dir>` overrides the destination (`RANCHER_CLI_INSTALL_BIN_DIR`
+env twin), `--verify-attestation` makes provenance verification
+mandatory, `--dry-run` prints the plan without writing anything, `-q`
+suppresses progress notes. Set `GH_TOKEN` or `GITHUB_TOKEN` for
+internal or rate-limited use — the token travels via stdin to curl and
+never appears in process arguments.
+
+While the repository is internal, the anonymous fetch fails — use the
+authenticated bootstrap (same subshell, token passed to curl via
+`--config -` on stdin so it never appears in process arguments):
+
+    (
+      t="$(mktemp)" || exit 1
+      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
+      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+      printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | \
+        curl --config - --proto '=https' --tlsv1.2 -fsSL \
+          -o "$t" \
+          https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
+        && GH_TOKEN="$GH_TOKEN" sh "$t"
+    )
+
+Uninstall: remove the `rancher` and `rancher-credential-vault`
+symlinks from your bin dir, `~/.local/share/rancher-cli`, and
+`~/.config/rancher-cli/install-receipt.json`.
+
+Manual download: grab the assets for your platform from the releases
+page, check them against `SHA256SUMS`, and (optionally) verify
+provenance with `gh attestation verify <file> --repo
+rancher/rancher-cli --signer-workflow
+rancher/rancher-cli/.github/workflows/release.yaml`.
+
+Each release also carries a pinned copy of `install.sh` as an asset
+(checksummed and attested); the URL above always serves the current
+copy from `main`.
+
+To update, rerun the install command — resolution finds the newer
+release and the switch is atomic. To downgrade or roll back, rerun
+with `--version <tag>`.
+
 ### Shell completion
 
     source <(rancher completion bash)   # ~/.bashrc
