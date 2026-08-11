@@ -6,6 +6,12 @@
 #
 # Source this to enable completion:
 #   source <(rancher completion bash)
+#
+# Minimum supported shell: bash 3.2 (macOS stock) with the bash-completion
+# package (1.2+) providing _get_comp_words_by_ref; when bash-completion 2.12+
+# is present its _comp_initialize is used instead. Without bash-completion
+# the completer silently declines. On bash 3 the double-TAB description
+# column is absent (COMP_TYPE is bash 4.0+); completion itself is unaffected.
 
 # macOS still ships Bash 3, where bash-completion may not provide
 # _init_completion. This is a minimal compatible fallback.

@@ -9,6 +9,10 @@
 # directly by `rancher completion pwsh`, never saved under a different name.
 #
 # Output the script to path/to/rancher.ps1 and run it to enable completion.
+#
+# Minimum supported shell: Windows PowerShell 5.1 or pwsh 7+
+# (Register-ArgumentCompleter -Native and CompletionResult are the newest
+# APIs used).
 
 Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)

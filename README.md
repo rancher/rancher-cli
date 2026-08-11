@@ -81,6 +81,12 @@ To persist it, add that line to your `$PROFILE`. Loading `$PROFILE` itself needs
 an ExecutionPolicy that allows local scripts (`RemoteSigned` or looser); the
 per-session command above works regardless.
 
+Minimum shell versions: bash 3.2 (macOS stock) with the `bash-completion`
+package installed — on bash 3 the double-TAB description column is absent,
+completion itself works; zsh 5.0 with `compinit` loaded; fish 3.0;
+Windows PowerShell 5.1 or pwsh 7. Each generated script states its own floor
+in its header comment.
+
 Completion is offline-only by default: command/group/flag names are free (the
 whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
 and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-context`,
