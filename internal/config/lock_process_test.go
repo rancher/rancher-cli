@@ -26,6 +26,10 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 	args = append(args, dir, serverName)
 
 	cmd := exec.Command(fakeHelperBin(t), args...)
+	// Child stderr streams through the test binary's stderr: a child that
+	// exits on an error path explains itself in the test output instead of
+	// vanishing (each line is already prefixed "configwrite:").
+	cmd.Stderr = os.Stderr
 	out, err := cmd.StdoutPipe()
 	require.NoError(t, err)
 	require.NoError(t, cmd.Start())
@@ -38,6 +42,13 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 		sc := bufio.NewScanner(out)
 		for sc.Scan() {
 			lines <- sc.Text()
+		}
+		// A scanner read error closes the lines channel while the child may
+		// still be running — indistinguishable from a silent child exit.
+		// Surface it as an in-band line so whatever assertion trips next
+		// names the real cause.
+		if err := sc.Err(); err != nil {
+			lines <- "scanner-error: " + err.Error()
 		}
 	}()
 	go func() { wait <- cmd.Wait() }()
@@ -216,7 +227,7 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 		select {
 		case ev, ok := <-combined:
 			if !ok {
-				t.Fatalf("combined channel closed with only %d done events", doneCount)
+				t.Fatalf("combined channel closed with only %d done events (a child exited without done, or its scanner died); log: %v", doneCount, eventLog)
 			}
 			eventLog = append(eventLog, ev)
 			if ev.line == "done" {
