@@ -23,7 +23,9 @@ else
   echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
 fi
 
-go test -race ./...
+# -vet=off: the full go vet ./... already ran above; go test's implicit
+# vet subset would only repeat a fraction of it.
+go test -race -vet=off ./...
 
 # Build contract: both executables, built from current source — never
 # trusting leftovers in bin/.
