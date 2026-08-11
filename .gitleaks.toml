@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+# The one historical gitleaks finding (assessed 2026-08-10): a synthetic
+# DigitalOcean-shaped token in the secret-scrubbing test
+# TestCreateMachineConfigSetMalformed. Its 32-hex body cannot be a real DO
+# token (those are 64 hex); it exists precisely to assert that secrets never
+# echo into `create machine-config --set` validation errors. Allowlisted by
+# exact value so the test can move files without breaking the scan.
+[[allowlists]]
+description = "Synthetic DO-shaped token fixture in the --set scrubbing test"
+regexes = ['''dop_v1_9f2c4e6a8b0d1f3a5c7e9b2d4f6a8c0e''']
