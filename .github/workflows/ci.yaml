@@ -27,14 +27,15 @@ jobs:
       - uses: ./.github/actions/setup-tools
       - run: make validate
 
-  # linux is covered natively by the validate job (build contract + race
-  # tests); only the non-runner platforms need a cross-compile check.
+  # Compile-check every release platform so an arch-specific break (endian,
+  # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
+  # match the build loop in release.yaml. linux/amd64 duplicates the validate
+  # job's native build; it is kept for the 1:1 mapping with the release
+  # matrix. One job, one loop: a matrix would pay checkout+setup per leg for
+  # no isolation benefit.
   cross-compile:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      matrix:
-        goos: [darwin, windows]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,10 +43,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - run: go build ./...
-        env:
-          GOOS: ${{ matrix.goos }}
-          CGO_ENABLED: "0"
+      - name: Compile all release platforms
+        run: |
+          for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
+            echo "==> ${platform}"
+            GOOS="${platform%/*}" GOARCH="${platform#*/}" CGO_ENABLED=0 go build ./...
+          done
 
   e2e:
     runs-on: ubuntu-latest
