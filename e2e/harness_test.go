@@ -19,7 +19,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -223,13 +222,15 @@ func TestBuildAndStartEnvStopsEnvOnBuildFailureAfterEnvStarted(t *testing.T) {
 	var stopped bool
 	buildErr := errors.New("build failed")
 
+	envRunning := make(chan struct{})
 	err := buildAndStartEnv(
 		func() error {
-			time.Sleep(20 * time.Millisecond) // finishes after startEnv below
+			<-envRunning // deterministic: the build fails only after envtest started
 			return buildErr
 		},
 		func() error {
-			return nil // envtest starts successfully, faster than the failing build
+			close(envRunning) // envtest starts successfully, before the failing build
+			return nil
 		},
 		func() { stopped = true },
 	)
