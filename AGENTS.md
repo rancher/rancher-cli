@@ -44,9 +44,9 @@ Two gotchas:
   `surface/cli/testdata/schema.golden.json`. A surface change fails the build
   until you regenerate the golden on purpose:
   `go test ./surface/cli/ -run TestSchemaManifestGolden -update`. Unexpected drift
-  is a signal, not noise. README's surface facts (the counts paragraph, the
+  is a signal, not noise. COMMANDS.md's surface facts (the counts paragraph, the
   Commands table) are conformance-tested against the schema manifest — a failure
-  there means update README.md, not the test.
+  there means update COMMANDS.md, not the test.
 - **One safety pipeline for every mutation.** Server-side dry-run → an `Effect` →
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
   execute, bound to the preview by a resourceVersion precondition. A command

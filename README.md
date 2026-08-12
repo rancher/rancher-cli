@@ -1,99 +1,34 @@
-# rancher-cli
+# Rancher CLI
 
-An AI-native operations CLI for Rancher Manager (`github.com/rancher/rancher-cli`).
+An AI-native operations CLI for [Rancher Manager](https://github.com/rancher/rancher).
 
-A greenfield rewrite of the Rancher CLI built so a terminal coding agent
-(Claude Code, Codex, …) can drive Rancher as a first-class user: structured,
-versioned output; a self-describing command surface; machine-readable errors
-with next-step hints; branchable exit codes; and a plan/apply safety model.
-Users get the same commands with readable table output.
+A greenfield rewrite of the Rancher CLI, built so a terminal coding agent
+(Claude Code, Codex, …) can drive Rancher as a first-class user — and
+operators get the same commands with readable table output.
 
-## Status
+- **Structured, versioned output** — every command emits one JSON envelope
+  under `-o json`, versioned as `cli.rancher.io/v1`.
+- **Self-describing surface** — `rancher schema` lists every command, flag,
+  contract, and gate; agents orient themselves without docs.
+- **Machine-readable errors** — structured errors with next-step hints, on
+  stderr, always the same envelope.
+- **Branchable exit codes** — scripts and agents branch on the code without
+  parsing anything.
+- **Plan/apply safety** — a server-computed preview before every mutation,
+  with explicit gates for destructive effects.
 
-**Phase 0 (foundation) — implemented.** Auth, configuration, context/server
-management, the exec-credential token plugin, and the self-description surface
-(`schema`). Kube-native: resource operations go through Rancher's Kubernetes
-API, with one exception — interactive auth-provider login (`auth get-token`)
-uses Rancher's legacy `/v1-public` endpoints. The command surface
-is verb-first (kubectl-style): `auth …`, `config …`, `get …`, `create …`.
+[Install](#install) · [Quickstart](#quickstart) ·
+[Commands](COMMANDS.md) · [Reference](REFERENCE.md) ·
+[Migration](MIGRATING.md) · [Contributing](AGENTS.md)
 
-**Phase 1 Wave 1 — implemented.** The engine/provider layer plus generic,
-table-driven `get` and `delete` over a kind table (management: cluster, node,
-namespace, project; downstream core: pod, deployment, service, configmap,
-secret) and the bespoke `create project` write, all running through the full
-plan/apply pipeline (dry-run → apply, confirmation gating, contract/stability).
-Generic `create`/`patch`, fleet/provisioning kinds, RBAC, kubeconfig, and
-settings land in later Phase-1 waves.
+<!-- demo: asciinema/GIF slot — fill from rehearsal recordings -->
 
 ## Install
 
-    make build        # -> bin/rancher   (CGO disabled, static-ish)
-    make test         # go test -race -cover ./...
-
-### Platforms
-
-macOS, Linux, and Windows (CGO-free static binary; the Linux build runs on
-any distro including musl/distroless).
-
-| | Config dir (default) | Credential store (default) | File fallback |
-|---|---|---|---|
-| macOS | `~/.config/rancher` | Keychain | `0600` file |
-| Linux | `~/.config/rancher` | Secret Service (D-Bus; absent when headless → file) | `0600` file |
-| Windows | `%APPDATA%\rancher` | Credential Manager | owner-only-ACL file |
-
-Precedence above the default everywhere: `--config` flag (`-c`) >
-`RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`. The credential
-backend is `auto` (probe once, pin) unless `RANCHER_CLI_CREDENTIAL_STORE`
-or the config `credentialStore` field says otherwise; headless machines
-(no D-Bus, locked keychain) keep working read-only against an existing
-file-stored token, while new logins there ask for an explicit
-`RANCHER_CLI_CREDENTIAL_STORE=file` opt-in.
-
-Custom backends plug in as credential helpers: `credentialStore: exec:<name>`
-runs the `rancher-credential-<name>` binary from `PATH` (the shipped
-`rancher-credential-vault` covers HashiCorp Vault and OpenBao). Protocol and
-examples: [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md).
-
-Requires Go 1.26+. Build/release automation is make + `scripts/`, mirroring
-`rancher/rancher`.
-
-### Agent skill
-
-[`skills/rancher/SKILL.md`](skills/rancher/SKILL.md) teaches an AI coding agent
-to operate this CLI (auth, discovery, the dry-run/apply safety loop, structured
-errors, waits). It follows the open [Agent Skills](https://agentskills.io)
-standard: install it into any skill-supporting harness — Claude Code
-(`~/.claude/skills/rancher/`) and GitHub Copilot CLI both load it natively —
-or point any other agent's instructions file at it.
-
-### Install
-
-    (
-      t="$(mktemp)" || exit 1
-      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-      curl --proto '=https' --tlsv1.2 -fsSL \
-        -o "$t" \
-        https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
-        && sh "$t"
-    )
-
-Installs the `rancher` CLI and its credential helper to `~/.local/bin`
-(rootless, no shell-profile edits; the script prints the PATH line if
-needed). Checksums are always verified; build provenance is verified
-when an authenticated `gh` CLI is available. Flags (append to the
-`sh "$t"` line): `--version <tag>` pins a release (`RANCHER_CLI_VERSION`
-env twin; flag wins), `--pre` selects the newest prerelease,
-`--bin-dir <dir>` overrides the destination (`RANCHER_CLI_INSTALL_BIN_DIR`
-env twin), `--verify-attestation` makes provenance verification
-mandatory, `--dry-run` prints the plan without writing anything, `-q`
-suppresses progress notes. Set `GH_TOKEN` or `GITHUB_TOKEN` for
-internal or rate-limited use — the token travels via stdin to curl and
-never appears in process arguments.
-
-While the repository is internal, the anonymous fetch fails — use the
-authenticated bootstrap (same subshell, token passed to curl via
-`--config -` on stdin so it never appears in process arguments):
+> [!NOTE]
+> While the repository is internal, anonymous fetches fail. Use the
+> authenticated bootstrap below with a `GH_TOKEN`; the token travels to
+> curl via stdin and never appears in process arguments.
 
     (
       t="$(mktemp)" || exit 1
@@ -106,79 +41,72 @@ authenticated bootstrap (same subshell, token passed to curl via
         && GH_TOKEN="$GH_TOKEN" sh "$t"
     )
 
-Uninstall: remove the `rancher` and `rancher-credential-vault`
-symlinks from your bin dir, `~/.local/share/rancher-cli`, and
+Once the repository is public, the anonymous form works:
+
+    (
+      t="$(mktemp)" || exit 1
+      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
+      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+      curl --proto '=https' --tlsv1.2 -fsSL \
+        -o "$t" \
+        https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
+        && sh "$t"
+    )
+
+Both install the `rancher` CLI and its credential helper to `~/.local/bin`
+(rootless, no shell-profile edits; the script prints the `PATH` line if
+needed). Checksums are always verified; build provenance is verified when
+an authenticated `gh` CLI is available. The script covers Linux and macOS —
+on Windows, download the `windows` release assets and verify them by hand.
+The CLI supports Rancher `>= 2.14`
+([details](REFERENCE.md#supported-server-version)); install internals and
+manual download: [REFERENCE.md](REFERENCE.md#install-internals).
+
+<details>
+<summary>Options</summary>
+
+Flags (append to the `sh "$t"` line): `--version <tag>` installs a specific release
+(`RANCHER_CLI_VERSION` env twin; flag wins), `--pre` selects the newest
+prerelease, `--bin-dir <dir>` overrides the destination
+(`RANCHER_CLI_INSTALL_BIN_DIR` env twin), `--verify-attestation` makes
+provenance verification mandatory, `--dry-run` prints the plan without
+writing anything, `-q` suppresses progress notes. Set `GH_TOKEN` or
+`GITHUB_TOKEN` for internal or rate-limited use.
+
+</details>
+
+<details>
+<summary>Update, rollback &amp; uninstall</summary>
+
+To update, rerun the install command — resolution finds the newer release
+and the switch is atomic. To downgrade or roll back, rerun with
+`--version <tag>`.
+
+Uninstall: remove the `rancher` and `rancher-credential-vault` symlinks
+from your bin dir, `~/.local/share/rancher-cli`, and
 `~/.config/rancher-cli/install-receipt.json`.
 
-Manual download: grab the assets for your platform from the releases
-page, check them against `SHA256SUMS`, and (optionally) verify
-provenance with `gh attestation verify <file> --repo
-rancher/rancher-cli --signer-workflow
-rancher/rancher-cli/.github/workflows/release.yaml`.
-
-Each release also carries a pinned copy of `install.sh` as an asset
-(checksummed and attested); the URL above always serves the current
-copy from `main`.
-
-To update, rerun the install command — resolution finds the newer
-release and the switch is atomic. To downgrade or roll back, rerun
-with `--version <tag>`.
-
-### Shell completion
-
-    source <(rancher completion bash)   # ~/.bashrc
-    source <(rancher completion zsh)    # ~/.zshrc
-    rancher completion fish > ~/.config/fish/completions/rancher.fish
-
-PowerShell (Windows PowerShell 5.1 or PowerShell 7) — pipe into the session so
-no script file is written and PowerShell's ExecutionPolicy does not apply:
-
-    rancher completion pwsh | Out-String | Invoke-Expression
-
-To persist it, add that line to your `$PROFILE`. Loading `$PROFILE` itself needs
-an ExecutionPolicy that allows local scripts (`RemoteSigned` or looser); the
-per-session command above works regardless.
-
-Minimum shell versions: bash 3.2 (macOS stock) with the `bash-completion`
-package installed — on bash 3 the double-TAB description column is absent,
-completion itself works; zsh 5.0 with `compinit` loaded; fish 3.0;
-Windows PowerShell 5.1 or pwsh 7. Each generated script states its own floor
-in its header comment.
-
-Completion is offline-only by default: command/group/flag names are free (the
-whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
-and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-context`,
-`config use-server`, and `config delete-server` complete from the local
-config file. It never touches the network, prompts, or writes anything —
-a missing or unreadable config degrades to no candidates, never an error.
-
-### Live completion (opt-in)
-
-After installing the script, enable live resource-name completion:
-
-    rancher config set-completion --network=true
-
-This completes cluster names (including `inspect cluster` and `inspect project`
-positional names), project names, namespaces, pods, deployments, and nodes from
-the Rancher API. A credential-store capability note is printed to indicate which
-completions are available given your current auth setup.
-
-The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
-
-    rancher config set-completion --timeout=1s
+</details>
 
 ## Quickstart
+
+The login token is a Rancher
+[API key](https://ranchermanager.docs.rancher.com/reference-guides/user-settings/api-keys)
+in its `access-key:secret-key` form.
 
     # Log in (token is the Rancher UI "id:secret" API key)
     rancher auth login --server https://rancher.example.com --name prod
     # (prompts for token, or pass via --token-stdin)
 
-    # Scope the current context to a cluster/project
-    rancher config set-context --current --cluster c-m-abc123 --project p-xyz789
-    rancher config current-context -o json
+    # Verify connectivity + credentials
+    rancher auth check
 
-    # Read clusters (internal contract, read-only)
-    rancher get clusters -o json
+    # Read clusters (shows the cluster id for the next step)
+    rancher get clusters
+
+    # Scope the current context to a cluster
+    rancher config set-context --current --cluster c-m-abc123
+    rancher config current-context
 
     # Create a project: preview the effect, then apply
     rancher create project web --cluster c-m-abc123 --dry-run
@@ -191,176 +119,88 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
     rancher schema --search kubeconfig   # find commands by substring
     rancher schema --all -o json         # full manifest (for agents)
 
-    # Verify connectivity + credentials
-    rancher auth check -o json
+Provisioning a cluster (machine configs, cloud credentials, readiness
+waits): [REFERENCE.md](REFERENCE.md#cluster-provisioning).
+
+## Agent skill
+
+[`skills/rancher/SKILL.md`](skills/rancher/SKILL.md) teaches an AI coding
+agent to operate this CLI: auth, discovery, the dry-run/apply safety loop,
+structured errors, and waits. It follows the open
+[Agent Skills](https://agentskills.io) standard — install it into Claude
+Code, Codex, or GitHub Copilot CLI:
+
+    rancher skill install
+
+or point any other agent's instructions file at it.
 
 ## Commands
 
-<!-- conformance:commands-table -->
-| Command | Purpose |
+| Group | Commands |
 |---|---|
-| `auth login --server <url> [--name --cacert --context]` | Store a server + token; set current context. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
-| `auth logout [<name>] [--all]` | Clear the stored login token for the current server (or `<name>`, or every server with `--all`); keeps server config; does not touch the exec-credential cache |
-| `auth check` | Connectivity + credential preflight (calls the cluster's k8s API) |
-| `auth get-token [--server --cluster --name --cacert --auth-provider --auth-flow --skip-verify]` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
-| `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
-| `auth delete-token [<name>] [--all]` | Clear cached exec-credential token(s); a bare `<name>` deletes every matching record and is idempotent (no match = success) |
-| `config current-context` | Show the active context |
-| `config set-context --current --cluster <c> [--project <p>]` | Set the current context's scope |
-| `config use-context <name>` | Activate a different named context |
-| `config get-servers` | List configured servers |
-| `config use-server [name]` | Switch the active server |
-| `config delete-server <name>` | Remove a configured server, every context that targets it, and delete its stored credentials/exec-credential cache — does NOT revoke the server-side token (server-side revocation, `auth logout --revoke`, is tracked separately and not yet implemented) |
-| `config path` | Print the resolved config file path — the agent-usable "where do I point tooling" primitive; prints the path whether or not the file exists yet |
-| `config info` | Print config diagnostics: the file path, effective credential store with its source (env, config, or the auto default), probed pin under auto, and completion settings (network on/off, effective timeout, raw timeout when clamped) — the first place to check when tab-completion shows no candidates |
-| `config edit` | Edit the config file in `$VISUAL`/`$EDITOR` on a temp copy, validating (referential integrity) before writing back — never edits in place |
-| `config set-completion [--network true\|false] [--timeout <budget>]` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
-| `create project <name> --cluster <id> [--description --quota-limit --namespace-default-quota]` | Create a project, optionally with a resource quota — dry-run/apply |
-| `create namespace <name> [--project --cluster]` | Create a namespace, optionally a project member from birth — dry-run/apply |
-| `create secret <name> [--from-literal --type] [--namespace --cluster \| --project --project-scoped]` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — dry-run/apply |
-| `create resource -f <file\|-> [--cluster --namespace]` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
-| `create token [--ttl --description --cluster]` | Mint a server-side derived token (`ext.Token`), shown once — sensitive; dry-run/apply --yes |
-| `create kubeconfig [--clusters --current-context --ttl --description --include-default-entry]` | Mint a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — sensitive; dry-run/apply --yes |
-| `create cluster <name> (--import \| --custom \| --machine-config <kind>/<name> --cloud-credential <cc>) [--k8s-version --pool-name --etcd --controlplane --worker --quantity]` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool (multi-pool goes through `create resource -f`) — dry-run/apply; a `creatorId not stamped` warning means the identity probe failed (dry-run may be denied, but `--apply` is still expected to succeed) |
-| `create machine-config <kind> <name> [--region --size --image --monitoring --ipv6 --private-networking --tags] [--set field=value ...]` | Create a standalone machine config (driver fields at the CR root) for `create cluster --machine-config <kind>/<name>`; digitaloceanconfig has curated flags, the other kinds take `--set`; credential fields rejected — dry-run/apply |
-| `get cloud-credential [name]` | List cloud credentials or show one — secret values never shown |
-| `get kubernetes-versions` | List available Kubernetes versions (rke2/k3s), merged with the server's default and supported-range settings |
-| `project add-namespace <ns> --project <p> [--cluster]` | Add a namespace to a project — dry-run/apply |
-| `project remove-namespace <ns> --project <p> [--cluster]` | Remove a namespace from a project — dry-run/apply |
-| `grant <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) --role <r> [--type user\|group]` | Grant a role at project, cluster, or global scope — dry-run/apply --yes; provisioning note: unknown principals are auto-provisioned by Rancher when the binding applies; partial failures leave already-created bindings in place |
-| `revoke <subject> (--project <p> [--cluster <c>] \| --cluster <c> \| --global) [--role <r>] [--type user\|group]` | Revoke role binding(s) at project, cluster, or global scope — destructive; dry-run/apply --yes; omitting --role revokes every role at the scope; partial failures leave already-deleted bindings removed |
-| `inspect cluster <name-or-id> [--registration]` | Composite cluster read: management identity + agent connectivity (management Connected/Ready conditions; a disconnect warns) + provisioning status/conditions (ready derived from the Ready condition), machine pools, members (ClusterRoleTemplateBindings with display names resolved), machines (CAPI Machines with phase and first failing condition message — surfacing provider errors invisible to other commands), and node-join/import registration commands (withheld by default — contains join credentials; pass `--registration` to fetch, or use `get clusterregistrationtoken default-token --namespace <cluster-id>`); the management read is mandatory (unknown/ambiguous cluster or a failed read is a structured error, non-zero exit); provisioning, members, machines, and registration sections degrade independently to notes/warnings |
-| `inspect pod <name> --namespace <ns> [--cluster --tail]` | Composite pod read: describe + recent logs |
-| `inspect deployment <name> --namespace <ns> [--cluster]` | Composite deployment read |
-| `inspect project <name-or-id> [--cluster]` | Composite project read: sectioned text card (PROJECT, NAMESPACES, MEMBERS, QUOTA, USAGE); members are ProjectRoleTemplateBindings with display names resolved from Users/UserAttributes; members section degrades independently to a warning |
-| `images [--cluster C \| --all-clusters] [--by image\|workload] [--match substr]...` | Active-pod container images, grouped by image or owning workload, fleet-wide |
-| `usage [--cluster] [--by namespace\|project\|node\|pod] [--namespace NS] [--project P] [--node N]` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
-| `token --server <url> --user <name> [--cluster --auth-provider --auth-flow --cacerts --skip-verify]` | Legacy exec-credential shim for Rancher-generated kubeconfigs (deprecated; new kubeconfigs use `auth get-token`) |
-| `kubeconfig --cluster <id>` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) — see `create kubeconfig` for the server-minted, embedded alternative |
-| `logs <target> [--cluster --tail --since --previous --container --timestamps]` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
-| `support-bundle [--targets --clusters --since --tail -f]` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
-| `schema [command\|kind\|group] [--kind] [--verb --destructive --contract --mutating --search]` | Capability manifest. Bare: grouped table of contents; `<command>`: command card with contract and gates; `<kind>`: kind card with verb availability; `<group>`: group card with member commands and descriptions (resolution order: command → kind → group; `--kind` forces the kind reading); the filter/search flags span the whole surface. Default format is the plain card/TOC; `-o json` emits the TOC as JSON; `--all -o json` is the full manifest |
-| `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
-| `skill install [--agent <claude\|codex\|copilot\|agents\|all>] [--scope <user\|project>] [--force]` | Install the rancher agents skill into coding-agent harnesses |
-| `skill uninstall [--agent AGENT] [--scope SCOPE]` | Remove rancher-installed agents skills (only exact owner-marked installations) |
-| `skill status [--agent AGENT] [--scope SCOPE] [--require-installed]` | Report installed skill versions and integrity; exits 7 when a selected target is out of state |
-<!-- /conformance:commands-table -->
+| [Authentication](COMMANDS.md#authentication) | login, logout, check, and the exec-credential token plugin |
+| [Contexts & configuration](COMMANDS.md#contexts--configuration) | contexts, servers, config file, completion settings |
+| [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config |
+| [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
+| [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project reads, images, usage |
+| [Logs & support](COMMANDS.md#logs--support) | curated logs, support bundle |
+| [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
+| [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
 
-`config use-server` switches to a context that targets the named server
-(creating one if needed); `config use-context` activates a named context
-directly. `use-server` is the migrating target for the legacy `server
-switch` command. Both persist across invocations; the global `--context`
-flag (below) only overrides the cluster[:project] scope for the single
-invocation it's passed on.
+Generated `get`/`patch`/`delete` commands cover every kind in the 48-kind
+vocabulary. The full catalog is [COMMANDS.md](COMMANDS.md), and
+`rancher schema` is its live version. Per-kind verb rules:
+[REFERENCE.md](REFERENCE.md#kinds--verbs); project scoping:
+[REFERENCE.md](REFERENCE.md#project-scope---project).
 
-Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
-`get po`). Scope routing is enforced: addressing a namespaced kind by name needs
-`--cluster` (management) or `--namespace` (downstream); bare lists may omit them.
+## Safety model
 
-Provisioning a cluster is a create-wait-connect sequence — `--wait` on
-`get cluster` applies the kind's default readiness (`condition=Ready`),
-and `inspect cluster` carries the registration commands custom-cluster
-nodes join with:
+Every server-mutating command runs one pipeline, in order:
 
-    rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
-    rancher inspect cluster web --registration -o json     # registration.nodeCommand → run on each node
-    rancher get cluster web --wait --timeout 15m
-    rancher kubeconfig --cluster web > web.yaml
+1. `--dry-run` previews a server-computed effect (action, diff, warnings)
+   and changes nothing.
+2. `--apply` executes. A bare mutating invocation — no `--dry-run`, no
+   `--apply` — is refused with `CONFIRMATION_REQUIRED`, and the refusal
+   names the exact flags required.
+3. `--yes` stacks on `--apply` (never alone) when the effect is
+   destructive: every `delete`, `revoke`, writes to sensitive kinds, and
+   creating shown-once secrets (`create token`, `create kubeconfig`).
+4. `--allow-deprecated` is additionally required for a
+   deprecated-stability write.
+5. Updates and deletes carry a
+   [resourceVersion](https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions)
+   precondition from their own
+   plan — if the resource changes between the plan's preview and execution,
+   the mutation fails (exit `5`) instead of clobbering. A separate
+   `--dry-run` invocation is a preview only; the later `--apply` run
+   re-plans and pins against the state it sees then. Creates have no
+   precondition (there is no existing object to pin).
 
-<!-- conformance:surface-counts -->
-Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
-(48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
-kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
-126 generated commands, 171 total together with the fixed commands above. The authoritative, always-current list is
-`rancher schema --all -o json`.
-<!-- /conformance:surface-counts -->
+Rule of thumb: `--apply` says "yes, mutate"; `--yes` says "yes, I saw it's
+destructive".
 
+Why this shape: the CLI is agent-first. Intent is stated in
+machine-checkable flags, never inferred, and there is no interactive "are
+you sure?" prompt — a prompt cannot be scripted, retried, or audited.
+Every refusal is a structured error naming exactly what is missing, so an
+agent (or a script) escalates deliberately or stops.
 
-`feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
-those generated kinds — not deletable, sensitive (flipping a flag via
-`patch feature` escalates to `--yes`). Its interesting fields
-(`spec.value`, `status.default`, `status.lockedValue`) are tri-state
-booleans (an absent `spec.value` means "follow the default"), which a
-table cell would misread — `-o json` is the real read for a feature's
-actual state.
+> [!NOTE]
+> `--dry-run` runs a real
+> [server-side dry-run](https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run)
+> and needs the same RBAC verb
+> as the write — read-only credentials get an `RBAC` error. That means the
+> write would be denied, not that dry-run is broken.
 
-`nodedriver` (Rancher's `management.cattle.io/v3` NodeDriver registry — the
-server side of `create cluster`'s node-driver mode) is a read-mostly
-generated kind: not deletable, sensitive (`patch nodedriver` toggles a
-driver's platform-wide availability and escalates to `--yes`). `get
-nodedrivers` lists NAME, DISPLAYNAME, ACTIVE, and BUILTIN.
+Each server operation carries a contract (`public` | `internal`) and
+stability (`stable`/`beta`/`deprecated`), surfaced in the schema manifest.
+Full pipeline and gate model: [ARCHITECTURE.md](ARCHITECTURE.md).
+Read-only mode: [REFERENCE.md](REFERENCE.md#read-only-mode).
 
-`token` and `kubeconfig` are registered with an empty GVR version, resolved
-via discovery at call time (the same mechanism the CAPI kinds use) — on a
-Rancher older than 2.14 (the CLI's supported minimum), the generated
-`get`/`patch`/`delete` ops on these two kinds fail with a friendly `NOT_FOUND`
-(`requires Rancher >= 2.14, the supported minimum`) pointing at `auth
-list-tokens` and the exec-credential `kubeconfig` instead.
-Every operation on these two kinds is also plain Kubernetes API — `kubectl
-get/create tokens.ext.cattle.io` / `kubeconfigs.ext.cattle.io` works too (with
-`--validate=false` for a standard user, since kubectl's CRD-schema validation
-fallback needs list rights most users lack). The CLI adds the auth bootstrap,
-the token-vs-kubeconfig TTL unit conversion (`--ttl` takes a duration; the
-underlying spec fields are milliseconds and seconds respectively — the CLI
-never exposes the raw units), and shown-once handling for the minted secret.
-
-`logs`/`support-bundle` cover only what Rancher's own k8s API can reach.
-`rancher-system-agent` is a node systemd unit, not a pod — its logs are
-`journalctl -u rancher-system-agent` on the node itself, and generic pod
-logs outside the curated targets stay with `inspect pod` and kubectl.
-`support-bundle` is deliberately the API-reachable half of a two-bundle
-story: pair it with rancherlabs/support-tools' node collector for the
-node-level half (journald, the system-agent unit, OS state) that no API
-call can reach.
-
-### Which verbs exist for which kinds
-
-- `get` and `patch` exist for every kind in the schema kind vocabulary.
-  One exception: `patch clusterregistrationtoken` is refused — the kind is
-  read-only.
-- `delete` exists only where removal is a sane operator action.
-  Controller-owned objects (Fleet bundles, CAPI machines), server config
-  (`setting`, `feature`), and role definitions (`roletemplate`, `globalrole`)
-  are not deletable — delete the owning source object instead. The management
-  `cluster` kind is not deletable either; cluster removal goes through
-  `delete provisioning-cluster`. `delete user` is destructive (requires
-  `--yes`): deleting a user removes the identity record and Rancher's
-  controllers cascade-remove the user's role bindings (cluster memberships,
-  project memberships, global role bindings) with it.
-- `create` is bespoke per kind where a real creation UX exists (`project`,
-  `namespace`, `secret`, `token`, `kubeconfig`, `cluster`); `create
-  resource -f` covers any supported kind from a manifest.
-- RBAC bindings (`projectroletemplatebinding`, `clusterroletemplatebinding`,
-  `globalrolebinding`): prefer `grant`/`revoke` — subject resolution,
-  duplicate detection, partial-failure reporting. The raw verbs exist for
-  manifest-driven and declarative flows.
-
-`rancher schema <kind>` shows one kind's effective verb table — available
-(with contract and stability), refused (with the reason), or not available
-(with the reason removal is routed elsewhere).
-
-### Project scope (`--project`)
-
-The global `--project <id-or-name>` flag scopes Downstream namespaced kinds
-(`get`/`delete`/`patch`, plus `usage`) to one project's member namespaces:
-a bare list is filtered to member namespaces; a named op or mutation
-validates the target namespace's membership before touching the server.
-`get namespaces --project <p>` is the one special case — it lists namespaces
-by the membership label server-side rather than filtering client-side.
-Every other command family (cluster-scoped kinds, management-plane kinds,
-and the composites `inspect pod`/`inspect deployment`/`inspect cluster`/`images`) rejects
-a non-empty `--project` with `VALIDATION` rather than silently ignoring
-it. `usage` rejects `--project` only in combination with `--by node`
-(a node row mixing project-scoped requests with whole-node metrics would
-be misleading); all other `usage` groupings accept `--project`.
-Precedence: `--project` flag > the current context's project
-(`--context cluster:project` / `RANCHER_CLI_CONTEXT` / `config
-set-context --project`) > unscoped.
-
-## Output & the agent contract
+## Output & exit codes
 
 Every command emits one JSON document per invocation under `-o json` — an
-`apiVersion`-versioned envelope, so agents can pin to it:
+`apiVersion`-versioned envelope agents can depend on:
 
 ```json
 {
@@ -371,18 +211,10 @@ Every command emits one JSON document per invocation under `-o json` — an
 }
 ```
 
-- **Formats:** `-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
-  `name` (`.metadata.name`/ids only) · `template=<go-template>` — a Go template
-  over the JSON view of `data` (same shape as `-o json`). Any other value is
-  rejected with a `VALIDATION` error before the command runs. A kind without a
-  table projection falls back to indented JSON under the default `table`
-  format; use `-o json` for the versioned envelope. Some commands (e.g. `logs`)
-  render a plain-text default under `table`/default format instead, with
-  warnings on stderr as `# warning: <w>` lines;
-  `-o json`/`yaml`/`template=`/`name` still see the normal envelope over `data`.
-  Structured output (json, yaml, template, and the table fallback) omits
-  `metadata.managedFields` (kubectl-parity; no opt-out flag — read the raw API
-  for server-side-apply forensics).
+Formats: `-o table` (default) · `json` · `yaml` · `name` ·
+`template=<go-template>`. Full format semantics:
+[REFERENCE.md](REFERENCE.md#output-formats).
+
 - **Errors** are structured, on stderr, always the JSON envelope regardless of
   `-o`, with the error object under `data`. A plain-text notice (the
   credential-store pin warning) may precede it on stderr — the
@@ -400,139 +232,10 @@ Every command emits one JSON document per invocation under `-o json` — an
   Rancher's proxy paths reject an invalid or insufficient token as a 403
   (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
 - **Discovery:** `rancher schema -o json` is the orientation payload —
-  command names and usage grouped by section, kind names, and exit codes
-  as a compact TOC. `rancher schema --all -o json` is the
-  complete manifest: every command with its args, flags, `commandType`,
-  `gates`, `successExitCodes`, and (for server ops) `contract`/`stability`,
-  as one document. The schema manifest is the single source for contract and
-  stability — these fields are NOT in Effect or Result envelopes.
-  `rancher schema <command|kind|group>` narrows to one command (e.g.
-  `rancher schema get pod`), one kind (e.g.
-  `rancher schema clusterregistrationtoken`), or one group (e.g.
-  `rancher schema auth`) — resolution order is command → kind → group; a name
-  that is both a command and a kind (`kubeconfig`) resolves as the command;
-  `--kind` forces the kind reading.
-  `--verb`, `--destructive`, `--contract`, `--mutating`, and `--search <term>`
-  filter the whole surface instead (they don't combine with a selector);
-  zero hits still exit `0`. Under the default format, bare `schema` prints
-  a grouped table of contents, a command selector prints the command's card
-  (usage, flags, contract line, gate line), and a kind selector prints the
-  kind's card (identity, routing, verb table with refusal/absence reasons);
-  every form still emits the full envelope under `-o json`.
-
-## Safety model
-
-Every server-mutating command runs one pipeline, in order:
-
-1. `--dry-run` previews a server-computed `Effect` (action, diff, warnings) and
-   changes nothing.
-2. `--apply` is the execute gate. A bare mutating invocation — no `--dry-run`,
-   no `--apply` — is refused with `CONFIRMATION_REQUIRED`, and the refusal
-   names the exact flags required:
-
-       --apply                 execute the mutation
-       --yes                   confirm a destructive effect
-       --allow-deprecated      permit a deprecated-stability write
-
-3. `--yes` stacks on `--apply` (never alone) when the effect is destructive:
-   every `delete`, `revoke`, writes to sensitive kinds (`patch feature`,
-   `grant`), and shown-once minting (`create token`, `create kubeconfig`). The
-   schema marks each command `destructive: true|false|dependsOnInput` —
-   `dependsOnInput` means the input decides (e.g. `create resource -f`
-   escalates only when the manifest's kind is sensitive).
-4. `--allow-deprecated` is required additionally for a deprecated-stability write.
-5. Within a single invocation, updates and deletes carry a resourceVersion
-   precondition from their own plan — if the resource changes between the
-   plan's dry-run and execution, the mutation fails (exit `5`,
-   conflict/precondition) instead of clobbering. A separate `--dry-run`
-   invocation is a preview only; the later `--apply` run re-plans and pins
-   against the state it sees then. Creates have no precondition (there is
-   no existing object to pin).
-
-Rule of thumb: `--apply` says "yes, mutate"; `--yes` says "yes, I saw it's
-destructive".
-
-Why this shape: the CLI is agent-first. Intent is stated in machine-checkable
-flags, never inferred, and there is no interactive "are you sure?" prompt — a
-prompt can't be scripted, retried, or audited. Every refusal is a structured
-error naming exactly what's missing, so an agent (or a script) escalates
-deliberately or stops. Interactive users pay a little flag overhead for that
-guarantee.
-
-`--dry-run` is valid only for mutating commands (rejected elsewhere with
-`DRY_RUN_NOT_APPLICABLE`). Each server op carries a **contract**
-(`public` | `internal`) and **stability** (`stable`/`beta`/`deprecated`)
-surfaced in the schema manifest so an agent knows the contract before acting.
-
-`--dry-run` runs a real server-side dry-run: it needs the same RBAC verb as the
-write, so read-only credentials get an `RBAC` error (that means the write would
-be denied, not that dry-run is broken). See [ARCHITECTURE.md](ARCHITECTURE.md)
-for the full pipeline, gates, and package-dependency model, and `rancher schema`
-for the machine-readable surface.
-
-Migrating from the legacy Rancher CLI: see [MIGRATING.md](MIGRATING.md).
-
-## Read-only mode
-
-Three sources, OR'd together, put a session into read-only mode, refusing
-every mutating command before any network call — strictly one-way, no
-per-invocation override exists:
-
-- Config: `readOnly: true` (top-level config field).
-- Env: `RANCHER_CLI_READONLY`, non-empty = on, including the literal string
-  `"false"` — every `RANCHER_*` var in this CLI follows non-empty-means-set;
-  there is no boolean-env precedent, so this is a sharp edge worth calling
-  out explicitly.
-- Flag: `--read-only` (global).
-
-Refusal is `VALIDATION`, naming the command and the active source(s) (e.g.
-"enabled by RANCHER_CLI_READONLY") — the one-way rule means you have to know
-which knob to turn off. `rancher schema -o json` reports the resolved state
-(`readOnly`, `readOnlySources`) so an agent can check before trying.
-
-Scoping, stated honestly: read-only mode refuses `Mutating` commands only —
-the CLI's managed-resource surface. `auth login`, `auth check`, and local
-`config` commands stay usable; otherwise a read-only session couldn't even
-establish itself.
-
-The real enforcement is a Rancher token bound to read-only RBAC — read-only
-mode is a CLI-side courtesy layer on top of that, not a replacement for it.
-Two caveats:
-
-- `--dry-run` of a mutating command still sends write-verb requests
-  server-side (admission dry-run); a genuinely read-only RBAC token cannot
-  dry-run at all. Read-only mode doesn't special-case this — it refuses
-  mutating commands outright, `--dry-run` included.
-- Pair `--read-only` (or the config/env form) with a read-only RBAC token
-  for actual enforcement. The CLI-side gate alone stops an accidental
-  mutation from a well-behaved client; it is not a security boundary.
-
-## Supported server version
-
-The CLI declares a minimum supported Rancher version, `>= 2.14`
-(`rancher schema -o json` → `minRancherVersion`). Enforcement today is
-warn-only: `auth login` and `auth check` call the unauthenticated
-`GET /rancherversion` endpoint and emit a warning — never a failure — when
-the connected server is below the floor, or when the version can't be
-determined at all. An unreachable endpoint, a non-200 response, or an
-unparseable value (e.g. a dev/head build) all assume "supported" and warn
-instead of refusing. No RBAC permissions are required.
-
-Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
-`--allow-unsupported-server`-style flag) once there's real-use feedback on
-the warn-only period. Ledgered, future work.
-
-**`auth check` enrichment.** Beyond connectivity, `auth check -o json` also
-reports `rancherVersion`/`supported` (the version-floor check above),
-`identity` (the caller's `userID`, from a create-verb identity probe against
-`ext.cattle.io`), and `token` (the effective token's
-name/kind/provider/expiry/`current` marker — for both `ext.cattle.io` tokens
-and management.cattle.io/v3 tokens; `token: null` with a warning appears only
-on a probe failure such as a revoked/rotated token). Any of these fields
-degrading to `null` with a warning is expected, not a bug — including
-`identity` under a read-only-RBAC token, since the identity probe is itself a
-create-verb request. `auth check`'s connectivity result (`ok`) never depends
-on them.
+  commands, kinds, and exit codes as a compact table of contents;
+  `rancher schema --all -o json` is the complete manifest, and the single
+  source for contract and stability. `rancher schema <command|kind|group>`
+  narrows to one card.
 
 ## Configuration
 
@@ -541,133 +244,81 @@ on them.
   stored here.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
-- **Credential store:** OS keychain or a `0600` file. Precedence:
-  `RANCHER_CLI_CREDENTIAL_STORE` > `credentialStore: keychain|file|auto|exec:<name>` in config >
-  a machine-local `credstore-pin` file > one-time probe. Under `auto` the backend
-  is probed once and pinned; the pin is re-probed only at `auth login` and only to
-  upgrade file→keychain, and a pinned-but-unusable backend is a hard error (never
-  a silent downgrade to plaintext).
-- **Environment overrides** (precedence flag > env > file):
-
-  | Var | Effect |
-  |---|---|
-  | `RANCHER_CLI_URL` | server URL |
-  | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
-  | `RANCHER_CLI_CONTEXT` | `cluster:project` scope (colon-less = cluster only) |
-  | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
-  | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>` |
-  | `RANCHER_CLI_CONFIG_DIR` | config directory |
-  | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
-  | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
-  | `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
-
-  The global `--context cluster[:project]` flag overrides `RANCHER_CLI_CONTEXT`
-  for a single invocation. `--context c:` (trailing colon, no project) clears
-  the project for this invocation. The context's project is shown by
-  `config current-context`/`auth check`, and is consulted for routing only as
-  a fallback: an unset `--project` flag falls back to it (`--project` always
-  wins when both are set) — see "Project scope" above.
-
+- **Credential store:** OS keychain or a `0600` file; custom backends plug
+  in as credential helpers ([CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md)).
+  Precedence and probe/pin semantics:
+  [REFERENCE.md](REFERENCE.md#platforms--credential-stores).
+- **Environment overrides** (precedence flag > env > file): the full table
+  of available environment overrides is in
+  [REFERENCE.md](REFERENCE.md#environment-variables).
 - **Migration:** config and credentials are not imported — run `rancher auth
   login` once per server.
 
-## kubectl integration
+## Shell completion
 
-`rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
-exec-credential plugin. Rancher-generated kubeconfigs invoke it to mint
-short-lived Kubernetes credentials; you don't run it directly. Older
-kubeconfigs generated by the legacy Rancher CLI (which call `rancher token`
-instead) also work after a binary swap — the compatibility shim delegates to
-the same machinery. Flags: `--server`,
-`--cluster`, `--name` (cache slot, keyed per name+server+cluster; omitted = no
-caching), `--cacert`,
-`--auth-provider`, `--auth-flow`, `--skip-verify`. When flags are omitted,
-server/CA/cluster fall back to the active config context. It supports SAML,
-OAuth (device-code / auth-code), and basic auth flows. Long-poll flows are
-interrupt-cancellable. List cached credentials with `rancher auth list-tokens`.
-Clear them with `rancher auth delete-token [<name>]`. On a cache miss it first
-tries to mint from the stored `auth login` credential for the matching
-server; when that credential lives in the OS keychain, this can trigger a
-keychain-unlock prompt — CI and other non-interactive runs should use
-`RANCHER_CLI_CREDENTIAL_STORE=file` or a warm `--name` cache.
+    source <(rancher completion bash)   # ~/.bashrc
+    source <(rancher completion zsh)    # ~/.zshrc
+    rancher completion fish > ~/.config/fish/completions/rancher.fish
+    rancher completion pwsh | Out-String | Invoke-Expression   # add to $PROFILE
 
-## TLS & proxy
+Completion is offline-only by default — it never touches the network and
+degrades to no candidates, never an error. Live resource-name completion
+is an opt-in: `rancher config set-completion --network=true`. Shell
+version floors, offline guarantees, and live-completion detail:
+[REFERENCE.md](REFERENCE.md#shell-completion).
 
-Server connections verify TLS against the configured CA (`--cacert` /
-`RANCHER_CLI_CACERT`) or the system trust store by default — verification is never
-disabled implicitly. HTTP(S) proxies are honored from the environment.
+## Documentation
+
+- [COMMANDS.md](COMMANDS.md) — the command catalog, by group (operators).
+- [REFERENCE.md](REFERENCE.md) — platforms and credential stores, install
+  internals, completion, scoping, kinds and verbs, cluster provisioning,
+  composites, access management, diagnostics, output formats, read-only
+  mode, server-version support, kubectl integration, TLS (operators,
+  automation authors).
+- [ARCHITECTURE.md](ARCHITECTURE.md) — layer map and design decisions
+  (contributors).
+- [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md) — credential-helper
+  protocol and examples (integrators).
+- [MIGRATING.md](MIGRATING.md) — moving from the legacy Rancher CLI
+  (operators).
+- [skills/rancher/SKILL.md](skills/rancher/SKILL.md) — the agent skill
+  (agents and their authors).
 
 ## Development
 
+Requires Go 1.26+ to build from source:
+
     make build        # bin/rancher
     make test         # go test -race -cover ./...
-    make lint         # golangci-lint
-    make validate     # gofmt + go vet + lint + race tests (the commit gate)
-    make ci           # build + validate
-    make e2e          # end-to-end suite against a fake, envtest-backed Rancher
-    make e2e-real     # verify fidelity goldens against a real Rancher in Docker (never on PRs; on-demand/weekly in CI)
-    make e2e-real-update  # re-record the fidelity oracle goldens
+    make validate     # gofmt + vet + lint + race tests (the commit gate)
+    make e2e          # end-to-end suite against an envtest-backed fake Rancher
+    make e2e-real     # verify recorded fidelity goldens against a real Rancher in Docker
+    make              # the full ci pipeline (build + validate)
 
-A committed `.githooks/pre-commit` runs `make validate` on every commit
-(`git config core.hooksPath .githooks`, set during setup).
+`make e2e-real` boots the pinned `rancher/rancher` image (~5–7 min) and
+checks that the fake Rancher the e2e suite runs against still behaves
+like the real one; `make e2e-real-update` re-records those goldens.
 
-Manual testing: `scripts/dev <args>` — never run the binary or `go run .`
-directly; it forces an isolated config dir and the file credential store so
-a manual run can never touch your real config or OS keychain.
+One-time setup: `git config core.hooksPath .githooks` enables the
+pre-commit `make validate` gate.
 
-`make e2e` runs the end-to-end suite: testscript scenarios in `e2e/scripts/`
-drive the built binary against an envtest-backed proxy shim, plus the
-provider package's envtest contract tests. First run downloads the
-envtest kube-apiserver/etcd binaries (~80MB, cached after that). kubectl on
-PATH enables the kubectl-interop scenario; otherwise it skips.
+Manual testing: `scripts/dev <args>` — never run the binary directly; it
+forces an isolated config dir and a file credential store so a manual run
+cannot touch your real config or OS keychain. Contributor guide:
+[AGENTS.md](AGENTS.md).
 
-The e2e façade's fidelity is pinned by recorded goldens from a real Rancher:
-`make e2e-real` boots the pinned `rancher/rancher` image in Docker and
-verifies the recording, `make e2e-real-update` re-records it, and the
-ordinary `make e2e` gate replays the same probes against the test façade so
-divergence from real-server behavior fails the build (or is pinned as an
-explicit, machine-checked exception).
+## Support & community
 
-**Layout**
+Questions and discussion: the [Rancher forums](http://forums.rancher.com/)
+and [Rancher Slack](https://slack.rancher.io/). Bugs and feature requests:
+[rancher/rancher issues](https://github.com/rancher/rancher/issues) — the
+central hub for Rancher product issues.
 
-    main.go                 entrypoint (signal-cancellable context)
-    internal/
-      clierr/               structured error type + exit codes
-      output/               versioned envelope + renderers
-      config/               XDG config, credential store, atomic writes
-      client/kube/          rest.Config for the Rancher k8s proxy
-      client/httpx/         HTTP client (TLS / proxy / timeouts)
-      client/provider/      op contract/stability resolver + dynamic ClusterClient (adapter)
-      runtime/              Command contract, middleware pipeline, schema
-      engine/               ClusterClient port + plan/execute helpers
-      engine/kinds/         kind table (MCP keys, GVRs, scope, bindings)
-      engine/resources/     generic get/delete over the kind table
-      engine/projects/      create project/namespace, project membership, name resolution
-      engine/extres/        create token/kubeconfig (ext.cattle.io fixed mutating commands)
-      commands/             auth login/check, config context/server ops
-      token/                exec-credential plugin (auth get-token / delete-token)
-    surface/cli/            urfave/cli v3 adapter + root wiring + engine DI
-
-**Conventions:** direct `t.Run` subtests where mocks/per-case setup are
-involved, table-driven for pure functions; tests are hermetic (never touch the
-real OS keychain).
-
-## Support, Discussion, and Community
-
-If you need any help with the Rancher CLI, please join us at either our
-[Rancher forums](http://forums.rancher.com/) or [Slack](https://slack.rancher.io/)
-where most of our team hangs out at.
-
-Please submit any bugs, issues, and feature requests to
-[rancher/rancher](https://github.com/rancher/rancher/issues).
-
-For security issues, please first check our
+For security issues, check the
 [security policy](https://github.com/rancher/rancher/security) and email
-security-rancher@suse.com instead of posting a public issue in GitHub. You
-may (but are not required to) use the GPG key located on
-[Keybase](https://keybase.io/rancher).
+security-rancher@suse.com instead of opening a public issue.
 
-# License
+## License
 
 Copyright (c) 2026 [SUSE](http://rancher.com)
 
