@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -1622,27 +1623,35 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 	samlPollInterval = 500 * time.Millisecond
 	defer func() { samlAuthTimeout, samlPollInterval = origTimeout, origPoll }()
 
+	// The server lives outside the synctest bubble and is never contacted:
+	// cancellation wins the select before the first poll tick fires, so the
+	// bubble never blocks on real network I/O.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // token never ready — keeps polling
 	}))
 	defer srv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	input := &loginInput{server: srv.URL}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		input := &loginInput{server: srv.URL}
 
-	go func() {
-		time.Sleep(50 * time.Millisecond) // well before the first 500ms poll tick
-		cancel()
-	}()
+		go func() {
+			time.Sleep(50 * time.Millisecond) // fake clock — before the first 500ms tick
+			cancel()
+		}()
 
-	start := time.Now()
-	_, err := samlAuth(ctx, http.DefaultClient, input, ui.Discard())
-	elapsed := time.Since(start)
+		start := time.Now()
+		_, err := samlAuth(ctx, http.DefaultClient, input, ui.Discard())
+		elapsed := time.Since(start)
 
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
-	assert.Less(t, elapsed, 300*time.Millisecond,
-		"must abort promptly on ctx cancellation, not wait for the next poll tick (500ms away)")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+		// Fake time: RSA keygen and scheduling cost zero, so elapsed is the
+		// cancel goroutine's 50ms exactly — anything at or past the tick
+		// means the select waited for the poll instead of the cancellation.
+		assert.Less(t, elapsed, samlPollInterval,
+			"must abort on ctx cancellation, not wait for the next poll tick")
+	})
 }
 
 // blockingReader never returns from Read, so readLine's scan goroutine cannot

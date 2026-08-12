@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"regexp"
 	"sort"
 	"strconv"
@@ -654,10 +653,6 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	p.Notice(fmt.Sprintf("\nLogin Request Id: %s\n", id))
 	p.Notice(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	defer signal.Stop(interrupt)
-
 	timeout := time.NewTimer(samlAuthTimeout)
 	defer timeout.Stop()
 	poll := time.NewTicker(samlPollInterval)
@@ -711,11 +706,10 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 
 		case <-timeout.C:
 			return token, clierr.Retryable(clierr.CodeAuth, "timed out waiting for the auth token")
-		case <-interrupt:
-			return token, clierr.New(clierr.CodeGeneric, "interrupted waiting for the auth token")
 		case <-ctx.Done():
-			// Abort promptly on caller cancellation (SIGTERM, test timeout) instead
-			// of waiting for the next poll tick, mirroring oauthAuthCodeAuth's wait.
+			// Abort promptly on caller cancellation (Ctrl-C via main's
+			// signal-cancellable context, SIGTERM, test timeout) instead of
+			// waiting for the next poll tick, mirroring oauthAuthCodeAuth's wait.
 			return token, ctx.Err()
 		}
 	}

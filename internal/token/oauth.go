@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,10 +160,6 @@ func oauthAuthCodeAuth(
 		p.Notice(fmt.Sprintf("Failed to open browser automatically. Please open the following URL manually:\n%s\n", authURL))
 	}
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	defer signal.Stop(interrupt)
-
 	timeout := time.NewTimer(timeoutAfter)
 	defer timeout.Stop()
 
@@ -186,11 +181,10 @@ func oauthAuthCodeAuth(
 		return rancherLogin(ctx, client, input, oauthToken)
 	case <-timeout.C:
 		return nil, clierr.Retryable(clierr.CodeAuth, "timed out waiting for browser authentication")
-	case <-interrupt:
-		return nil, clierr.New(clierr.CodeGeneric, "authentication interrupted by user")
 	case <-ctx.Done():
-		// Abort promptly on caller cancellation (SIGTERM, test timeout) instead
-		// of waiting for the browser callback and only then failing later at
+		// Abort promptly on caller cancellation (Ctrl-C via main's
+		// signal-cancellable context, SIGTERM, test timeout) instead of
+		// waiting for the browser callback and only then failing later at
 		// the exchange with a confusing post-callback context.Canceled.
 		return nil, ctx.Err()
 	}
