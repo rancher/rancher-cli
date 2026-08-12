@@ -376,32 +376,30 @@ func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 		"the token must never appear in any curl argv — stdin config only")
 }
 
-// TestBootstrapPropagatesCurlFailure runs the ANONYMOUS README snippet with
-// an unreachable URL: the subshell must exit non-zero and leave no temp file.
-func TestBootstrapPropagatesCurlFailure(t *testing.T) {
+// TestBootstrapFetchFailureRunsNothing runs the ANONYMOUS README one-liner
+// with an unreachable URL. The pipe form's documented trade-off: sh reads
+// EOF and exits 0 (POSIX sh has no pipefail), curl's error is the only
+// signal, and nothing executes — no filesystem effect anywhere.
+func TestBootstrapFetchFailureRunsNothing(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
-	snippet := `(
-  t="$(mktemp)" || exit 1
-  trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-  trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    -o "$t" \
-    https://127.0.0.1:1/install.sh \
-    && sh "$t"
-)`
+	home := t.TempDir()
+	snippet := `curl --proto '=https' --tlsv1.2 -fsSL https://127.0.0.1:1/install.sh | sh`
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
-	cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=" + toolPath(t, baseTools...), "TMPDIR=" + tmp}
-	err := cmd.Run()
-	require.Error(t, err, "curl failure must propagate through the subshell")
+	cmd.Env = []string{"HOME=" + home, "PATH=" + toolPath(t, baseTools...), "TMPDIR=" + tmp}
+	before := digestTree(t, home)
+	out, runErr := cmd.CombinedOutput()
+	require.NoErrorf(t, runErr, "the pipe form exits 0 on a fetch failure — sh of empty input; output: %s", out)
+	assert.Contains(t, string(out), "curl", "curl's error text is the user's only failure signal")
+	assert.Equal(t, before, digestTree(t, home), "nothing may execute on a failed fetch")
 	entries, readErr := os.ReadDir(tmp)
 	require.NoError(t, readErr)
-	assert.Empty(t, entries, "the bootstrap temp file must be cleaned up on failure")
+	assert.Empty(t, entries, "no temp residue on a failed fetch")
 }
 
-// TestBootstrapPropagatesInstallerFailure serves the real install.sh but has
-// it fail (grammar-rejected --version): the installer's status must survive
-// the trap cleanup.
+// TestBootstrapPropagatesInstallerFailure serves the real install.sh through
+// the README one-liner but has it fail (grammar-rejected --version): the
+// pipeline's exit status is sh's, so the installer's failure propagates.
 func TestBootstrapPropagatesInstallerFailure(t *testing.T) {
 	t.Parallel()
 	script, err := os.ReadFile("../install.sh")
@@ -414,24 +412,18 @@ func TestBootstrapPropagatesInstallerFailure(t *testing.T) {
 	bundle := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(bundle, rawPEM, 0o600))
 	tmp := t.TempDir()
-	snippet := `(
-  t="$(mktemp)" || exit 1
-  trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-  trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    -o "$t" \
-    ` + raw.URL + `/install.sh \
-    && sh "$t" --version v1/evil
-)`
+	// The README one-liner with the raw URL swapped for the stub's and the
+	// failing flag passed through sh -s --; otherwise identical.
+	snippet := `curl --proto '=https' --tlsv1.2 -fsSL ` + raw.URL + `/install.sh | sh -s -- --version v1/evil`
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
 	cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=" + toolPath(t, baseTools...),
 		"TMPDIR=" + tmp, "CURL_CA_BUNDLE=" + bundle}
 	out, runErr := cmd.CombinedOutput()
-	require.Errorf(t, runErr, "installer failure must propagate, output: %s", out)
+	require.Errorf(t, runErr, "installer failure must propagate through the pipe, output: %s", out)
 	assert.Contains(t, string(out), "tag grammar")
 	entries, readErr := os.ReadDir(tmp)
 	require.NoError(t, readErr)
-	assert.Empty(t, entries, "the bootstrap temp file must be cleaned up on failure")
+	assert.Empty(t, entries, "the installer must clean up its work dir on failure")
 }
 
 func TestDryRunResolvesVersionFromEnv(t *testing.T) {

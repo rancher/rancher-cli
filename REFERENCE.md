@@ -100,6 +100,29 @@ Each release carries its own fixed `install.sh` as a release asset
 `https://raw.githubusercontent.com/…/main/install.sh` URL always serves
 the current copy from `main`.
 
+### Defensive bootstrap
+
+The README one-liner is safe against truncation — every statement in
+`install.sh` lives inside a function and the final `main "$@"` line only
+runs when the whole script arrived, so a cut download either stops on a
+syntax error or executes nothing. The pipe form's one trade-off: when the
+*fetch itself* fails, `sh` reads empty input and exits `0` — curl's
+message on stderr is the only failure signal. For scripts that must
+branch on the download's exit code, use the download-then-run form:
+
+    (
+      t="$(mktemp)" || exit 1
+      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
+      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+      curl --proto '=https' --tlsv1.2 -fsSL \
+        -o "$t" \
+        https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
+        && sh "$t"
+    )
+
+It propagates curl's exit code, cleans up its temp file on any exit, and
+never executes a partial stream.
+
 ### Manual download & verification
 
 Download the assets for your platform from the releases page, check them

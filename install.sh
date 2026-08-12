@@ -22,6 +22,12 @@ BIN_DIR="${RANCHER_CLI_INSTALL_BIN_DIR:-}"
 REQUIRE_ATTESTATION=""
 TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 
+# cleanup() reads these before they are assigned by any phase; initialize
+# them here so the trap fires safely even on very early exits.
+WORK=""
+LOCK=""
+STAGING_DIR=""
+
 err() { printf 'error: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 note() { [ -n "$QUIET" ] || printf '%s\n' "$*"; }
@@ -33,52 +39,6 @@ usage: install.sh [--version <tag>] [--pre] [--bin-dir <dir>]
 EOF
   exit 1
 }
-
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --version) [ $# -ge 2 ] || usage; REQ_VERSION="$2"; shift 2 ;;
-    --pre) WANT_PRE=1; shift ;;
-    --bin-dir) [ $# -ge 2 ] || usage; BIN_DIR="$2"; shift 2 ;;
-    --verify-attestation) REQUIRE_ATTESTATION=1; shift ;;
-    --dry-run) DRY_RUN=1; shift ;;
-    -q) QUIET=1; shift ;;
-    *) usage ;;
-  esac
-done
-[ -n "$REQ_VERSION" ] && [ -n "$WANT_PRE" ] && err "--version and --pre are mutually exclusive"
-[ -n "${HOME:-}" ] || err "HOME is not set"
-[ -n "$BIN_DIR" ] || BIN_DIR="$HOME/.local/bin"
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/rancher-cli"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rancher-cli"
-
-# grep/awk/tr are load-bearing (tag grammar, checksum selection, receipt
-# guard — a missing tr would fail the control-byte guard OPEN), so they are
-# preflighted like the rest.
-for tool in curl uname mktemp chmod mv ln readlink grep awk tr; do
-  command -v "$tool" >/dev/null 2>&1 || err "required tool not found: $tool"
-done
-if command -v sha256sum >/dev/null 2>&1; then
-  SHA_CMD="sha256sum"
-elif command -v shasum >/dev/null 2>&1; then
-  SHA_CMD="shasum -a 256"
-else
-  err "required tool not found: sha256sum (or shasum)"
-fi
-
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-case "$OS" in
-  Linux) OS="linux"; MV_REPLACE="mv -T" ;;
-  Darwin) OS="darwin"; MV_REPLACE="mv -h" ;;
-  *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
-esac
-case "$ARCH" in
-  x86_64|amd64) ARCH="amd64" ;;
-  aarch64|arm64) ARCH="arm64" ;;
-  s390x) ARCH="s390x" ;;
-  *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
-esac
-[ "$OS" = "darwin" ] && [ "$ARCH" = "s390x" ] && err "unsupported platform darwin/s390x — download manually: $BASE_URL/$REPO/releases"
 
 # fetch <url> [output]: curl with the token (if any) passed via --config on
 # stdin so it never appears in argv or logs.
@@ -179,55 +139,6 @@ resolve_pre_tag() {
   done
 }
 
-resolve_tag
-# Asset names must match release.yaml's build loop — the two lists stay in lockstep.
-CLI_ASSET="rancher-$OS-$ARCH"
-HELPER_ASSET="rancher-credential-vault-$OS-$ARCH"
-DL_BASE="$BASE_URL/$REPO/releases/download/$TAG"
-
-if [ -n "$DRY_RUN" ]; then
-  # Contract: resolution GETs only. Nothing below this line ran: no
-  # filesystem writes, no lock, no attestation.
-  printf 'tag: %s\n' "$TAG"
-  printf 'platform: %s/%s\n' "$OS" "$ARCH"
-  printf 'asset: %s/%s\n' "$DL_BASE" "$CLI_ASSET"
-  printf 'asset: %s/%s\n' "$DL_BASE" "$HELPER_ASSET"
-  printf 'asset: %s/%s\n' "$DL_BASE" "SHA256SUMS"
-  printf 'bin-dir: %s\n' "$BIN_DIR"
-  printf 'data-dir: %s\n' "$DATA_DIR"
-  exit 0
-fi
-
-# Probe MV_REPLACE: BusyBox mv lacks -T/-h; fail early rather than mid-install.
-# After the dry-run exit: dry-run never renames anything, and probing before it
-# would make platform reporting depend on the host's mv rather than on uname.
-_mv_probe="$(mktemp -d)"
-ln -s /dev/null "$_mv_probe/a"
-ln -s /dev/null "$_mv_probe/b"
-$MV_REPLACE "$_mv_probe/b" "$_mv_probe/a" 2>/dev/null || \
-  err "mv does not support the required no-follow replace (-T/-h) — unsupported mv implementation (BusyBox?)"
-rm -rf "$_mv_probe"
-
-WORK="$(mktemp -d)"
-LOCK=""
-STAGING_DIR=""
-cleanup() {
-  rc=$?
-  if [ -n "$STAGING_DIR" ]; then rm -rf "$STAGING_DIR" 2>/dev/null || :; fi
-  [ -n "$LOCK" ] && rmdir "$LOCK" 2>/dev/null
-  rm -rf "$WORK"
-  exit "$rc"
-}
-trap cleanup 0
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-note "downloading $TAG for $OS/$ARCH"
-fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET" || err "download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
-fetch "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET" || err "download failed: $DL_BASE/$HELPER_ASSET"
-fetch "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS" || err "download failed: $DL_BASE/SHA256SUMS"
-
 verify_checksums() {
   # Each asset independently: exactly ONE entry, then its digest — a
   # combined count would accept a duplicated CLI entry masking a missing
@@ -239,7 +150,6 @@ verify_checksums() {
       err "checksum verification failed for $_a"
   done
 }
-verify_checksums
 
 # Attestation: capability probe, then verify. Anything short of a capable,
 # authenticated gh takes the unavailable path (notice; fatal only with
@@ -250,57 +160,6 @@ gh_capable() {
   gh auth status >/dev/null 2>&1 || return 1
   return 0
 }
-if gh_capable; then
-  for _b in "$WORK/$CLI_ASSET" "$WORK/$HELPER_ASSET"; do
-    gh attestation verify "$_b" --repo "$REPO" \
-      --signer-workflow "$REPO/.github/workflows/release.yaml" >/dev/null 2>&1 || \
-      err "build provenance attestation FAILED for $_b"
-  done
-  note "build provenance verified"
-else
-  if [ -n "$REQUIRE_ATTESTATION" ]; then
-    err "--verify-attestation: no capable authenticated gh CLI available"
-  fi
-  note "notice: attestation skipped (no capable authenticated gh CLI)"
-fi
-
-mkdir -p "$BIN_DIR" || err "cannot create bin dir $BIN_DIR"
-[ -w "$BIN_DIR" ] || err "bin dir $BIN_DIR is not writable"
-mkdir -p "$DATA_DIR/versions" || err "cannot create data dir $DATA_DIR"
-
-LOCK_PATH="$DATA_DIR/.install.lock"
-if ! mkdir "$LOCK_PATH" 2>/dev/null; then
-  err "another install is in progress (lock: $LOCK_PATH); if none is, removing the lock directory is safe"
-fi
-LOCK="$LOCK_PATH"
-
-# Preflight the current symlink: a real directory here would cause GC to
-# delete every version dir (CURRENT_TARGET="" matches nothing) and the
-# atomic switch would nest inside it instead of replacing it.
-if [ -e "$DATA_DIR/current" ] && [ ! -L "$DATA_DIR/current" ]; then
-  err "$DATA_DIR/current exists but is not a symlink — the layout is corrupt; remove it and rerun"
-fi
-
-# Preflight BOTH public paths before ANY layout mutation (staging, switch,
-# GC): a refusal discovered later would leave managed links already serving
-# a new pair while the install reports failure.
-for _name in rancher rancher-credential-vault; do
-  if [ -d "$BIN_DIR/$_name" ] && [ ! -L "$BIN_DIR/$_name" ]; then
-    err "$BIN_DIR/$_name is a directory — refusing to replace it"
-  fi
-done
-
-# GC under the lock: staging litter and version dirs current doesn't reference.
-CURRENT_TARGET=""
-[ -L "$DATA_DIR/current" ] && CURRENT_TARGET="$(readlink "$DATA_DIR/current")"
-for _d in "$DATA_DIR"/versions/*; do
-  [ -e "$_d" ] || continue
-  case "$_d" in
-    *.staging.*) rm -rf "$_d" ;;
-    *) [ "versions/${_d##*/}" = "$CURRENT_TARGET" ] || [ "$_d" = "$DATA_DIR/$CURRENT_TARGET" ] || \
-         [ "${_d##*/}" = "${CURRENT_TARGET##*/}" ] || rm -rf "$_d" ;;
-  esac
-done
 
 # hold_at: test-only SIGKILL seam — blocks while the named file exists.
 hold_at() {
@@ -325,35 +184,6 @@ version_dir_intact() {
   [ "$(file_sum "$1/rancher")" = "$(expected_sum "$CLI_ASSET")" ] || return 1
   [ "$(file_sum "$1/rancher-credential-vault")" = "$(expected_sum "$HELPER_ASSET")" ] || return 1
 }
-VDIR="$DATA_DIR/versions/$TAG"
-if [ -d "$VDIR" ] && version_dir_intact "$VDIR"; then
-  note "version $TAG already present and intact — repairing links"
-else
-  [ -d "$VDIR" ] && VDIR="$DATA_DIR/versions/$TAG.2"
-  STAGING_DIR="$DATA_DIR/versions/$TAG.staging.$$"
-  mkdir -p "$STAGING_DIR"
-  cp "$WORK/$CLI_ASSET" "$STAGING_DIR/rancher"
-  cp "$WORK/$HELPER_ASSET" "$STAGING_DIR/rancher-credential-vault"
-  chmod 0755 "$STAGING_DIR/rancher" "$STAGING_DIR/rancher-credential-vault"
-  hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_STAGING:-}"
-  mv "$STAGING_DIR" "$VDIR"
-fi
-
-# Atomic current switch: temp symlink + rename over the link itself.
-# Plain mv would move the temp link INTO the directory current points at.
-_tmp_link="$DATA_DIR/.current.$$"
-ln -s "versions/${VDIR##*/}" "$_tmp_link"
-$MV_REPLACE "$_tmp_link" "$DATA_DIR/current"
-[ "$(readlink "$DATA_DIR/current")" = "versions/${VDIR##*/}" ] || \
-  err "current switch failed verification — rerun the installer"
-hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH:-}"
-
-# Post-switch GC: the pre-staging pass necessarily kept the then-current old
-# version; now that current points at the new dir, collect the superseded one.
-for _d in "$DATA_DIR"/versions/*; do
-  [ -e "$_d" ] || continue
-  [ "${_d##*/}" = "${VDIR##*/}" ] || rm -rf "$_d"
-done
 
 # Public names (both preflighted above, before any layout mutation):
 # create or take over, atomically, per migration policy.
@@ -372,9 +202,6 @@ install_link() {
   ln -s "$_target" "$_tmp"
   $MV_REPLACE "$_tmp" "$_dest"
 }
-install_link "rancher"
-hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_FIRST_LINK:-}"
-install_link "rancher-credential-vault"
 
 # Receipt: atomic, JSON-escaped, best-effort (warn, never fail the install).
 # Input is guaranteed newline-free (has_raw_controls rejects \n up front:
@@ -413,23 +240,238 @@ write_receipt() {
   $MV_REPLACE "$_tmp" "$CONFIG_DIR/install-receipt.json" || \
     { warn "receipt skipped: cannot move into place"; rm -f "$_tmp"; return 0; }
 }
-write_receipt
 
-# Epilogue: verify the links resolve, prove the install, print next steps.
-if [ ! -x "$BIN_DIR/rancher" ] || [ ! -x "$BIN_DIR/rancher-credential-vault" ]; then
-  err "installed links do not resolve — rerun the installer"
-fi
-note "installed: $("$BIN_DIR/rancher" --version)"
-case ":$PATH:" in
-  *":$BIN_DIR:"*) : ;;
-  *)
-    _shell="${SHELL:-}"
-    case "${_shell##*/}" in
-      fish) note "add to PATH: fish_add_path $BIN_DIR" ;;
-      *)    note "add to PATH: export PATH=\"$BIN_DIR:\$PATH\"" ;;
-    esac ;;
-esac
-note "next steps:"
-note "  rancher completion <bash|zsh|fish|pwsh>   # shell completion"
-note "  rancher skill install                     # agent harnesses"
-note "  rancher login <server-url>                # authenticate"
+cleanup() {
+  rc=$?
+  if [ -n "$STAGING_DIR" ]; then rm -rf "$STAGING_DIR" 2>/dev/null || :; fi
+  [ -n "$LOCK" ] && rmdir "$LOCK" 2>/dev/null
+  rm -rf "$WORK"
+  exit "$rc"
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --version) [ $# -ge 2 ] || usage; REQ_VERSION="$2"; shift 2 ;;
+      --pre) WANT_PRE=1; shift ;;
+      --bin-dir) [ $# -ge 2 ] || usage; BIN_DIR="$2"; shift 2 ;;
+      --verify-attestation) REQUIRE_ATTESTATION=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      -q) QUIET=1; shift ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$REQ_VERSION" ] && [ -n "$WANT_PRE" ] && err "--version and --pre are mutually exclusive"
+  [ -n "${HOME:-}" ] || err "HOME is not set"
+  [ -n "$BIN_DIR" ] || BIN_DIR="$HOME/.local/bin"
+  DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/rancher-cli"
+  CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rancher-cli"
+}
+
+# grep/awk/tr are load-bearing (tag grammar, checksum selection, receipt
+# guard — a missing tr would fail the control-byte guard OPEN), so they are
+# preflighted like the rest.
+preflight_tools() {
+  for tool in curl uname mktemp chmod mv ln readlink grep awk tr; do
+    command -v "$tool" >/dev/null 2>&1 || err "required tool not found: $tool"
+  done
+  if command -v sha256sum >/dev/null 2>&1; then
+    SHA_CMD="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    SHA_CMD="shasum -a 256"
+  else
+    err "required tool not found: sha256sum (or shasum)"
+  fi
+}
+
+probe_platform() {
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+  case "$OS" in
+    Linux) OS="linux"; MV_REPLACE="mv -T" ;;
+    Darwin) OS="darwin"; MV_REPLACE="mv -h" ;;
+    *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
+  esac
+  case "$ARCH" in
+    x86_64|amd64) ARCH="amd64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    s390x) ARCH="s390x" ;;
+    *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
+  esac
+  if [ "$OS" = "darwin" ] && [ "$ARCH" = "s390x" ]; then
+    err "unsupported platform darwin/s390x — download manually: $BASE_URL/$REPO/releases"
+  fi
+}
+
+resolve() {
+  resolve_tag
+  # Asset names must match release.yaml's build loop — the two lists stay in lockstep.
+  CLI_ASSET="rancher-$OS-$ARCH"
+  HELPER_ASSET="rancher-credential-vault-$OS-$ARCH"
+  DL_BASE="$BASE_URL/$REPO/releases/download/$TAG"
+
+  if [ -n "$DRY_RUN" ]; then
+    # Contract: resolution GETs only. Nothing below this line ran: no
+    # filesystem writes, no lock, no attestation.
+    printf 'tag: %s\n' "$TAG"
+    printf 'platform: %s/%s\n' "$OS" "$ARCH"
+    printf 'asset: %s/%s\n' "$DL_BASE" "$CLI_ASSET"
+    printf 'asset: %s/%s\n' "$DL_BASE" "$HELPER_ASSET"
+    printf 'asset: %s/%s\n' "$DL_BASE" "SHA256SUMS"
+    printf 'bin-dir: %s\n' "$BIN_DIR"
+    printf 'data-dir: %s\n' "$DATA_DIR"
+    exit 0
+  fi
+}
+
+download() {
+  # Probe MV_REPLACE: BusyBox mv lacks -T/-h; fail early rather than mid-install.
+  # After the dry-run exit: dry-run never renames anything, and probing before it
+  # would make platform reporting depend on the host's mv rather than on uname.
+  _mv_probe="$(mktemp -d)"
+  ln -s /dev/null "$_mv_probe/a"
+  ln -s /dev/null "$_mv_probe/b"
+  $MV_REPLACE "$_mv_probe/b" "$_mv_probe/a" 2>/dev/null || \
+    err "mv does not support the required no-follow replace (-T/-h) — unsupported mv implementation (BusyBox?)"
+  rm -rf "$_mv_probe"
+
+  WORK="$(mktemp -d)"
+  trap cleanup 0
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  note "downloading $TAG for $OS/$ARCH"
+  fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET" || err "download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
+  fetch "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET" || err "download failed: $DL_BASE/$HELPER_ASSET"
+  fetch "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS" || err "download failed: $DL_BASE/SHA256SUMS"
+}
+
+verify() {
+  verify_checksums
+  if gh_capable; then
+    for _b in "$WORK/$CLI_ASSET" "$WORK/$HELPER_ASSET"; do
+      gh attestation verify "$_b" --repo "$REPO" \
+        --signer-workflow "$REPO/.github/workflows/release.yaml" >/dev/null 2>&1 || \
+        err "build provenance attestation FAILED for $_b"
+    done
+    note "build provenance verified"
+  else
+    if [ -n "$REQUIRE_ATTESTATION" ]; then
+      err "--verify-attestation: no capable authenticated gh CLI available"
+    fi
+    note "notice: attestation skipped (no capable authenticated gh CLI)"
+  fi
+}
+
+stage() {
+  mkdir -p "$BIN_DIR" || err "cannot create bin dir $BIN_DIR"
+  [ -w "$BIN_DIR" ] || err "bin dir $BIN_DIR is not writable"
+  mkdir -p "$DATA_DIR/versions" || err "cannot create data dir $DATA_DIR"
+
+  _lock_path="$DATA_DIR/.install.lock"
+  if ! mkdir "$_lock_path" 2>/dev/null; then
+    err "another install is in progress (lock: $_lock_path); if none is, removing the lock directory is safe"
+  fi
+  LOCK="$_lock_path"
+
+  # Preflight the current symlink: a real directory here would cause GC to
+  # delete every version dir (CURRENT_TARGET="" matches nothing) and the
+  # atomic switch would nest inside it instead of replacing it.
+  if [ -e "$DATA_DIR/current" ] && [ ! -L "$DATA_DIR/current" ]; then
+    err "$DATA_DIR/current exists but is not a symlink — the layout is corrupt; remove it and rerun"
+  fi
+
+  # Preflight BOTH public paths before ANY layout mutation (staging, switch,
+  # GC): a refusal discovered later would leave managed links already serving
+  # a new pair while the install reports failure.
+  for _name in rancher rancher-credential-vault; do
+    if [ -d "$BIN_DIR/$_name" ] && [ ! -L "$BIN_DIR/$_name" ]; then
+      err "$BIN_DIR/$_name is a directory — refusing to replace it"
+    fi
+  done
+
+  # GC under the lock: staging litter and version dirs current doesn't reference.
+  CURRENT_TARGET=""
+  [ -L "$DATA_DIR/current" ] && CURRENT_TARGET="$(readlink "$DATA_DIR/current")"
+  for _d in "$DATA_DIR"/versions/*; do
+    [ -e "$_d" ] || continue
+    case "$_d" in
+      *.staging.*) rm -rf "$_d" ;;
+      *) [ "versions/${_d##*/}" = "$CURRENT_TARGET" ] || [ "$_d" = "$DATA_DIR/$CURRENT_TARGET" ] || \
+           [ "${_d##*/}" = "${CURRENT_TARGET##*/}" ] || rm -rf "$_d" ;;
+    esac
+  done
+
+  VDIR="$DATA_DIR/versions/$TAG"
+  if [ -d "$VDIR" ] && version_dir_intact "$VDIR"; then
+    note "version $TAG already present and intact — repairing links"
+  else
+    [ -d "$VDIR" ] && VDIR="$DATA_DIR/versions/$TAG.2"
+    STAGING_DIR="$DATA_DIR/versions/$TAG.staging.$$"
+    mkdir -p "$STAGING_DIR"
+    cp "$WORK/$CLI_ASSET" "$STAGING_DIR/rancher"
+    cp "$WORK/$HELPER_ASSET" "$STAGING_DIR/rancher-credential-vault"
+    chmod 0755 "$STAGING_DIR/rancher" "$STAGING_DIR/rancher-credential-vault"
+    hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_STAGING:-}"
+    mv "$STAGING_DIR" "$VDIR"
+  fi
+}
+
+link() {
+  # Atomic current switch: temp symlink + rename over the link itself.
+  # Plain mv would move the temp link INTO the directory current points at.
+  _tmp_link="$DATA_DIR/.current.$$"
+  ln -s "versions/${VDIR##*/}" "$_tmp_link"
+  $MV_REPLACE "$_tmp_link" "$DATA_DIR/current"
+  [ "$(readlink "$DATA_DIR/current")" = "versions/${VDIR##*/}" ] || \
+    err "current switch failed verification — rerun the installer"
+  hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH:-}"
+
+  # Post-switch GC: the pre-staging pass necessarily kept the then-current old
+  # version; now that current points at the new dir, collect the superseded one.
+  for _d in "$DATA_DIR"/versions/*; do
+    [ -e "$_d" ] || continue
+    [ "${_d##*/}" = "${VDIR##*/}" ] || rm -rf "$_d"
+  done
+
+  install_link "rancher"
+  hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_FIRST_LINK:-}"
+  install_link "rancher-credential-vault"
+}
+
+epilogue() {
+  # Epilogue: verify the links resolve, prove the install, print next steps.
+  if [ ! -x "$BIN_DIR/rancher" ] || [ ! -x "$BIN_DIR/rancher-credential-vault" ]; then
+    err "installed links do not resolve — rerun the installer"
+  fi
+  note "installed: $("$BIN_DIR/rancher" --version)"
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) : ;;
+    *)
+      _shell="${SHELL:-}"
+      case "${_shell##*/}" in
+        fish) note "add to PATH: fish_add_path $BIN_DIR" ;;
+        *)    note "add to PATH: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+      esac ;;
+  esac
+  note "next steps:"
+  note "  rancher completion <bash|zsh|fish|pwsh>   # shell completion"
+  note "  rancher skill install                     # agent harnesses"
+  note "  rancher login <server-url>                # authenticate"
+}
+
+main() {
+  parse_args "$@"
+  preflight_tools
+  probe_platform
+  resolve
+  download
+  verify
+  stage
+  link
+  write_receipt
+  epilogue
+}
+
+main "$@"

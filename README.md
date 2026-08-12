@@ -41,17 +41,9 @@ operators get the same commands with readable table output.
         && GH_TOKEN="$GH_TOKEN" sh "$t"
     )
 
-Once the repository is public, the anonymous form works:
+Once the repository is public, the anonymous form is a one-liner:
 
-    (
-      t="$(mktemp)" || exit 1
-      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-      curl --proto '=https' --tlsv1.2 -fsSL \
-        -o "$t" \
-        https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
-        && sh "$t"
-    )
+    curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh | sh
 
 Both install the `rancher` CLI and its credential helper to `~/.local/bin`
 (rootless, no shell-profile edits; the script prints the `PATH` line if
@@ -65,7 +57,8 @@ manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 <details>
 <summary>Options</summary>
 
-Flags (append to the `sh "$t"` line): `--version <tag>` installs a specific release
+Flags (one-liner: `… | sh -s -- --version <tag>`; authenticated form:
+append to the `sh "$t"` line): `--version <tag>` installs a specific release
 (`RANCHER_CLI_VERSION` env twin; flag wins), `--pre` selects the newest
 prerelease, `--bin-dir <dir>` overrides the destination
 (`RANCHER_CLI_INSTALL_BIN_DIR` env twin), `--verify-attestation` makes
