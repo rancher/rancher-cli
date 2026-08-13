@@ -31,12 +31,34 @@ func TestDryRunResolvesStableLatest(t *testing.T) {
 	assert.Contains(t, out, "asset: "+s.srv.URL+"/rancher/rancher-cli/releases/download/v1.2.3/SHA256SUMS")
 }
 
+// TestStable404WithTokenHintsAtScope covers F2: when a token is present and
+// the stable-latest endpoint returns 404, the error must suggest the token may
+// lack access (scope/SSO) — not just steer the user toward --pre.
+func TestStable404WithTokenHintsAtScope(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	// No release registered: stable-latest returns 404.
+	_, errOut, code := runInstall(t, s, []string{
+		"GH_TOKEN=test-token",
+		"PATH=" + toolPath(t, baseTools...),
+	}, "--dry-run")
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, errOut, "use --pre or --version")
+	assert.Contains(t, errOut, "token lacks access",
+		"404 with a token set must hint at scope/SSO as a possible cause")
+}
+
 func TestDryRunNoStableRelease(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	_, errOut, code := runInstall(t, s, nil, "--dry-run")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "no stable release yet")
+	// Anonymous 404 is ambiguous (empty public repo vs unauthenticated
+	// internal repo); the message must name both readings and the way out
+	// of each.
+	assert.Contains(t, errOut, "no stable release found")
+	assert.Contains(t, errOut, "gh auth login or GH_TOKEN")
+	assert.Contains(t, errOut, "use --pre or --version")
 }
 
 func TestPreSkipsDraftsAcrossPages(t *testing.T) {
@@ -708,8 +730,10 @@ func TestHostnameDerivationForGhToken(t *testing.T) {
 func TestGhBootstrapSnippet(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
-	writeRelease(s, "v1.2.3", false)
-	s.setLatest("v1.2.3")
+	// Early access ships prereleases only, and the README one-liner carries
+	// --pre — the fixture mirrors that reality (--pre needs a JSON parser
+	// on PATH, hence jq below).
+	writeRelease(s, "v0.1.0-alpha.1", false)
 
 	scriptPath, err := filepath.Abs("../install.sh")
 	require.NoError(t, err)
@@ -723,23 +747,23 @@ func TestGhBootstrapSnippet(t *testing.T) {
 		"  *) exit 1 ;;\n"+
 		"esac\n")
 
-	// The README one-liner, byte-identical, with | sh -s -- --dry-run in
-	// place of | sh — the stub gh serves install.sh for the contents-API
-	// call; RANCHER_CLI_INSTALL_BASE_URL redirects install.sh's curl calls.
-	snippet := `gh api repos/rancher/rancher-cli/contents/install.sh?ref=main -H "Accept: application/vnd.github.raw" | sh -s -- --dry-run`
-	assertSnippetMatchesDoc(t, "README.md", "gh api repos/rancher/rancher-cli/contents/install.sh?ref=main",
-		snippet, func(s string) string { return strings.Replace(s, "| sh -s -- --dry-run", "| sh", 1) })
+	// The README one-liner, byte-identical, with --dry-run appended to its
+	// flags — the stub gh serves install.sh for the contents-API call;
+	// RANCHER_CLI_INSTALL_BASE_URL redirects install.sh's curl calls.
+	snippet := `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre --dry-run`
+	assertSnippetMatchesDoc(t, "README.md", `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main"`,
+		snippet, func(s string) string { return strings.Replace(s, "| sh -s -- --pre --dry-run", "| sh -s -- --pre", 1) })
 
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
 	cmd.Env = []string{
 		"HOME=" + t.TempDir(),
 		"TMPDIR=" + t.TempDir(),
-		"PATH=" + ghDir + ":" + toolPath(t, baseTools...),
+		"PATH=" + ghDir + ":" + toolPath(t, append(append([]string{}, baseTools...), "jq")...),
 		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
 		"CURL_CA_BUNDLE=" + s.caPath,
 		"RANCHER_TEST_INSTALL_SCRIPT=" + scriptPath,
 	}
 	out, runErr := cmd.CombinedOutput()
 	require.NoErrorf(t, runErr, "README bootstrap snippet failed: %s", out)
-	assert.Contains(t, string(out), "tag: v1.2.3")
+	assert.Contains(t, string(out), "tag: v0.1.0-alpha.1")
 }

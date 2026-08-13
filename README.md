@@ -33,7 +33,11 @@ operators get the same commands with readable table output.
 > picks up gh's token automatically, and it never appears in process
 > arguments:
 
-    gh api repos/rancher/rancher-cli/contents/install.sh?ref=main -H "Accept: application/vnd.github.raw" | sh
+    gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre
+
+`--pre` selects the newest prerelease — early access ships prereleases
+only; drop it once a stable release exists. Prerelease resolution needs
+`jq` or `python3` on PATH.
 
 Without `gh`, the token-authenticated download-then-run form is in
 [REFERENCE.md](REFERENCE.md#defensive-bootstrap).

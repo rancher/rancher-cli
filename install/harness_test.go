@@ -31,19 +31,62 @@ type stub struct {
 	// mu guards everything below: tests configure the stub from the test
 	// goroutine while handler goroutines read — without the mutex those are
 	// data races under the mandated -race.
-	mu           sync.Mutex
-	releases     []map[string]any  // newest first, like the API
-	rawListing   [][]byte          // raw per-page bodies; overrides releases when set
-	assets       map[string][]byte // "<tag>/<name>" -> content
-	latest       string            // tag the /releases/latest redirect names; "" = 404
-	latestStatus int               // when non-zero, /releases/latest returns this status instead
-	authHeader   string            // last Authorization header seen on asset download requests
+	mu               sync.Mutex
+	releases         []map[string]any  // newest first, like the API
+	rawListing       [][]byte          // raw per-page bodies; overrides releases when set
+	assets           map[string][]byte // "<tag>/<name>" -> content (browser download path)
+	assetByID        map[string][]byte // "<numeric-id>" -> content (API asset path)
+	releaseJSON      map[string][]byte // "<tag>" -> single-release JSON bytes
+	nextAssetID      int64             // counter for allocating numeric asset ids
+	latest           string            // tag the /releases/latest redirect names; "" = 404
+	latestStatus     int               // when non-zero, /releases/latest returns this status instead
+	authHeader       string            // last Authorization header seen on API asset requests
+	cdnAuthHeader    string            // last Authorization header seen on CDN asset requests
+	private          bool              // when true, browser download paths return 404
+	assetRedirect    bool              // when true, API asset endpoint 302s to /cdn/assets/<id>
+	releaseTagStatus int               // when non-zero, /repos/.../releases/tags/ returns this status
+	apiAssetRequests int               // count of requests to the API asset endpoint
+	cdnAssetRequests int               // count of requests to the CDN asset endpoint
 }
 
 func (s *stub) setLatestStatus(code int) { s.mu.Lock(); defer s.mu.Unlock(); s.latestStatus = code }
 
-func (s *stub) setLatest(tag string)   { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
-func (s *stub) lastAuthHeader() string { s.mu.Lock(); defer s.mu.Unlock(); return s.authHeader }
+func (s *stub) setLatest(tag string)      { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
+func (s *stub) lastAuthHeader() string    { s.mu.Lock(); defer s.mu.Unlock(); return s.authHeader }
+func (s *stub) lastCDNAuthHeader() string { s.mu.Lock(); defer s.mu.Unlock(); return s.cdnAuthHeader }
+func (s *stub) setPrivate(v bool)         { s.mu.Lock(); defer s.mu.Unlock(); s.private = v }
+func (s *stub) setAssetRedirect(v bool)   { s.mu.Lock(); defer s.mu.Unlock(); s.assetRedirect = v }
+func (s *stub) apiAssetRequestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.apiAssetRequests
+}
+func (s *stub) cdnAssetRequestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cdnAssetRequests
+}
+func (s *stub) setReleaseTagStatus(code int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releaseTagStatus = code
+}
+func (s *stub) setReleaseJSON(tag string, b []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releaseJSON[tag] = b
+}
+func (s *stub) releaseJSONFor(tag string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := s.releaseJSON[tag]
+	if b == nil {
+		return nil
+	}
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
 func (s *stub) setRawListing(pages [][]byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,7 +109,12 @@ func (s *stub) asset(key string) []byte {
 
 func newStub(t *testing.T) *stub {
 	t.Helper()
-	s := &stub{assets: map[string][]byte{}}
+	s := &stub{
+		assets:      map[string][]byte{},
+		assetByID:   map[string][]byte{},
+		releaseJSON: map[string][]byte{},
+		nextAssetID: 1000,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rancher/rancher-cli/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -87,7 +135,74 @@ func newStub(t *testing.T) *stub {
 		key := strings.TrimPrefix(r.URL.Path, "/rancher/rancher-cli/releases/download/")
 		s.mu.Lock()
 		s.authHeader = auth
+		priv := s.private
 		body, ok := s.assets[key]
+		s.mu.Unlock()
+		if priv {
+			// Private/internal repos: browser download URLs return 404 even with
+			// a valid token. The API asset endpoint is the only path that works.
+			http.NotFound(w, r)
+			return
+		}
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(body)
+	})
+	// Single-release JSON endpoint: used by fetch_asset_ids to resolve numeric
+	// asset ids. releaseTagStatus overrides with a specific HTTP status code,
+	// e.g. 403 to simulate a scoped token that cannot read the repo metadata.
+	mux.HandleFunc("/repos/rancher/rancher-cli/releases/tags/", func(w http.ResponseWriter, r *http.Request) {
+		tag := strings.TrimPrefix(r.URL.Path, "/repos/rancher/rancher-cli/releases/tags/")
+		s.mu.Lock()
+		status := s.releaseTagStatus
+		body := s.releaseJSON[tag]
+		s.mu.Unlock()
+		if status != 0 {
+			w.WriteHeader(status)
+			return
+		}
+		if body == nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	})
+	// API asset download endpoint: serves asset bytes by numeric id and records
+	// the Authorization header. When assetRedirect is set it returns a genuine
+	// 302 to the /cdn/assets/<id> path so fetch_asset's two-step redirect logic
+	// is exercised; otherwise it returns 200 directly (the original mode).
+	mux.HandleFunc("/repos/rancher/rancher-cli/releases/assets/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/repos/rancher/rancher-cli/releases/assets/")
+		auth := r.Header.Get("Authorization")
+		s.mu.Lock()
+		s.authHeader = auth
+		s.apiAssetRequests++
+		redirect := s.assetRedirect
+		body, ok := s.assetByID[id]
+		s.mu.Unlock()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if redirect {
+			http.Redirect(w, r, s.srv.URL+"/cdn/assets/"+id, http.StatusFound)
+			return
+		}
+		_, _ = w.Write(body)
+	})
+	// CDN asset endpoint: serves asset bytes after a 302 redirect from the API
+	// asset endpoint. Records its Authorization header so tests can assert the
+	// token is never forwarded to the CDN host.
+	mux.HandleFunc("/cdn/assets/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/cdn/assets/")
+		auth := r.Header.Get("Authorization")
+		s.mu.Lock()
+		s.cdnAuthHeader = auth
+		s.cdnAssetRequests++
+		body, ok := s.assetByID[id]
 		s.mu.Unlock()
 		if !ok {
 			http.NotFound(w, r)
@@ -162,26 +277,81 @@ func fakeUname(t *testing.T, kernel, machine string) string {
 
 // writeRelease registers a release and, when published, its three assets:
 // fake "binaries" are tiny sh scripts so the epilogue's --version works.
+// It also populates assetByID (for the API asset endpoint) and releaseJSON
+// (for the single-release metadata endpoint) so private-mode installs work.
 func writeRelease(s *stub, tag string, draft bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.releases = append(s.releases, map[string]any{"tag_name": tag, "draft": draft})
 	if draft {
+		s.releases = append(s.releases, map[string]any{"tag_name": tag, "draft": draft})
 		return
 	}
+
+	// releaseAsset mirrors the fields the awk extractor needs: url before name
+	// (Go struct fields marshal in declaration order, ensuring the right sequence
+	// for the proven awk).
+	type releaseAsset struct {
+		URL  string `json:"url"`
+		Name string `json:"name"`
+		ID   int64  `json:"id"`
+	}
+
+	var apiAssets []releaseAsset
 	var sums strings.Builder
+
 	for _, name := range []string{"rancher", "rancher-credential-vault"} {
 		for _, plat := range []string{"linux-amd64", "linux-arm64", "linux-s390x", "darwin-amd64", "darwin-arm64"} {
-			asset := name + "-" + plat
+			assetName := name + "-" + plat
 			body := []byte("#!/bin/sh\necho \"" + name + " version " + tag + "\"\n")
-			s.assets[tag+"/"+asset] = body
+			s.assets[tag+"/"+assetName] = body
 			sum := sha256.Sum256(body)
-			fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), asset)
+			fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), assetName)
+
+			id := s.nextAssetID
+			s.nextAssetID++
+			s.assetByID[strconv.FormatInt(id, 10)] = body
+			apiAssets = append(apiAssets, releaseAsset{
+				URL:  s.srv.URL + "/repos/rancher/rancher-cli/releases/assets/" + strconv.FormatInt(id, 10),
+				Name: assetName,
+				ID:   id,
+			})
 		}
 	}
+
+	sumsBody := []byte(sums.String())
 	// Direct assignment: s.mu is already held (a setAsset call here would
 	// self-deadlock on the non-reentrant mutex).
-	s.assets[tag+"/SHA256SUMS"] = []byte(sums.String())
+	s.assets[tag+"/SHA256SUMS"] = sumsBody
+
+	sumsID := s.nextAssetID
+	s.nextAssetID++
+	s.assetByID[strconv.FormatInt(sumsID, 10)] = sumsBody
+	apiAssets = append(apiAssets, releaseAsset{
+		URL:  s.srv.URL + "/repos/rancher/rancher-cli/releases/assets/" + strconv.FormatInt(sumsID, 10),
+		Name: "SHA256SUMS",
+		ID:   sumsID,
+	})
+
+	// Single-release JSON: used by fetch_asset_ids to extract numeric ids.
+	// The outer struct uses field declaration order (tag_name, draft, assets)
+	// so the JSON is deterministic and the awk finds url before name within
+	// each asset object.
+	type releaseBody struct {
+		TagName string         `json:"tag_name"`
+		Draft   bool           `json:"draft"`
+		Assets  []releaseAsset `json:"assets"`
+	}
+	relJSON, _ := json.MarshalIndent(releaseBody{TagName: tag, Draft: draft, Assets: apiAssets}, "", "  ")
+	s.releaseJSON[tag] = relJSON
+
+	// Listing entry: include assets so _extract in resolve_pre_tag returns a
+	// full release object that fetch_asset_ids can extract ids from (mirrors
+	// real GitHub API which includes assets in listing responses).
+	s.releases = append(s.releases, map[string]any{
+		"tag_name": tag,
+		"draft":    draft,
+		"assets":   apiAssets,
+	})
 }
 
 // runInstall executes the real install.sh under sh with a hermetic HOME and

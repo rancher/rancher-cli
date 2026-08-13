@@ -28,6 +28,21 @@ WORK=""
 LOCK=""
 STAGING_DIR=""
 
+# Asset ids resolved by fetch_asset_ids() and consumed by download().
+# Empty until fetch_asset_ids runs; download() uses them only when TOKEN is set.
+CLI_ASSET_ID=""
+HELPER_ASSET_ID=""
+SHA256SUMS_ASSET_ID=""
+
+# METADATA_FAIL_CODE: HTTP code from a failed fetch_asset_ids() metadata GET.
+# Set when TOKEN is non-empty but the tags endpoint returns non-200; consulted
+# by download()'s browser-URL error path to produce an enriched message.
+METADATA_FAIL_CODE=""
+
+# REL_JSON: winning release JSON cached by resolve_pre_tag() so
+# fetch_asset_ids() can skip a redundant GET on the --pre path.
+REL_JSON=""
+
 err() { printf 'error: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 note() { [ -n "$QUIET" ] || printf '%s\n' "$*"; }
@@ -40,17 +55,28 @@ EOF
   exit 1
 }
 
+# curl_authed <extra-header|""> <curl-args...>: single owner of the
+# token→curl channel. The token travels via --config on stdin — never in
+# argv. Every tokened request in this script calls this function.
+# Untokened requests (anonymous fetch branches, CDN leg of fetch_asset)
+# call curl directly.
+curl_authed() {
+  _extra_hdr="$1"; shift
+  {
+    printf 'header = "Authorization: Bearer %s"\n' "$TOKEN"
+    if [ -n "$_extra_hdr" ]; then printf 'header = "%s"\n' "$_extra_hdr"; fi
+  } | curl --config - --proto '=https' --tlsv1.2 "$@"
+}
+
 # fetch <url> [output]: curl with the token (if any) passed via --config on
 # stdin so it never appears in argv or logs.
 fetch() {
   _url="$1"; _out="${2:-}"
   if [ -n "$TOKEN" ]; then
     if [ -n "$_out" ]; then
-      printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | \
-        curl --config - --proto '=https' --tlsv1.2 -fsSL -o "$_out" "$_url"
+      curl_authed "" -fsSL -o "$_out" "$_url"
     else
-      printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | \
-        curl --config - --proto '=https' --tlsv1.2 -fsSL "$_url"
+      curl_authed "" -fsSL "$_url"
     fi
   else
     if [ -n "$_out" ]; then
@@ -59,6 +85,134 @@ fetch() {
       curl --proto '=https' --tlsv1.2 -fsSL "$_url"
     fi
   fi
+}
+
+# fetch_asset <id> <output> <name>: downloads a release asset via the GitHub
+# API asset endpoint. TOKEN must be non-empty.
+#
+# Single tokened request without -L writes the body to "$_out" and captures
+# the HTTP code and redirect Location via -w. On 200 the file already holds
+# the asset — done, one request. On 302/301 (real GitHub signed CDN redirect)
+# the small redirect body in "$_out" is overwritten by a plain untokened fetch
+# of the Location URL; the signed URL is self-authenticating and the token
+# must never leave $API_URL. Security property: identical to the previous
+# two-step probe; direct-200 case (stub, internal mirrors) now makes exactly
+# one request instead of two.
+fetch_asset() {
+  _id="$1"; _out="$2"; _name="$3"
+  _probe_rc=0
+  _probe="$(curl_authed "Accept: application/octet-stream" -sS \
+    -o "$_out" -w '%{http_code} %{redirect_url}' \
+    "$API_URL/repos/$REPO/releases/assets/$_id")" || _probe_rc=$?
+  [ "$_probe_rc" -eq 0 ] || err "download failed: $_name (asset id $_id)"
+  _code="${_probe%% *}"
+  _location="${_probe#* }"
+  case "$_code" in
+    200)
+      # Body already written to $_out by the tokened request above.
+      ;;
+    30[12])
+      # Redirect to signed CDN URL: overwrite $_out without token.
+      [ -n "$_location" ] || err "download failed: $_name (asset id $_id, redirect with no Location)"
+      curl --proto '=https' --tlsv1.2 -fsS \
+        -o "$_out" "$_location" || \
+        err "download failed: $_name (asset id $_id, CDN fetch)"
+      ;;
+    *)
+      err "download failed: $_name (asset id $_id, HTTP $_code)"
+      ;;
+  esac
+}
+
+# fetch_asset_ids: when TOKEN is set, resolves the numeric GitHub asset ids
+# for the three assets download() needs.
+#
+# Source: uses REL_JSON (cached by resolve_pre_tag on the --pre path) when
+# available; otherwise fetches via $API_URL/repos/$REPO/releases/tags/$TAG and
+# captures the HTTP code so failures can be diagnosed in the download() error.
+#
+# On metadata fetch failure: stores the code in METADATA_FAIL_CODE, warns to
+# stderr, and returns 0 so download() falls back to browser URLs.  Only a
+# metadata-success + missing-asset is a broken release.
+#
+# Extraction is parser-first (jq → python3, one invocation each, three output
+# lines) with a single-pass bounded-awk fallback.  The awk stops at the first
+# "body": line: GitHub places the body field after assets (verified live), so
+# free-text in release notes is never parsed as asset metadata.
+fetch_asset_ids() {
+  [ -n "$TOKEN" ] || return 0
+  if [ -n "$REL_JSON" ]; then
+    # --pre path: resolve_pre_tag cached the winning release JSON from the
+    # listing page; skip the redundant tags-endpoint round trip.
+    _rel_json="$REL_JSON"
+  else
+    # Capture body and HTTP code in one variable — no temp file.
+    # curl appends '\n<code>' after the body via -w; split on the last newline:
+    #   _meta_code = everything after the final newline (the 3-digit status)
+    #   _meta_body = everything before it (the JSON response body)
+    # Command substitution strips trailing newlines, but the code (pure digits)
+    # never ends with one, so the separator newline is always preserved.
+    _meta_rc=0
+    _meta_resp="$(curl_authed "" -sS -L \
+      -w '\n%{http_code}' \
+      "$API_URL/repos/$REPO/releases/tags/$TAG")" || _meta_rc=$?
+    _meta_code="${_meta_resp##*
+}"
+    _meta_body="${_meta_resp%
+*}"
+    if [ "$_meta_rc" -ne 0 ] || [ "$_meta_code" != "200" ]; then
+      METADATA_FAIL_CODE="${_meta_code:-error}"
+      warn "release metadata not readable with this token (HTTP ${_meta_code:-error}) — falling back to direct download"
+      return 0
+    fi
+    _rel_json="$_meta_body"
+  fi
+  _used_awk=""
+  if command -v jq >/dev/null 2>&1; then
+    # One jq invocation emitting three lines: cli id, helper id, sums id.
+    { IFS= read -r CLI_ASSET_ID || :; IFS= read -r HELPER_ASSET_ID || :; IFS= read -r SHA256SUMS_ASSET_ID || :; } <<EOF
+$(printf '%s' "$_rel_json" | jq -r \
+  --arg c "$CLI_ASSET" --arg h "$HELPER_ASSET" \
+  '(.assets//[]) | ((map(select(.name==$c))[0].id//""),(map(select(.name==$h))[0].id//""),(map(select(.name=="SHA256SUMS"))[0].id//""))')
+EOF
+  elif python3 -c 'pass' >/dev/null 2>&1; then
+    # One python3 invocation emitting three lines: cli id, helper id, sums id.
+    { IFS= read -r CLI_ASSET_ID || :; IFS= read -r HELPER_ASSET_ID || :; IFS= read -r SHA256SUMS_ASSET_ID || :; } <<EOF
+$(printf '%s' "$_rel_json" | python3 -c \
+  'import json,sys; a=json.load(sys.stdin).get("assets",[]); ns=[sys.argv[1],sys.argv[2],"SHA256SUMS"]; [print(next((str(x["id"]) for x in a if x["name"]==n),"")) for n in ns]' \
+  "$CLI_ASSET" "$HELPER_ASSET")
+EOF
+  else
+    _used_awk=1
+    # Single-pass awk bounded by the "body" field: stops before free-text
+    # release notes so adversarial content there cannot spoof an asset id.
+    # The END block executes even on an early exit, printing all three results.
+    _ids="$(printf '%s' "$_rel_json" | awk \
+      -v c="$CLI_ASSET" -v h="$HELPER_ASSET" -v s="SHA256SUMS" '
+        /"body":/ { exit }
+        /"url":/ && /\/releases\/assets\// {
+          u=$0; sub(/.*\/assets\//,"",u); sub(/".*/,"",u)
+        }
+        /"name":/ {
+          n=$0; sub(/.*"name": *"/,"",n); sub(/".*/,"",n)
+          if (n==c) ci=u
+          if (n==h) hi=u
+          if (n==s) si=u
+        }
+        END { print ci " " hi " " si }')"
+    CLI_ASSET_ID="${_ids%% *}"
+    _ids_rest="${_ids#* }"
+    HELPER_ASSET_ID="${_ids_rest%% *}"
+    SHA256SUMS_ASSET_ID="${_ids_rest##* }"
+  fi
+  _awk_note=""
+  [ -z "${_used_awk:-}" ] || _awk_note=" — note: id extraction without jq or python3 is best-effort; install one of them if the release assets look correct"
+  [ -n "$CLI_ASSET_ID" ] || \
+    err "asset not found in release $TAG: $CLI_ASSET — verify the release assets exist${_awk_note}"
+  [ -n "$HELPER_ASSET_ID" ] || \
+    err "asset not found in release $TAG: $HELPER_ASSET — verify the release assets exist${_awk_note}"
+  [ -n "$SHA256SUMS_ASSET_ID" ] || \
+    err "asset not found in release $TAG: SHA256SUMS — verify the release assets exist${_awk_note}"
 }
 
 validate_tag() {
@@ -81,9 +235,8 @@ resolve_tag() {
   # read as "no stable release".
   _rc=0
   if [ -n "$TOKEN" ]; then
-    _probe="$(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | \
-      curl --config - --proto '=https' --tlsv1.2 -sI -o /dev/null \
-        -w '%{http_code} %{redirect_url}' "$BASE_URL/$REPO/releases/latest")" || _rc=$?
+    _probe="$(curl_authed "" -sI -o /dev/null \
+      -w '%{http_code} %{redirect_url}' "$BASE_URL/$REPO/releases/latest")" || _rc=$?
   else
     _probe="$(curl --proto '=https' --tlsv1.2 -sI -o /dev/null \
       -w '%{http_code} %{redirect_url}' "$BASE_URL/$REPO/releases/latest")" || _rc=$?
@@ -95,7 +248,12 @@ resolve_tag() {
   # 5xx are request failures, not absence.
   case "$_code" in
     30?) : ;;
-    404) err "no stable release yet — use --pre or --version <tag>" ;;
+    404)
+      if [ -z "$TOKEN" ]; then
+        err "no stable release found — an internal repository needs auth (gh auth login or GH_TOKEN); on a public repository this means: use --pre or --version <tag>"
+      fi
+      err "no stable release yet — use --pre or --version <tag>; with a token set this can also mean the token lacks access to an internal repository (scope/SSO)"
+      ;;
     *) err "release resolution failed (HTTP $_code) — check token/rate limits and retry" ;;
   esac
   case "$_redirect" in
@@ -110,11 +268,13 @@ resolve_tag() {
 # regex field-pairing cannot be trusted against arbitrary release bodies.
 resolve_pre_tag() {
   if command -v jq >/dev/null 2>&1; then
-    _parse() { jq -r 'map(select(.draft | not)) | (.[0].tag_name // "")'; }
-    _count() { jq -r 'length'; }
+    _parse()   { jq -r 'map(select(.draft | not)) | (.[0].tag_name // "")'; }
+    _count()   { jq -r 'length'; }
+    _extract() { jq --arg t "$1" '.[] | select(.tag_name==$t)'; }
   elif command -v python3 >/dev/null 2>&1; then
-    _parse() { python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin) if not r.get("draft")]; print(rs[0]["tag_name"] if rs else "")'; }
-    _count() { python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'; }
+    _parse()   { python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin) if not r.get("draft")]; print(rs[0]["tag_name"] if rs else "")'; }
+    _count()   { python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'; }
+    _extract() { python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin) if r.get("tag_name")==sys.argv[1]]; print(json.dumps(rs[0]) if rs else "")' "$1"; }
   else
     err "--pre needs jq or python3 to parse the release listing"
   fi
@@ -123,8 +283,12 @@ resolve_pre_tag() {
     # Page cap: runaway-loop backstop against non-API responses (captive portal,
     # JSON object); not a release search window limit.
     [ "$_page" -gt 100 ] && err "release listing: page cap reached (100 pages) — non-API response or runaway loop"
-    _body="$(fetch "$API_URL/repos/$REPO/releases?per_page=100&page=$_page")" || \
+    if ! _body="$(fetch "$API_URL/repos/$REPO/releases?per_page=100&page=$_page")"; then
+      if [ -z "$TOKEN" ]; then
+        err "release listing request failed (page $_page) — an internal repository needs auth: authenticate gh (gh auth login) or set GH_TOKEN"
+      fi
       err "release listing request failed (page $_page)"
+    fi
     _n="$(printf '%s' "$_body" | _count)"
     case "$_n" in
       ''|*[!0-9]*) err "release listing parse failed (page $_page) — unexpected response (captive portal?)" ;;
@@ -133,6 +297,9 @@ resolve_pre_tag() {
     TAG="$(printf '%s' "$_body" | _parse)"
     if [ -n "$TAG" ]; then
       validate_tag "$TAG"
+      # Cache the winning release JSON so fetch_asset_ids can extract asset ids
+      # without a redundant GET to the releases/tags endpoint.
+      REL_JSON="$(printf '%s' "$_body" | _extract "$TAG")"
       return
     fi
     _page=$((_page + 1))
@@ -331,13 +498,21 @@ resolve() {
   DL_BASE="$BASE_URL/$REPO/releases/download/$TAG"
 
   if [ -n "$DRY_RUN" ]; then
-    # Contract: resolution GETs only. Nothing below this line ran: no
-    # filesystem writes, no lock, no attestation.
+    # Run id resolution now so the preview shows the true download source.
+    # Contract: resolution GETs only — when TOKEN is set, one additional
+    # metadata GET, but no filesystem writes, no lock, no attestation.
+    fetch_asset_ids
     printf 'tag: %s\n' "$TAG"
     printf 'platform: %s/%s\n' "$OS" "$ARCH"
-    printf 'asset: %s/%s\n' "$DL_BASE" "$CLI_ASSET"
-    printf 'asset: %s/%s\n' "$DL_BASE" "$HELPER_ASSET"
-    printf 'asset: %s/%s\n' "$DL_BASE" "SHA256SUMS"
+    if [ -n "$CLI_ASSET_ID" ]; then
+      printf 'asset: %s\n' "$API_URL/repos/$REPO/releases/assets/$CLI_ASSET_ID"
+      printf 'asset: %s\n' "$API_URL/repos/$REPO/releases/assets/$HELPER_ASSET_ID"
+      printf 'asset: %s\n' "$API_URL/repos/$REPO/releases/assets/$SHA256SUMS_ASSET_ID"
+    else
+      printf 'asset: %s/%s\n' "$DL_BASE" "$CLI_ASSET"
+      printf 'asset: %s/%s\n' "$DL_BASE" "$HELPER_ASSET"
+      printf 'asset: %s/%s\n' "$DL_BASE" "SHA256SUMS"
+    fi
     printf 'bin-dir: %s\n' "$BIN_DIR"
     printf 'data-dir: %s\n' "$DATA_DIR"
     exit 0
@@ -362,9 +537,25 @@ download() {
   trap 'exit 143' TERM
 
   note "downloading $TAG for $OS/$ARCH"
-  fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET" || err "download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
-  fetch "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET" || err "download failed: $DL_BASE/$HELPER_ASSET"
-  fetch "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS" || err "download failed: $DL_BASE/SHA256SUMS"
+  if [ -n "$CLI_ASSET_ID" ]; then
+    # Private/internal repos: browser download URLs return 404 regardless of
+    # authentication. Use the GitHub API asset endpoint; fetch_asset_ids
+    # resolved the numeric ids. If metadata was not reachable (scoped token on
+    # a public repo) CLI_ASSET_ID is empty and we fall through to browser URLs.
+    fetch_asset "$CLI_ASSET_ID" "$WORK/$CLI_ASSET" "$CLI_ASSET"
+    fetch_asset "$HELPER_ASSET_ID" "$WORK/$HELPER_ASSET" "$HELPER_ASSET"
+    fetch_asset "$SHA256SUMS_ASSET_ID" "$WORK/SHA256SUMS" "SHA256SUMS"
+  else
+    if ! fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"; then
+      _dlmsg="download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
+      if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_CODE" ]; then
+        _dlmsg="$_dlmsg — or the token lacks access to an internal repository (scope/SSO); release metadata was also unreadable (HTTP $METADATA_FAIL_CODE)"
+      fi
+      err "$_dlmsg"
+    fi
+    fetch "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET" || err "download failed: $DL_BASE/$HELPER_ASSET"
+    fetch "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS" || err "download failed: $DL_BASE/SHA256SUMS"
+  fi
 }
 
 verify() {
@@ -487,6 +678,7 @@ main() {
   preflight_tools
   probe_platform
   resolve
+  fetch_asset_ids
   download
   verify
   stage
