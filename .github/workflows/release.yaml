@@ -63,13 +63,8 @@ jobs:
           subject-path: |
             dist/rancher-*
             dist/install.sh
-      - name: Create draft release
+      - name: Create draft release or attach assets to an existing one
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: |
-          prerelease=""
-          case "$TAG" in
-            *-*) prerelease="--prerelease" ;;
-          esac
-          gh release create "$TAG" --draft $prerelease --verify-tag --title "$TAG" dist/*
+        run: scripts/release-upsert dist/*
