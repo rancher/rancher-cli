@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const rawInstallURL = "https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh"
 
 func TestDryRunResolvesStableLatest(t *testing.T) {
 	t.Parallel()
@@ -297,9 +300,11 @@ func TestMvCapabilityProbePrecedesAnyMutation(t *testing.T) {
 	assert.Equalf(t, 0, code, "dry-run needs no mv capability; stderr: %s", errOut)
 }
 
-// TestAuthenticatedBootstrapSnippet extracts the internal-phase bootstrap
-// from the README and runs it against a stub serving install.sh, asserting
-// the token arrives as an Authorization header and never in argv.
+// TestAuthenticatedBootstrapSnippet mirrors the internal-phase
+// download-then-run bootstrap in REFERENCE.md's Defensive bootstrap section
+// (moved from README 2026-08-12) and runs it against a stub serving
+// install.sh, asserting the token arrives as an Authorization header and
+// never in argv.
 func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 	t.Parallel()
 	script, err := os.ReadFile("../install.sh")
@@ -326,41 +331,37 @@ func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
 
-	// The README snippet with the raw URL swapped for the stub's and a
-	// --dry-run appended; everything else byte-identical.
+	// The REFERENCE.md defensive-bootstrap snippet with the raw URL swapped
+	// for the stub's and a --dry-run appended; everything else byte-identical.
 	snippet := `(
   t="$(mktemp)" || exit 1
   trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
   trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-  printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | \
+  printf 'header = "Authorization: Bearer %s"\n' "${GH_TOKEN:-$GITHUB_TOKEN}" | \
     curl --config - --proto '=https' --tlsv1.2 -fsSL \
       -o "$t" \
       ` + raw.URL + `/install.sh \
-    && GH_TOKEN="$GH_TOKEN" sh "$t" --dry-run
+    && GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}" sh "$t" --dry-run
 )`
+	assertSnippetMatchesDoc(t, "REFERENCE.md", `printf 'header = "Authorization: Bearer %s"`,
+		snippet, func(s string) string {
+			return strings.NewReplacer(
+				raw.URL+"/install.sh", rawInstallURL,
+				`sh "$t" --dry-run`, `sh "$t"`,
+			).Replace(s)
+		})
 	// Recording curl wrapper: logs every argv it receives, then execs the
 	// real curl — the seam proving the token travels ONLY via stdin config.
-	// Paths reach the wrapper via ENV, quoted at expansion: interpolating
-	// them into the script source would break under a space-bearing TMPDIR
-	// or curl path (which the deliberately space-bearing wrapDir pins).
-	realCurl, err := exec.LookPath("curl")
-	require.NoError(t, err)
-	wrapDir := filepath.Join(t.TempDir(), "with space")
-	require.NoError(t, os.MkdirAll(wrapDir, 0o755))
-	argvLog := filepath.Join(wrapDir, "argv.log")
-	wrapper := "#!/bin/sh\n" +
-		"printf '%s\\n' \"$@\" >> \"$RANCHER_TEST_ARGV_LOG\"\n" +
-		"exec \"$RANCHER_TEST_REAL_CURL\" \"$@\"\n"
-	require.NoError(t, os.WriteFile(filepath.Join(wrapDir, "curl"), []byte(wrapper), 0o755))
+	wrapDir, argvLog, wrapEnv := recordingCurlWrapper(t)
 
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal; no user input reaches the shell
-	cmd.Env = []string{"HOME=" + t.TempDir(),
+	cmd.Env = append([]string{
+		"HOME=" + t.TempDir(),
 		"PATH=" + wrapDir + ":" + toolPath(t, baseTools...),
-		"RANCHER_TEST_ARGV_LOG=" + argvLog,
-		"RANCHER_TEST_REAL_CURL=" + realCurl,
 		"GH_TOKEN=test-token-123",
 		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
-		"CURL_CA_BUNDLE=" + bundle}
+		"CURL_CA_BUNDLE=" + bundle,
+	}, wrapEnv...)
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "bootstrap snippet failed: %s", out)
 	authMu.Lock()
@@ -385,6 +386,10 @@ func TestBootstrapFetchFailureRunsNothing(t *testing.T) {
 	tmp := t.TempDir()
 	home := t.TempDir()
 	snippet := `curl --proto '=https' --tlsv1.2 -fsSL https://127.0.0.1:1/install.sh | sh`
+	assertSnippetMatchesDoc(t, "README.md", "curl --proto '=https' --tlsv1.2 -fsSL https://",
+		snippet, func(s string) string {
+			return strings.Replace(s, "https://127.0.0.1:1/install.sh", rawInstallURL, 1)
+		})
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
 	cmd.Env = []string{"HOME=" + home, "PATH=" + toolPath(t, baseTools...), "TMPDIR=" + tmp}
 	before := digestTree(t, home)
@@ -415,6 +420,13 @@ func TestBootstrapPropagatesInstallerFailure(t *testing.T) {
 	// The README one-liner with the raw URL swapped for the stub's and the
 	// failing flag passed through sh -s --; otherwise identical.
 	snippet := `curl --proto '=https' --tlsv1.2 -fsSL ` + raw.URL + `/install.sh | sh -s -- --version v1/evil`
+	assertSnippetMatchesDoc(t, "README.md", "curl --proto '=https' --tlsv1.2 -fsSL https://",
+		snippet, func(s string) string {
+			return strings.NewReplacer(
+				raw.URL+"/install.sh", rawInstallURL,
+				"| sh -s -- --version v1/evil", "| sh",
+			).Replace(s)
+		})
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
 	cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=" + toolPath(t, baseTools...),
 		"TMPDIR=" + tmp, "CURL_CA_BUNDLE=" + bundle}
@@ -454,6 +466,149 @@ func TestBinDirFromEnv(t *testing.T) {
 	assert.Contains(t, out, "bin-dir: "+binDir)
 }
 
+// TestGhTokenFallback is a table-driven test covering the four distinct
+// token-source scenarios. Each row is independently parallel; all current
+// assertions are preserved.
+//
+// Row names:
+//   - NoGhStaysAnonymous    — no gh binary, no env token: requests anonymous
+//   - GhTokenFallback       — gh supplies a token; header set, never in argv
+//   - EnvTokenBeatsGhFallback — GH_TOKEN env var takes precedence; gh not queried
+//   - WrongHostDegrades     — gh exits non-zero for the host; install degrades silently
+func TestGhTokenFallback(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name              string
+		extraEnv          []string
+		ghScript          string // "" = no gh on PATH; logging script uses RANCHER_TEST_GH_ARGV_LOG
+		wantHeader        string // expected Authorization header on the stub server
+		wantOut           string // must appear in combined output (empty = skip)
+		wantNoOut         string // must NOT appear in combined output (empty = skip)
+		wantGhContains    string // must appear in gh argv log; %s = stub hostname (empty = skip)
+		wantGhNotContains string // must NOT appear in gh argv log (empty = skip)
+		wantNoTokenInArgv string // token that must not appear in any curl argv (empty = skip)
+		wantNoOutMsg      string // failure message for wantNoOut assertion
+	}{
+		{
+			// No gh binary, no token env vars: all requests are anonymous.
+			name: "NoGhStaysAnonymous",
+		},
+		{
+			// gh supplies a token via auth token; it reaches the server as a
+			// header and never appears in any curl argv or installer output.
+			name: "GhTokenFallback",
+			ghScript: "#!/bin/sh\n" +
+				"echo \"$@\" >> \"$RANCHER_TEST_GH_ARGV_LOG\"\n" +
+				"case \"$1 $2\" in\n" +
+				"  'auth token') echo 'stub-gh-token-123' ;;\n" +
+				"  *) exit 1 ;;\n" +
+				"esac\n",
+			wantHeader:        "Bearer stub-gh-token-123",
+			wantOut:           "using gh auth token",
+			wantNoOut:         "stub-gh-token-123",
+			wantNoOutMsg:      "token must never appear in installer output",
+			wantGhContains:    "auth token --hostname %s",
+			wantNoTokenInArgv: "stub-gh-token-123",
+		},
+		{
+			// GH_TOKEN is set: resolve_token returns immediately; gh is never
+			// queried for auth token, only by gh_capable.
+			name:     "EnvTokenBeatsGhFallback",
+			extraEnv: []string{"GH_TOKEN=env-token-456"},
+			ghScript: "#!/bin/sh\n" +
+				"echo \"$@\" >> \"$RANCHER_TEST_GH_ARGV_LOG\"\n" +
+				"exit 1\n",
+			wantHeader:        "Bearer env-token-456",
+			wantNoOut:         "using gh auth token",
+			wantNoOutMsg:      "env-var token must suppress the gh fallback notice",
+			wantGhNotContains: "auth token",
+		},
+		{
+			// gh is present but exits non-zero for the requested hostname
+			// (user authenticated against a different host): install degrades
+			// to anonymous without failing.
+			name: "WrongHostDegrades",
+			ghScript: "#!/bin/sh\n" +
+				"echo \"$@\" >> \"$RANCHER_TEST_GH_ARGV_LOG\"\n" +
+				"exit 1\n",
+			wantHeader:     "",
+			wantNoOut:      "using gh auth token",
+			wantNoOutMsg:   "no fallback notice when gh could not supply a token",
+			wantGhContains: "auth token --hostname %s",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newStub(t)
+			writeRelease(s, "v1.2.3", false)
+			s.setLatest("v1.2.3")
+
+			u, err := url.Parse(s.srv.URL)
+			require.NoError(t, err)
+			stubHost := u.Hostname()
+
+			var paths []string
+			var env []string
+			env = append(env, tc.extraEnv...)
+
+			var ghLog string
+			if tc.ghScript != "" {
+				ghLog = filepath.Join(t.TempDir(), "gh.log")
+				paths = append(paths, ghStub(t, tc.ghScript))
+				env = append(env, "RANCHER_TEST_GH_ARGV_LOG="+ghLog)
+			}
+
+			var argvLog string
+			if tc.wantNoTokenInArgv != "" {
+				wrapDir, al, wrapEnv := recordingCurlWrapper(t)
+				paths = append(paths, wrapDir)
+				argvLog = al
+				env = append(env, wrapEnv...)
+			}
+
+			paths = append(paths, toolPath(t, baseTools...))
+			env = append(env, "PATH="+strings.Join(paths, ":"))
+
+			out, errOut, code := runInstall(t, s, env)
+			require.Equalf(t, 0, code, "stderr: %s", errOut)
+			combined := out + errOut
+
+			assert.Equal(t, tc.wantHeader, s.lastAuthHeader())
+			if tc.wantOut != "" {
+				assert.Contains(t, combined, tc.wantOut)
+			}
+			if tc.wantNoOut != "" {
+				assert.NotContains(t, combined, tc.wantNoOut, tc.wantNoOutMsg)
+			}
+
+			if tc.ghScript != "" {
+				ghArgv, readErr := os.ReadFile(ghLog)
+				require.NoError(t, readErr, "gh stub must have been invoked")
+				if tc.wantGhContains != "" {
+					assert.Contains(t, string(ghArgv),
+						strings.Replace(tc.wantGhContains, "%s", stubHost, 1),
+						"resolve_token must scope gh auth token to the install server's hostname")
+				}
+				if tc.wantGhNotContains != "" {
+					assert.NotContains(t, string(ghArgv), tc.wantGhNotContains,
+						"gh auth token must not be consulted when GH_TOKEN is set or gh exits non-zero")
+				}
+			}
+
+			if tc.wantNoTokenInArgv != "" {
+				argv, readErr := os.ReadFile(argvLog)
+				require.NoError(t, readErr, "curl wrapper must have recorded invocations")
+				assert.NotContains(t, string(argv), tc.wantNoTokenInArgv,
+					"token must never appear in any curl argv — stdin config only")
+			}
+		})
+	}
+}
+
 // The grammar has two executable homes (scripts/check-release-tag and the
 // standalone install.sh); this pins them byte-identical and runs the
 // conformance table through the guard script too.
@@ -484,4 +639,107 @@ func TestTagGrammarSharedSource(t *testing.T) {
 	for _, tag := range reject {
 		assert.Errorf(t, exec.Command("sh", guard, tag).Run(), "guard must reject %s", tag)
 	}
+}
+
+// TestHostnameDerivationForGhToken verifies that resolve_token derives the
+// correct hostname from BASE_URL variants: plain host:port, userinfo
+// (user:pass@host), userinfo with @ in the password, and bracketed-IPv6 —
+// all must call gh auth token with only the bare hostname.
+func TestHostnameDerivationForGhToken(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	u, err := url.Parse(s.srv.URL)
+	require.NoError(t, err)
+	port := u.Port()
+
+	cases := []struct {
+		name     string
+		baseURL  string
+		wantHost string
+	}{
+		{
+			name:     "plain",
+			baseURL:  s.srv.URL,
+			wantHost: u.Hostname(),
+		},
+		{
+			name:     "userinfo",
+			baseURL:  "https://user:pass@127.0.0.1:" + port,
+			wantHost: "127.0.0.1",
+		},
+		{
+			name:     "IPv6-bracketed",
+			baseURL:  "https://[::1]:" + port,
+			wantHost: "::1",
+		},
+		{
+			// Password contains @ — only the greedy ##*@ strip reaches the
+			// real host; the non-greedy #*@ form yields "ssw0rd@example.com".
+			name:     "userinfo-at-in-password",
+			baseURL:  "https://user:p@ssw0rd@example.com:8443/path",
+			wantHost: "example.com",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ghLog := filepath.Join(t.TempDir(), "gh.log")
+			// Stub logs all calls and exits 1 so resolve_token degrades;
+			// --dry-run + explicit --version skips all HTTP activity so the
+			// unreachable BASE_URL variants (IPv6, userinfo) still succeed.
+			ghDir := ghStub(t, "#!/bin/sh\necho \"$@\" >> \"$RANCHER_TEST_GH_ARGV_LOG\"\nexit 1\n")
+			runInstall(t, s, []string{
+				"PATH=" + ghDir + ":" + toolPath(t, baseTools...),
+				"RANCHER_TEST_GH_ARGV_LOG=" + ghLog,
+				"RANCHER_CLI_INSTALL_BASE_URL=" + tc.baseURL,
+			}, "--dry-run", "--version", "v1.2.3")
+			ghArgv, err := os.ReadFile(ghLog)
+			require.NoError(t, err, "gh stub must have been invoked by resolve_token")
+			assert.Contains(t, string(ghArgv), "auth token --hostname "+tc.wantHost,
+				"resolve_token must strip userinfo, port, and brackets from BASE_URL")
+		})
+	}
+}
+
+// TestGhBootstrapSnippet runs the README internal-phase one-liner against a
+// stub gh that serves install.sh, verifying it resolves a release and exits 0.
+func TestGhBootstrapSnippet(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	writeRelease(s, "v1.2.3", false)
+	s.setLatest("v1.2.3")
+
+	scriptPath, err := filepath.Abs("../install.sh")
+	require.NoError(t, err)
+
+	// Stub gh: serves install.sh for the README contents-API path; fails
+	// for all other subcommands so resolve_token degrades to anonymous and
+	// gh_capable stays false.
+	ghDir := ghStub(t, "#!/bin/sh\n"+
+		"case \"$1 $2\" in\n"+
+		"  'api repos/rancher/rancher-cli/contents/install.sh?ref=main') cat \"$RANCHER_TEST_INSTALL_SCRIPT\" ;;\n"+
+		"  *) exit 1 ;;\n"+
+		"esac\n")
+
+	// The README one-liner, byte-identical, with | sh -s -- --dry-run in
+	// place of | sh — the stub gh serves install.sh for the contents-API
+	// call; RANCHER_CLI_INSTALL_BASE_URL redirects install.sh's curl calls.
+	snippet := `gh api repos/rancher/rancher-cli/contents/install.sh?ref=main -H "Accept: application/vnd.github.raw" | sh -s -- --dry-run`
+	assertSnippetMatchesDoc(t, "README.md", "gh api repos/rancher/rancher-cli/contents/install.sh?ref=main",
+		snippet, func(s string) string { return strings.Replace(s, "| sh -s -- --dry-run", "| sh", 1) })
+
+	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
+	cmd.Env = []string{
+		"HOME=" + t.TempDir(),
+		"TMPDIR=" + t.TempDir(),
+		"PATH=" + ghDir + ":" + toolPath(t, baseTools...),
+		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
+		"CURL_CA_BUNDLE=" + s.caPath,
+		"RANCHER_TEST_INSTALL_SCRIPT=" + scriptPath,
+	}
+	out, runErr := cmd.CombinedOutput()
+	require.NoErrorf(t, runErr, "README bootstrap snippet failed: %s", out)
+	assert.Contains(t, string(out), "tag: v1.2.3")
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,11 +37,13 @@ type stub struct {
 	assets       map[string][]byte // "<tag>/<name>" -> content
 	latest       string            // tag the /releases/latest redirect names; "" = 404
 	latestStatus int               // when non-zero, /releases/latest returns this status instead
+	authHeader   string            // last Authorization header seen on asset download requests
 }
 
 func (s *stub) setLatestStatus(code int) { s.mu.Lock(); defer s.mu.Unlock(); s.latestStatus = code }
 
-func (s *stub) setLatest(tag string) { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
+func (s *stub) setLatest(tag string)   { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
+func (s *stub) lastAuthHeader() string { s.mu.Lock(); defer s.mu.Unlock(); return s.authHeader }
 func (s *stub) setRawListing(pages [][]byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,8 +83,10 @@ func newStub(t *testing.T) *stub {
 		http.Redirect(w, r, s.srv.URL+"/rancher/rancher-cli/releases/tag/"+latest, http.StatusFound)
 	})
 	mux.HandleFunc("/rancher/rancher-cli/releases/download/", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
 		key := strings.TrimPrefix(r.URL.Path, "/rancher/rancher-cli/releases/download/")
 		s.mu.Lock()
+		s.authHeader = auth
 		body, ok := s.assets[key]
 		s.mu.Unlock()
 		if !ok {
@@ -243,4 +248,85 @@ func mvWithoutNoFollow(t *testing.T) (string, []string) {
 func withParser(t *testing.T) []string {
 	t.Helper()
 	return []string{"PATH=" + toolPath(t, append(append([]string{}, baseTools...), "jq", "python3")...)}
+}
+
+// ghStub writes a gh executable stub script to a temp dir and returns its
+// path. Callers prepend the dir to PATH. The script must start with #!/bin/sh.
+func ghStub(t *testing.T, script string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755))
+	return dir
+}
+
+// recordingCurlWrapper builds a dir containing a curl script that logs every
+// argument (one per line) to a file, then execs the real curl. The dir has a
+// deliberate space in its name — guarding against broken quoting in any code
+// that interpolates the path rather than passing it via env. Returns the dir
+// path, the argv log path, and the env slice (RANCHER_TEST_ARGV_LOG and
+// RANCHER_TEST_REAL_CURL) that wire them up.
+func recordingCurlWrapper(t *testing.T) (dir, argvLog string, env []string) {
+	t.Helper()
+	realCurl, err := exec.LookPath("curl")
+	require.NoError(t, err)
+	dir = filepath.Join(t.TempDir(), "with space")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	argvLog = filepath.Join(dir, "argv.log")
+	wrapper := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$@\" >> \"$RANCHER_TEST_ARGV_LOG\"\n" +
+		"exec \"$RANCHER_TEST_REAL_CURL\" \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(wrapper), 0o755))
+	env = []string{
+		"RANCHER_TEST_ARGV_LOG=" + argvLog,
+		"RANCHER_TEST_REAL_CURL=" + realCurl,
+	}
+	return
+}
+
+// docSnippet reads a markdown documentation file relative to the module
+// root (one level up from the test package, like the rest of the file
+// reads ../install.sh) and returns the dedented 4-space code block that
+// contains anchorLine. anchorLine may match any line inside the block —
+// the function expands to the full contiguous extent in both directions.
+// Leading 4 spaces are stripped from every line.
+//
+// A failure here means the doc and the test literal drifted —
+// update both together.
+func docSnippet(t *testing.T, filename, anchorLine string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", filename))
+	require.NoError(t, err)
+	lines := strings.Split(string(b), "\n")
+	anchor := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "    ") && strings.Contains(l, anchorLine) {
+			anchor = i
+			break
+		}
+	}
+	require.NotEqualf(t, -1, anchor,
+		"%s: no 4-space-indented line containing %q — update the test literal and the doc together",
+		filename, anchorLine)
+	start := anchor
+	for start > 0 && strings.HasPrefix(lines[start-1], "    ") {
+		start--
+	}
+	end := anchor + 1
+	for end < len(lines) && strings.HasPrefix(lines[end], "    ") {
+		end++
+	}
+	out := make([]string, end-start)
+	for i, l := range lines[start:end] {
+		out[i] = strings.TrimPrefix(l, "    ")
+	}
+	return strings.Join(out, "\n")
+}
+
+// assertSnippetMatchesDoc asserts that transform(got) equals the doc block
+// extracted by docSnippet. The shared failure message reminds both sides
+// of the contract — doc and test literal — must move together.
+func assertSnippetMatchesDoc(t *testing.T, docFile, anchorLine, got string, transform func(string) string) {
+	t.Helper()
+	assert.Equal(t, docSnippet(t, docFile, anchorLine), transform(got),
+		"%s snippet drifted — update the test literal and the doc together", docFile)
 }

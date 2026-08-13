@@ -25,25 +25,18 @@ operators get the same commands with readable table output.
 
 ## Install
 
-> [!NOTE]
-> While the repository is internal, anonymous fetches fail. Use the
-> authenticated bootstrap below with a `GH_TOKEN`; the token travels to
-> curl via stdin and never appears in process arguments.
-
-    (
-      t="$(mktemp)" || exit 1
-      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-      printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | \
-        curl --config - --proto '=https' --tlsv1.2 -fsSL \
-          -o "$t" \
-          https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
-        && GH_TOKEN="$GH_TOKEN" sh "$t"
-    )
-
-Once the repository is public, the anonymous form is a one-liner:
-
     curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh | sh
+
+> [!NOTE]
+> While the repository is internal the anonymous form above fails. Use
+> `gh` instead (authenticated once via `gh auth login`) — the installer
+> picks up gh's token automatically, and it never appears in process
+> arguments:
+
+    gh api repos/rancher/rancher-cli/contents/install.sh?ref=main -H "Accept: application/vnd.github.raw" | sh
+
+Without `gh`, the token-authenticated download-then-run form is in
+[REFERENCE.md](REFERENCE.md#defensive-bootstrap).
 
 Both install the `rancher` CLI and its credential helper to `~/.local/bin`
 (rootless, no shell-profile edits; the script prints the `PATH` line if
@@ -57,8 +50,8 @@ manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 <details>
 <summary>Options</summary>
 
-Flags (one-liner: `… | sh -s -- --version <tag>`; authenticated form:
-append to the `sh "$t"` line): `--version <tag>` installs a specific release
+Flags (either pipe form: `… | sh -s -- --version <tag>`):
+`--version <tag>` installs a specific release
 (`RANCHER_CLI_VERSION` env twin; flag wins), `--pre` selects the newest
 prerelease, `--bin-dir <dir>` overrides the destination
 (`RANCHER_CLI_INSTALL_BIN_DIR` env twin), `--verify-attestation` makes

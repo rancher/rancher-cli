@@ -95,6 +95,9 @@ verified when an authenticated `gh` CLI is available, and
 `--verify-attestation` makes that verification mandatory instead of
 best-effort.
 
+Token resolution order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token`
+(when `gh` is on PATH and authenticated) > anonymous.
+
 Each release carries its own fixed `install.sh` as a release asset
 (checksummed and attested like every other asset); the raw
 `https://raw.githubusercontent.com/…/main/install.sh` URL always serves
@@ -122,6 +125,23 @@ branch on the download's exit code, use the download-then-run form:
 
 It propagates curl's exit code, cleans up its temp file on any exit, and
 never executes a partial stream.
+
+While the repository is internal and `gh` is unavailable, use the
+token-authenticated equivalent below — the token reaches curl via stdin
+config and `sh` via the environment, never process arguments:
+
+    (
+      t="$(mktemp)" || exit 1
+      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
+      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+      printf 'header = "Authorization: Bearer %s"\n' "${GH_TOKEN:-$GITHUB_TOKEN}" | \
+        curl --config - --proto '=https' --tlsv1.2 -fsSL \
+          -o "$t" \
+          https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
+        && GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}" sh "$t"
+    )
+
+Flags append to the `sh "$t"` invocation (e.g. `sh "$t" --version <tag>`).
 
 ### Manual download & verification
 

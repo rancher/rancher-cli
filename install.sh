@@ -154,11 +154,31 @@ verify_checksums() {
 # Attestation: capability probe, then verify. Anything short of a capable,
 # authenticated gh takes the unavailable path (notice; fatal only with
 # --verify-attestation). A capable client's verification failure is fatal.
+#
+# Attestation verification talks to github.com regardless of BASE_URL —
+# that is where release attestations live. The auth check here is
+# deliberately NOT scoped to the download host.
 gh_capable() {
   command -v gh >/dev/null 2>&1 || return 1
   gh attestation verify --help 2>/dev/null | grep -q 'signer-workflow' || return 1
   gh auth status >/dev/null 2>&1 || return 1
   return 0
+}
+
+resolve_token() {
+  [ -z "$TOKEN" ] || return 0
+  command -v gh >/dev/null 2>&1 || return 0
+  _host="${BASE_URL#*://}"
+  _host="${_host%%/*}"
+  _host="${_host##*@}"
+  case "$_host" in
+    \[*) _host="${_host#\[}"; _host="${_host%%\]*}" ;;
+    *) _host="${_host%%:*}" ;;
+  esac
+  _tok="$(gh auth token --hostname "$_host" 2>/dev/null </dev/null || true)"
+  [ -n "$_tok" ] || return 0
+  TOKEN="$_tok"
+  note "using gh auth token"
 }
 
 # hold_at: test-only SIGKILL seam — blocks while the named file exists.
@@ -463,6 +483,7 @@ epilogue() {
 
 main() {
   parse_args "$@"
+  resolve_token
   preflight_tools
   probe_platform
   resolve
