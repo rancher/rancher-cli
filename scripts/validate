@@ -23,6 +23,40 @@ else
   echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
 fi
 
+# Shell gate: every shebanged script (install.sh + scripts/*, skipping
+# archive-sha — a git export-subst stamp file, not a script) gets a
+# syntax check with the interpreter its shebang names, then shellcheck
+# with shebang-based dialect detection. Same tri-state as golangci-lint:
+# run if available, warn locally when missing, error in CI.
+shell_files=("install.sh")
+for f in scripts/*; do
+  [ -f "$f" ] || continue # directories/symlinked dirs: skip, don't let head noise-fail
+  case "$(head -c2 "$f")" in
+    '#!') shell_files+=("$f") ;;
+  esac
+done
+for f in "${shell_files[@]}"; do
+  # Explicit interpreter allowlist with a loud default: an unrecognized
+  # shebang must extend this gate deliberately, not fall through to a
+  # wrong-dialect sh -n (false pass or spurious fail).
+  case "$(head -1 "$f")" in
+    '#!/bin/bash'* | '#!/usr/bin/env bash'*) bash -n "$f" ;;
+    '#!/bin/sh'* | '#!/usr/bin/env sh'*) sh -n "$f" ;;
+    *)
+      echo "error: $f has a shebang the shell gate does not handle — extend scripts/validate" >&2
+      exit 1
+      ;;
+  esac
+done
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck "${shell_files[@]}"
+elif [ -n "${CI:-}" ]; then
+  echo "error: shellcheck is required in CI" >&2
+  exit 1
+else
+  echo "warning: shellcheck not installed; skipping (install for the shell gate)" >&2
+fi
+
 # -vet=off: the full go vet ./... already ran above; go test's implicit
 # vet subset would only repeat a fraction of it.
 go test -race -vet=off ./...
