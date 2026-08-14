@@ -579,3 +579,131 @@ func TestParserFirstWithAdversarialBody(t *testing.T) {
 	require.Equalf(t, 0, code, "jq parser must extract correct ids despite adversarial body; stderr: %s", errOut)
 	assert.Contains(t, out, "rancher version v1.2.3")
 }
+
+// TestEpilogueWarnsWhenAnotherBinaryShadowsInstall covers the PATH shadow
+// scan: a rancher binary elsewhere on PATH (dev installs, package managers)
+// can shadow the fresh links by PATH order or a stale shell command hash —
+// the installer must name the hazard and the remedy.
+func TestEpilogueWarnsWhenAnotherBinaryShadowsInstall(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	writeRelease(s, "v1.2.3", false)
+	s.setLatest("v1.2.3")
+	home := t.TempDir()
+
+	shadowDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(shadowDir, "rancher"),
+		[]byte("#!/bin/sh\nexit 0\n"), 0o755))
+
+	env := append(envHome(home),
+		"PATH="+shadowDir+":"+toolPath(t, baseTools...))
+	_, errOut, code := runInstall(t, s, env)
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, errOut, "another rancher exists at "+filepath.Join(shadowDir, "rancher"),
+		"a shadowing binary elsewhere on PATH must be named")
+	assert.Contains(t, errOut, "hash -r",
+		"the stale-command-hash remedy must be named")
+}
+
+// TestEpilogueQuietOnCleanPath pins the inverse: no shadow, no warning.
+func TestEpilogueQuietOnCleanPath(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	writeRelease(s, "v1.2.3", false)
+	s.setLatest("v1.2.3")
+	home := t.TempDir()
+	_, errOut, code := runInstall(t, s, envHome(home))
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.NotContains(t, errOut, "may shadow this install",
+		"a clean PATH must not produce shadow warnings")
+}
+
+// TestVersionChangeIsNamedAtSwitch pins the version-change messaging: an
+// upgrade is a note, a downgrade a warning (rollback is documented but must
+// never be silent), and a same-version rerun says neither.
+func TestVersionChangeIsNamedAtSwitch(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	writeRelease(s, "v1.2.2", false)
+	writeRelease(s, "v1.2.3", false)
+	writeRelease(s, "v2.0.0-rc.1", false)
+	s.setLatest("v1.2.3")
+	home := t.TempDir()
+
+	_, errOut, code := runInstall(t, s, envHome(home), "--version", "v1.2.3")
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+
+	// Downgrade: stable to older stable.
+	_, errOut, code = runInstall(t, s, envHome(home), "--version", "v1.2.2")
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, errOut, "downgrading from v1.2.3 to v1.2.2")
+
+	// Upgrade across a prerelease boundary: rc orders above older stable.
+	out, errOut, code := runInstall(t, s, envHome(home), "--version", "v2.0.0-rc.1")
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, out, "upgrading from v1.2.2 to v2.0.0-rc.1")
+
+	// Downgrade within one version: rc back to... rc is highest prerelease;
+	// stable v2.0.0 does not exist in the fixture, so cross back to stable 1.2.3
+	// which orders BELOW 2.0.0-rc.1 (major wins over prerelease class).
+	_, errOut, code = runInstall(t, s, envHome(home), "--version", "v1.2.3")
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, errOut, "downgrading from v2.0.0-rc.1 to v1.2.3")
+
+	// Same-version rerun: repair, no change messaging.
+	out, errOut, code = runInstall(t, s, envHome(home), "--version", "v1.2.3")
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.NotContains(t, out+errOut, "upgrading")
+	assert.NotContains(t, out+errOut, "downgrading")
+}
+
+// TestShadowScanIgnoresConvenienceSymlink pins the false-positive fix: a
+// symlink elsewhere on PATH that points back at the installed binary runs
+// the identical code — the scan must stay silent for absolute, relative,
+// and chained (update-alternatives-style) links alike.
+func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
+	t.Parallel()
+	for name, link := range map[string]func(t *testing.T, home, dir string){
+		"absolute target": func(t *testing.T, home, dir string) {
+			require.NoError(t, os.Symlink(
+				filepath.Join(home, ".local", "bin", "rancher"),
+				filepath.Join(dir, "rancher")))
+		},
+		// Relative from home/convenience into home/.local/bin — the
+		// ln -s ../bin/rancher style the canonicalization must resolve.
+		"relative target": func(t *testing.T, home, dir string) {
+			require.NoError(t, os.Symlink(
+				filepath.Join("..", ".local", "bin", "rancher"),
+				filepath.Join(dir, "rancher")))
+		},
+		// Two hops, both relative — the update-alternatives layout the
+		// chain resolution must follow to the end.
+		"chained target": func(t *testing.T, home, dir string) {
+			require.NoError(t, os.Symlink(
+				filepath.Join("..", ".local", "bin", "rancher"),
+				filepath.Join(dir, "rancher-link")))
+			require.NoError(t, os.Symlink("rancher-link",
+				filepath.Join(dir, "rancher")))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := newStub(t)
+			writeRelease(s, "v1.2.3", false)
+			s.setLatest("v1.2.3")
+			home := t.TempDir()
+
+			convenienceDir := filepath.Join(home, "convenience")
+			require.NoError(t, os.MkdirAll(convenienceDir, 0o755))
+			// Dangling at creation; resolves once the install lands the link.
+			link(t, home, convenienceDir)
+
+			env := append(envHome(home),
+				"PATH="+convenienceDir+":"+toolPath(t, baseTools...))
+			_, errOut, code := runInstall(t, s, env)
+			require.Equalf(t, 0, code, "stderr: %s", errOut)
+			assert.NotContains(t, errOut, "may shadow this install",
+				"a symlink back at the installed binary is not a shadow")
+		})
+	}
+}

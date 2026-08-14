@@ -44,6 +44,13 @@ METADATA_FAIL_CODE=""
 REL_JSON=""
 
 err() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# physical_dir <dir>: prints the physically-resolved directory (., .., and
+# symlinked segments resolved) or nothing when the directory is unreachable.
+# Callers treat empty output as "cannot resolve", never as an error.
+physical_dir() {
+  cd "$1" 2>/dev/null && pwd -P
+}
 warn() { printf 'warning: %s\n' "$*" >&2; }
 note() { [ -n "$QUIET" ] || printf '%s\n' "$*"; }
 
@@ -218,6 +225,42 @@ EOF
 validate_tag() {
   printf '%s' "$1" | grep -Eq "$TAG_RE" || \
     err "tag '$1' violates the release tag grammar (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)"
+}
+
+# tag_rank <tag>: prints "MAJ MIN PAT PRERANK PREN" for a grammar-valid tag.
+# Prerelease classes order alpha < beta < rc < stable (stable rank 3, N 0).
+tag_rank() {
+  _t="${1#v}"
+  _core="${_t%%-*}"
+  _maj="${_core%%.*}"; _rest="${_core#*.}"
+  _min="${_rest%%.*}"; _pat="${_rest#*.}"
+  if [ "$_t" = "$_core" ]; then
+    _pr=3; _pn=0
+  else
+    _pre="${_t#*-}"; _pn="${_pre#*.}"
+    case "$_pre" in
+      alpha.*) _pr=0 ;;
+      beta.*)  _pr=1 ;;
+      rc.*)    _pr=2 ;;
+    esac
+  fi
+  printf '%s %s %s %s %s' "$_maj" "$_min" "$_pat" "$_pr" "$_pn"
+}
+
+# tag_older_than <a> <b>: true when a orders strictly before b. Both tags
+# must already satisfy the tag grammar (callers validate).
+tag_older_than() {
+  # shellcheck disable=SC2046 # tag_rank output is exactly five integers
+  set -- $(tag_rank "$1") $(tag_rank "$2")
+  _i=1
+  while [ "$_i" -le 5 ]; do
+    _a="$1"; _b="$6"
+    if [ "$_a" -lt "$_b" ]; then return 0; fi
+    if [ "$_a" -gt "$_b" ]; then return 1; fi
+    shift
+    _i=$((_i + 1))
+  done
+  return 1
 }
 
 resolve_tag() {
@@ -630,6 +673,23 @@ stage() {
 }
 
 link() {
+  # Name the version change before switching: an upgrade is a note, a
+  # DOWNGRADE a warning (documented rollback flow, but never silent). A
+  # previous target that is not a plain tag (collision-suffixed dir,
+  # corrupt layout) gets the generic form without ordering.
+  _prev="${CURRENT_TARGET##*/}"
+  if [ -n "$_prev" ] && [ "$_prev" != "$TAG" ]; then
+    if printf '%s' "$_prev" | grep -Eq "$TAG_RE"; then
+      if tag_older_than "$TAG" "$_prev"; then
+        warn "downgrading from $_prev to $TAG"
+      else
+        note "upgrading from $_prev to $TAG"
+      fi
+    else
+      note "replacing $_prev with $TAG"
+    fi
+  fi
+
   # Atomic current switch: temp symlink + rename over the link itself.
   # Plain mv would move the temp link INTO the directory current points at.
   _tmp_link="$DATA_DIR/.current.$$"
@@ -666,6 +726,55 @@ epilogue() {
         *)    note "add to PATH: export PATH=\"$BIN_DIR:\$PATH\"" ;;
       esac ;;
   esac
+  # Shadow scan: another rancher/rancher-credential-vault elsewhere on PATH
+  # can shadow this install — either by PATH order or by a shell's command
+  # hash cached before these links existed. The installer cannot fix a
+  # parent shell's hash; it can name the hazard. warn (not note) so -q
+  # cannot hide a shadowed install. set -f spans the whole loop: the
+  # unquoted $PATH expands (and could glob) exactly once, at the `for`;
+  # every expansion inside the body is quoted.
+  # Loop invariants, physically resolved once (see physical_dir).
+  _bin_dir_p="$(physical_dir "$BIN_DIR")"
+  _cur_dir_p="$(physical_dir "$DATA_DIR/current")"
+  _oldifs="$IFS"; IFS=:
+  set -f
+  for _d in $PATH; do
+    [ -n "$_d" ] || _d=.
+    [ "${_d%/}" != "${BIN_DIR%/}" ] || continue
+    for _b in rancher rancher-credential-vault; do
+      if [ ! -x "$_d/$_b" ] || [ -d "$_d/$_b" ]; then
+        continue
+      fi
+      # A convenience symlink pointing back at this install runs the
+      # identical binary — not a shadow, no warning. Follow the chain
+      # (update-alternatives-style layouts use two hops), resolving
+      # relative targets against each link's own directory, then compare
+      # the final path canonicalized physically (cd + pwd -P resolves
+      # ., .., and dir symlinks; readlink -f/realpath are not in the
+      # preflight set). The hop cap breaks symlink cycles: a candidate
+      # still symlinked at the cap simply warns like any other shadow.
+      if [ -L "$_d/$_b" ]; then
+        _p="$_d/$_b"
+        _hops=0
+        while [ -L "$_p" ] && [ "$_hops" -lt 8 ]; do
+          _tgt="$(readlink "$_p")"
+          case "$_tgt" in
+            /*) _p="$_tgt" ;;
+            *) _p="${_p%/*}/$_tgt" ;;
+          esac
+          _hops=$((_hops + 1))
+        done
+        _p_dir="$(physical_dir "${_p%/*}")"
+        if [ -n "$_p_dir" ] && [ "${_p##*/}" = "$_b" ] && \
+           { [ "$_p_dir" = "$_bin_dir_p" ] || [ "$_p_dir" = "$_cur_dir_p" ]; }; then
+          continue
+        fi
+      fi
+      warn "another $_b exists at $_d/$_b — it may shadow this install (check PATH order; run 'hash -r' or 'rehash' in open shells)"
+    done
+  done
+  set +f
+  IFS="$_oldifs"
   note "next steps:"
   note "  rancher completion <bash|zsh|fish|pwsh>   # shell completion"
   note "  rancher skill install                     # agent harnesses"
