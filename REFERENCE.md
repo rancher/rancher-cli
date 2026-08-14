@@ -98,6 +98,22 @@ best-effort.
 Token resolution order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token`
 (when `gh` is on PATH and authenticated) > anonymous.
 
+When a token is in play the installer downloads assets through the
+GitHub API asset endpoint — required on internal repositories, where
+the plain release download URLs serve nothing — and fetches any signed
+storage redirect with a second, untokened request, so the token never
+travels past the API host. A token that cannot read the release
+metadata falls back to the direct download URLs with the failure
+explained in any later error.
+
+After linking, the installer warns about any other `rancher` or
+`rancher-credential-vault` elsewhere on `PATH` (a shadowed install is
+easy to miss behind a stale shell command hash — `hash -r` or `rehash`
+clears it), staying silent for convenience symlinks that resolve back
+to the installed binary. A version change is named at the switch:
+upgrades as a note, downgrades as a warning — rollback stays a
+one-command flow, it is just never silent.
+
 Each release carries its own fixed `install.sh` as a release asset
 (checksummed and attested like every other asset); the raw
 `https://raw.githubusercontent.com/…/main/install.sh` URL always serves
