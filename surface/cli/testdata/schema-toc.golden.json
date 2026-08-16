@@ -1,6 +1,51 @@
 {
   "cliVersion": "golden",
   "commandCount": 171,
+  "effectSchema": {
+    "actions": [
+      "create",
+      "update",
+      "delete"
+    ],
+    "fields": [
+      {
+        "name": "action",
+        "type": "string"
+      },
+      {
+        "name": "target",
+        "type": "string"
+      },
+      {
+        "name": "server",
+        "type": "string"
+      },
+      {
+        "name": "cluster",
+        "type": "string"
+      },
+      {
+        "name": "diff",
+        "type": "array"
+      },
+      {
+        "name": "resourceVersion",
+        "type": "string"
+      },
+      {
+        "name": "conflictDetection",
+        "type": "bool"
+      },
+      {
+        "name": "reversible",
+        "type": "bool"
+      },
+      {
+        "name": "destructive",
+        "type": "bool"
+      }
+    ]
+  },
   "generatedCommandCount": 126,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,

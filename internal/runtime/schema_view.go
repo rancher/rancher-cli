@@ -56,10 +56,14 @@ type readOnlyJSON struct {
 }
 
 // tocJSON is the bare and filtered TOC's JSON/YAML shape. KindCount,
-// GeneratedCommandCount, GlobalExitCodes, and Kinds carry omitempty: they
-// are zero/nil on the filtered path (bare-only gating), so they are absent
-// there. A genuinely-zero GeneratedCommandCount or KindCount on the bare
-// path is unreachable — the kind table is static and validated non-empty.
+// GeneratedCommandCount, GlobalExitCodes, EffectSchema, and Kinds carry
+// omitempty: they are zero/nil on the filtered path (bare-only gating), so
+// they are absent there. A genuinely-zero GeneratedCommandCount or KindCount
+// on the bare path is unreachable — the kind table is static and validated
+// non-empty. EffectSchema is the second global contract surfaced on the bare
+// TOC beside the exit map: an agent that just previewed a mutation can parse
+// the Effect without fetching the full --all manifest. JSON/YAML only — the
+// text TOC does not render it.
 type tocJSON struct {
 	CLIVersion        string `json:"cliVersion"`
 	MinRancherVersion string `json:"minRancherVersion"`
@@ -69,6 +73,7 @@ type tocJSON struct {
 	KindCount             int            `json:"kindCount,omitempty"`
 	GeneratedCommandCount int            `json:"generatedCommandCount,omitempty"`
 	GlobalExitCodes       map[string]int `json:"globalExitCodes,omitempty"`
+	EffectSchema          *EffectSchema  `json:"effectSchema,omitempty"`
 	Groups                []tocGroup     `json:"groups,omitempty"`
 	Kinds                 []string       `json:"kinds,omitempty"`
 }
@@ -112,6 +117,8 @@ func (v tocView) toc() tocJSON {
 		// uses for its collapsed-line N, so JSON and text are always in sync.
 		out.GeneratedCommandCount = countGenerated(m.Commands, generated)
 		out.GlobalExitCodes = m.ExitCodes
+		es := m.EffectSchema
+		out.EffectSchema = &es
 		for _, k := range m.Kinds {
 			out.Kinds = append(out.Kinds, k.Name)
 		}

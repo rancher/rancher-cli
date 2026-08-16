@@ -18,6 +18,7 @@ func readOnlyTOCManifest() Manifest {
 		ReadOnly:          true,
 		ReadOnlySources:   []string{"RANCHER_CLI_READONLY"},
 		ExitCodes:         map[string]int{"GENERIC": 1, "VALIDATION": 2},
+		EffectSchema:      effectSchema(),
 		Commands: []SchemaCommand{
 			{Name: "auth login", Usage: "Login to a server", CommandType: ReadOnly},
 			{Name: "get pod", Usage: "List pods", CommandType: ReadOnly},
@@ -55,6 +56,14 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	assert.Contains(t, got, "globalExitCodes")
 	assert.Equal(t, []any{"pod", "cluster"}, got["kinds"])
 
+	// The Effect contract is the second global contract on the bare TOC
+	// (beside the exit map): present with the closed action enum and the
+	// field set, so a caller parses --dry-run output without --all.
+	es, ok := got["effectSchema"].(map[string]any)
+	require.True(t, ok, "bare TOC carries the effectSchema contract")
+	assert.Equal(t, []any{"create", "update", "delete"}, es["actions"])
+	assert.NotEmpty(t, es["fields"])
+
 	// Generated commands are COLLAPSED on the bare path: absent from the
 	// per-group commands list, represented instead by a generated summary
 	// object — exactly what renderTOC does (spec'd collapse mirror).
@@ -69,8 +78,10 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	}
 	assert.Equal(t, []string{"auth login"}, flat, "only non-generated commands appear in the per-group commands list on the bare TOC")
 
-	// Full-manifest sections must be absent — the mirror rule.
-	for _, absent := range []string{"commands", "kindsDetail", "envVars", "globalFlags", "effectSchema", "errorCodes", "exitCodes"} {
+	// Full-manifest sections must be absent — the mirror rule. effectSchema
+	// left this list deliberately: it is a global contract, disclosed on the
+	// bare TOC like the exit map.
+	for _, absent := range []string{"commands", "kindsDetail", "envVars", "globalFlags", "errorCodes", "exitCodes"} {
 		assert.NotContains(t, got, absent)
 	}
 }
@@ -92,7 +103,7 @@ func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
 	assert.Equal(t, float64(1), got["commandCount"])
 	entry := got["groups"].([]any)[0].(map[string]any)["commands"].([]any)[0].(map[string]any)
 	assert.Equal(t, "get pod", entry["name"], "generated commands list per line on the FILTERED path")
-	for _, absent := range []string{"kinds", "kindCount", "globalExitCodes", "generatedCommandCount"} {
+	for _, absent := range []string{"kinds", "kindCount", "globalExitCodes", "effectSchema", "generatedCommandCount"} {
 		assert.NotContains(t, got, absent)
 	}
 	// readOnly stays unconditional (round-3: both text views show it).

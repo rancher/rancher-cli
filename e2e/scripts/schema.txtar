@@ -9,6 +9,10 @@ jsonquery toc.json 'data.kinds.#' 48
 # (verify both actual values when writing this, like every count pin)
 jsonquery toc.json 'data.groups.#(name="auth").commands.0.name' 'auth login'
 jsonquery toc.json 'data.generatedCommandCount' 126
+# global contracts are disclosed on the bare TOC: the exit map and the
+# Effect contract — an agent parses --dry-run output without --all
+jsonquery toc.json 'data.effectSchema.actions.#' 3
+jsonquery toc.json 'data.effectSchema.fields.#(name="resourceVersion").type' string
 
 # the full manifest is explicit: --all
 exec rancher schema --all -o json
