@@ -56,7 +56,9 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		return runtime.Result{}, err
 	}
 	if eff.URL == "" {
-		return runtime.Result{}, config.ErrContextNotSet()
+		// Config-aware: after a logout the server entries survive; name
+		// the re-login shortcut instead of implying a blank machine.
+		return runtime.Result{}, cfg.ErrNotLoggedIn()
 	}
 
 	id := in.String("cluster")

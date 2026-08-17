@@ -73,6 +73,13 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	// Answer "am I logged in" in state terms, not plumbing: with no
+	// effective URL the preflight would fail with the generic
+	// CONTEXT_NOT_SET; the config-aware form names the configured servers
+	// and the re-login shortcut (the common shape right after a logout).
+	if eff.URL == "" {
+		return runtime.Result{}, cfg.ErrNotLoggedIn()
+	}
 	ver, err := a.preflight(ctx, eff)
 	if err != nil {
 		return runtime.Result{}, err

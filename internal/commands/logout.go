@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -51,9 +52,11 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	}
 
 	var (
-		targets      []string
-		deletedFrom  map[string][]string
-		deletedCache []string
+		targets        []string
+		deletedFrom    map[string][]string
+		deletedCache   []string
+		urlByName      = map[string]string{}
+		contextCleared bool
 	)
 	if err := config.WithLock(cmdCtx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
@@ -64,6 +67,9 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if err != nil {
 			return err
 		}
+		for _, s := range targets {
+			urlByName[s] = cfg.Servers[s].URL
+		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
 		if all {
 			deletedFrom, deletedCache, err = l.deleteAll(cmdCtx, cfg, targets, policy)
@@ -73,7 +79,8 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if err != nil {
 			return err
 		}
-		return clearCurrentContext(cfg, all, targets)
+		contextCleared, err = clearCurrentContext(cfg, all, targets)
+		return err
 	}); err != nil {
 		return runtime.Result{}, err
 	}
@@ -82,7 +89,53 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
 		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
-	}}, nil
+		"contextCleared": contextCleared,
+	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache), contextCleared)}, nil
+}
+
+// renderLogoutText is the TTY view of a logout: which servers, which
+// credential backends were touched, how many cached exec credentials went,
+// and whether the current context was cleared. Silent success is for
+// scripts (exit code + JSON envelope); a person deserves the confirmation.
+// It renders every deletedFrom entry, not just the requested targets:
+// logout --all's orphaned-helper sweep reports records whose server name
+// never made it into config (no URL known) — the text must not diverge
+// from the JSON envelope for exactly the crash-recovery case that sweep
+// exists to catch.
+func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int, contextCleared bool) string {
+	names := make([]string, 0, len(deletedFrom))
+	for s := range deletedFrom {
+		names = append(names, s)
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	for _, s := range names {
+		if url := urlByName[s]; url != "" {
+			fmt.Fprintf(&b, "logged out of %s (%s)\n", s, url)
+		} else {
+			fmt.Fprintf(&b, "logged out of %s\n", s)
+		}
+		if from := deletedFrom[s]; len(from) > 0 {
+			fmt.Fprintf(&b, "  token removed from: %s\n", strings.Join(from, ", "))
+		} else {
+			b.WriteString("  no stored token found\n")
+		}
+	}
+	if cacheCount > 0 {
+		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
+	}
+	if contextCleared {
+		// The hinted command must be valid verbatim: auth login requires
+		// --server, so name a complete invocation when exactly one server
+		// was logged out.
+		hint := "rancher auth login --server <url> --name <name>"
+		if len(names) == 1 && urlByName[names[0]] != "" {
+			hint = fmt.Sprintf("rancher auth login --server %s --name %s", urlByName[names[0]], names[0])
+		}
+		fmt.Fprintf(&b, "current context cleared — log back in with: %s\n", hint)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `auth logout <server> <TAB>`
@@ -192,24 +245,25 @@ func deleteFailure(step string, err error, done []string) error {
 
 // clearCurrentContext unsets the current context when it no longer resolves to
 // a logged-in server: always under --all when one is set, otherwise only when
-// the current context targets one of the servers just logged out.
-func clearCurrentContext(cfg *config.Config, all bool, targets []string) error {
+// the current context targets one of the servers just logged out. Reports
+// whether it cleared anything so the result can say so.
+func clearCurrentContext(cfg *config.Config, all bool, targets []string) (bool, error) {
 	if cfg.CurrentContext == "" {
-		return nil
+		return false, nil
 	}
 	if all {
 		cfg.CurrentContext = ""
-		return cfg.Write()
+		return true, cfg.Write()
 	}
 	cur, ok := cfg.Contexts[cfg.CurrentContext]
 	if !ok {
-		return nil
+		return false, nil
 	}
 	for _, s := range targets {
 		if cur.Server == s {
 			cfg.CurrentContext = ""
-			return cfg.Write()
+			return true, cfg.Write()
 		}
 	}
-	return nil
+	return false, nil
 }

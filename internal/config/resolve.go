@@ -94,6 +94,11 @@ type Effective struct {
 	Token      string
 	Cluster    string
 	Project    string
+	// KnownServers is the configured server inventory (name → URL),
+	// carried so a downstream consumer that finds URL empty (no current
+	// context, no env) can answer with the re-login shortcut instead of
+	// the blank-machine wording — see ErrNotLoggedInFor and kube.RESTConfig.
+	KnownServers map[string]string
 }
 
 // IsSupportedSchemeURL reports whether rawURL canonicalizes to an http or
@@ -128,13 +133,19 @@ func IsSupportedScheme(canonicalURL string) bool {
 // a divergent RANCHER_CLI_URL never receives another server's credential.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	var eff Effective
+	if len(c.Servers) > 0 {
+		eff.KnownServers = make(map[string]string, len(c.Servers))
+		for n, srv := range c.Servers {
+			eff.KnownServers[n] = srv.URL
+		}
+	}
 	name, s, serverErr := c.CurrentServer()
 	if serverErr == nil {
 		ctx := c.Contexts[c.CurrentContext]
-		eff = Effective{
-			ServerName: name, URL: s.URL, CA: s.CA,
-			Cluster: ctx.Cluster, Project: ctx.Project,
-		}
+		// Field assignments, not a struct literal: a literal would zero the
+		// KnownServers inventory built above.
+		eff.ServerName, eff.URL, eff.CA = name, s.URL, s.CA
+		eff.Cluster, eff.Project = ctx.Cluster, ctx.Project
 	}
 
 	// Effective URL first (env > file).

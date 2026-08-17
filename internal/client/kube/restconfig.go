@@ -27,7 +27,11 @@ func BaseURL(serverURL string) string {
 // endpoint for the effective cluster (default "local").
 func RESTConfig(eff config.Effective) (*rest.Config, error) {
 	if eff.URL == "" {
-		return nil, config.ErrContextNotSet()
+		// Config-aware when the inventory is present: after a logout the
+		// server entries survive, and every command routed through this
+		// factory should answer with the re-login shortcut, not the
+		// blank-machine wording (falls back to it when truly blank).
+		return nil, config.ErrNotLoggedInFor(eff.KnownServers)
 	}
 	if eff.Token == "" {
 		// eff.URL is resolved (a context or RANCHER_CLI_URL exists) but no token —

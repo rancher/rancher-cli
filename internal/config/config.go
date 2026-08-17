@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -26,6 +28,42 @@ const LoginOrEnvHint = "run: rancher auth login --server <url>, or set " + EnvUR
 // change lands once. Returns a fresh *clierr.Error each call.
 func ErrContextNotSet() *clierr.Error {
 	return clierr.New(clierr.CodeContextNotSet, "no current context and no "+EnvURL+" set").WithHint(LoginOrEnvHint)
+}
+
+// ErrNotLoggedIn is ErrContextNotSet for callers that HAVE the loaded config
+// and can see stored servers: after a logout the current context is cleared
+// but server entries survive, so the answer to "am I logged in" is "no —
+// and here is the shortcut back", never a hint that implies a blank
+// machine. With no stored servers it falls back to ErrContextNotSet's
+// wording, which is then accurate.
+func (c *Config) ErrNotLoggedIn() *clierr.Error {
+	servers := make(map[string]string, len(c.Servers))
+	for n, s := range c.Servers {
+		servers[n] = s.URL
+	}
+	return ErrNotLoggedInFor(servers)
+}
+
+// ErrNotLoggedInFor is ErrNotLoggedIn's core over a name→URL map, usable by
+// callers that carry Effective.KnownServers instead of a loaded Config
+// (kube.RESTConfig — the shared client factory behind nearly every server
+// command). The hinted command is complete and valid verbatim: auth login
+// requires --server, so a bare --name suggestion would fail validation.
+func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
+	if len(servers) == 0 {
+		return ErrContextNotSet()
+	}
+	names := make([]string, 0, len(servers))
+	for n := range servers {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	hint := fmt.Sprintf("run: rancher auth login --server %s --name %s", servers[names[0]], names[0])
+	if len(names) > 1 {
+		hint = "run: rancher auth login --server <url> --name <name> — configured servers: " +
+			strings.Join(names, ", ")
+	}
+	return clierr.New(clierr.CodeContextNotSet, "not logged in — no current context").WithHint(hint)
 }
 
 // CompletionConfig holds the shell-completion preferences written by

@@ -383,3 +383,38 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	assert.Contains(t, ce.Message, "failed to log out")
 	assert.Contains(t, ce.Hint, "already logged out")
 }
+
+// TestLogoutTextAndContextClearedReported verifies the TTY story: logout is
+// no longer silent — the text names the server, its URL, the backends the
+// token was removed from, and that the current context was cleared — and
+// the envelope carries contextCleared for programs.
+func TestLogoutTextAndContextClearedReported(t *testing.T) {
+	dir, _ := seedLogout(t, "acme", "acme", "other")
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	assert.Equal(t, true, data["contextCleared"])
+
+	assert.Contains(t, res.Text, "logged out of acme (https://acme.ex)")
+	assert.Contains(t, res.Text, "token removed from: file")
+	assert.Contains(t, res.Text, "current context cleared")
+}
+
+// TestLogoutTextNoContextClearWhenOtherServer makes sure logging out a
+// server the current context does not target says nothing about the
+// context — it was not touched.
+func TestLogoutTextNoContextClearWhenOtherServer(t *testing.T) {
+	dir, _ := seedLogout(t, "acme", "acme", "other")
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	assert.Equal(t, false, data["contextCleared"])
+	assert.Contains(t, res.Text, "logged out of other (https://other.ex)")
+	assert.NotContains(t, res.Text, "current context cleared")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", cfg.CurrentContext, "context untouched")
+}

@@ -26,7 +26,7 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 	t.Parallel()
 	run := func(t *testing.T, pf func(context.Context, config.Effective) (string, error)) (runtime.Result, error) {
 		t.Helper()
-		dir := t.TempDir()
+		dir := seedAuthedDir(t)
 		cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir), preflight: pf}
 		return cmd.Execute(context.Background(), args{}, ui.Discard())
 	}
@@ -65,7 +65,7 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 
 func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // pin the effective policy to config/auto
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	require.NoError(t, config.WritePin(dir, "file"))
 	cmd := &authCheckCmd{
 		dir:       dir,
@@ -90,7 +90,7 @@ func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
 	t.Parallel()
 	run := func(t *testing.T, rv func(context.Context, config.Effective) (string, error)) (runtime.Result, error) {
 		t.Helper()
-		dir := t.TempDir()
+		dir := seedAuthedDir(t)
 		cmd := &authCheckCmd{
 			dir:   dir,
 			store: config.NewFileStore(dir),
@@ -182,7 +182,7 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "id:secret"))
 	// Extract the test server's CA cert so RESTConfig can verify it (secure-by-default).
@@ -227,7 +227,7 @@ func writeAuthCheckConfig(t *testing.T, dir string) {
 // alongside (never replacing) PS-8's rancherVersion/supported keys.
 func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	var gotName string
 	cmd := &authCheckCmd{
@@ -270,7 +270,7 @@ func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 // string createTokenCmd leaves for CLI-derived tokens) is labeled "derived".
 func TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/name1:secret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -292,7 +292,7 @@ func TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived(t *testing.T) {
 // the stored credential — the two carry different ext ids here so a probe
 // call on the wrong one is unambiguous.
 func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	writeAuthCheckConfig(t, dir)
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "ext/stored-1:storedsecret"))
@@ -323,7 +323,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 // uses on the same error code.
 func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	extCalled := false
 	cmd := &authCheckCmd{
@@ -354,7 +354,7 @@ func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 // gets, and the probe is never called.
 func TestAuthCheckNoTokenAtAllIsNotLegacy(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	called := false
 	cmd := &authCheckCmd{
@@ -405,7 +405,7 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("RANCHER_CLI_TOKEN", "id:secret")
-			dir := t.TempDir()
+			dir := seedAuthedDir(t)
 			cmd := &authCheckCmd{
 				dir: dir, store: config.NewFileStore(dir),
 				preflight:      alwaysOKPreflight,
@@ -454,7 +454,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-			dir := t.TempDir()
+			dir := seedAuthedDir(t)
 			cmd := &authCheckCmd{
 				dir: dir, store: config.NewFileStore(dir),
 				preflight:      alwaysOKPreflight,
@@ -482,7 +482,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 // surprising to a caller than a shared "can't tell" posture.
 func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight: alwaysOKPreflight,
@@ -511,7 +511,7 @@ func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 // TestAuthCheckTokenDegradation).
 func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight:      alwaysOKPreflight,
@@ -536,7 +536,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 // design (each goroutine writes only its own dedicated result variables).
 func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight: alwaysOKPreflight,
@@ -567,7 +567,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 // expected, not a bug, and the check still exits 0 with ok unaffected.
 func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "id:secret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight:      alwaysOKPreflight,
@@ -593,7 +593,7 @@ func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 // expiresAt, current — mapped 1:1 from the root-level v3 fields.
 func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "token-nmfmf:secret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	var gotName string
 	cmd := &authCheckCmd{
@@ -630,7 +630,7 @@ func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
 // the management API is always present, so 404 unambiguously means a stale id.
 func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "token-stale:secret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -652,7 +652,7 @@ func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 // must not disturb the pre-existing ext path.
 func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 
 	v3Called := false
 	cmd := &authCheckCmd{
@@ -735,7 +735,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 // renders on stdout while the re-authenticate advisory arrives only on stderr.
 func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
 		preflight:      alwaysOKPreflight,
@@ -762,7 +762,7 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 // matching TestContextCurrentTextView's parallel assertion for current-context.
 func TestAuthCheckDataPayloadUnchanged(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
-	dir := t.TempDir()
+	dir := seedAuthedDir(t)
 	ver := "v2.15.0"
 	cmd := &authCheckCmd{
 		dir: dir, store: config.NewFileStore(dir),
@@ -805,4 +805,50 @@ func TestAuthCheckDataPayloadUnchanged(t *testing.T) {
 	assert.True(t, hasPolicy, "credentialStore.policy key must be present")
 	_, hasPinned := cs["pinned"]
 	assert.True(t, hasPinned, "credentialStore.pinned key must be present")
+}
+
+// seedAuthedDir returns a config dir carrying a current context and server,
+// so authCheckCmd.Execute reaches the injected preflight stub: the
+// not-logged-in guard (cfg.ErrNotLoggedIn) fires before preflight on an
+// empty dir, which is the correct behavior for a blank machine but not the
+// state these result-shaping tests exercise.
+func seedAuthedDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers = map[string]config.Server{"default": {URL: "https://rancher.test.invalid"}}
+	cfg.Contexts = map[string]config.Context{"default": {Server: "default"}}
+	cfg.CurrentContext = "default"
+	require.NoError(t, cfg.Write())
+	return dir
+}
+
+// TestAuthCheckNotLoggedInNamesKnownServers makes sure the post-logout
+// answer is state, not plumbing: with server entries in config but no
+// current context, auth check reports "not logged in" and the hint names
+// the re-login shortcut with the stored server name — never the generic
+// "no current context and no RANCHER_CLI_URL set" that implies a blank
+// machine.
+func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
+	dir := seedAuthedDir(t)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.CurrentContext = "" // the state auth logout leaves behind
+	require.NoError(t, cfg.Write())
+
+	cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir),
+		preflight: func(context.Context, config.Effective) (string, error) {
+			t.Fatal("preflight must not run when not logged in")
+			return "", nil
+		}}
+	_, err = cmd.Execute(context.Background(), args{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Contains(t, ce.Message, "not logged in")
+	// The hinted command must be complete and valid verbatim — auth login
+	// requires --server, so a bare --name suggestion would fail validation
+	// when pasted.
+	assert.Contains(t, ce.Hint, "auth login --server https://rancher.test.invalid --name default")
 }

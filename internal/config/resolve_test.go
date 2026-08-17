@@ -402,3 +402,31 @@ func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
 	assert.True(t, SameServerURL("not a url", "not a url"))
 	assert.False(t, SameServerURL("not a url", "https://example.com"))
 }
+
+// TestEffectiveKeepsKnownServersWithResolvedContext asserts the server
+// inventory survives context resolution: the resolved-context branch used
+// to rebuild eff as a struct literal, zeroing KnownServers. The inventory
+// must be present in BOTH states — resolved
+// context and no context — because kube.RESTConfig consumes it exactly when
+// the URL came out empty (e.g. a hand-edited server entry with no URL).
+func TestEffectiveKeepsKnownServersWithResolvedContext(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	c := &Config{
+		CurrentContext: "prod",
+		Contexts:       map[string]Context{"prod": {Server: "acme"}},
+		Servers: map[string]Server{
+			"acme":  {URL: "https://r.ex"},
+			"other": {URL: "https://o.ex"},
+		},
+	}
+	eff, err := c.Effective(store)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"acme": "https://r.ex", "other": "https://o.ex"},
+		eff.KnownServers, "inventory survives the resolved-context branch")
+
+	c.CurrentContext = ""
+	eff, err = c.Effective(store)
+	require.NoError(t, err)
+	assert.Equal(t, "", eff.URL)
+	assert.Len(t, eff.KnownServers, 2, "inventory present when no context resolves")
+}
