@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -87,6 +88,13 @@ func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) st
 }
 
 // ResolveProject maps a project display name or id to its metadata.name.
+// The list is the primary path: it resolves display names and enforces the
+// id-vs-display ambiguity guard. A project MEMBER cannot list the
+// collection — member grants are get-on-the-named-object, never
+// list-on-the-collection — so a forbidden list falls back to a direct get
+// by nameOrID: exact id only, no display-name resolution (impossible
+// without the list). Without the fallback, `inspect project <id>` turned a
+// question the member is allowed to ask into an RBAC error.
 func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, clusterID, nameOrID string) (string, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -95,6 +103,13 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 	projectKind, _ := kinds.Lookup("project")
 	list, err := client.List(ctx, projectKind.GVR, clusterID, "")
 	if err != nil {
+		var ce *clierr.Error
+		if errors.As(err, &ce) && ce.Code == clierr.CodeRBAC {
+			if _, gerr := ResolveByGet(ctx, client, clusterID, nameOrID, ce); gerr != nil {
+				return "", gerr
+			}
+			return nameOrID, nil
+		}
 		return "", err
 	}
 
@@ -119,6 +134,35 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 			return fmt.Sprintf("%d projects have display name %q", displayMatchCount, nameOrID)
 		},
 		"pass the project id")
+}
+
+// ResolveByGet is the forbidden-list fallback shared by ResolveProject and
+// usage's collectByProject: when a caller cannot LIST the projects
+// collection (member grants are get-on-object, never list-on-collection),
+// it fetches nameOrID directly. Returns the object on success. On failure:
+// a NOT_FOUND when the id does not exist (a typo, or a display name —
+// unresolvable without a list; exit 4, never masked as RBAC); listErr
+// augmented with the exact-id hint when the get is also forbidden; the
+// get's own error verbatim for anything else, so a transient failure keeps
+// its code and retryability.
+func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, nameOrID string, listErr *clierr.Error) (*unstructured.Unstructured, error) {
+	projectKind, _ := kinds.Lookup("project")
+	obj, gerr := client.Get(ctx, projectKind.GVR, clusterID, nameOrID)
+	if gerr == nil {
+		return obj, nil
+	}
+	var ge *clierr.Error
+	switch {
+	case errors.As(gerr, &ge) && ge.Code == clierr.CodeNotFound:
+		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID).
+			WithHint("you cannot list projects, so display names cannot be resolved — " +
+				"pass the exact project id (metadata.name)")
+	case errors.As(gerr, &ge) && ge.Code == clierr.CodeRBAC:
+		return nil, listErr.WithHint("you cannot list projects; pass the exact project id " +
+			"(metadata.name) of a project you have access to")
+	default:
+		return nil, gerr
+	}
 }
 
 // BackingNamespace returns the namespace projectroletemplatebindings and

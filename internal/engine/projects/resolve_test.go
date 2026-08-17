@@ -24,6 +24,8 @@ type listClient struct {
 	gets map[string]*unstructured.Unstructured
 	// getErrs, when set, returns the error for "namespace/name" key.
 	getErrs map[string]error
+	// listErr, when set, fails every List with it (RBAC-fallback tests).
+	listErr error
 
 	lastNS       string
 	lastSelector string
@@ -43,6 +45,9 @@ func (l *listClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, n
 
 func (l *listClient) List(_ context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
 	l.lastNS, l.lastSelector, l.lastResource = ns, selector, gvr.Resource
+	if l.listErr != nil {
+		return nil, l.listErr
+	}
 	if list, ok := l.lists[gvr.Resource]; ok {
 		return list, nil
 	}
@@ -175,6 +180,82 @@ func TestResolveProjectByExactID(t *testing.T) {
 	id, err := ResolveProject(context.Background(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", id)
+}
+
+// TestResolveProjectForbiddenListFallsBackToGet asserts the member path: a
+// project member cannot LIST the collection (grants are get-on-object), so
+// a forbidden list must fall back to a direct get of nameOrID instead of
+// turning an allowed question into an RBAC error. Regression for the
+// demo-rehearsal find (2026-08-17): `inspect project demo-web` failed RBAC
+// for a member fully entitled to that project.
+func TestResolveProjectForbiddenListFallsBackToGet(t *testing.T) {
+	t.Parallel()
+	obj := project("demo-web", "demo-web")
+	client := &listClient{
+		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
+		gets:    map[string]*unstructured.Unstructured{"local/demo-web": &obj},
+	}
+	factory := stubFactory{c: client}
+
+	id, err := ResolveProject(context.Background(), factory, "local", "demo-web")
+	require.NoError(t, err)
+	assert.Equal(t, "demo-web", id)
+}
+
+// TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint makes sure the
+// both-denied shape keeps the original RBAC error, augmented with the
+// exact-id hint.
+func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
+	t.Parallel()
+	client := &listClient{
+		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
+		getErrs: map[string]error{"local/other": clierr.New(clierr.CodeRBAC, "cannot get")},
+	}
+	factory := stubFactory{c: client}
+
+	_, err := ResolveProject(context.Background(), factory, "local", "other")
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
+	assert.Contains(t, cerr.Hint, "exact project id")
+}
+
+// TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts the
+// review-round shape: when the fallback get says the id does not exist,
+// NOT_FOUND (exit 4) is the answer — a typo must not masquerade as an
+// RBAC denial (exit 6), and scripts branch on that difference.
+func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
+	t.Parallel()
+	client := &listClient{
+		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
+		getErrs: map[string]error{"local/typo-web": clierr.New(clierr.CodeNotFound, "not found")},
+	}
+	factory := stubFactory{c: client}
+
+	_, err := ResolveProject(context.Background(), factory, "local", "typo-web")
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
+	assert.Contains(t, cerr.Message, "typo-web")
+	assert.Contains(t, cerr.Hint, "display names cannot be resolved")
+}
+
+// TestResolveProjectNonRBACListErrorPropagates verifies that only a
+// forbidden list triggers the get fallback — any other list failure
+// surfaces as-is.
+func TestResolveProjectNonRBACListErrorPropagates(t *testing.T) {
+	t.Parallel()
+	obj := project("p-1", "web")
+	client := &listClient{
+		listErr: clierr.New(clierr.CodeGeneric, "boom"),
+		gets:    map[string]*unstructured.Unstructured{"local/p-1": &obj},
+	}
+	factory := stubFactory{c: client}
+
+	_, err := ResolveProject(context.Background(), factory, "local", "p-1")
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "no fallback on non-RBAC failures")
 }
 
 func TestResolveProjectByUniqueDisplayName(t *testing.T) {
@@ -327,3 +408,23 @@ func TestBackingNamespaceNotFoundWithHintPassesThrough(t *testing.T) {
 }
 
 var _ engine.ClusterClient = (*listClient)(nil)
+
+// TestResolveProjectForbiddenListGetTransientErrorPropagates verifies the
+// fallback get's own error survives verbatim when it is neither NOT_FOUND
+// nor RBAC: a transient failure (timeout, 5xx) must keep its code and
+// Retryable flag — mislabeling it as the list's RBAC denial would stop a
+// caller from retrying.
+func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
+	t.Parallel()
+	client := &listClient{
+		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
+		getErrs: map[string]error{"local/p-1": clierr.Retryable(clierr.CodeGeneric, "request timed out")},
+	}
+	factory := stubFactory{c: client}
+
+	_, err := ResolveProject(context.Background(), factory, "local", "p-1")
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "the get's own code survives")
+	assert.True(t, cerr.Retryable, "retryability survives — callers branch on it")
+}

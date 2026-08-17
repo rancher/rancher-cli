@@ -2,6 +2,7 @@ package inspect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -39,20 +40,45 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	displayByID := map[string]string{}
+	var filterID string
+	memberFallback := false
 	projectList, err := mgmtClient.List(ctx, projectKind.GVR, clusterID, "")
 	if err != nil {
-		return runtime.Result{}, err
+		// Member path (mirrors projects.ResolveProject): a project member
+		// cannot LIST the collection, but a named --project can still be
+		// fetched directly — their per-project usage stays reachable.
+		var ce *clierr.Error
+		if !errors.As(err, &ce) || ce.Code != clierr.CodeRBAC {
+			return runtime.Result{}, err
+		}
+		if projectFlag == "" {
+			return runtime.Result{}, ce.WithHint("you cannot list projects; pass " +
+				"--project <project id> to scope usage to a project you have access to")
+		}
+		obj, gerr := projects.ResolveByGet(ctx, mgmtClient, clusterID, projectFlag, ce)
+		if gerr != nil {
+			return runtime.Result{}, gerr
+		}
+		display, _, _ := unstructured.NestedString(obj.Object, "spec", "displayName")
+		if display == "" {
+			display = projectFlag
+		}
+		displayByID[projectFlag] = display
+		filterID = projectFlag
+		memberFallback = true
 	}
 
 	// Build ns→projectID and projectID→displayName maps.
-	displayByID := map[string]string{}
-	for i := range projectList.Items {
-		id := projectList.Items[i].GetName()
-		display, _, _ := unstructured.NestedString(projectList.Items[i].Object, "spec", "displayName")
-		if display == "" {
-			display = id
+	if !memberFallback {
+		for i := range projectList.Items {
+			id := projectList.Items[i].GetName()
+			display, _, _ := unstructured.NestedString(projectList.Items[i].Object, "spec", "displayName")
+			if display == "" {
+				display = id
+			}
+			displayByID[id] = display
 		}
-		displayByID[id] = display
 	}
 
 	// When --project X is given, resolve to a single id against the project
@@ -60,8 +86,9 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// repeat the identical management-plane List (and open a TOCTOU window
 	// between the two fetches). Uses the canonical MatchByIDOrDisplay algorithm
 	// (union with ambiguity, same as ResolveProject and ResolveCluster).
-	var filterID string
-	if projectFlag != "" {
+	// The member fallback above already resolved filterID by direct get —
+	// exact id only, nothing to match.
+	if projectFlag != "" && !memberFallback {
 		ids := make([]string, 0, len(displayByID))
 		for id := range displayByID {
 			ids = append(ids, id)

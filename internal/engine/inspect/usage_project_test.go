@@ -211,3 +211,52 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 	require.Contains(t, env.Data, "p-x")
 	assert.Equal(t, "100m", env.Data["p-x"].CPURequest, "only n1's pods count under --node n1")
 }
+
+// TestUsageByProjectMemberFallbackWithProjectFlag asserts the member path
+// (review round 2): a forbidden projects List with --project set falls back
+// to a direct get of the named project — a member's per-project usage stays
+// reachable even though they cannot list the collection.
+func TestUsageByProjectMemberFallbackWithProjectFlag(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withListErr(projectKind.GVR, clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list")).
+		withObject(projectKind.GVR, "c-abc", "p-x", projectFixtureObj("p-x", "web", "")).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
+		}})
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	require.Contains(t, env.Data, "p-x")
+	assert.Equal(t, "100m", env.Data["p-x"].CPURequest)
+}
+
+// TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC makes sure the
+// no-flag member case stays an honest RBAC error — usage across ALL
+// projects genuinely requires list — with a hint naming the --project form
+// that works for a member.
+func TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	client := newFakeClient().
+		withListErr(projectKind.GVR, clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"))
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project"}})
+	var cerr *clierr.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
+	assert.Contains(t, cerr.Hint, "--project")
+}
