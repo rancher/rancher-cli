@@ -1,6 +1,5 @@
 #!/bin/sh
 # rancher CLI installer. POSIX sh. Canonical invocation: README "Install".
-# Design: docs/design/2026-08-11-install-script-design.md (local file).
 set -eu
 
 REPO="rancher/rancher-cli"

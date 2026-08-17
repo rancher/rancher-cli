@@ -23,7 +23,7 @@ func (v schemaView) Rows() [][]string { return namesToRows(commandNames(v.manife
 func (v schemaView) MarshalJSON() ([]byte, error) { return json.Marshal(v.manifest) }
 
 // tocView is the bare and filtered selections' Result.Data: the TOC-shaped
-// JSON/YAML mirror of renderTOC/renderFilteredTOC (schema disclosure spec, docs/design). bare gates
+// JSON/YAML mirror of renderTOC/renderFilteredTOC. bare gates
 // the fields only the bare text TOC renders: the kind vocabulary, its
 // count, and the exit-code strip's map. -o name keeps the command-name
 // rows schemaView produced for these selections.

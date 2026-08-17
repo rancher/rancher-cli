@@ -57,6 +57,17 @@ else
   echo "warning: shellcheck not installed; skipping (install for the shell gate)" >&2
 fi
 
+# Local-doc reference gate: docs/ is gitignored (local-only), so no tracked
+# file — shipped artifacts and source alike — may point at it. A reference
+# is a dangling path for every external reader and leaks internal layout
+# into release assets (found in the published alpha.2 install.sh).
+# The regex is written with a group so this file's own pattern text cannot
+# match itself ("docs/(design" is not followed by a subdir name).
+if git grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!docs' ':!graphify-out'; then
+  echo "error: tracked files must not reference local-only docs/ paths" >&2
+  exit 1
+fi
+
 # -vet=off: the full go vet ./... already ran above; go test's implicit
 # vet subset would only repeat a fraction of it.
 go test -race -vet=off ./...

@@ -77,8 +77,7 @@ func TestTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
 // silent-no-op property: a download cut exactly after the last complete
 // function definition but before `main "$@"` leaves the interpreter with
 // only declarations and no entry point. Exit 0, nothing installed — the
-// same trade-off rustup accepts (documented in
-// docs/design/2026-08-12-install-main-wrap-design.md).
+// same trade-off rustup accepts.
 func TestTruncatedScriptAtFunctionBoundaryIsSilentNoOp(t *testing.T) {
 	t.Parallel()
 
