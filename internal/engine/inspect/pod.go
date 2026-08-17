@@ -48,7 +48,7 @@ func (c *podCmd) Describe() runtime.Descriptor {
 }
 
 func (c *podCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(c.clients, in, "inspect pod"); err != nil {
+	if err := rejectProject(in, "inspect pod"); err != nil {
 		return runtime.Result{}, err
 	}
 	podKind, _ := kinds.Lookup("pod")

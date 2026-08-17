@@ -70,11 +70,10 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 				"--namespace does not apply to --by node").
 				WithHint("use --by pod --node N to see per-pod usage on a specific node")
 		}
-		projectFlag, err := resources.EffectiveProject(c.clients, in)
-		if err != nil {
-			return runtime.Result{}, err
-		}
-		if projectFlag != "" {
+		// Typed flag only — see resources.TypedProject: a context-set
+		// project is ambient state and must not break a node-level view
+		// that cannot take a project scope.
+		if resources.TypedProject(in) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				"--project does not apply to --by node").
 				WithHint("use --by pod --project P to see where a project's pods are scheduled")

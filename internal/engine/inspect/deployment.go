@@ -37,7 +37,7 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 }
 
 func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(c.clients, in, "inspect deployment"); err != nil {
+	if err := rejectProject(in, "inspect deployment"); err != nil {
 		return runtime.Result{}, err
 	}
 	depKind, _ := kinds.Lookup("deployment")

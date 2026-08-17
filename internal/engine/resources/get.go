@@ -21,7 +21,7 @@ import (
 const (
 	FlagCluster   = engine.FlagCluster
 	FlagNamespace = "namespace"
-	flagProject   = "project"
+	FlagProject   = "project"
 	flagFilename  = "filename"
 	flagPatch     = "patch"
 	flagWait      = "wait"
@@ -249,25 +249,32 @@ type ProjectScope struct {
 
 // EffectiveProject resolves --project (flag > context, PC-2's precedence).
 // Exported so every project-scope consumer — Route, usage, and the
-// composites that must actively reject a project — shares this one seam
-// instead of some reading the flag directly and silently skipping the
-// context fallback.
+// composites — shares this one seam instead of some reading the flag
+// directly and silently skipping the context fallback. Consult it only
+// where project scope APPLIES: reject-only checks must use TypedProject,
+// never this fallback.
 func EffectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	if p := in.String(flagProject); p != "" {
+	if p := in.String(FlagProject); p != "" {
 		return p, nil
 	}
 	return clients.ContextProject()
 }
 
+// TypedProject returns the --project value the user actually typed, never
+// the context fallback. Every reject-only check MUST use this, not
+// EffectiveProject: a context-set project is ambient routing state, and
+// rejecting it made a project-carrying context poison every non-scopable
+// kind — `delete project X` failed because the context carried a project,
+// blaming a flag the user never typed. Typed flag = intent, rejected loud;
+// context = fallback, consulted only where project scope applies.
+func TypedProject(in runtime.Input) string { return in.String(FlagProject) }
+
 // rejectProjectScope enforces PC-3's "never a silent no-op" rule for kind
-// families that do not support project scoping: any effective project (flag
-// or context) is a VALIDATION error, never an ignored value.
-func rejectProjectScope(clients engine.ClusterClientFactory, in runtime.Input, k kinds.Kind) error {
-	project, err := EffectiveProject(clients, in)
-	if err != nil {
-		return err
-	}
-	if project == "" {
+// families that do not support project scoping: an explicitly TYPED
+// --project is a VALIDATION error, never an ignored value. Context-sourced
+// projects are deliberately not consulted — see TypedProject.
+func rejectProjectScope(in runtime.Input, k kinds.Kind) error {
+	if TypedProject(in) == "" {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation, "--project does not apply to "+k.Name).
@@ -335,7 +342,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 	switch k.Policy {
 	case kinds.NSCluster:
 		if !scopable {
-			if err := rejectProjectScope(clients, in, k); err != nil {
+			if err := rejectProjectScope(in, k); err != nil {
 				return "", "", "", nil, err
 			}
 		}
@@ -357,7 +364,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 
 	case kinds.NSWorkspace:
 		if !scopable {
-			if err := rejectProjectScope(clients, in, k); err != nil {
+			if err := rejectProjectScope(in, k); err != nil {
 				return "", "", "", nil, err
 			}
 		}
@@ -382,7 +389,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 				WithHint("pass --namespace <namespace>")
 		}
 		if !scopable {
-			if err := rejectProjectScope(clients, in, k); err != nil {
+			if err := rejectProjectScope(in, k); err != nil {
 				return "", "", "", nil, err
 			}
 			clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, nspace)
@@ -411,7 +418,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if scopable {
 			return routeNamespaceKind(ctx, clients, k, in)
 		}
-		if err := rejectProjectScope(clients, in, k); err != nil {
+		if err := rejectProjectScope(in, k); err != nil {
 			return "", "", "", nil, err
 		}
 		clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, "")

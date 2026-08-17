@@ -122,7 +122,7 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 }
 
 func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(c.clients, in, "images"); err != nil {
+	if err := rejectProject(in, "images"); err != nil {
 		return runtime.Result{}, err
 	}
 	needles := in.Strings(flagMatch)

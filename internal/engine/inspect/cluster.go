@@ -63,7 +63,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 }
 
 func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(c.clients, in, "inspect cluster"); err != nil {
+	if err := rejectProject(in, "inspect cluster"); err != nil {
 		return runtime.Result{}, err
 	}
 	clusterID, err := c.clients.ResolveCluster(ctx, in.Args()[0])

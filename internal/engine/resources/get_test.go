@@ -562,6 +562,48 @@ func TestRoutePolicyMatrix(t *testing.T) {
 	}
 }
 
+// TestRouteIgnoresContextProjectOnNonScopableKinds pins the revised PC-3
+// rule: a CONTEXT-set project (no --project flag typed) must not reject a
+// kind that cannot take a project scope — it is ambient routing state, not
+// per-invocation intent. Regression for the demo-day find: with a
+// `cluster:project` context, `delete project X --cluster local` failed
+// "--project does not apply to project" for a flag the user never typed.
+// The typed-flag rejections stay pinned in TestRoutePolicyMatrix above.
+func TestRouteIgnoresContextProjectOnNonScopableKinds(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		kind  kinds.Kind
+		flags map[string]string
+		named bool
+	}{
+		{name: "NSCluster (project itself)",
+			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
+			flags: map[string]string{"cluster": "prod"}, named: true},
+		{name: "NSWorkspace (gitrepo)",
+			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
+			flags: map[string]string{}, named: true},
+		{name: "Management NSPlain (projectroletemplatebinding)",
+			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+			flags: map[string]string{"namespace": "p-1"}, named: true},
+		{name: "Management NSNone (cluster)",
+			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
+			flags: map[string]string{}, named: true},
+		{name: "Downstream NSNone (node)",
+			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
+			flags: map[string]string{"cluster": "prod"}, named: true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}, ctxProject: "p-ambient"}
+			_, _, _, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			require.NoError(t, err, "context project must not reject a non-scopable kind")
+		})
+	}
+}
+
 // decodeEnvelope decodes a rendered envelope for the given format (json or
 // yaml — sigs.k8s.io/yaml marshals through JSON, so both round-trip through
 // json.Unmarshal-compatible structures) into v. Tests must decode and assert
