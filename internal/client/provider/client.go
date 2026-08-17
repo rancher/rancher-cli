@@ -43,7 +43,7 @@ func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 // bootstrapLocalDynamic builds a dynamic client bound to the LOCAL cluster's
-// proxy plus a request-bounded context, for the small `auth check` probes
+// proxy plus a request-bounded context, for the small `auth status` probes
 // (Identity, EffectiveTokenMetadata, V3TokenMetadata) that each read a
 // single management-plane singleton. ext.cattle.io and
 // management.cattle.io resources live under the local cluster's proxy

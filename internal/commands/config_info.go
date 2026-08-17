@@ -11,7 +11,7 @@ import (
 
 type configInfoCmd struct{ dir string }
 
-// NewConfigInfo builds `config info` (local, no network/auth): the resolved
+// NewConfigInfo builds `config status` (local, no network/auth): the resolved
 // config file path plus the EFFECTIVE credential-store policy and its source
 // (env > config > default auto), with the auto-probe pin when one exists.
 // This is the one place that answers "which credential store am I actually
@@ -23,7 +23,7 @@ func NewConfigInfo(dir string) runtime.Command { return &configInfoCmd{dir: dir}
 
 func (configInfoCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:  "config info",
+		Name:  "config status",
 		Usage: "Print config diagnostics: file path and effective credential store",
 		Desc: "Reports the resolved config file path (and whether it exists) " +
 			"and the effective credential-store policy with its source: the " +
@@ -36,7 +36,7 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"clamped or unparseable). The first place to check when " +
 			"tab-completion shows no candidates.",
 		CommandType: runtime.Local,
-		Examples:    []string{"rancher config info"},
+		Examples:    []string{"rancher config status"},
 	}
 }
 
@@ -79,7 +79,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		fields = append(fields, field{"pin", pin})
 	}
 
-	// Completion settings — always present so `config info` can answer
+	// Completion settings — always present so `config status` can answer
 	// "why does TAB show no candidates?" without knowing whether completion
 	// was ever configured. CompletionTimeoutWithRaw resolves effective vs.
 	// raw in one pass so the two cannot disagree.

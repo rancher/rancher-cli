@@ -54,7 +54,7 @@ func EffectivePolicy(cfgPolicy string) string {
 // EffectivePolicyWithSource returns the effective credential-store policy
 // and where it came from: "env" (RANCHER_CLI_CREDENTIAL_STORE), "config"
 // (config.yaml's credentialStore), or "default" (nothing set — auto).
-// `config info` reports this pair; EffectivePolicy is the value-only form
+// `config status` reports this pair; EffectivePolicy is the value-only form
 // every resolution path uses, so the two can never disagree.
 func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
 	if env := os.Getenv(EnvCredentialStore); env != "" {

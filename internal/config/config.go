@@ -104,7 +104,7 @@ func EffectiveCompletionTimeout(cfg *Config) time.Duration {
 // CompletionTimeoutWithRaw returns the effective timeout, the raw configured
 // string, and whether the raw value diverges from the effective (clamped,
 // defaulted, or unparseable). Computed in one resolution so the effective and
-// divergence sides can never disagree. `config info` reports this triple;
+// divergence sides can never disagree. `config status` reports this triple;
 // EffectiveCompletionTimeout is the value-only form every other path uses.
 func CompletionTimeoutWithRaw(cfg *Config) (effective time.Duration, raw string, diverges bool) {
 	if cfg == nil || cfg.Completion.Timeout == "" {

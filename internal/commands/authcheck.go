@@ -36,7 +36,7 @@ type authCheckCmd struct {
 	v3token func(ctx context.Context, eff config.Effective, name string) (provider.TokenMetadata, error)
 }
 
-// NewAuthCheck builds the `auth check` command (local; makes a server preflight call).
+// NewAuthCheck builds the `auth status` command (local; makes a server preflight call).
 func NewAuthCheck(dir string, store config.CredStore) runtime.Command {
 	return &authCheckCmd{
 		dir: dir, store: store,
@@ -50,10 +50,10 @@ func NewAuthCheck(dir string, store config.CredStore) runtime.Command {
 
 func (authCheckCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "auth check",
+		Name:        "auth status",
 		Usage:       "Verify connectivity and credentials against the current server",
 		CommandType: runtime.Local,
-		Examples:    []string{"rancher auth check -o json"},
+		Examples:    []string{"rancher auth status -o json"},
 		Network:     true,
 		Auth:        true,
 	}
@@ -88,7 +88,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	// The three probes below are independent network calls (version, identity,
 	// token) with nothing but eff in common; run them concurrently via
 	// errgroup (already a repo dependency — internal/engine/inspect/images.go
-	// uses the same pattern) rather than tripling/quadrupling auth check's
+	// uses the same pattern) rather than tripling/quadrupling auth status's
 	// wall-clock latency running them one after another. Each probe writes
 	// only to its own dedicated result variables, so there is no data race
 	// between goroutines; none of them ever returns a real error to the
@@ -191,7 +191,7 @@ func renderAuthCheckText(
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "AUTH CHECK\n")
+	fmt.Fprintf(&b, "AUTH STATUS\n")
 	fmt.Fprintf(&b, "  ok: %v\n", ok)
 	fmt.Fprintf(&b, "  server: %s\n", serverName)
 	fmt.Fprintf(&b, "  cluster: %s\n", emptyStr(cluster))
@@ -236,7 +236,7 @@ func renderAuthCheckText(
 // /rancherversion) against config.MinRancherVersion (PS-8, warn-only floor).
 // Any failure to read it at all — connectivity, a non-200 response, an
 // unrecognized body — is folded into the same "cannot determine" posture as
-// an unparseable value (a dev/head build): auth check's own success never
+// an unparseable value (a dev/head build): auth status's own success never
 // depends on this read.
 // rancherVersion is nil only on a read failure; supported is nil whenever
 // the version cannot be numerically compared (a read failure OR a
@@ -256,7 +256,7 @@ func (a authCheckCmd) checkMinRancherVersion(ctx context.Context, eff config.Eff
 // checkIdentity runs the PS-2 identity probe. A nil identity field (only
 // possible when a test builds authCheckCmd directly without going through
 // NewAuthCheck) is treated as "not wired for this check" and stays silently
-// null — auth check's own success never depends on it either way. Any other
+// null — auth status's own success never depends on it either way. Any other
 // failure (RBAC denial, timeout, the ext.cattle.io group/resource being
 // absent) degrades to null plus a warning, never a check failure.
 func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (any, string) {
@@ -381,7 +381,7 @@ func tokenWarning(err error, supported *bool) string {
 // posture both identity and token metadata degrade to: RBAC denial, a
 // timeout, and the ext.cattle.io group/resource being missing (below the
 // 2.14 floor, or genuinely absent for some other reason on a >= 2.14
-// server) are all warn-only — auth check's own success (`ok`) never depends
+// server) are all warn-only — auth status's own success (`ok`) never depends
 // on either probe. The missing-group wording deliberately does not reuse
 // EvalMinVersionSupport's below-floor text: a server the version check
 // already reported as >= 2.14 must not also be told it is below the

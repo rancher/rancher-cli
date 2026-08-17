@@ -108,7 +108,7 @@ func TestEffectiveFromFile(t *testing.T) {
 // Round-3 repro: a RANCHER_CLI_URL override pointing at a DIFFERENT server than
 // the stored context's must never carry that stored server's CA or display
 // name into the new Effective — every command through Effective (get,
-// create, patch, delete, auth check, kubeconfig) shares this one choke
+// create, patch, delete, auth status, kubeconfig) shares this one choke
 // point, not just kubeconfig.
 // Round-4 repro: an explicit default port (:443 https, :80 http) spelled out
 // on one side and omitted on the other is the same server, not divergence —

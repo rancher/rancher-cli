@@ -68,7 +68,7 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 // Dynamic builds a dynamic client for arbitrary GVRs.
 func Dynamic(rc *rest.Config) (dynamic.Interface, error) { return dynamic.NewForConfig(rc) }
 
-// Discovery builds a discovery client (used by auth check / server-version).
+// Discovery builds a discovery client (used by auth status / server-version).
 func Discovery(rc *rest.Config) (discovery.DiscoveryInterface, error) {
 	return discovery.NewDiscoveryClientForConfig(rc)
 }

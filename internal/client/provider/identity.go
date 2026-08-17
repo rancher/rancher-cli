@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Identity is `auth check`'s PS-2 identity probe. It POSTs an empty SelfUser
+// Identity is `auth status`'s PS-2 identity probe. It POSTs an empty SelfUser
 // to ext.cattle.io/v1 selfusers and returns status.userID. The store is
 // create-only (rancher: pkg/ext/stores/selfuser/store.go, no Getter/Lister)
 // — the server fills status.userID from the request's bearer identity, so
@@ -19,7 +19,7 @@ import (
 // denial — expected under a read-only token, since this is a create-verb
 // request; a missing ext.cattle.io group/resource; connectivity) is
 // returned clierr-mapped, already-classified for the caller's warn-only
-// degradation — this probe's own success never gates auth check's `ok`.
+// degradation — this probe's own success never gates auth status's `ok`.
 func Identity(ctx context.Context, eff config.Effective) (string, error) {
 	dyn, ctx, cancel, err := bootstrapLocalDynamic(ctx, eff)
 	if err != nil {

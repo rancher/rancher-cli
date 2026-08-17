@@ -17,7 +17,7 @@ type loginCmd struct {
 	dir string
 	// rancherVersion reads the server's stamped version from GET /rancherversion
 	// for the PS-8 floor check, injectable for tests; defaults to
-	// provider.RancherVersion — the same PS-8 read `auth check` uses,
+	// provider.RancherVersion — the same PS-8 read `auth status` uses,
 	// unauthenticated and requiring no engine client factory.
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
 	// newStore resolves the credential store FROM THE POLICY READ UNDER

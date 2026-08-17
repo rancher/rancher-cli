@@ -2,18 +2,6 @@
   "cliVersion": "golden",
   "commands": [
     {
-      "auth": true,
-      "commandType": "local",
-      "examples": [
-        "rancher auth check -o json"
-      ],
-      "group": "auth",
-      "name": "auth check",
-      "network": true,
-      "toolset": "core",
-      "usage": "Verify connectivity and credentials against the current server"
-    },
-    {
       "args": [
         {
           "name": "name",
@@ -205,6 +193,18 @@
       "usage": "Clear stored login credentials for a server"
     },
     {
+      "auth": true,
+      "commandType": "local",
+      "examples": [
+        "rancher auth status -o json"
+      ],
+      "group": "auth",
+      "name": "auth status",
+      "network": true,
+      "toolset": "core",
+      "usage": "Verify connectivity and credentials against the current server"
+    },
+    {
       "args": [
         {
           "enum": [
@@ -281,19 +281,6 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present. Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). The first place to check when tab-completion shows no candidates.",
-      "examples": [
-        "rancher config info"
-      ],
-      "group": "config",
-      "name": "config info",
-      "network": false,
-      "toolset": "core",
-      "usage": "Print config diagnostics: file path and effective credential store"
-    },
-    {
-      "auth": false,
-      "commandType": "local",
       "examples": [
         "rancher config path"
       ],
@@ -361,6 +348,19 @@
       "network": false,
       "toolset": "core",
       "usage": "Set the current context's cluster/project scope"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present. Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). The first place to check when tab-completion shows no candidates.",
+      "examples": [
+        "rancher config status"
+      ],
+      "group": "config",
+      "name": "config status",
+      "network": false,
+      "toolset": "core",
+      "usage": "Print config diagnostics: file path and effective credential store"
     },
     {
       "args": [
@@ -8468,7 +8468,7 @@
       "commands": [
         "auth login",
         "auth logout",
-        "auth check",
+        "auth status",
         "auth get-token",
         "auth list-tokens",
         "auth delete-token"
@@ -8485,7 +8485,7 @@
         "config use-server",
         "config delete-server",
         "config path",
-        "config info",
+        "config status",
         "config edit",
         "config set-completion"
       ],

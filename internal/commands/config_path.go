@@ -39,7 +39,7 @@ func (c configPathCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	return pathResult(path, exists), nil
 }
 
-// configFileExists is the one existence probe config path and config info
+// configFileExists is the one existence probe config path and config status
 // share, so a future refinement (e.g. distinguishing permission-denied)
 // lands in both.
 func configFileExists(path string) (bool, error) {

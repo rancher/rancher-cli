@@ -547,7 +547,7 @@ func seedUserObjects() {
 // seedManagementToken creates the management.cattle.io/v3 Token whose name
 // matches the harness credential id ("e2e" — the id portion of
 // testToken "e2e:secret"). Seeding it globally (rather than per-script)
-// ensures auth check's PS-2 v3 fallback probe returns deterministic metadata
+// ensures auth status's PS-2 v3 fallback probe returns deterministic metadata
 // regardless of script execution order, and lets management-token.txtar's
 // session-guard test rely on it without its own seedobj call racing other
 // scripts on the shared apiserver.

@@ -11,7 +11,7 @@ exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # authenticated call round-trips through the helper
-exec rancher auth check -o json
+exec rancher auth status -o json
 jsonquery stdout data.ok true
 jsonquery stdout data.server e2e
 
@@ -26,7 +26,7 @@ jsonquery $WORK/helper-state.json 'creds.@keys.#' 0
 
 # post-logout: current context cleared and no credential held anywhere —
 # the same check now fails (nonzero) with the typed context error.
-! exec rancher auth check -o json
+! exec rancher auth status -o json
 stderr 'context'
 
 -- token.txt --

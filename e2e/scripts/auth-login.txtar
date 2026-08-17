@@ -5,12 +5,12 @@ stdin token.txt
 exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
-exec rancher auth check -o json
+exec rancher auth status -o json
 jsonquery stdout data.ok true
 jsonquery stdout data.server e2e
 
-exec rancher auth check
-stdout 'AUTH CHECK'
+exec rancher auth status
+stdout 'AUTH STATUS'
 stdout 'ok: true'
 stdout 'server: e2e'
 

@@ -23,7 +23,7 @@ in detail.
 |---|---|
 | `auth login` | Store a server + token; set current context. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; does not touch the exec-credential cache |
-| `auth check` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
+| `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
 | `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
 | `auth delete-token [<name>]` | Clear cached exec-credential token(s); idempotent (no match = success) |
@@ -39,7 +39,7 @@ in detail.
 | `config use-server [name]` | Switch the active server |
 | `config delete-server <name>` | Remove a server, its contexts, and its stored credentials — does NOT revoke the server-side token |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |
-| `config info` | Print config diagnostics: file path, effective credential store and its source, completion settings — first stop when tab completion shows no candidates |
+| `config status` | Print config diagnostics: file path, effective credential store and its source, completion settings — first stop when tab completion shows no candidates |
 | `config edit` | Edit the config in `$VISUAL`/`$EDITOR` on a validated temp copy — never in place |
 | `config set-completion` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 

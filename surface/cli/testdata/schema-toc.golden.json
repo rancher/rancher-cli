@@ -84,7 +84,7 @@
           "usage": "Clear stored login credentials for a server"
         },
         {
-          "name": "auth check",
+          "name": "auth status",
           "usage": "Verify connectivity and credentials against the current server"
         },
         {
@@ -134,7 +134,7 @@
           "usage": "Print the resolved config file path"
         },
         {
-          "name": "config info",
+          "name": "config status",
           "usage": "Print config diagnostics: file path and effective credential store"
         },
         {

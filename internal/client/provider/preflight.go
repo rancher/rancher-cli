@@ -24,7 +24,7 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	if err != nil {
 		// RESTConfig already returns a typed *clierr.Error (CONTEXT_NOT_SET,
 		// AUTH) with the right code and hint for its own choke points — pass
-		// it through unchanged so `auth check` reports the same code/exit as
+		// it through unchanged so `auth status` reports the same code/exit as
 		// every other command for the identical state, instead of relabeling
 		// everything AUTH here.
 		var ce *clierr.Error

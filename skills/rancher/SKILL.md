@@ -14,7 +14,7 @@ querying the CLI over guessing syntax.
 ### 1. Verify auth before anything else
 
 ```
-rancher auth check -o json
+rancher auth status -o json
 ```
 
 Reports server, cluster context, server version, `rancherVersion`/`supported`
@@ -322,8 +322,8 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   security boundary, and a read-only RBAC token can't `--dry-run` a mutation
   either (dry-run still needs write verbs server-side), so read-only mode
   refuses those outright too.
-- **`config path` / `config info` / `config edit`:** `config path` prints the
-  resolved config file path — point other tooling at it. `config info` adds
+- **`config path` / `config status` / `config edit`:** `config path` prints the
+  resolved config file path — point other tooling at it. `config status` adds
   the effective credential store and its source (env > config > auto default,
   plus the probed pin), and a nested `completion` section (network: on/off;
   timeout: effective per-TAB budget; timeoutRaw: only when clamped or

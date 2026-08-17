@@ -7,7 +7,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # here. The below-floor and at-floor code paths are covered by the injected-stub
 # unit tests in internal/commands/authcheck_test.go.
 
-exec rancher auth check -o json
+exec rancher auth status -o json
 jsonquery stdout data.ok true
 jsonquery stdout data.rancherVersion ''
 jsonquery stdout data.supported ''

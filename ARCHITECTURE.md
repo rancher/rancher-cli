@@ -59,7 +59,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
-| `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe — used by the auth check identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
+| `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe — used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows, by `internal/client/provider`'s unauthenticated `/rancherversion` probe, and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
@@ -312,7 +312,7 @@ verbatim to stdout and `Warnings` to stderr as `# warning: <w>` lines, while `js
 `yaml`/template/`-o name` still render the normal envelope over `Data` — mutually
 exclusive with `RawBytes`.
 
-**`CommandType: local` does not mean offline.** `auth check` and `auth get-token` are
+**`CommandType: local` does not mean offline.** `auth status` and `auth get-token` are
 `local` (they own their own I/O rather than going through the cluster-client factory) yet
 both do network + auth. The manifest's per-command `network` and `auth` booleans are the
 authoritative "does this touch the network / need credentials" signal — not
@@ -381,7 +381,7 @@ stderr in `# warning:` format. Re-probe happens **only at `auth login`** and is 
 is never re-probed, so a transiently locked keychain can never silently downgrade to
 plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint
 (`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
-fallback. `auth check` surfaces `credentialStore: {policy, pinned}`.
+fallback. `auth status` surfaces `credentialStore: {policy, pinned}`.
 
 **Keyring read-through and logout delete.** With the keychain backend, `GetToken` falls
 through to the file store on a keychain miss, so tokens written before an upgrade re-pin
@@ -477,7 +477,7 @@ flag was fully resolved through file/env/flag precedence but never consumed by a
 routing or API-call code — every namespace/cluster in scope was returned/affected
 regardless of `--project`, a false sense of narrower blast radius on destructive
 commands. The flag is removed; `--context cluster[:project]` stays, but its project
-axis is informational only (surfaced by `config current-context`/`auth check`), never
+axis is informational only (surfaced by `config current-context`/`auth status`), never
 consumed for scoping. **Backlog: project scoping** — real namespace→project
 resolution, so a project flag only returns once it actually does something.
 
@@ -539,7 +539,7 @@ families (`/k8s/clusters/local` and `/k8s/clusters/<id>`). Management-*plane* op
 that are not operations on any cluster — minting a token, generating a kubeconfig — need
 a third scope against the Rancher server itself. That port, `RancherClient`, is reserved
 now and added when the first consumer needs it: migrating `internal/token` off its
-hand-rolled Norman HTTP, the `auth check` preflight, and a future `rancher kubeconfig`
+hand-rolled Norman HTTP, the `auth status` preflight, and a future `rancher kubeconfig`
 command. The factory struct is the seam that will later hand out both.
 
 **Two-layer e2e test shim.** `e2e/harness_test.go`'s router — a bearer check plus the

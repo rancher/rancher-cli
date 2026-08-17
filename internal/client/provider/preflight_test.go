@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Round-2 repro: Preflight (behind `auth check`) used to rewrap every
-// RESTConfig error as AUTH, so `auth check` reported a different code/exit
+// Round-2 repro: Preflight (behind `auth status`) used to rewrap every
+// RESTConfig error as AUTH, so `auth status` reported a different code/exit
 // than every other command for the identical missing-context/missing-token
 // state. RESTConfig's own typed errors must pass through unchanged.
 func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {

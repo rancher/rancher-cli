@@ -68,14 +68,14 @@ func mapErr(err error) error {
 }
 
 // withDeniedFallback substitutes deniedFallbackMessage(status) and a hint
-// pointing at `rancher auth check` when ce's message is empty or
+// pointing at `rancher auth status` when ce's message is empty or
 // whitespace-only, otherwise returns ce untouched.
 func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 	if strings.TrimSpace(ce.Message) != "" {
 		return ce
 	}
 	ce.Message = deniedFallbackMessage(status)
-	return ce.WithHint("rancher auth check")
+	return ce.WithHint("rancher auth status")
 }
 
 // isUnexpectedServerError reports client-go's wrapping of a non-Status

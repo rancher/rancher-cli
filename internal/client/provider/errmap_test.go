@@ -95,7 +95,7 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
 		assert.Equal(t, deniedFallbackMessage(403), ce.Message)
-		assert.Equal(t, "rancher auth check", ce.Hint)
+		assert.Equal(t, "rancher auth status", ce.Hint)
 	})
 
 	t.Run("empty unauthorized message gets a substituted message and hint naming 401, not 403", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		assert.Equal(t, deniedFallbackMessage(401), ce.Message)
 		assert.Contains(t, ce.Message, "(401)")
 		assert.NotContains(t, ce.Message, "(403)")
-		assert.Equal(t, "rancher auth check", ce.Hint)
+		assert.Equal(t, "rancher auth status", ce.Hint)
 	})
 
 	t.Run("whitespace-only forbidden message counts as empty", func(t *testing.T) {

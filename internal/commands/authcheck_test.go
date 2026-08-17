@@ -680,7 +680,7 @@ func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
 }
 
 // TestAuthCheckTextViewHappyPath pins the TTY text view sections and key fields
-// for a full-data result: AUTH CHECK, VERSIONS, IDENTITY, TOKEN, CREDENTIAL STORE.
+// for a full-data result: AUTH STATUS, VERSIONS, IDENTITY, TOKEN, CREDENTIAL STORE.
 func TestAuthCheckTextViewHappyPath(t *testing.T) {
 	t.Parallel()
 	ver := "v2.15.0"
@@ -751,10 +751,10 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	require.Nil(t, ce)
 
 	stdout, stderr := out.String(), errBuf.String()
-	assert.Contains(t, stdout, "AUTH CHECK")
+	assert.Contains(t, stdout, "AUTH STATUS")
 	assert.NotContains(t, stdout, "# warning:", "warnings must never appear on stdout")
 	assert.Contains(t, stderr, "# warning: token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
-	assert.NotContains(t, stderr, "AUTH CHECK", "text view must never appear on stderr")
+	assert.NotContains(t, stderr, "AUTH STATUS", "text view must never appear on stderr")
 }
 
 // TestAuthCheckDataPayloadUnchanged pins that adding Result.Text does not alter
@@ -826,7 +826,7 @@ func seedAuthedDir(t *testing.T) string {
 
 // TestAuthCheckNotLoggedInNamesKnownServers makes sure the post-logout
 // answer is state, not plumbing: with server entries in config but no
-// current context, auth check reports "not logged in" and the hint names
+// current context, auth status reports "not logged in" and the hint names
 // the re-login shortcut with the stored server name — never the generic
 // "no current context and no RANCHER_CLI_URL set" that implies a blank
 // machine.

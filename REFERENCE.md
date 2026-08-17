@@ -71,7 +71,7 @@ precedence is flag > environment > file.
 The global `--context cluster[:project]` flag overrides `RANCHER_CLI_CONTEXT`
 for a single invocation. `--context c:` (trailing colon, no project) clears
 the project for this invocation. The context's project is shown by
-`config current-context`/`auth check`, and is consulted for routing only as
+`config current-context`/`auth status`, and is consulted for routing only as
 a fallback: an unset `--project` flag falls back to it (`--project` always
 wins when both are set) — see [Project scope](#project-scope---project).
 
@@ -401,7 +401,7 @@ which knob to turn off. `rancher schema -o json` reports the resolved state
 (`readOnly`, `readOnlySources`) so an agent can check before trying.
 
 Scoping, stated honestly: read-only mode refuses `Mutating` commands only —
-the CLI's managed-resource surface. `auth login`, `auth check`, and local
+the CLI's managed-resource surface. `auth login`, `auth status`, and local
 `config` commands stay usable; otherwise a read-only session couldn't even
 establish itself.
 
@@ -418,7 +418,7 @@ mutating commands outright, `--dry-run` included.
 
 The CLI declares a minimum supported Rancher version, `>= 2.14`
 (`rancher schema -o json` → `minRancherVersion`). Enforcement today is
-warn-only: `auth login` and `auth check` call the unauthenticated
+warn-only: `auth login` and `auth status` call the unauthenticated
 `GET /rancherversion` endpoint and emit a warning — never a failure — when
 the connected server is below the floor, or when the version can't be
 determined at all. An unreachable endpoint, a non-200 response, or an
@@ -429,7 +429,7 @@ Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
 `--allow-unsupported-server`-style flag) once there's real-use feedback on
 the warn-only period. Tracked as future work.
 
-**`auth check` enrichment.** Beyond connectivity, `auth check -o json` also
+**`auth status` enrichment.** Beyond connectivity, `auth status -o json` also
 reports `rancherVersion`/`supported` (the version-floor check above),
 `identity` (the caller's `userID`, from a create-verb identity probe against
 `ext.cattle.io`), and `token` (the effective token's
@@ -438,7 +438,7 @@ and management.cattle.io/v3 tokens; `token: null` with a warning appears only
 on a probe failure such as a revoked/rotated token). Any of these fields
 degrading to `null` with a warning is expected, not a bug — including
 `identity` under a read-only-RBAC token, since the identity probe is itself a
-create-verb request. `auth check`'s connectivity result (`ok`) never depends
+create-verb request. `auth status`'s connectivity result (`ok`) never depends
 on them.
 
 ## kubectl integration

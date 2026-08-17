@@ -46,7 +46,7 @@ func (i cmdInput) IsSet(name string) bool       { return i.c.IsSet(name) }
 func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
 
 // leafName returns the last space-separated token of a command name
-// ("auth check" -> "check") for use as the urfave leaf/subcommand name.
+// ("auth status" -> "status") for use as the urfave leaf/subcommand name.
 func leafName(fullName string) string {
 	if idx := strings.LastIndex(fullName, " "); idx >= 0 {
 		return fullName[idx+1:]
@@ -54,7 +54,7 @@ func leafName(fullName string) string {
 	return fullName
 }
 
-// groupName returns the verb-group prefix of a command name ("auth check" ->
+// groupName returns the verb-group prefix of a command name ("auth status" ->
 // "auth", "get pod" -> "get", "schema" -> ""). The registration loop checks it
 // against the entry's declared group.
 func groupName(fullName string) string {

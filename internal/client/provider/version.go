@@ -17,7 +17,7 @@ type rancherVersionResponse struct {
 }
 
 // RancherVersion reads the server's ldflags-stamped version from the
-// unauthenticated GET /rancherversion endpoint for `auth check`'s PS-8 floor
+// unauthenticated GET /rancherversion endpoint for `auth status`'s PS-8 floor
 // check. Unlike the previous server-version Setting, this endpoint requires no
 // RBAC permissions and reflects the binary's actual stamped version rather than
 // an editable config object — it is equivalent to checking the running binary,

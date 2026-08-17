@@ -89,7 +89,7 @@ in its `access-key:secret-key` form.
     # (prompts for token, or pass via --token-stdin)
 
     # Verify connectivity + credentials
-    rancher auth check
+    rancher auth status
 
     # Read clusters (shows the cluster id for the next step)
     rancher get clusters

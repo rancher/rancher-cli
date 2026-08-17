@@ -1,6 +1,6 @@
 // Package selfuser provides the shared GVR, object constructor, and
 // userID extractor for the ext.cattle.io/v1 SelfUser identity probe used
-// by both the auth check identity check and the create cluster creatorId
+// by both the auth status identity check and the create cluster creatorId
 // stamper.
 package selfuser
 
@@ -11,7 +11,7 @@ import (
 
 // GVR is the create-only "whoami" virtual resource. The server fills
 // status.userID from the request's bearer identity on every Create; the
-// resource has no Get or List. Shared by the auth check identity probe
+// resource has no Get or List. Shared by the auth status identity probe
 // (internal/client/provider) and the create cluster creatorId stamper
 // (internal/engine/provisioning).
 var GVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: "v1", Resource: "selfusers"}
