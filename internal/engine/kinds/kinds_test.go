@@ -473,3 +473,26 @@ func TestValidateGroupResourceUniqueness(t *testing.T) {
 	// The real table must still pass — no current Group+Resource collisions.
 	require.NoError(t, Validate(), "shipped table must validate")
 }
+
+func TestValidateRejectsJoinMisuse(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		col  Column
+	}{
+		{"Join with Bool", Column{Header: "X", Path: []string{"a"}, Join: true, Bool: true}},
+		{"Join with Condition", Column{Header: "X", Condition: "Ready", Join: true, Path: []string{"a"}}},
+		{"Join with AltPaths", Column{Header: "X", Path: []string{"a"}, Join: true, AltPaths: [][]string{{"b"}}}},
+		{"Join without Path", Column{Header: "X", Join: true}},
+		{"Default with Bool", Column{Header: "X", Path: []string{"a"}, Bool: true, Default: "true"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bad := []Kind{{Key: "a", Name: "foo", Aliases: []string{"foos"}, Columns: []Column{tt.col}}}
+			assert.Error(t, validateKinds(bad))
+		})
+	}
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
+	}
+}

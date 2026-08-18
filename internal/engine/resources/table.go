@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -83,11 +84,19 @@ func conditionCell(o map[string]any, c kinds.Column) string {
 	}
 }
 
-// pathCell projects a column value from Path/AltPaths/Bool: Path first, then
-// each AltPaths entry, first non-empty string wins. The Bool absent→"false"
-// fallback applies to Path only, preserving the single-path semantics
-// documented on Column.Bool (nodedriver's ACTIVE/BUILTIN).
+// pathCell projects a column value from Path/AltPaths/Bool/Default/Join:
+// Path first, then each AltPaths entry, first non-empty string wins. The
+// Bool absent→"false" fallback applies to Path only, preserving the
+// single-path semantics documented on Column.Bool (nodedriver's
+// ACTIVE/BUILTIN). Join renders a string-array Path comma-joined in server
+// order; Default renders when every lookup yields nothing.
 func pathCell(o map[string]any, c kinds.Column) string {
+	if c.Join {
+		if vs, ok, _ := unstructured.NestedStringSlice(o, c.Path...); ok && len(vs) > 0 {
+			return strings.Join(vs, ",")
+		}
+		return c.Default
+	}
 	v, ok, _ := unstructured.NestedString(o, c.Path...)
 	if ok && v != "" {
 		return v
@@ -103,6 +112,9 @@ func pathCell(o map[string]any, c kinds.Column) string {
 		}
 		if c.Bool {
 			return "false"
+		}
+		if c.Default != "" {
+			return c.Default
 		}
 	}
 	return v

@@ -205,3 +205,42 @@ func TestRedactKindPathsBlanksDiffEntries(t *testing.T) {
 	assert.Equal(t, "old-desc", diff[2].From, "/description must be untouched")
 	assert.Equal(t, "keep-old", diff[3].From, "/tokenExtra must not match /token prefix")
 }
+
+// TestTableRowsRenderJoinAndDefault covers the two column axes the user
+// kind row needs: Join renders a string-array field comma-joined in server
+// order (principalIds — every element, no ordering assumption), and
+// Default renders when the field is absent (User.enabled is an omitempty
+// *bool whose absence means enabled).
+func TestTableRowsRenderJoinAndDefault(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{Name: "user", Columns: []kinds.Column{
+		{Header: "ENABLED", Path: []string{"enabled"}, Default: "true"},
+		{Header: "PRINCIPALS", Path: []string{"principalIds"}, Join: true},
+	}}
+	seeded := unstructured.Unstructured{Object: map[string]any{
+		"metadata":     map[string]any{"name": "m-1"},
+		"enabled":      true,
+		"principalIds": []any{"local://m-1"},
+	}}
+	disabled := unstructured.Unstructured{Object: map[string]any{
+		"metadata":     map[string]any{"name": "m-2"},
+		"enabled":      false,
+		"principalIds": []any{"okta_user://abc", "local://m-2"},
+	}}
+	// System accounts omit enabled entirely (absence means enabled) and
+	// lead with the system:// principal.
+	system := unstructured.Unstructured{Object: map[string]any{
+		"metadata":     map[string]any{"name": "u-1"},
+		"principalIds": []any{"system://local", "local://u-1"},
+	}}
+	// No principals at all: the PRINCIPAL cell stays blank, never invented.
+	bare := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "u-2"},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{seeded, disabled, system, bare}, false)
+	require.Len(t, tab.Rows(), 4)
+	assert.Equal(t, []string{"m-1", "true", "local://m-1"}, tab.Rows()[0])
+	assert.Equal(t, []string{"m-2", "false", "okta_user://abc,local://m-2"}, tab.Rows()[1])
+	assert.Equal(t, []string{"u-1", "true", "system://local,local://u-1"}, tab.Rows()[2])
+	assert.Equal(t, []string{"u-2", "true", ""}, tab.Rows()[3])
+}

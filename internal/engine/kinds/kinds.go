@@ -35,6 +35,20 @@ type Column struct {
 	// builtin) drops its false value from the wire entirely. Unmarked
 	// (string-typed) columns keep rendering absent fields blank.
 	Bool bool
+	// Default, when non-empty, renders when Path (and AltPaths) yield
+	// nothing — for fields whose ABSENCE means a non-blank value, e.g.
+	// User.enabled is an omitempty *bool whose nil means true. Mutually
+	// exclusive with Bool (both are absent-fallbacks; Bool is the
+	// false-when-absent special case).
+	Default string
+	// Join marks Path as naming a string-ARRAY field: every element
+	// renders comma-joined in server order (e.g. User.principalIds).
+	// Deliberately not "first element": Rancher's server code treats
+	// principal order as meaningless — every consumer scans the whole
+	// slice — so projecting one index would assert an ordering contract
+	// the server never made. Mutually exclusive with Bool and Condition;
+	// AltPaths are not consulted.
+	Join bool
 	// Condition, when set, derives the cell from the status.conditions
 	// entry of this type instead of Path/AltPaths (which are ignored):
 	// status True renders the type name ("Ready"), False renders
@@ -436,6 +450,22 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
 		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: true, Completable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		// PRINCIPALS renders every principal raw, comma-joined in server
+		// order (local://m-x, system://local, okta_user://…): the auth
+		// provider and the system-account marker exactly as the server
+		// states them, with no derivation and no ordering assumption —
+		// Rancher's own code treats principal order as meaningless (every
+		// consumer scans the whole slice). The id prefix carries no type
+		// signal at all: EnsureUser mints u-* ids for external-SSO users
+		// and system accounts alike, and locally-seeded users get m-* ids.
+		// ENABLED: v3 User.enabled is an omitempty *bool whose absence
+		// means enabled — Default carries that.
+		Columns: []Column{
+			{Header: "DISPLAY", Path: []string{"displayName"}},
+			{Header: "USERNAME", Path: []string{"username"}},
+			{Header: "ENABLED", Path: []string{"enabled"}, Default: "true"},
+			{Header: "PRINCIPALS", Path: []string{"principalIds"}, Join: true},
+		},
 	},
 	{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
@@ -781,6 +811,15 @@ func validateKinds(ts []Kind) error {
 			}
 			if col.Condition != "" && !unicode.IsUpper(rune(col.Condition[0])) {
 				return fmt.Errorf("kind %q column %q: Condition type %q must start with an uppercase letter (k8s CamelCase convention)", k.Key, col.Header, col.Condition)
+			}
+			if col.Join && (col.Bool || col.Condition != "" || len(col.AltPaths) > 0) {
+				return fmt.Errorf("kind %q column %q sets Join together with Bool/Condition/AltPaths", k.Key, col.Header)
+			}
+			if col.Join && len(col.Path) == 0 {
+				return fmt.Errorf("kind %q column %q sets Join without a Path", k.Key, col.Header)
+			}
+			if col.Default != "" && col.Bool {
+				return fmt.Errorf("kind %q column %q sets Default together with Bool (both are absent-fallbacks)", k.Key, col.Header)
 			}
 		}
 		// Plural-first alias invariant: every row must register at least one
