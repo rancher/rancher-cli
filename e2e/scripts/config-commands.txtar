@@ -11,8 +11,8 @@ stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config path -o json
 jsonquery stdout data.exists false
 
-# Seed a server + context via a direct config-file write — no login flow
-# needed just to populate config.yaml.
+# Seed a server + current-server pointer via a direct config-file write — no
+# login flow needed just to populate config.yaml.
 mkdir $RANCHER_CLI_CONFIG_DIR
 cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 
@@ -30,21 +30,19 @@ jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr 'data.error.candidates.#' 1
 jsonquery stderr data.error.candidates.0.id acme
 
-# config delete-server end-to-end: removes the server, its field-matched
-# context, clears the current context that pointed at it, and reports the
-# delete (file backend; no stored token here, so deletedFrom is empty) —
-# does NOT revoke the server-side token.
+# config delete-server end-to-end: removes the server, clears the
+# current-server pointer that named it, and reports the delete (file
+# backend; no stored token here, so deletedFrom is empty) — does NOT revoke
+# the server-side token.
 exec rancher config delete-server acme -o json
 jsonquery stdout data.server acme
-jsonquery stdout data.currentContextCleared true
-jsonquery stdout 'data.contexts.#' 1
-jsonquery stdout data.contexts.0 acme
+jsonquery stdout data.currentServerCleared true
 
 exec rancher config get-servers -o json
 jsonquery stdout 'data.#' 0
 
-! exec rancher config current-context
-jsonquery stderr data.error.code CONTEXT_NOT_SET
+exec rancher config status -o json
+jsonquery stdout data.currentServer ''
 
 # config edit: the only path this harness can honestly drive without
 # scripting an interactive editor is the no-TTY gate — `exec` here has no
@@ -55,10 +53,7 @@ stderr 'TTY'
 stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 -- seed-config.yaml --
-currentContext: acme
+currentServer: acme
 servers:
   acme:
     url: https://acme.example.com
-contexts:
-  acme:
-    server: acme

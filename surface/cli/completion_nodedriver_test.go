@@ -83,10 +83,9 @@ func TestNodeDriverPositionalSiteFullCallback(t *testing.T) {
 		t.Helper()
 		dir := t.TempDir()
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: networkOn},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: networkOn},
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())

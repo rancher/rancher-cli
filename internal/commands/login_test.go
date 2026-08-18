@@ -80,7 +80,6 @@ func filePolicyDir(t *testing.T) (string, config.CredStore) {
 	cfg := &config.Config{
 		CredentialStore: "file",
 		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -178,7 +177,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
 	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id-1:secret-1\n"))
@@ -187,10 +186,8 @@ func TestLoginTokenViaStdin(t *testing.T) {
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.CurrentContext)
+	assert.Equal(t, "acme", cfg.CurrentServer)
 	assert.Equal(t, "https://rancher.example.com", cfg.Servers["acme"].URL)
-	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster)
-	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
@@ -203,7 +200,7 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme", "context": "c-1:p-1"},
+		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
 	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
@@ -283,27 +280,6 @@ func TestLoginServerRequired(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-}
-
-// Exact reviewer repro: a global --context flag with no local --context on
-// auth login must not be silently dropped from the write.
-func TestLoginRejectsShadowedGlobalOverride(t *testing.T) {
-	dir, _ := filePolicyDir(t)
-	config.SetContextOverride("c-global:p-global")
-	t.Cleanup(func() { config.SetContextOverride("") })
-
-	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
-		b: map[string]bool{"token-stdin": true},
-	}
-	_, err := NewLogin(dir).(runtime.ReadCommand).
-		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-
-	_, statErr := config.Load(config.FilePath(dir))
-	require.NoError(t, statErr)
 }
 
 func TestLoginUnaffectedWithoutGlobalOverride(t *testing.T) {
@@ -799,7 +775,6 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	cfg := &config.Config{
 		CredentialStore: "file",
 		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -840,7 +815,6 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	newCfg := &config.Config{
 		CredentialStore: "exec:fake",
 		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
 	}
 	newCfg.SetPath(config.FilePath(dir))
 	b, err := json.Marshal(newCfg)

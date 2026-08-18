@@ -32,7 +32,7 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 		Name:  "kubeconfig",
 		Usage: "Print an exec-credential kubeconfig for a cluster",
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to generate the kubeconfig for (defaults to the current context)"},
+			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to generate the kubeconfig for"},
 		},
 		Examples: []string{
 			"rancher kubeconfig --cluster prod > prod.yaml",
@@ -48,8 +48,8 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	// Effective (not CurrentServer) so an env-only session (RANCHER_CLI_URL/
-	// RANCHER_CLI_TOKEN, no stored context) works exactly like every other
+	// Effective (not CurrentServerEntry) so an env-only session (RANCHER_CLI_URL/
+	// RANCHER_CLI_TOKEN, no stored server) works exactly like every other
 	// command — kubeconfig used to be the one command that didn't.
 	eff, err := cfg.Effective(c.store)
 	if err != nil {
@@ -61,19 +61,16 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		return runtime.Result{}, cfg.ErrNotLoggedIn()
 	}
 
+	// Defense-in-depth: the pipeline's validateInput normally rejects a
+	// missing --cluster first, but Execute must be safe when called directly.
 	id := in.String("cluster")
-	if id != "" {
-		id, err = c.clients.ResolveCluster(ctx, id)
-	} else {
-		id, err = c.clients.ContextCluster()
+	if id == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required").
+			WithHint("pass --cluster <id|name>")
 	}
+	id, err = c.clients.ResolveCluster(ctx, id)
 	if err != nil {
 		return runtime.Result{}, err
-	}
-	if id == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"no cluster specified (no cluster set in the current context)").
-			WithHint("pass --cluster <id|name> or set a context")
 	}
 
 	// Effective already cleared eff.CA/eff.ServerName if RANCHER_CLI_URL diverged
@@ -108,9 +105,9 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	execArgs := []string{"auth", "get-token", "--server", base, "--cluster", id, "--name", entryName}
 	if caPEM != "" {
 		cluster.CertificateAuthorityData = []byte(caPEM)
-		// The exec plugin resolves its own CA from the ACTIVE context at
+		// The exec plugin resolves its own CA from the current server at
 		// invocation time, which may not be this server if the user has since
-		// switched contexts. Pin the CA baked into this kubeconfig explicitly so
+		// switched servers. Pin the CA baked into this kubeconfig explicitly so
 		// the cached exec plugin can never authenticate against the wrong trust
 		// root.
 		execArgs = append(execArgs, "--cacert", caPEM)

@@ -26,10 +26,10 @@ func newVersionFake(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	return srv
 }
 
-func effFor(t *testing.T, srv *httptest.Server, cluster string) config.Effective {
+func effFor(t *testing.T, srv *httptest.Server) config.Effective {
 	t.Helper()
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	return config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret", Cluster: cluster}
+	return config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}
 }
 
 func TestRancherVersionReturnsParsedVersion(t *testing.T) {
@@ -43,7 +43,7 @@ func TestRancherVersionReturnsParsedVersion(t *testing.T) {
 		_, _ = w.Write([]byte(`{"Version":"v2.15.0","GitCommit":"abc123","RancherPrime":"false"}`))
 	})
 
-	got, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+	got, err := RancherVersion(context.Background(), effFor(t, srv))
 	require.NoError(t, err)
 	assert.Equal(t, "v2.15.0", got)
 }
@@ -62,7 +62,7 @@ func TestRancherVersionDevBuildReturnsUnparseable(t *testing.T) {
 		_, _ = w.Write([]byte(`{"Version":"v2.15.0-dev","GitCommit":"deadbeef"}`))
 	})
 
-	got, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+	got, err := RancherVersion(context.Background(), effFor(t, srv))
 	require.NoError(t, err)
 	// Caller (EvalMinVersionSupport) decides whether this is parseable.
 	assert.Equal(t, "v2.15.0-dev", got)
@@ -81,7 +81,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = w.Write([]byte(`not json at all`))
 		})
-		_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+		_, err := RancherVersion(context.Background(), effFor(t, srv))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "/rancherversion")
 	})
@@ -92,7 +92,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"something":"else"}`))
 		})
-		_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+		_, err := RancherVersion(context.Background(), effFor(t, srv))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no Version field")
 	})
@@ -107,7 +107,7 @@ func TestRancherVersionNon200ReturnsError(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 
-	_, err := RancherVersion(context.Background(), effFor(t, srv, ""))
+	_, err := RancherVersion(context.Background(), effFor(t, srv))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "503")
 }
@@ -121,7 +121,7 @@ func TestRancherVersionUnreachableReturnsError(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
 	})
-	eff := effFor(t, srv, "")
+	eff := effFor(t, srv)
 	srv.Close() // close before the call; t.Cleanup will call Close again (idempotent)
 
 	_, err := RancherVersion(context.Background(), eff)
@@ -166,7 +166,7 @@ func TestRancherVersionTrailingSlashURL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
 	})
-	eff := effFor(t, srv, "")
+	eff := effFor(t, srv)
 	eff.URL += "/" // trailing slash, as set by RANCHER_CLI_URL env verbatim
 	got, err := RancherVersion(context.Background(), eff)
 	require.NoError(t, err)

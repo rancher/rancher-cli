@@ -2,9 +2,6 @@ package commands
 
 import (
 	"context"
-	"fmt"
-	"sort"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -49,13 +46,9 @@ func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Promp
 		return runtime.Result{}, err
 	}
 	names := sortedKeys(cfg.Servers)
-	current := ""
-	if c, ok := cfg.Contexts[cfg.CurrentContext]; ok {
-		current = c.Server
-	}
 	list := make(serverList, 0, len(names))
 	for _, n := range names {
-		list = append(list, serverEntry{Current: n == current, Name: n, URL: cfg.Servers[n].URL})
+		list = append(list, serverEntry{Current: n == cfg.CurrentServer, Name: n, URL: cfg.Servers[n].URL})
 	}
 	return runtime.Result{Kind: "ServerList", Data: list}, nil
 }
@@ -77,11 +70,7 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 	}
 }
 func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	var (
-		name     string
-		ctxName  string
-		warnings []string
-	)
+	var name string
 	if err := config.WithLock(cmdCtx, s.dir, func() error {
 		cfg, err := config.Load(config.FilePath(s.dir))
 		if err != nil {
@@ -99,27 +88,13 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 		if _, ok := cfg.Servers[name]; !ok {
 			return clierr.New(clierr.CodeNotFound, "server not found: "+name)
 		}
-		var matches []string
-		ctxName, matches = resolveContextForServer(cfg, name)
-		if ctxName == "" {
-			ctxName = name
-			cfg.Contexts[ctxName] = config.Context{Server: name}
-		}
-		// When several contexts target this server, the choice is not obvious — surface
-		// it instead of silently emitting a switch-looking success. (Selecting a
-		// specific context among them is a config edit / `config set-context`.)
-		if len(matches) > 1 {
-			warnings = append(warnings, fmt.Sprintf(
-				"multiple contexts target server %q (%s); activated %q — run `rancher config use-context <name>` to pick a different one",
-				name, strings.Join(matches, ", "), ctxName))
-		}
-		cfg.CurrentContext = ctxName
+		cfg.CurrentServer = name
 		return cfg.Write()
 	}); err != nil {
 		return runtime.Result{}, err
 	}
-	return runtime.Result{Kind: "ServerSwitch", Warnings: warnings,
-		Data: map[string]string{"current": name, "context": ctxName}}, nil
+	return runtime.Result{Kind: "ServerSwitch",
+		Data: map[string]string{"current": name}}, nil
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`
@@ -142,28 +117,4 @@ func serverNotFoundWithCandidates(cfg *config.Config, name string) *clierr.Error
 	}
 	return clierr.New(clierr.CodeNotFound, "server not found: "+name).
 		WithCandidates(cands)
-}
-
-// resolveContextForServer picks the context to activate for server name: the
-// current context if it already targets the server, else the
-// lexicographically first match, else "" (caller creates one). matches is the
-// full sorted match list (for the multiple-contexts warning). Contexts are
-// matched by Context.Server, NOT by assuming the context key equals the
-// server name — a config may be hand-edited.
-func resolveContextForServer(cfg *config.Config, name string) (ctxName string, matches []string) {
-	for cn, cctx := range cfg.Contexts {
-		if cctx.Server == name {
-			matches = append(matches, cn)
-		}
-	}
-	sort.Strings(matches)
-	if cur := cfg.CurrentContext; cur != "" {
-		if cc, ok := cfg.Contexts[cur]; ok && cc.Server == name {
-			return cur, matches
-		}
-	}
-	if len(matches) > 0 {
-		return matches[0], matches
-	}
-	return "", matches
 }

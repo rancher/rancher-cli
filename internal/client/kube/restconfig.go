@@ -24,8 +24,14 @@ func BaseURL(serverURL string) string {
 }
 
 // RESTConfig builds a client-go rest.Config aimed at the Rancher k8s proxy
-// endpoint for the effective cluster (default "local").
-func RESTConfig(eff config.Effective) (*rest.Config, error) {
+// for the EXPLICITLY named cluster ("local" for the management plane). The
+// cluster is a required parameter, never ambient state: callers pass
+// engine.LocalCluster or the invocation's own --cluster value.
+func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
+	if cluster == "" {
+		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty").
+			WithHint("pass an explicit cluster id (\"local\" for the management plane)")
+	}
 	if eff.URL == "" {
 		// Config-aware when the inventory is present: after a logout the
 		// server entries survive, and every command routed through this
@@ -34,15 +40,11 @@ func RESTConfig(eff config.Effective) (*rest.Config, error) {
 		return nil, config.ErrNotLoggedInFor(eff.KnownServers)
 	}
 	if eff.Token == "" {
-		// eff.URL is resolved (a context or RANCHER_CLI_URL exists) but no token —
-		// a stored-but-tokenless context (never logged in, or a lost/expired
-		// token) rather than a missing context, so this is an auth gap, not a
-		// CONTEXT_NOT_SET one.
+		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but
+		// no token — a stored-but-tokenless server (never logged in, or a
+		// lost/expired token) rather than a missing login, so this is an auth
+		// gap, not a NOT_LOGGED_IN one.
 		return nil, clierr.New(clierr.CodeAuth, "no token for server").WithHint(config.LoginOrEnvHint)
-	}
-	cluster := eff.Cluster
-	if cluster == "" {
-		cluster = "local"
 	}
 	host := fmt.Sprintf("%s/k8s/clusters/%s", BaseURL(eff.URL), cluster)
 

@@ -50,7 +50,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
-			{Name: "cluster", Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
 			{Name: "project", Type: "string", Desc: "project `id|name` to scope the secret to"},
 			{Name: "project-scoped", Type: "bool", Desc: "create a project-scoped secret"},
 			{Name: "from-literal", Type: "string", Desc: "secret data as `key=value` pairs (comma-separated)"},

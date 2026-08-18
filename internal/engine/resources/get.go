@@ -67,9 +67,13 @@ func (c getCmd) Describe() runtime.Descriptor {
 // Execute).
 // clusterFlag and namespaceFlag are the single source for the two routing
 // flags shared across get/delete/patch (via getFlags) and create, so their
-// schema/TTY description lives in one place.
-func clusterFlag() runtime.ArgSpec {
-	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"}
+// schema/TTY description lives in one place. required is true for kinds that
+// always route to a downstream cluster — the schema must never advertise an
+// invocation Route would reject. NSCluster kinds and create resource pass
+// false and override Desc: the former lists across clusters when the flag is
+// omitted, the latter can take the cluster from the manifest.
+func clusterFlag(required bool) runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`"}
 }
 
 func namespaceFlag() runtime.ArgSpec {
@@ -80,18 +84,20 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	var flags []runtime.ArgSpec
 	switch k.Policy {
 	case kinds.NSCluster:
-		flags = []runtime.ArgSpec{clusterFlag()}
+		f := clusterFlag(false)
+		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by name, omit to list across clusters"
+		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{namespaceFlag()}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{clusterFlag(), namespaceFlag()}
+			flags = []runtime.ArgSpec{clusterFlag(true), namespaceFlag()}
 		} else {
 			flags = []runtime.ArgSpec{namespaceFlag()}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{clusterFlag()}
+			flags = []runtime.ArgSpec{clusterFlag(true)}
 		}
 	}
 	return append(flags,
@@ -247,32 +253,16 @@ type ProjectScope struct {
 	Selector string
 }
 
-// EffectiveProject resolves --project (flag > context, PC-2's precedence).
-// Exported so every project-scope consumer — Route, usage, and the
-// composites — shares this one seam instead of some reading the flag
-// directly and silently skipping the context fallback. Consult it only
-// where project scope APPLIES: reject-only checks must use TypedProject,
-// never this fallback.
-func EffectiveProject(clients engine.ClusterClientFactory, in runtime.Input) (string, error) {
-	if p := in.String(FlagProject); p != "" {
-		return p, nil
-	}
-	return clients.ContextProject()
-}
-
-// TypedProject returns the --project value the user actually typed, never
-// the context fallback. Every reject-only check MUST use this, not
-// EffectiveProject: a context-set project is ambient routing state, and
-// rejecting it made a project-carrying context poison every non-scopable
-// kind — `delete project X` failed because the context carried a project,
-// blaming a flag the user never typed. Typed flag = intent, rejected loud;
-// context = fallback, consulted only where project scope applies.
+// TypedProject returns the --project value the user typed — THE project
+// accessor. Project scope is a filter, and no default may filter: only an
+// explicit per-invocation flag ever scopes anything. Exported so every
+// project-scope consumer — Route, usage, and the composites — shares this
+// one seam.
 func TypedProject(in runtime.Input) string { return in.String(FlagProject) }
 
 // rejectProjectScope enforces PC-3's "never a silent no-op" rule for kind
 // families that do not support project scoping: an explicitly TYPED
-// --project is a VALIDATION error, never an ignored value. Context-sourced
-// projects are deliberately not consulted — see TypedProject.
+// --project is a VALIDATION error, never an ignored value.
 func rejectProjectScope(in runtime.Input, k kinds.Kind) error {
 	if TypedProject(in) == "" {
 		return nil
@@ -281,15 +271,12 @@ func rejectProjectScope(in runtime.Input, k kinds.Kind) error {
 		WithHint("drop --project for this kind")
 }
 
-// resolveProjectScope resolves the effective project (flag > context) for a
-// Downstream namespaced kind, returning ("", nil, nil) when no project is in
+// resolveProjectScope resolves the typed --project for a Downstream
+// namespaced kind, returning ("", nil, nil) when no project is in
 // play. clusterID is the already-resolved downstream cluster the member
 // namespace list is fetched from.
 func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, clusterID string) (projectID string, members map[string]bool, err error) {
-	raw, err := EffectiveProject(clients, in)
-	if err != nil {
-		return "", nil, err
-	}
+	raw := TypedProject(in)
 	if raw == "" {
 		return "", nil, nil
 	}
@@ -320,7 +307,7 @@ func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactor
 //
 // "per scope" (NSNone, NSPlain): a Management kind is served by the local proxy
 // ("local"); a Downstream kind resolves --cluster (name-or-id) via
-// ResolveCluster, falling back to the context cluster, else a VALIDATION error.
+// ResolveCluster — the flag is required, a VALIDATION error when absent.
 //
 // SAFETY (review F3) — for NSCluster kinds an empty --cluster must NEVER
 // silently become "local" (ResolveCluster("") returns LocalCluster, which as a
@@ -437,10 +424,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	raw, err := EffectiveProject(clients, in)
-	if err != nil {
-		return "", "", "", nil, err
-	}
+	raw := TypedProject(in)
 	if raw == "" {
 		return clientCluster, ns, effectCluster, nil, nil
 	}
@@ -472,7 +456,7 @@ func routeNamespaceKind(ctx context.Context, clients engine.ClusterClientFactory
 
 // routeCluster picks the serving cluster for the scope-driven policies (NSNone,
 // NSPlain): a Management kind is served by the local proxy; a Downstream kind
-// resolves --cluster (falling back to the context cluster, else VALIDATION).
+// requires an explicit --cluster (VALIDATION when absent).
 // ns passes through unchanged and the Effect targets the serving cluster.
 func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, ns string) (clientCluster, nsOut, effectCluster string, err error) {
 	if k.Scope == kinds.Management {

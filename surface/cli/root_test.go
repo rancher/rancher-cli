@@ -919,7 +919,7 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stderr, &env), "stderr must be pure JSON, got %q", stderr)
 	data := env["data"].(map[string]any)
 	errObj := data["error"].(map[string]any)
-	assert.Equal(t, "CONTEXT_NOT_SET", errObj["code"])
+	assert.Equal(t, "NOT_LOGGED_IN", errObj["code"])
 }
 
 // TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback pins the SC-1 hard
@@ -1017,41 +1017,6 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	combined := out.String() + errOut.String()
 	assert.NotContains(t, combined, "--generate-shell-completion",
 		"the hidden built-in must never emit urfave's own completion script")
-}
-
-func TestLoginThenContextCurrentEndToEnd(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	root.Reader = bytes.NewBufferString("id:secret\n")
-
-	require.NoError(t, root.Run(context.Background(), []string{
-		"rancher", "--config", dir, "auth", "login", "--server", "https://r.ex",
-		"--token-stdin", "--name", "acme", "--context", "c-1:p-1", "-o", "json",
-	}))
-
-	_, statErr := os.Stat(filepath.Join(dir, "config.yaml"))
-	require.NoError(t, statErr, "login must write config.yaml under --config dir")
-
-	_, statErr2 := os.Stat(filepath.Join(dir, "cli2.json"))
-	require.True(t, os.IsNotExist(statErr2), "must not write cli2.json")
-
-	cfg, cfgErr := config.Load(config.FilePath(dir))
-	require.NoError(t, cfgErr)
-	assert.Equal(t, "c-1", cfg.Contexts["acme"].Cluster,
-		"auth login's local --context flag must still land in the written config (CW-3: leaf shadows the global --context flag)")
-	assert.Equal(t, "p-1", cfg.Contexts["acme"].Project)
-
-	out.Reset()
-	require.NoError(t, root.Run(context.Background(), []string{
-		"rancher", "--config", dir, "config", "current-context", "-o", "json",
-	}))
-	var env map[string]any
-	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
-	assert.Equal(t, "Context", env["kind"])
 }
 
 // TestPublicContractOpsArePinned closes the op-level half of the public-API

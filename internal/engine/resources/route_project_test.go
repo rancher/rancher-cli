@@ -134,31 +134,20 @@ func TestRouteDownstreamNSPlainListWithoutNamespaceCarriesMemberSet(t *testing.T
 	assert.Equal(t, map[string]bool{"ns-a": true}, scope.Members)
 }
 
-func TestRouteContextProjectFallsBackWhenFlagEmpty(t *testing.T) {
-	t.Parallel()
-	_, fac := newRouteProjectFixture()
-	fac.ctxProject = "p-1"
-	_, _, _, scope, err := Route(context.Background(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod"}}, false)
-	require.NoError(t, err)
-	require.NotNil(t, scope)
-	assert.NotNil(t, scope.Members)
-}
-
-func TestRouteFlagProjectTakesPrecedenceOverContext(t *testing.T) {
+func TestRouteTypedProjectScopesMemberFetch(t *testing.T) {
 	t.Parallel()
 	client := &routeProjectClient{lists: map[string]*unstructured.UnstructuredList{
 		"projects":   {Items: []unstructured.Unstructured{projectItem("p-1", "web"), projectItem("p-2", "db")}},
 		"namespaces": {Items: []unstructured.Unstructured{namespaceItem("ns-a")}},
 	}}
-	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}, ctxProject: "p-2"}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, _, _, scope, err := Route(context.Background(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	require.NotNil(t, scope)
 	require.NotNil(t, scope.Members)
-	// Precedence is observable in the member-set fetch: the namespaces list
-	// must be scoped by the FLAG's project (p-1), not the context's (p-2).
+	// The typed flag is observable in the member-set fetch: the namespaces
+	// list must be scoped by the --project value (p-1).
 	var nsSelectors []string
 	for _, call := range client.listCalls {
 		if call.resource == "namespaces" {
@@ -166,7 +155,7 @@ func TestRouteFlagProjectTakesPrecedenceOverContext(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"field.cattle.io/projectId=p-1"}, nsSelectors,
-		"the --project flag wins over the context project")
+		"the typed --project scopes the member fetch")
 }
 
 func TestRouteNamespaceKindWithProjectIsNotRejected(t *testing.T) {

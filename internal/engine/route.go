@@ -15,24 +15,16 @@ const FlagCluster = "cluster"
 
 // ResolveDownstreamCluster resolves --cluster for a command that always
 // targets a downstream cluster: an explicit flag is resolved via
-// ResolveCluster; an empty flag falls back to the context cluster, else a
-// VALIDATION error. Shared by resources.Route's Downstream branches and the
-// projects package's bespoke commands (create namespace, project
+// ResolveCluster; an empty flag is a VALIDATION error — routing is never
+// filled from ambient state. Shared by resources.Route's Downstream branches
+// and the projects package's bespoke commands (create namespace, project
 // add/remove-namespace) — those live in a package resources already imports
 // (Route's project-membership validation), so this helper lives in engine,
 // which both can reach without an import cycle.
 func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
-		cc, err := clients.ContextCluster()
-		if err != nil {
-			return "", err
-		}
-		target = cc
-	}
-	if target == "" {
-		return "", clierr.New(clierr.CodeValidation,
-			"--cluster is required (no cluster set in the current context)").
+		return "", clierr.New(clierr.CodeValidation, "--cluster is required").
 			WithHint("pass --cluster <id|name>")
 	}
 	return clients.ResolveCluster(ctx, target)

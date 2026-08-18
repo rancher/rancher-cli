@@ -7,7 +7,7 @@ env FAKEHELPER_MODE=ok
 env FAKEHELPER_STATE=$WORK/helper-state.json
 
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # authenticated call round-trips through the helper
@@ -24,10 +24,10 @@ jsonquery stdout 'data.deletedFrom.e2e.#' 1
 # the file (never string-match rendered JSON): zero keys in the creds map.
 jsonquery $WORK/helper-state.json 'creds.@keys.#' 0
 
-# post-logout: current context cleared and no credential held anywhere —
-# the same check now fails (nonzero) with the typed context error.
+# post-logout: current server cleared and no credential held anywhere —
+# the same check now fails (nonzero) with the typed not-logged-in error.
 ! exec rancher auth status -o json
-stderr 'context'
+jsonquery stderr data.error.code NOT_LOGGED_IN
 
 -- token.txt --
 e2e:secret

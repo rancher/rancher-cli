@@ -3,7 +3,7 @@ package clierr
 import "errors"
 
 const (
-	CodeContextNotSet        = "CONTEXT_NOT_SET"
+	CodeNotLoggedIn          = "NOT_LOGGED_IN"
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
 	CodeDryRunNotApplicable  = "DRY_RUN_NOT_APPLICABLE"
 	CodeAmbiguousSelection   = "AMBIGUOUS_SELECTION"
@@ -22,7 +22,7 @@ var exitCodes = map[string]int{
 	CodeConfirmationRequired: 2,
 	CodeDryRunNotApplicable:  2,
 	CodeAmbiguousSelection:   2,
-	CodeContextNotSet:        2,
+	CodeNotLoggedIn:          2,
 	CodeAuth:                 3,
 	CodeNotFound:             4,
 	CodeConflict:             5,
@@ -102,7 +102,7 @@ func Retryable(code, message string) *Error { return New(code, message).WithRetr
 // AllCodes lists every stable error code (for the schema manifest).
 func AllCodes() []string {
 	return []string{
-		CodeContextNotSet, CodeConfirmationRequired, CodeDryRunNotApplicable,
+		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
 		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodeGeneric,
 	}

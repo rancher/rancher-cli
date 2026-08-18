@@ -30,17 +30,23 @@ const testCAPEM = "-----BEGIN CERTIFICATE-----\nPEM\n-----END CERTIFICATE-----\n
 func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 	t.Run("explicit cluster + inline PEM CA", func(t *testing.T) {
 		rc, err := RESTConfig(config.Effective{
-			URL: "https://r.ex/v3", Token: "id:secret", CA: testCAPEM, Cluster: "c-9",
-		})
+			URL: "https://r.ex/v3", Token: "id:secret", CA: testCAPEM,
+		}, "c-9")
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex/k8s/clusters/c-9", rc.Host)
 		assert.Equal(t, "id:secret", rc.BearerToken)
 		assert.Equal(t, []byte(testCAPEM), rc.CAData)
 	})
-	t.Run("empty cluster defaults to local", func(t *testing.T) {
-		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: testCAPEM})
+	t.Run("explicit local cluster produces local URL", func(t *testing.T) {
+		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: testCAPEM}, "local")
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex/k8s/clusters/local", rc.Host)
+	})
+	t.Run("empty cluster id returns VALIDATION", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t"}, "")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
 	// Round-4 repro: a stored `--cacert /path/to/ca.pem` login (a path, not
 	// inline PEM) went straight to CAData as raw bytes, so client-go tried to
@@ -52,31 +58,31 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		caPath := filepath.Join(dir, "ca.pem")
 		require.NoError(t, os.WriteFile(caPath, []byte(testCAPEM), 0o600))
 
-		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: caPath})
+		rc, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: caPath}, "local")
 		require.NoError(t, err)
 		assert.Equal(t, []byte(testCAPEM), rc.CAData, "path-valued CA must be read from disk, not used as raw CAData")
 	})
 	t.Run("unreadable path-valued CA surfaces an error", func(t *testing.T) {
-		_, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: filepath.Join(t.TempDir(), "does-not-exist.pem")})
+		_, err := RESTConfig(config.Effective{URL: "https://r.ex", Token: "t", CA: filepath.Join(t.TempDir(), "does-not-exist.pem")}, "local")
 		require.Error(t, err)
 	})
 	t.Run("no CA uses system roots (secure by default)", func(t *testing.T) {
 		rc, err := RESTConfig(config.Effective{
-			URL: "https://r.ex", Token: "id:secret", Cluster: "c-9",
-		})
+			URL: "https://r.ex", Token: "id:secret",
+		}, "c-9")
 		require.NoError(t, err)
 		assert.False(t, rc.Insecure)
 		assert.Nil(t, rc.CAData)
 	})
-	t.Run("empty URL returns CONTEXT_NOT_SET with a login-or-env hint", func(t *testing.T) {
-		_, err := RESTConfig(config.Effective{Token: "t", CA: "PEM"})
+	t.Run("empty URL returns NOT_LOGGED_IN with a login-or-env hint", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{Token: "t", CA: "PEM"}, "local")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
 	})
 	t.Run("empty token returns AUTH with a login-or-env hint", func(t *testing.T) {
-		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"})
+		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"}, "local")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)

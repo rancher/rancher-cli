@@ -108,7 +108,7 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 			"first-level reference plus a warning.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name`; pass exactly one of --cluster or --all-clusters"},
 			{Name: flagAllClusters, Type: "bool", Desc: "scan all downstream clusters"},
 			{Name: flagBy, Type: "string", Enum: []string{byImage, byWorkload},
 				Desc: "Group by unique image or by owning workload (default: image)"},

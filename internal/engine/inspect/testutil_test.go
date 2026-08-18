@@ -172,9 +172,6 @@ type fakeFactory struct {
 	client        engine.ClusterClient
 	perCluster    map[string]engine.ClusterClient
 	perClusterErr map[string]error
-	ctxCluster    string
-	ctxClusterErr error
-	ctxProject    string
 	resolve       map[string]string
 	resolveErr    error
 
@@ -195,9 +192,6 @@ func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClien
 	}
 	return f.client, nil
 }
-
-func (f *fakeFactory) ContextCluster() (string, error) { return f.ctxCluster, f.ctxClusterErr }
-func (f *fakeFactory) ContextProject() (string, error) { return f.ctxProject, nil }
 
 func (f *fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if f.resolveErr != nil {

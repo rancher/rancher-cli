@@ -75,7 +75,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	}
 	// Answer "am I logged in" in state terms, not plumbing: with no
 	// effective URL the preflight would fail with the generic
-	// CONTEXT_NOT_SET; the config-aware form names the configured servers
+	// NOT_LOGGED_IN; the config-aware form names the configured servers
 	// and the re-login shortcut (the common shape right after a logout).
 	if eff.URL == "" {
 		return runtime.Result{}, cfg.ErrNotLoggedIn()
@@ -131,7 +131,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	res := runtime.Result{
 		Kind: "AuthCheck",
 		Data: map[string]any{
-			"ok": true, "server": eff.ServerName, "cluster": eff.Cluster, "serverVersion": ver,
+			"ok": true, "server": eff.ServerName, "serverVersion": ver,
 			"rancherVersion": rancherVersion, "supported": supported,
 			"identity": identity, "token": token,
 			"credentialStore": map[string]any{
@@ -139,7 +139,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 				"pinned": pinned,
 			},
 		},
-		Text: renderAuthCheckText(true, eff.ServerName, eff.Cluster, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned),
+		Text: renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned),
 	}
 	for _, w := range []string{warning, idWarning, tokenWarn} {
 		if w != "" {
@@ -153,16 +153,16 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 // default/table output format, following the inspect-cluster convention:
 // uppercase section headers, two-space-indented "key: value" lines. Nil
 // pointer fields render as "-" (honest null); nil sub-objects render as an
-// "<field>: unavailable" line in their section. Plain empty strings
-// (cluster, pinned) also render as "-" for the same "nothing here" reason:
-// a cluster-less context, a non-auto credential policy, and an auto policy
-// on a fresh machine before any pin is recorded all produce a legitimately
-// empty value that warrants the same honest marker.
+// "<field>: unavailable" line in their section. A plain empty string
+// (pinned) also renders as "-" for the same "nothing here" reason: a
+// non-auto credential policy and an auto policy on a fresh machine before
+// any pin is recorded both produce a legitimately empty value that warrants
+// the same honest marker.
 // Warnings are NOT duplicated here — they arrive on stderr via the
 // pipeline's stderr mirror.
 func renderAuthCheckText(
 	ok bool,
-	serverName, cluster, serverVersion string,
+	serverName, serverVersion string,
 	rancherVersion *string,
 	supported *bool,
 	identity, token any,
@@ -194,7 +194,6 @@ func renderAuthCheckText(
 	fmt.Fprintf(&b, "AUTH STATUS\n")
 	fmt.Fprintf(&b, "  ok: %v\n", ok)
 	fmt.Fprintf(&b, "  server: %s\n", serverName)
-	fmt.Fprintf(&b, "  cluster: %s\n", emptyStr(cluster))
 
 	fmt.Fprintf(&b, "\nVERSIONS\n")
 	fmt.Fprintf(&b, "  serverVersion: %s\n", serverVersion)

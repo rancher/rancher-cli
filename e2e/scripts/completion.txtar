@@ -21,14 +21,14 @@ stdout '(?m)^management-token:'
 stdout '(?m)^v3token:'
 stdout '(?m)^v3tokens:'
 
-# Seed a context via a direct config-file write (config-commands.txtar's
+# Seed a server via a direct config-file write (config-commands.txtar's
 # precedent) — no login flow needed just to populate config.yaml. The
 # config-local ShellCompleter path prints one BARE candidate per line (no
 # ":usage" suffix), so this anchors on the whole line.
 mkdir $RANCHER_CLI_CONFIG_DIR
 cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 
-exec rancher config use-context --generate-shell-completion
+exec rancher config use-server --generate-shell-completion
 stdout '(?m)^acme$'
 
 # AC-29/AC-31: config set-completion appears in completion output.
@@ -144,17 +144,14 @@ env RANCHER_CLI_TOKEN=
 # offered as a shell candidate).
 cp garbage-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 
-exec rancher config use-context --generate-shell-completion
+exec rancher config use-server --generate-shell-completion
 ! stdout .
 
 -- seed-config.yaml --
-currentContext: acme
+currentServer: acme
 servers:
   acme:
     url: https://acme.example.com
-contexts:
-  acme:
-    server: acme
 
 -- garbage-config.yaml --
 not: [valid yaml

@@ -139,7 +139,6 @@ type MutatingCommand interface {
 // into CompleteArgs so completers never re-read the config file (AC-19).
 // surface/cli implements this over the single Before-loaded *config.Config.
 type ConfigView interface {
-	ContextNames() []string
 	ServerNames() []string
 	ConfigDir() string
 }

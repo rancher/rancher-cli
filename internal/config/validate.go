@@ -3,34 +3,22 @@ package config
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 )
 
 // Validate checks a loaded Config's referential integrity — checks Load
-// itself never runs (Load only nil-guards the Contexts/Servers maps; a
-// dangling reference otherwise surfaces lazily at CurrentServer()/Effective()
-// call time). It is the seam future config-integrity checks hang off; `config
-// edit` is its first caller. Returns a single error joining every violation
-// found, or nil when cfg is valid.
+// itself never runs (Load only nil-guards the Servers map; a dangling
+// current-server pointer otherwise surfaces lazily at
+// CurrentServerEntry()/Effective() call time, so repair commands can load a
+// broken file and fix it). It is the seam future config-integrity checks hang
+// off; `config edit` is its first caller. Returns a single error joining
+// every violation found, or nil when cfg is valid.
 func Validate(cfg *Config) error {
 	var errs []string
 
-	names := make([]string, 0, len(cfg.Contexts))
-	for n := range cfg.Contexts {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		server := cfg.Contexts[n].Server
-		if _, ok := cfg.Servers[server]; !ok {
-			errs = append(errs, fmt.Sprintf("context %q references unknown server %q", n, server))
-		}
-	}
-
-	if cfg.CurrentContext != "" {
-		if _, ok := cfg.Contexts[cfg.CurrentContext]; !ok {
-			errs = append(errs, fmt.Sprintf("currentContext %q is not a defined context", cfg.CurrentContext))
+	if cfg.CurrentServer != "" {
+		if _, ok := cfg.Servers[cfg.CurrentServer]; !ok {
+			errs = append(errs, fmt.Sprintf("currentServer %q is not a defined server", cfg.CurrentServer))
 		}
 	}
 

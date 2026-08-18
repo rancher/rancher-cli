@@ -157,16 +157,14 @@ func TestNoClusterNoRequests(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// Config: no cluster in current context.
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}}, // no Cluster field
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
-	// No --cluster in tail, no RANCHER_CLI_CONTEXT cluster part.
+	// No --cluster in tail.
 
 	tail := []string{} // no flags in tail
 	site := CompletionSite{Kind: SitePositional, Index: 0}
@@ -193,10 +191,9 @@ func TestNetworkGateZeroHits(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: false}, // gate is OFF
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: false}, // gate is OFF
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -250,32 +247,6 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 }
 
-// Fix 4: explicit --project "" in tail must clear the inherited project scope.
-// An inherited project via RANCHER_CLI_CONTEXT must NOT win when the user
-// explicitly passes --project with an empty value.
-func TestExtractEffectiveProjectExplicitEmptyClearsInherited(t *testing.T) {
-	// NOT parallel: mutates RANCHER_CLI_CONTEXT env global.
-	t.Setenv(config.EnvContext, "c-abc:my-project") // inherited project = "my-project"
-
-	// Explicit --project "" in tail (space-form): two tokens.
-	tail := []string{"--project", ""}
-	got := extractEffectiveProject(tail)
-	assert.Equal(t, "", got, "--project '' must clear the inherited project scope")
-
-	// Verify downstream: namespace site is NOT suppressed when effective project is empty.
-	site := CompletionSite{Kind: SiteFlagValue, FlagName: "namespace"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	// liveFlagValueCandidates: effectiveProject="" → namespace NOT suppressed.
-	// Use an invalid server so the HTTP call fails fast (nil → degraded, not panics).
-	cap := TokenCapability{Token: "tok", ServerURL: "http://127.0.0.1:1"}
-	hc := &http.Client{}
-	result := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", got, nil)
-	// nil is acceptable (server unreachable); what matters is it was attempted, not short-circuited.
-	// The absence of panic and the empty-project value reaching here is the assertion.
-	_ = result
-}
-
 // Round-2 finding 4: --namespace suppressed when effectiveProject non-empty.
 func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
 	t.Parallel()
@@ -301,10 +272,9 @@ func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -331,10 +301,9 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -351,45 +320,6 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid namespace segment")
 }
 
-// Finding 6: --context <displayname> --cluster <TAB> must issue exactly ONE
-// cluster-list request. Without the siteNeedsCluster gate, resolveDisplayNameToClusterID
-// would fire first (one request) and then fetchClusters would fire again (second request).
-func TestClusterValueSiteIssuesOneClusterListRequest(t *testing.T) {
-	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
-	var hits atomic.Int32
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "somedisplay"}},
-	}
-	listResp := struct {
-		Items []map[string]any `json:"items"`
-	}{Items: items}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(listResp)
-	}))
-	t.Cleanup(srv.Close)
-
-	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
-	}
-	setStoredConfig(cfg, t.TempDir())
-	t.Setenv(config.EnvToken, "mgmt-token")
-
-	// --context carries a display-name cluster value; completing --cluster <TAB>.
-	tail := []string{"--context", "somedisplay"}
-	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster"}
-	d := runtime.Descriptor{Name: "get pod"}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	liveCandidates(ctx, site, d, nil, tail)
-	assert.Equal(t, int32(1), hits.Load(), "finding 6: cluster VALUE site must issue exactly ONE cluster-list request")
-}
-
 // Round-4 finding 1: bare-dot namespace segments ("..", "...") must be rejected
 // by isValidSegment — they path-normalize on proxies, silently dropping scope.
 func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
@@ -403,10 +333,9 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 		t.Cleanup(srv.Close)
 
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: true},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: true},
 		}
 		setStoredConfig(cfg, t.TempDir())
 		t.Setenv(config.EnvToken, "mgmt-token")
@@ -436,10 +365,9 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -468,10 +396,9 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	t.Cleanup(srv.Close)
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -479,7 +406,7 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	// "service" is Downstream but Completable:false — siteNeedsCluster must
 	// return false, so no cluster-resolution request fires and liveCandidates
 	// short-circuits to nil before any HTTP call.
-	tail := []string{"--context", "somedisplay"}
+	tail := []string{"--cluster", "somedisplay"}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get service"}
 
@@ -632,10 +559,9 @@ func TestLiveCandidatesRoleBypassesClusterPreflight(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	srv, hits := roleServer(t)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "prod cluster"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -760,10 +686,9 @@ func TestLiveCandidatesSubjectBypassesClusterPreflight(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	srv, hits := userServer(t)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "prod cluster"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")

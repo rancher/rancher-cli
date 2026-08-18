@@ -8,7 +8,7 @@ kind — run `rancher schema`; `rancher schema <command>` shows one command
 in detail.
 
 [Authentication](#authentication) ·
-[Contexts & configuration](#contexts--configuration) ·
+[Servers & configuration](#servers--configuration) ·
 [Create](#create) ·
 [Projects & access](#projects--access) ·
 [Read & inspect](#read--inspect) ·
@@ -21,32 +21,28 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `auth login` | Store a server + token; set current context. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
+| `auth login` | Store a server + token; set the current server. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; does not touch the exec-credential cache |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
 | `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
 | `auth delete-token [<name>]` | Clear cached exec-credential token(s); idempotent (no match = success) |
 
-## Contexts & configuration
+## Servers & configuration
 
 | Command | Purpose |
 |---|---|
-| `config current-context` | Show the active context |
-| `config set-context` | Set the current context's scope |
-| `config use-context <name>` | Activate a different named context |
 | `config get-servers` | List configured servers |
-| `config use-server [name]` | Switch the active server |
-| `config delete-server <name>` | Remove a server, its contexts, and its stored credentials — does NOT revoke the server-side token |
+| `config use-server [name]` | Switch the current server |
+| `config delete-server <name>` | Remove a server and its stored credentials — does NOT revoke the server-side token |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |
-| `config status` | Print config diagnostics: file path, effective credential store and its source, completion settings — first stop when tab completion shows no candidates |
+| `config status` | Print config diagnostics: file path, current server, effective credential store and its source, completion settings — first stop when tab completion shows no candidates |
 | `config edit` | Edit the config in `$VISUAL`/`$EDITOR` on a validated temp copy — never in place |
 | `config set-completion` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 
-`config use-server` switches to a context that targets the named server
-(creating one if needed); `config use-context` activates a named context
-directly. `use-server` is the migrating target for the legacy
-`server switch` command.
+The server pointer is the config's only session state — cluster and project
+scope are explicit flags per invocation. `use-server` is the migrating
+target for the legacy `server switch` command.
 
 ## Create
 
@@ -120,6 +116,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
 (48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
-126 generated commands, 171 total together with the fixed commands above. The authoritative, always-current list is
+126 generated commands, 168 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

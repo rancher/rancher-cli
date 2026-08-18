@@ -77,8 +77,7 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext:  "ctx",
-		Contexts:        map[string]config.Context{"ctx": {Server: "srv", Cluster: "my-cluster"}},
+		CurrentServer:   "srv",
 		Servers:         map[string]config.Server{"srv": {URL: srvBad.URL}},
 		CredentialStore: "keychain",
 		Completion:      config.CompletionConfig{Network: true},
@@ -117,8 +116,7 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext:  "ctx",
-		Contexts:        map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
+		CurrentServer:   "srv",
 		Servers:         map[string]config.Server{"srv": {URL: "https://example.invalid"}},
 		CredentialStore: "file",
 		Completion:      config.CompletionConfig{Network: true}, // round-4: must reach live path
@@ -189,10 +187,9 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -291,10 +288,9 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 		srv := newSrv(t)
 		dir := t.TempDir()
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: true},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: true},
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
@@ -336,11 +332,6 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 		// words=["get","pod","--cluster"], currentWord="c-" (partial cluster name)
 		got := run(t, []string{"get", "pod", "--cluster"}, "c-")
 		assert.Contains(t, got, "c-abc", "--cluster partial: c-abc must appear")
-	})
-	t.Run("--context space-form partial", func(t *testing.T) {
-		setup(t)
-		got := run(t, []string{"get", "pod", "--context"}, "c-")
-		assert.Contains(t, got, "c-abc", "--context partial: c-abc must appear")
 	})
 	t.Run("--project space-form partial", func(t *testing.T) {
 		setup(t)
@@ -415,10 +406,9 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	))
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://example.invalid"}},
-		Completion:     config.CompletionConfig{Network: true}, // round-4: exercise live path
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://example.invalid"}},
+		Completion:    config.CompletionConfig{Network: true}, // round-4: exercise live path
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -534,16 +524,14 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		return srv
 	}
 
-	// setupDir configures a hermetic config dir with the given server URL and network
-	// setting. A cluster is set in the context so --project live fetch has a cluster ID.
+	// setupDir configures a hermetic config dir with the given server URL and network setting.
 	setupDir := func(t *testing.T, srvURL string, networkOn bool) string {
 		t.Helper()
 		dir := t.TempDir()
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-			Servers:        map[string]config.Server{"srv": {URL: srvURL}},
-			Completion:     config.CompletionConfig{Network: networkOn},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srvURL}},
+			Completion:    config.CompletionConfig{Network: networkOn},
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
@@ -553,31 +541,13 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		return dir
 	}
 
-	t.Run("get --context space-form network-on", func(t *testing.T) {
-		var hits atomic.Int32
-		srv := newCountingSrv(t, &hits)
-		setupDir(t, srv.URL, true)
-		got := runNameLikeCompletion(t, []string{"get", "--context"}, "")
-		assert.Contains(t, got, "c-abc", "get --context <TAB> network-on: cluster candidate must appear")
-		assert.Greater(t, hits.Load(), int32(0), "get --context <TAB> network-on: must issue at least one HTTP request")
-	})
-
-	t.Run("get --context space-form network-off", func(t *testing.T) {
-		var hits atomic.Int32
-		srv := newCountingSrv(t, &hits)
-		setupDir(t, srv.URL, false)
-		got := runNameLikeCompletion(t, []string{"get", "--context"}, "")
-		assert.Empty(t, strings.TrimSpace(got), "get --context <TAB> network-off: output must be empty")
-		assert.Equal(t, int32(0), hits.Load(), "get --context <TAB> network-off: zero HTTP requests")
-	})
-
 	t.Run("get --project space-form network-on", func(t *testing.T) {
-		// --project is a global flag in globalArgSpecs; cluster is provided via
-		// config context (c-abc) so the live project fetch can resolve.
+		// --project is a global flag in globalArgSpecs; --cluster c-abc in the tail
+		// provides the cluster ID so the live project fetch can resolve.
 		var hits atomic.Int32
 		srv := newCountingSrv(t, &hits)
 		setupDir(t, srv.URL, true)
-		got := runNameLikeCompletion(t, []string{"get", "--project"}, "")
+		got := runNameLikeCompletion(t, []string{"get", "--cluster", "c-abc", "--project"}, "")
 		assert.Contains(t, got, "p-xyz", "get --project <TAB> network-on: project candidate must appear")
 		assert.Greater(t, hits.Load(), int32(0), "get --project <TAB> network-on: must issue at least one HTTP request")
 	})
@@ -589,16 +559,6 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		got := runNameLikeCompletion(t, []string{"get", "--config"}, "")
 		assert.Empty(t, strings.TrimSpace(got), "get --config <TAB>: must produce no candidates (shell falls back to file completion)")
 		assert.Equal(t, int32(0), hits.Load(), "get --config <TAB>: no live site, zero HTTP requests")
-	})
-
-	t.Run("get --context equals-form network-on", func(t *testing.T) {
-		// Equals-form: current word is "--context=", args do not contain --context.
-		var hits atomic.Int32
-		srv := newCountingSrv(t, &hits)
-		setupDir(t, srv.URL, true)
-		got := runNameLikeCompletion(t, []string{"get"}, "--context=")
-		assert.Contains(t, got, "--context=c-abc", "get --context=<TAB> network-on: equals-form candidate must appear")
-		assert.Greater(t, hits.Load(), int32(0), "get --context=<TAB> network-on: must issue at least one HTTP request")
 	})
 
 	// Round-4 finding 1 (HIGH/SECURITY): per-leaf flags in equals-form must not fire

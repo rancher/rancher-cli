@@ -18,7 +18,7 @@ type logoutCmd struct {
 // NewLogout builds `auth logout` (local): clear the stored login token for a
 // server and delete matching exec-credential cache entries via
 // config.DeleteTokenEverywhere — the single delete point (ARCHITECTURE.md). Keeps the
-// server/context config entries; `auth delete-token` remains for clearing
+// server config entries; `auth delete-token` remains for clearing
 // cache entries outside a logout.
 func NewLogout(dir string) runtime.Command {
 	return &logoutCmd{dir: dir}
@@ -52,11 +52,11 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	}
 
 	var (
-		targets        []string
-		deletedFrom    map[string][]string
-		deletedCache   []string
-		urlByName      = map[string]string{}
-		contextCleared bool
+		targets              []string
+		deletedFrom          map[string][]string
+		deletedCache         []string
+		urlByName            = map[string]string{}
+		currentServerCleared bool
 	)
 	if err := config.WithLock(cmdCtx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
@@ -79,7 +79,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if err != nil {
 			return err
 		}
-		contextCleared, err = clearCurrentContext(cfg, all, targets)
+		currentServerCleared, err = clearCurrentServer(cfg, all, targets)
 		return err
 	}); err != nil {
 		return runtime.Result{}, err
@@ -89,20 +89,20 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
 		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
-		"contextCleared": contextCleared,
-	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache), contextCleared)}, nil
+		"currentServerCleared": currentServerCleared,
+	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache), currentServerCleared)}, nil
 }
 
 // renderLogoutText is the TTY view of a logout: which servers, which
 // credential backends were touched, how many cached exec credentials went,
-// and whether the current context was cleared. Silent success is for
+// and whether the current-server pointer was cleared. Silent success is for
 // scripts (exit code + JSON envelope); a person deserves the confirmation.
 // It renders every deletedFrom entry, not just the requested targets:
 // logout --all's orphaned-helper sweep reports records whose server name
 // never made it into config (no URL known) — the text must not diverge
 // from the JSON envelope for exactly the crash-recovery case that sweep
 // exists to catch.
-func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int, contextCleared bool) string {
+func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int, currentServerCleared bool) string {
 	names := make([]string, 0, len(deletedFrom))
 	for s := range deletedFrom {
 		names = append(names, s)
@@ -125,7 +125,7 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 	if cacheCount > 0 {
 		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
 	}
-	if contextCleared {
+	if currentServerCleared {
 		// The hinted command must be valid verbatim: auth login requires
 		// --server, so name a complete invocation when exactly one server
 		// was logged out.
@@ -133,7 +133,7 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 		if len(names) == 1 && urlByName[names[0]] != "" {
 			hint = fmt.Sprintf("rancher auth login --server %s --name %s", urlByName[names[0]], names[0])
 		}
-		fmt.Fprintf(&b, "current context cleared — log back in with: %s\n", hint)
+		fmt.Fprintf(&b, "current server cleared — log back in with: %s\n", hint)
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
@@ -159,12 +159,12 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 		}
 		return []string{name}, nil
 	default:
-		// No arg: the current context's server. CurrentServer guards empty/stale
-		// CurrentContext and a missing server; re-wrap its login-specific hint.
-		cur, _, cerr := cfg.CurrentServer()
+		// No arg: the current server. CurrentServerEntry guards an empty or
+		// dangling pointer; re-wrap its login-specific hint.
+		cur, _, cerr := cfg.CurrentServerEntry()
 		if cerr != nil {
-			return nil, clierr.New(clierr.CodeContextNotSet,
-				"no current context; specify a server name or --all").
+			return nil, clierr.New(clierr.CodeNotLoggedIn,
+				"no current server; specify a server name or --all").
 				WithHint("rancher auth logout <name>  OR  rancher auth logout --all")
 		}
 		return []string{cur}, nil
@@ -243,25 +243,22 @@ func deleteFailure(step string, err error, done []string) error {
 	})
 }
 
-// clearCurrentContext unsets the current context when it no longer resolves to
-// a logged-in server: always under --all when one is set, otherwise only when
-// the current context targets one of the servers just logged out. Reports
-// whether it cleared anything so the result can say so.
-func clearCurrentContext(cfg *config.Config, all bool, targets []string) (bool, error) {
-	if cfg.CurrentContext == "" {
+// clearCurrentServer unsets the current-server pointer when it no longer
+// names a logged-in server: always under --all when one is set (including a
+// dangling pointer — --all is a repair command), otherwise only when it
+// names one of the servers just logged out. Reports whether it cleared
+// anything so the result can say so.
+func clearCurrentServer(cfg *config.Config, all bool, targets []string) (bool, error) {
+	if cfg.CurrentServer == "" {
 		return false, nil
 	}
 	if all {
-		cfg.CurrentContext = ""
+		cfg.CurrentServer = ""
 		return true, cfg.Write()
 	}
-	cur, ok := cfg.Contexts[cfg.CurrentContext]
-	if !ok {
-		return false, nil
-	}
 	for _, s := range targets {
-		if cur.Server == s {
-			cfg.CurrentContext = ""
+		if cfg.CurrentServer == s {
+			cfg.CurrentServer = ""
 			return true, cfg.Write()
 		}
 	}

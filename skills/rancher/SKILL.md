@@ -17,13 +17,13 @@ querying the CLI over guessing syntax.
 rancher auth status -o json
 ```
 
-Reports server, cluster context, server version, `rancherVersion`/`supported`
+Reports server, server version, `rancherVersion`/`supported`
 (the 2.14 minimum-version floor — warn-only, never fails login/check),
 `identity`/`token` metadata, and credential-store state. A `null` `identity`
 or `token` field plus a `warnings` entry is a normal degradation (e.g.
 `identity` is a create-verb probe — expect it null under a read-only-RBAC
 token), not an error condition; don't treat it as one. If it fails with
-`AUTH` or `CONTEXT_NOT_SET`, establish a session:
+`AUTH` or `NOT_LOGGED_IN`, establish a session:
 
 - Interactive: `rancher auth login --server <url> --name <alias>` — no UI trip
   needed. With no piped/pasted token, it offers a choice: paste an existing
@@ -295,21 +295,18 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 
 ## Conventions
 
-- **Routing:** `--cluster` accepts a display name or id; `--namespace` scopes
-  namespaced kinds. Contexts carry cluster+project defaults: switch persistently
-  with `rancher config use-context` / `set-context`, or override for a single
-  invocation with the `RANCHER_CLI_CONTEXT` env var (`cluster[:project]`) or the
-  global `--context cluster[:project]` flag (flag > `RANCHER_CLI_CONTEXT` env >
-  current context). Fleet kinds default to the `fleet-default` workspace.
-- **Project scope (`--project`):** the global `--project <id-or-name>` flag
-  scopes Downstream namespaced kinds (`get`/`delete`/`patch`, plus `usage`)
-  to a project's member namespaces — a list filters to members, a named op
-  or mutation validates membership first. `get namespaces --project <p>` is
-  the membership listing (server-side label selector). Every other kind
-  family and the non-project composites (`inspect pod`/`deployment`, `top
-  node`, `images`) reject a non-empty `--project` with `VALIDATION` — it is
-  never a silent no-op. Precedence: `--project` flag > the context's project
-  axis (set via `--context`/`RANCHER_CLI_CONTEXT`/`set-context`) > unscoped.
+- **Routing:** `--cluster` (display name or id) routes to a downstream cluster;
+  `--namespace` scopes namespaced kinds. Scope is per-invocation only — no
+  cluster or project is persisted or ambient. Fleet kinds default to the
+  `fleet-default` workspace.
+- **Project scope (`--project`):** `--project <id-or-name>` scopes Downstream
+  namespaced kinds (`get`/`delete`/`patch`, plus `usage`) to a project's member
+  namespaces — a list filters to members, a named op or mutation validates
+  membership first. `get namespaces --project <p>` is the membership listing
+  (server-side label selector). Every other kind family and the non-project
+  composites (`inspect pod`/`deployment`, `top node`, `images`) reject a
+  non-empty `--project` with `VALIDATION` — it is never a silent no-op.
+  Precedence: `--project` flag > unscoped.
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain.
@@ -331,9 +328,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   config.yaml alone cannot reveal an env-supplied store or diagnose a
   misconfigured completion timeout. `config edit` opens the config in
   `$VISUAL`/`$EDITOR` on a temp copy, validating referential integrity
-  before writing back — reach for it over several individual
-  `set-context`/`use-server` calls when reshaping multiple contexts/servers
-  at once; needs a TTY and `$VISUAL`/`$EDITOR` set.
+  before writing back — reach for it over several individual `use-server`
+  calls when reshaping multiple servers at once; needs a TTY and
+  `$VISUAL`/`$EDITOR` set.
 - **Secrets:** never echo tokens into commands or logs; use `--token-stdin` or
   env vars. Sensitive kinds (users, settings, role bindings, …) escalate
   mutations to the destructive gate — expect `--yes` to be demanded even for a

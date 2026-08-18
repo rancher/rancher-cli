@@ -189,9 +189,8 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 	cert := srv.Certificate()
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 	cfg := &config.Config{
-		CurrentContext: "acme",
-		Contexts:       map[string]config.Context{"acme": {Server: "acme", Cluster: "local"}},
-		Servers:        map[string]config.Server{"acme": {URL: srv.URL, CA: string(certPEM)}},
+		CurrentServer: "acme",
+		Servers:       map[string]config.Server{"acme": {URL: srv.URL, CA: string(certPEM)}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -214,9 +213,8 @@ func alwaysOKVersion(context.Context, config.Effective) (string, error)   { retu
 func writeAuthCheckConfig(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
-		CurrentContext: "acme",
-		Contexts:       map[string]config.Context{"acme": {Server: "acme"}},
-		Servers:        map[string]config.Server{"acme": {URL: "https://example.invalid"}},
+		CurrentServer: "acme",
+		Servers:       map[string]config.Server{"acme": {URL: "https://example.invalid"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -686,7 +684,7 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 	ver := "v2.15.0"
 	supported := true
 	text := renderAuthCheckText(
-		true, "my-server", "c-abc", "v1.31.0",
+		true, "my-server", "v1.31.0",
 		&ver, &supported,
 		map[string]any{"userID": "u-abc"},
 		map[string]any{"name": "tok-1", "kind": "derived", "provider": "local", "expiresAt": "2030-01-01T00:00:00Z", "current": true},
@@ -694,7 +692,6 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 	)
 	assert.Contains(t, text, "ok: true")
 	assert.Contains(t, text, "server: my-server")
-	assert.Contains(t, text, "cluster: c-abc")
 	assert.Contains(t, text, "serverVersion: v1.31.0")
 	assert.Contains(t, text, "rancherVersion: v2.15.0")
 	assert.Contains(t, text, "supported: true")
@@ -715,12 +712,11 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 func TestAuthCheckTextViewNullFields(t *testing.T) {
 	t.Parallel()
 	text := renderAuthCheckText(
-		true, "s", "", "v1.31.0",
+		true, "s", "v1.31.0",
 		nil, nil,
 		nil, nil,
 		"keychain", "",
 	)
-	assert.Contains(t, text, "cluster: -", "empty cluster renders as dash, not blank")
 	assert.Contains(t, text, "rancherVersion: -")
 	assert.Contains(t, text, "supported: -")
 	assert.Contains(t, text, "identity: unavailable")
@@ -784,8 +780,6 @@ func TestAuthCheckDataPayloadUnchanged(t *testing.T) {
 	assert.Equal(t, true, data["ok"])
 	_, hasServer := data["server"]
 	assert.True(t, hasServer, "server key must be present")
-	_, hasCluster := data["cluster"]
-	assert.True(t, hasCluster, "cluster key must be present")
 	_, hasSV := data["serverVersion"]
 	assert.True(t, hasSV, "serverVersion key must be present")
 	rv, hasRV := data["rancherVersion"]
@@ -818,8 +812,7 @@ func seedAuthedDir(t *testing.T) string {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	cfg.Servers = map[string]config.Server{"default": {URL: "https://rancher.test.invalid"}}
-	cfg.Contexts = map[string]config.Context{"default": {Server: "default"}}
-	cfg.CurrentContext = "default"
+	cfg.CurrentServer = "default"
 	require.NoError(t, cfg.Write())
 	return dir
 }
@@ -834,7 +827,7 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	dir := seedAuthedDir(t)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	cfg.CurrentContext = "" // the state auth logout leaves behind
+	cfg.CurrentServer = "" // the state auth logout leaves behind
 	require.NoError(t, cfg.Write())
 
 	cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir),
@@ -845,7 +838,7 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	_, err = cmd.Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 	assert.Contains(t, ce.Message, "not logged in")
 	// The hinted command must be complete and valid verbatim — auth login
 	// requires --server, so a bare --name suggestion would fail validation

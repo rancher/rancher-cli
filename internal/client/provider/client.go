@@ -46,14 +46,11 @@ func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // proxy plus a request-bounded context, for the small `auth status` probes
 // (Identity, EffectiveTokenMetadata, V3TokenMetadata) that each read a
 // single management-plane singleton. ext.cattle.io and
-// management.cattle.io resources live under the local cluster's proxy
-// regardless of which downstream cluster eff.Cluster currently points at,
-// so eff.Cluster is always overridden here, once, rather than by each
-// caller. The returned cancel func must be deferred by the caller exactly
-// like the opCtx it wraps.
+// management.cattle.io resources live under the local cluster's proxy,
+// which is exactly where kube.RESTConfig aims. The returned cancel func
+// must be deferred by the caller exactly like the opCtx it wraps.
 func bootstrapLocalDynamic(ctx context.Context, eff config.Effective) (dynamic.Interface, context.Context, context.CancelFunc, error) {
-	eff.Cluster = engine.LocalCluster
-	rc, err := kube.RESTConfig(eff)
+	rc, err := kube.RESTConfig(eff, engine.LocalCluster)
 	if err != nil {
 		return nil, nil, nil, err
 	}

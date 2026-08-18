@@ -28,7 +28,7 @@ func TestConfigPathPrintsResolvedPathAndExistsFalseWhenNoFile(t *testing.T) {
 
 func TestConfigPathExistsTrueWhenFilePresent(t *testing.T) {
 	dir := t.TempDir()
-	cfg := &config.Config{Servers: map[string]config.Server{}, Contexts: map[string]config.Context{}}
+	cfg := &config.Config{Servers: map[string]config.Server{}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 

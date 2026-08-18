@@ -57,9 +57,6 @@ func buildEntries() []entry {
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewListTokensCommand(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewDeleteTokenCommand(d.dir, d.store) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextCurrent(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextSet(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewContextUse(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerLs(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerSwitch(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigDeleteServer(d.dir) }},
@@ -414,7 +411,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	w := cmd.Root().Writer
 	if strings.HasPrefix(rawCurrentWord, "-") {
 		if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
-			// Equals-form flag value (e.g. --output=json<TAB>, --context=prod<TAB>):
+			// Equals-form flag value (e.g. --output=json<TAB>, --project=p1<TAB>):
 			// route through the full dispatch pipeline (enum → live), the same as
 			// the leaf path does — BUT only when the flag is a recognized global
 			// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
@@ -423,7 +420,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 			// fire a live cluster-list HTTP request before any kind is chosen.
 			// An empty Descriptor is passed — enumCandidates and liveCandidates
 			// both fall back to globalArgSpecs for global flags, so --output enum
-			// and --context live candidates are found without any leaf flags.
+			// candidates are found without any leaf flags.
 			spelling := rawCurrentWord[:eq]
 			canonical := resolveFlagCanonical(spelling, globalArgSpecs)
 			if flagTakesValue(canonical, globalArgSpecs) {
@@ -774,7 +771,6 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			if c.Bool("debug") {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
-			config.SetContextOverride(c.String("context"))
 			config.SetReadOnlyOverride(resolveReadOnly(c))
 			return ctx, nil
 		},

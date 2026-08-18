@@ -16,15 +16,13 @@ func TestResolveCompletionTokenEnvWins(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvToken, "mytoken")
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfig(cfg, dir)
-	// argTail nil: no --context flag override; env token must win (AC-4).
-	cap := resolveCompletionToken(nil, "")
+	cap := resolveCompletionToken("")
 	assert.Equal(t, "mytoken", cap.Token)
 	assert.False(t, cap.IDOnly)
 }
@@ -42,14 +40,13 @@ func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
 		"k8s-ctx", "https://rancher.example.com", "c-abc",
 	))
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfig(cfg, dir)
-	cap := resolveCompletionToken(nil, "c-abc")
+	cap := resolveCompletionToken("c-abc")
 	assert.Equal(t, "exec-token", cap.Token)
 	assert.True(t, cap.IDOnly)
 }
@@ -72,14 +69,13 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 		"ctx-b", "https://rancher.example.com", "c-abc",
 	))
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfig(cfg, dir)
-	cap := resolveCompletionToken(nil, "c-abc")
+	cap := resolveCompletionToken("c-abc")
 	assert.Empty(t, cap.Token, "ambiguous exec-cred must yield empty")
 }
 
@@ -119,8 +115,7 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 			))
 
 			cfg := &config.Config{
-				CurrentContext:  "ctx",
-				Contexts:        map[string]config.Context{"ctx": {Server: "bad"}},
+				CurrentServer:   "bad",
 				Servers:         map[string]config.Server{"bad": {URL: tc.serverURL}},
 				CredentialStore: "file",
 			}
@@ -128,7 +123,7 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 			require.NoError(t, cfg.Write())
 			setStoredConfig(cfg, dir)
 
-			cap := resolveCompletionToken(nil, "c-1")
+			cap := resolveCompletionToken("c-1")
 			assert.Empty(t, cap.Token,
 				"invalid server URL %q must yield empty capability, not surface a stored credential",
 				tc.serverURL)
@@ -160,14 +155,13 @@ func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 		"legacy:x", "https://rancher.example.com", "c-abc",
 	))
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfig(cfg, dir)
-	cap := resolveCompletionToken(nil, "c-abc")
+	cap := resolveCompletionToken("c-abc")
 	assert.Equal(t, "native-tok", cap.Token,
 		"shim entry must be excluded; native entry must resolve as the sole candidate")
 	assert.True(t, cap.IDOnly)
@@ -189,14 +183,13 @@ func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 		"legacy:y", "https://rancher.example.com", "c-def",
 	))
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfig(cfg, dir)
-	cap := resolveCompletionToken(nil, "c-def")
+	cap := resolveCompletionToken("c-def")
 	assert.Empty(t, cap.Token,
 		"shim-only entry must yield empty capability (not a completion candidate)")
 }
@@ -210,8 +203,7 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	dir := t.TempDir()
 	// Config current server is server A (rancher-a.example.com).
 	cfg := &config.Config{
-		CurrentContext:  "ctx",
-		Contexts:        map[string]config.Context{"ctx": {Server: "srv-a"}},
+		CurrentServer:   "srv-a",
 		Servers:         map[string]config.Server{"srv-a": {URL: "https://rancher-a.example.com"}},
 		CredentialStore: "file",
 	}
@@ -227,6 +219,6 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	t.Setenv(config.EnvURL, "https://rancher-b.example.com")
 
 	// Must return empty: server A's token must not be sent to server B.
-	cap := resolveCompletionToken(nil, "")
+	cap := resolveCompletionToken("")
 	assert.Empty(t, cap.Token, "round-2 finding 3: cross-server URL override must not send server A token to server B")
 }

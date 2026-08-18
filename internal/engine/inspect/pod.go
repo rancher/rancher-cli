@@ -38,7 +38,7 @@ func (c *podCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"},
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 			{Name: flagTail, Type: "string", Desc: "max log `lines` per container (default 50)"},
 		},

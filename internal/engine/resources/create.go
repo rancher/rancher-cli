@@ -40,7 +40,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
-			clusterFlag(),
+			createClusterFlag(),
 			namespaceFlag(),
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
@@ -48,6 +48,15 @@ func (createCmd) Describe() runtime.Descriptor {
 		Network:     true,
 		Auth:        true,
 	}
+}
+
+// createClusterFlag is clusterFlag with create's own contract: the manifest
+// can supply the cluster (see overrideInput), so the flag is not
+// schema-required — routing rejects only when neither source names one.
+func createClusterFlag() runtime.ArgSpec {
+	f := clusterFlag(false)
+	f.Desc = "target cluster `id|name` (the manifest may supply it)"
+	return f
 }
 
 // overrideInput wraps a runtime.Input, preferring a manifest-derived value for

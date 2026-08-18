@@ -133,33 +133,6 @@ func TestUsageProjectGroupsByLabel(t *testing.T) {
 	assert.NotContains(t, rows, "p-x")
 }
 
-// TestUsageContextProjectScopesWithoutFlag proves usage reads --project via
-// EffectiveProject (flag > context), not in.String directly: a context-set
-// project with no --project flag must still scope usage — an unset flag
-// falling through to the cluster-wide branch would reproduce the exact
-// silent-scope-loss DR-004 removed --project for.
-func TestUsageContextProjectScopesWithoutFlag(t *testing.T) {
-	t.Parallel()
-	podKind := mustKind(t, "pod")
-	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
-	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*projectFixtureObj("p-x", "web", "")}}).
-		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{namespaceObj("ns1", nil)}}).
-		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
-		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*podWithResources("ns1", "p1", "10m", "10Mi", "20m", "20Mi"),
-		}})
-
-	cmd := NewUsage(&fakeFactory{client: client, ctxProject: "p-x"})
-	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
-	require.NoError(t, err)
-	env, ok := res.Data.(usageEnvelope)
-	require.True(t, ok)
-	rows := env.Data
-	assert.Contains(t, rows, "ns1", "the context project must scope usage to member namespaces")
-}
-
 func TestUsageProjectResolvesDisplayName(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")

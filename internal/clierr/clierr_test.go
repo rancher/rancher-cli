@@ -21,7 +21,7 @@ func TestExitCodeMapping(t *testing.T) {
 		CodeConflict:             5,
 		CodeRBAC:                 6,
 		CodeGeneric:              1,
-		CodeContextNotSet:        2,
+		CodeNotLoggedIn:          2,
 	}
 	for code, want := range cases {
 		t.Run(code, func(t *testing.T) {
@@ -46,7 +46,7 @@ func TestIsNotFound(t *testing.T) {
 }
 
 func TestAllCodesNonEmpty(t *testing.T) {
-	assert.Contains(t, AllCodes(), CodeContextNotSet)
+	assert.Contains(t, AllCodes(), CodeNotLoggedIn)
 	assert.Contains(t, AllCodes(), CodeDryRunNotApplicable)
 }
 

@@ -32,7 +32,7 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "project", Type: "string", Desc: "add the namespace to this project when it is created"},
-			{Name: "cluster", Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
 		},
 		Examples:    []string{"rancher create namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",

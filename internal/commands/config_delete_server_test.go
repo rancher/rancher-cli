@@ -17,26 +17,21 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// seedDeleteServer mirrors logout_test.go's seedLogout for config/file setup
-// ONLY: a real FileStore + an in-memory keychain (keyring.MockInit), no fake
-// store. contexts maps a context KEY to the server name it targets, so a
-// test can alias a context under a key other than the server name.
-func seedDeleteServer(t *testing.T, current string, servers []string, contexts map[string]string) (string, config.CredStore) {
+// seedDeleteServer sets up a temp config dir with a real FileStore and
+// in-memory keychain (keyring.MockInit). current is the CurrentServer pointer;
+// servers lists server names to populate.
+func seedDeleteServer(t *testing.T, current string, servers []string) (string, config.CredStore) {
 	t.Helper()
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: current,
-		Servers:        map[string]config.Server{},
-		Contexts:       map[string]config.Context{},
+		CurrentServer: current,
+		Servers:       map[string]config.Server{},
 	}
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
 		require.NoError(t, store.SetToken(config.ServerRef{Name: s}, "id:sec"))
-	}
-	for ctxName, server := range contexts {
-		cfg.Contexts[ctxName] = config.Context{Server: server}
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -44,7 +39,7 @@ func seedDeleteServer(t *testing.T, current string, servers []string, contexts m
 }
 
 func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
-	dir, _ := seedDeleteServer(t, "acme", []string{"acme", "other"}, map[string]string{"acme": "acme", "other": "other"})
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme", "other"})
 	path := config.FilePath(dir)
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -67,15 +62,11 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 	require.NoError(t, err)
 	_, ok := cfg.Servers["acme"]
 	assert.True(t, ok, "server entry must still be present after a failed delete (benign failure direction: creds gone, server still configured — never the reverse)")
-	assert.Equal(t, "acme", cfg.CurrentContext, "current context must be untouched too")
+	assert.Equal(t, "acme", cfg.CurrentServer, "current server must be untouched too")
 }
 
-func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *testing.T) {
-	dir, store := seedDeleteServer(t, "other", []string{"acme", "other"}, map[string]string{
-		"acme":        "acme", // key equals server name
-		"weird-alias": "acme", // aliased key: context key != server name, matched by field
-		"other":       "other",
-	})
+func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *testing.T) {
+	dir, store := seedDeleteServer(t, "acme", []string{"acme", "other"})
 
 	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
@@ -85,9 +76,8 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	require.True(t, ok)
 	assert.Equal(t, "acme", data["server"])
 	assert.Equal(t, "https://acme.ex", data["url"])
-	assert.ElementsMatch(t, []string{"acme", "weird-alias"}, data["contexts"], "both contexts field-matching server acme are removed, key-equal and aliased alike")
-	assert.False(t, data["currentContextCleared"].(bool), "current context (\"other\") targets a different server and is untouched")
-	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"], "mock keychain is empty, so only the file backend reports a delete")
+	assert.True(t, data["currentServerCleared"].(bool), "current server pointer cleared when the deleted server was current")
+	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -95,13 +85,7 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	assert.False(t, ok, "server entry removed")
 	_, ok = cfg.Servers["other"]
 	assert.True(t, ok, "unrelated server kept")
-	_, ok = cfg.Contexts["acme"]
-	assert.False(t, ok)
-	_, ok = cfg.Contexts["weird-alias"]
-	assert.False(t, ok, "aliased context removed by field match, not by key")
-	_, ok = cfg.Contexts["other"]
-	assert.True(t, ok, "unrelated context kept")
-	assert.Equal(t, "other", cfg.CurrentContext)
+	assert.Equal(t, "", cfg.CurrentServer, "current server pointer cleared")
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken, "token deleted")
@@ -109,23 +93,21 @@ func TestConfigDeleteServerRemovesFieldMatchedContextsIncludingAliasedKeys(t *te
 	require.NoError(t, err, "unrelated server's token kept")
 }
 
-func TestConfigDeleteServerClearsCurrentContextWhenAliasedKeyWasCurrent(t *testing.T) {
-	dir, _ := seedDeleteServer(t, "weird-alias", []string{"acme"}, map[string]string{
-		"weird-alias": "acme",
-	})
+func TestConfigDeleteServerDoesNotClearCurrentServerWhenDifferentServerDeleted(t *testing.T) {
+	dir, _ := seedDeleteServer(t, "other", []string{"acme", "other"})
 
 	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
-	assert.True(t, data["currentContextCleared"].(bool))
+	assert.False(t, data["currentServerCleared"].(bool), "current server (\"other\") is untouched when a different server is deleted")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.CurrentContext, "current context cleared: it aliased the removed server by field, not by a matching key")
+	assert.Equal(t, "other", cfg.CurrentServer)
 }
 
 func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
-	dir, _ := seedDeleteServer(t, "", []string{"acme"}, nil)
+	dir, _ := seedDeleteServer(t, "", []string{"acme"})
 
 	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
@@ -139,7 +121,7 @@ func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 }
 
 func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
-	dir, store := seedDeleteServer(t, "", []string{"acme"}, map[string]string{"acme": "acme"})
+	dir, store := seedDeleteServer(t, "", []string{"acme"})
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 
 	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
@@ -159,7 +141,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 // resolves the injected store.
 func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "")
-	dir, _ := seedDeleteServer(t, "acme", []string{"acme"}, map[string]string{"acme": "acme"})
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
 	_, err := NewConfigDeleteServer(dir).(*configDeleteServerCmd).Execute(
 		context.Background(), args{a: []string{"acme"}}, ui.Discard())
@@ -232,7 +214,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 // keeps its code, retryability, and exit status through the
 // "server config left untouched" wrap.
 func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
-	dir, _ := seedDeleteServer(t, "acme", []string{"acme"}, map[string]string{"acme": "acme"})
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {

@@ -43,8 +43,9 @@
           "type": "string"
         },
         {
-          "desc": "cluster `id|name` to create the exec-credential token for (defaults to the current context)",
+          "desc": "cluster `id|name` to create the exec-credential token for",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -106,7 +107,7 @@
       "auth": false,
       "commandType": "local",
       "examples": [
-        "rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 < token.txt"
+        "rancher auth login --server https://rancher.ex --token-stdin --name prod < token.txt"
       ],
       "flags": [
         {
@@ -128,11 +129,6 @@
         {
           "desc": "PEM CA bundle, a `path` or the literal PEM",
           "name": "cacert",
-          "type": "string"
-        },
-        {
-          "desc": "initial scope `cluster[:project]` for the new context",
-          "name": "context",
           "type": "string"
         },
         {
@@ -230,15 +226,6 @@
       "usage": "Print a shell completion script (ignores -o; always the raw script)"
     },
     {
-      "auth": false,
-      "commandType": "local",
-      "group": "config",
-      "name": "config current-context",
-      "network": false,
-      "toolset": "core",
-      "usage": "Show the current context"
-    },
-    {
       "args": [
         {
           "name": "name",
@@ -255,7 +242,7 @@
       "name": "config delete-server",
       "network": false,
       "toolset": "core",
-      "usage": "Delete a configured server, its contexts, and its stored credentials"
+      "usage": "Delete a configured server and its stored credentials"
     },
     {
       "auth": false,
@@ -323,36 +310,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "examples": [
-        "rancher config set-context --current --cluster c-1 --project p-1"
-      ],
-      "flags": [
-        {
-          "desc": "apply changes to the current context",
-          "name": "current",
-          "type": "bool"
-        },
-        {
-          "desc": "cluster `id|name` to set in the current context",
-          "name": "cluster",
-          "type": "string"
-        },
-        {
-          "desc": "project `id|name` to set in the current context",
-          "name": "project",
-          "type": "string"
-        }
-      ],
-      "group": "config",
-      "name": "config set-context",
-      "network": false,
-      "toolset": "core",
-      "usage": "Set the current context's cluster/project scope"
-    },
-    {
-      "auth": false,
-      "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists) and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present. Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). The first place to check when tab-completion shows no candidates.",
+      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present. Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). The first place to check when tab-completion shows no candidates.",
       "examples": [
         "rancher config status"
       ],
@@ -361,25 +319,6 @@
       "network": false,
       "toolset": "core",
       "usage": "Print config diagnostics: file path and effective credential store"
-    },
-    {
-      "args": [
-        {
-          "name": "name",
-          "required": true,
-          "type": "string"
-        }
-      ],
-      "auth": false,
-      "commandType": "local",
-      "examples": [
-        "rancher config use-context acme-prod"
-      ],
-      "group": "config",
-      "name": "config use-context",
-      "network": false,
-      "toolset": "core",
-      "usage": "Activate a named context"
     },
     {
       "args": [
@@ -632,8 +571,9 @@
           "type": "string"
         },
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         }
       ],
@@ -716,7 +656,7 @@
           "type": "string"
         },
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name` (the manifest may supply it)",
           "name": "cluster",
           "type": "string"
         },
@@ -759,8 +699,9 @@
           "type": "string"
         },
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -945,7 +886,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -995,8 +936,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1050,8 +992,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1106,8 +1049,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1162,8 +1106,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1405,8 +1350,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1460,8 +1406,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1516,8 +1463,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1662,8 +1610,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1712,8 +1661,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1768,8 +1718,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -1823,7 +1774,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -1972,8 +1923,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2027,8 +1979,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2083,8 +2036,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2139,8 +2093,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2195,8 +2150,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2733,7 +2689,7 @@
       "contract": "public",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
           "name": "cluster",
           "type": "string"
         },
@@ -2776,8 +2732,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2824,8 +2781,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2873,8 +2831,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -2922,8 +2881,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3013,8 +2973,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3300,8 +3261,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3348,8 +3310,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3397,8 +3360,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3661,8 +3625,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3704,8 +3669,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3784,8 +3750,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3827,8 +3794,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3876,8 +3844,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -3924,7 +3893,7 @@
       "contract": "public",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
           "name": "cluster",
           "type": "string"
         },
@@ -4053,8 +4022,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4138,8 +4108,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4187,8 +4158,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4236,8 +4208,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4322,8 +4295,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4542,7 +4516,7 @@
       ],
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`; pass exactly one of --cluster or --all-clusters",
           "name": "cluster",
           "type": "string"
         },
@@ -4619,8 +4593,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4654,8 +4629,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -4693,8 +4669,9 @@
       "contract": "internal",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         }
       ],
@@ -4713,8 +4690,9 @@
       ],
       "flags": [
         {
-          "desc": "cluster `id|name` to generate the kubeconfig for (defaults to the current context)",
+          "desc": "cluster `id|name` to generate the kubeconfig for",
           "name": "cluster",
+          "required": true,
           "type": "string"
         }
       ],
@@ -5272,7 +5250,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -5335,8 +5313,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -5402,8 +5381,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -5470,8 +5450,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -5538,8 +5519,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -5666,8 +5648,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6084,8 +6067,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6151,8 +6135,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6219,8 +6204,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6583,8 +6569,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6644,8 +6631,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6761,8 +6749,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6822,8 +6811,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6890,8 +6880,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -6957,7 +6948,7 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -7144,8 +7135,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -7267,8 +7259,9 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -7336,8 +7329,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -7404,8 +7398,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -7528,8 +7523,9 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -7775,6 +7771,7 @@
         {
           "desc": "cluster `id|name` of the project",
           "name": "cluster",
+          "required": true,
           "type": "string"
         }
       ],
@@ -7813,6 +7810,7 @@
         {
           "desc": "cluster `id|name` of the project",
           "name": "cluster",
+          "required": true,
           "type": "string"
         }
       ],
@@ -8200,8 +8198,9 @@
       "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns member-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket.",
       "flags": [
         {
-          "desc": "target cluster `id|name` (defaults to the current context)",
+          "desc": "target cluster `id|name`",
           "name": "cluster",
+          "required": true,
           "type": "string"
         },
         {
@@ -8299,11 +8298,6 @@
       "name": "RANCHER_CLI_CACERT"
     },
     {
-      "desc": "default context (cluster[:project])",
-      "flag": "--context",
-      "name": "RANCHER_CLI_CONTEXT"
-    },
-    {
       "desc": "credential store backend: auto, keychain, or file",
       "name": "RANCHER_CLI_CREDENTIAL_STORE"
     },
@@ -8348,7 +8342,7 @@
     }
   ],
   "errorCodes": [
-    "CONTEXT_NOT_SET",
+    "NOT_LOGGED_IN",
     "CONFIRMATION_REQUIRED",
     "DRY_RUN_NOT_APPLICABLE",
     "AMBIGUOUS_SELECTION",
@@ -8365,11 +8359,11 @@
     "AUTH": 3,
     "CONFIRMATION_REQUIRED": 2,
     "CONFLICT": 5,
-    "CONTEXT_NOT_SET": 2,
     "DRY_RUN_NOT_APPLICABLE": 2,
     "GENERIC": 1,
     "LOCK_TIMEOUT": 8,
     "NOT_FOUND": 4,
+    "NOT_LOGGED_IN": 2,
     "RBAC": 6,
     "VALIDATION": 2
   },
@@ -8433,16 +8427,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "scope: cluster[:project]; the :project scopes namespaced reads on downstream clusters (--project overrides it); a trailing colon (cluster:) clears it; precedence: flag, then RANCHER_CLI_CONTEXT, then config",
-      "env": [
-        "RANCHER_CLI_CONTEXT"
-      ],
-      "name": "--context",
-      "type": "string"
-    },
-    {
-      "appliesTo": "all",
-      "desc": "scope operations to project namespaces (downstream namespaced resources only); flag overrides context; rejected with an error where it does not apply",
+      "desc": "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply",
       "name": "--project",
       "type": "string"
     },
@@ -8478,9 +8463,6 @@
     },
     {
       "commands": [
-        "config current-context",
-        "config set-context",
-        "config use-context",
         "config get-servers",
         "config use-server",
         "config delete-server",

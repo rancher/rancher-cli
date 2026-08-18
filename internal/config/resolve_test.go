@@ -54,9 +54,8 @@ func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error) { return nil, nil
 func TestEffectiveSurfacesStoreError(t *testing.T) {
 	t.Parallel()
 	c := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "acme"}},
-		Servers:        map[string]Server{"acme": {URL: "https://r.ex"}},
+		CurrentServer: "acme",
+		Servers:       map[string]Server{"acme": {URL: "https://r.ex"}},
 	}
 	t.Run("non-ErrNoToken failure surfaces as credential store error", func(t *testing.T) {
 		t.Parallel()
@@ -76,32 +75,20 @@ func TestEffectiveFromFile(t *testing.T) {
 	store := NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(ServerRef{Name: "acme"}, "id:secret"))
 	c := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "acme", Cluster: "c-x", Project: "p-y"}},
-		Servers:        map[string]Server{"acme": {URL: "https://r.ex", CA: "PEM"}},
+		CurrentServer: "acme",
+		Servers:       map[string]Server{"acme": {URL: "https://r.ex", CA: "PEM"}},
 	}
 	t.Run("file values", func(t *testing.T) {
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "https://r.ex", eff.URL)
 		assert.Equal(t, "id:secret", eff.Token)
-		assert.Equal(t, "c-x", eff.Cluster)
 	})
 	t.Run("env token bypasses store and overrides", func(t *testing.T) {
 		t.Setenv("RANCHER_CLI_TOKEN", "env-id:env-secret")
-		t.Setenv("RANCHER_CLI_CONTEXT", "c-env:p-env")
 		eff, err := c.Effective(store)
 		require.NoError(t, err)
 		assert.Equal(t, "env-id:env-secret", eff.Token)
-		assert.Equal(t, "c-env", eff.Cluster)
-		assert.Equal(t, "p-env", eff.Project)
-	})
-	t.Run("bare RANCHER_CLI_CONTEXT (no colon) overrides cluster only, keeps file project", func(t *testing.T) {
-		t.Setenv("RANCHER_CLI_CONTEXT", "c-env")
-		eff, err := c.Effective(store)
-		require.NoError(t, err)
-		assert.Equal(t, "c-env", eff.Cluster)
-		assert.Equal(t, "p-y", eff.Project, "colon-less env value must not clobber the file's project axis")
 	})
 }
 
@@ -156,9 +143,8 @@ func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 	store := NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "id:secret"))
 	c := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "prod"}},
-		Servers:        map[string]Server{"prod": {URL: "https://prod.example.com", CA: "PROD-CA"}},
+		CurrentServer: "prod",
+		Servers:       map[string]Server{"prod": {URL: "https://prod.example.com", CA: "PROD-CA"}},
 	}
 
 	t.Run("divergent RANCHER_CLI_URL clears the stored CA and server name", func(t *testing.T) {
@@ -202,28 +188,6 @@ func TestEffectiveClearsCAAndNameOnDivergentEnvURL(t *testing.T) {
 	})
 }
 
-func TestSplitContext(t *testing.T) {
-	t.Parallel()
-	t.Run("cluster and project", func(t *testing.T) {
-		cluster, project, hasProject := SplitContext("c-1:p-1")
-		assert.Equal(t, "c-1", cluster)
-		assert.Equal(t, "p-1", project)
-		assert.True(t, hasProject)
-	})
-	t.Run("bare cluster has no project", func(t *testing.T) {
-		cluster, project, hasProject := SplitContext("c-1")
-		assert.Equal(t, "c-1", cluster)
-		assert.Empty(t, project)
-		assert.False(t, hasProject)
-	})
-	t.Run("trailing colon explicitly clears the project", func(t *testing.T) {
-		cluster, project, hasProject := SplitContext("c-1:")
-		assert.Equal(t, "c-1", cluster)
-		assert.Empty(t, project)
-		assert.True(t, hasProject, "a trailing colon must still report hasProject so callers can clear the axis")
-	})
-}
-
 func TestEffectiveEnvOnlyNoFile(t *testing.T) {
 	t.Setenv("RANCHER_CLI_URL", "https://env.ex")
 	t.Setenv("RANCHER_CLI_TOKEN", "id:sec")
@@ -231,42 +195,6 @@ func TestEffectiveEnvOnlyNoFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://env.ex", eff.URL)
 	assert.Equal(t, "id:sec", eff.Token)
-}
-
-func TestEffectiveContextOverridePrecedence(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	cfg := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "acme", Cluster: "c-file", Project: "p-file"}},
-		Servers:        map[string]Server{"acme": {URL: "https://r.ex"}},
-	}
-
-	t.Run("flag beats env and file", func(t *testing.T) {
-		t.Setenv("RANCHER_CLI_CONTEXT", "c-env:p-env")
-		SetContextOverride("c-flag:p-flag")
-		t.Cleanup(func() { SetContextOverride("") })
-		eff, err := cfg.Effective(store)
-		require.NoError(t, err)
-		assert.Equal(t, "c-flag", eff.Cluster)
-		assert.Equal(t, "p-flag", eff.Project)
-	})
-
-	t.Run("no override falls back to env then file", func(t *testing.T) {
-		SetContextOverride("")
-		t.Setenv("RANCHER_CLI_CONTEXT", "")
-		eff, err := cfg.Effective(store)
-		require.NoError(t, err)
-		assert.Equal(t, "c-file", eff.Cluster)
-	})
-
-	t.Run("--context cluster: (trailing colon) explicitly clears the project axis", func(t *testing.T) {
-		SetContextOverride("c-flag:")
-		t.Cleanup(func() { SetContextOverride("") })
-		eff, err := cfg.Effective(store)
-		require.NoError(t, err)
-		assert.Equal(t, "c-flag", eff.Cluster)
-		assert.Empty(t, eff.Project, "a trailing colon must clear the project even though the file/context has one")
-	})
 }
 
 // TestEffectiveUnsupportedSchemeSkipsStore is the final-re-review finding-2
@@ -327,12 +255,11 @@ func TestReadOnlyOverrideStash(t *testing.T) {
 	assert.Equal(t, []string{"config readOnly", "--read-only"}, sources)
 }
 
-// effectiveTestConfig is a one-server config with a resolving current context.
+// effectiveTestConfig is a one-server config with the current-server pointer set.
 func effectiveTestConfig(name, url string) *Config {
 	return &Config{
-		CurrentContext: name,
-		Servers:        map[string]Server{name: {URL: url}},
-		Contexts:       map[string]Context{name: {Server: name}},
+		CurrentServer: name,
+		Servers:       map[string]Server{name: {URL: url}},
 	}
 }
 
@@ -412,8 +339,7 @@ func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
 func TestEffectiveKeepsKnownServersWithResolvedContext(t *testing.T) {
 	store := NewFileStore(t.TempDir())
 	c := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "acme"}},
+		CurrentServer: "acme",
 		Servers: map[string]Server{
 			"acme":  {URL: "https://r.ex"},
 			"other": {URL: "https://o.ex"},
@@ -424,9 +350,9 @@ func TestEffectiveKeepsKnownServersWithResolvedContext(t *testing.T) {
 	assert.Equal(t, map[string]string{"acme": "https://r.ex", "other": "https://o.ex"},
 		eff.KnownServers, "inventory survives the resolved-context branch")
 
-	c.CurrentContext = ""
+	c.CurrentServer = ""
 	eff, err = c.Effective(store)
 	require.NoError(t, err)
 	assert.Equal(t, "", eff.URL)
-	assert.Len(t, eff.KnownServers, 2, "inventory present when no context resolves")
+	assert.Len(t, eff.KnownServers, 2, "inventory present when no current server resolves")
 }

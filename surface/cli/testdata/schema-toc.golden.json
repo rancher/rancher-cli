@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 171,
+  "commandCount": 168,
   "effectSchema": {
     "actions": [
       "create",
@@ -52,11 +52,11 @@
     "AUTH": 3,
     "CONFIRMATION_REQUIRED": 2,
     "CONFLICT": 5,
-    "CONTEXT_NOT_SET": 2,
     "DRY_RUN_NOT_APPLICABLE": 2,
     "GENERIC": 1,
     "LOCK_TIMEOUT": 8,
     "NOT_FOUND": 4,
+    "NOT_LOGGED_IN": 2,
     "RBAC": 6,
     "VALIDATION": 2
   },
@@ -106,18 +106,6 @@
     {
       "commands": [
         {
-          "name": "config current-context",
-          "usage": "Show the current context"
-        },
-        {
-          "name": "config set-context",
-          "usage": "Set the current context's cluster/project scope"
-        },
-        {
-          "name": "config use-context",
-          "usage": "Activate a named context"
-        },
-        {
           "name": "config get-servers",
           "usage": "List configured servers"
         },
@@ -127,7 +115,7 @@
         },
         {
           "name": "config delete-server",
-          "usage": "Delete a configured server, its contexts, and its stored credentials"
+          "usage": "Delete a configured server and its stored credentials"
         },
         {
           "name": "config path",

@@ -104,8 +104,7 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	if c, ok := f.cache[clusterID]; ok {
 		return c, nil
 	}
-	eff.Cluster = clusterID // eff is a copy; the resolved snapshot is not mutated
-	rc, err := kube.RESTConfig(eff)
+	rc, err := kube.RESTConfig(eff, clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -115,22 +114,6 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	}
 	f.cache[clusterID] = c
 	return c, nil
-}
-
-func (f *clientFactory) ContextCluster() (string, error) {
-	eff, err := f.resolve()
-	if err != nil {
-		return "", err
-	}
-	return eff.Cluster, nil
-}
-
-func (f *clientFactory) ContextProject() (string, error) {
-	eff, err := f.resolve()
-	if err != nil {
-		return "", err
-	}
-	return eff.Project, nil
 }
 
 // Root resolves the memoized engine.RootClient for this invocation, building

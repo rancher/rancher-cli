@@ -2,7 +2,7 @@
 # the STORED token (E2E-A-002), not an env override, drives auth.
 
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher auth status -o json

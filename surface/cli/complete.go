@@ -45,18 +45,11 @@ func loadedConfigView() (runtime.ConfigView, bool) {
 
 // configView wraps a loaded *config.Config as a runtime.ConfigView.
 type configView struct {
-	ctxNames []string
 	srvNames []string
 	dir      string
 }
 
 func newConfigView(cfg *config.Config, dir string) runtime.ConfigView {
-	ctxNames := make([]string, 0, len(cfg.Contexts))
-	for k := range cfg.Contexts {
-		ctxNames = append(ctxNames, k)
-	}
-	sort.Strings(ctxNames)
-
 	srvNames := make([]string, 0, len(cfg.Servers))
 	for k := range cfg.Servers {
 		srvNames = append(srvNames, k)
@@ -64,19 +57,16 @@ func newConfigView(cfg *config.Config, dir string) runtime.ConfigView {
 	sort.Strings(srvNames)
 
 	return configView{
-		ctxNames: ctxNames,
 		srvNames: srvNames,
 		dir:      dir,
 	}
 }
 
-func (v configView) ContextNames() []string { return v.ctxNames }
-func (v configView) ServerNames() []string  { return v.srvNames }
-func (v configView) ConfigDir() string      { return v.dir }
+func (v configView) ServerNames() []string { return v.srvNames }
+func (v configView) ConfigDir() string     { return v.dir }
 
 // zeroConfigView is returned when no config has been loaded yet.
 type zeroConfigView struct{}
 
-func (zeroConfigView) ContextNames() []string { return nil }
-func (zeroConfigView) ServerNames() []string  { return nil }
-func (zeroConfigView) ConfigDir() string      { return "" }
+func (zeroConfigView) ServerNames() []string { return nil }
+func (zeroConfigView) ConfigDir() string     { return "" }

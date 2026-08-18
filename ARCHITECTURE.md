@@ -24,7 +24,7 @@ writes remain CRD-through-proxy exclusively; nothing on this port can mutate sta
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
 `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `DRY_RUN_NOT_APPLICABLE`, `AMBIGUOUS_SELECTION`,
-`CONTEXT_NOT_SET`, `GENERIC`) — with two raw exceptions. `auth
+`NOT_LOGGED_IN`, `GENERIC`) — with two raw exceptions. `auth
 get-token`'s stdout is a bare `ExecCredential` JSON object for kubectl to parse; that
 command sets `runtime.Result.Raw`, which tells the pipeline to emit `Data` with no
 envelope. `kubeconfig`'s stdout is a bare kubeconfig YAML document; that command sets
@@ -332,8 +332,8 @@ MCP identity.
 **Scope routing / safety rule** (`resources.route`, shared by get and delete):
 
 - Management + Namespaced, addressing a resource *by name* → `--cluster` required.
-- Downstream + Namespaced, by name → `--namespace` required (a downstream `--cluster`
-  falls back to the context cluster, then errors if still unset).
+- Downstream + Namespaced, by name → `--namespace` required (`--cluster` is also
+  required; omitting it is a `VALIDATION` error).
 - Nameless *list* requests may omit both. `delete` marks the required flags at the
   urfave layer, so they fail with `VALIDATION` before Plan runs.
 
@@ -463,7 +463,6 @@ projects` edge above.
 | `RANCHER_CLI_URL` | Override the effective server URL. |
 | `RANCHER_CLI_TOKEN` | Override the bearer token directly — used as-is, never read from or written to the store. |
 | `RANCHER_CLI_CACERT` | Override the CA bundle. |
-| `RANCHER_CLI_CONTEXT` | Set the target cluster (and project, as `cluster:project`). |
 | `RANCHER_CLI_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
 | `RANCHER_CLI_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
 
@@ -472,14 +471,12 @@ from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 
 ## Key design decisions
 
-**Global `--project` removed; project scoping is backlog.** The global `--project`
-flag was fully resolved through file/env/flag precedence but never consumed by any
-routing or API-call code — every namespace/cluster in scope was returned/affected
-regardless of `--project`, a false sense of narrower blast radius on destructive
-commands. The flag is removed; `--context cluster[:project]` stays, but its project
-axis is informational only (surfaced by `config current-context`/`auth status`), never
-consumed for scoping. **Backlog: project scoping** — real namespace→project
-resolution, so a project flag only returns once it actually does something.
+**Scope is explicit and per-invocation.** Config holds servers and a
+`currentServer` pointer only. No cluster or project is ever persisted or ambient.
+`--cluster` routes to a downstream cluster (required wherever routing is needed);
+`--project` filters Downstream namespaced kinds to a project's member namespaces.
+Defaults may never filter or place — a missing scope flag either widens the operation
+or is a `VALIDATION` error, never a silent ambient fallback.
 
 **Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
 is a port; the concrete `clientFactory` (in `surface/cli`) loads config and computes the

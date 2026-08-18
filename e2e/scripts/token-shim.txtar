@@ -6,9 +6,9 @@
 # session credential for this server is shared across cache slots; --no-input
 # is irrelevant on the success path since storedCredToken never prompts.
 
-# Setup: store a session credential and initial context (mirrors auth-login.txtar).
+# Setup: store a session credential (mirrors auth-login.txtar).
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # Kubeconfig-style invocation: exactly the args Rancher's template passes.

@@ -152,10 +152,9 @@ func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: false},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: false},
 	}
 	setStoredConfig(cfg, t.TempDir())
 
@@ -180,10 +179,9 @@ func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 
@@ -210,10 +208,9 @@ func TestCreateMachineConfigSetFullCallback(t *testing.T) {
 		t.Helper()
 		dir := t.TempDir()
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-			Servers:        map[string]config.Server{"srv": {URL: "http://127.0.0.1:1"}},
-			Completion:     config.CompletionConfig{Network: false},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: "http://127.0.0.1:1"}},
+			Completion:    config.CompletionConfig{Network: false},
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())

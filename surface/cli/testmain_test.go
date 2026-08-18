@@ -12,7 +12,7 @@ import (
 // silently change what a test observes — DR-008.
 func TestMain(m *testing.M) {
 	for _, v := range []string{
-		config.EnvURL, config.EnvToken, config.EnvContext, config.EnvCACert, config.EnvCredentialStore,
+		config.EnvURL, config.EnvToken, config.EnvCACert, config.EnvCredentialStore,
 	} {
 		_ = os.Unsetenv(v)
 	}

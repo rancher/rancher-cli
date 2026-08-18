@@ -60,15 +60,6 @@ type LogOptions struct {
 // (io.ServerIdentity) rather than through the engine-facing interface (ISP).
 type ClusterClientFactory interface {
 	Cluster(ctx context.Context, clusterID string) (ClusterClient, error)
-	// ContextCluster returns the cluster from the resolved current context
-	// ("" if the context sets none). Commands that target "whatever the
-	// context says" must call this explicitly — implicit context targeting
-	// via an empty cluster id is forbidden (RF-2).
-	ContextCluster() (string, error)
-	// ContextProject returns the project from the resolved current context
-	// ("" if the context sets none). Routing consults it only as a fallback
-	// for an empty --project flag (PC-2 precedence: flag > context).
-	ContextProject() (string, error)
 	// ResolveCluster maps a cluster display name or id to its cluster id
 	// (rancher-ai-mcp GetClusterID semantics); "" and LocalCluster
 	// short-circuit to LocalCluster. Memoized per invocation.

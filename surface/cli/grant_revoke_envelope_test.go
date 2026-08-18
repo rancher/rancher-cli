@@ -379,7 +379,7 @@ func grConfigDir(t *testing.T, srv *httptest.Server) string {
 	certPath := filepath.Join(dir, "ca.pem")
 	require.NoError(t, os.WriteFile(certPath, pemFromServer(t, srv), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
-		"currentContext: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n    ca: "+certPath+"\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
+		"currentServer: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n    ca: "+certPath+"\n"), 0o600))
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "token-abc:secret"))
 	return dir

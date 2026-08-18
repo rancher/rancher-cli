@@ -71,7 +71,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
 	res, err := cmd.Execute(context.Background(),
-		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
 
@@ -83,7 +83,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	assert.False(t, cred.Status.ExpirationTimestamp.After(time.Now().Add(legacyMintTTL)),
 		"a short-lived helper token must never be extended to the legacy TTL")
 
-	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
 	assert.ErrorIs(t, cerr, config.ErrNoToken, "a memory-only short-lived helper token must not reach the disk cache")
 }
 
@@ -114,7 +114,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 
 			cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
 			_, err = cmd.Execute(context.Background(),
-				tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+				tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 				ui.Discard())
 			require.Error(t, err, "a hard helper failure must not be swallowed")
 			assert.Contains(t, err.Error(), "credential helper", "the real helper error must surface")
@@ -141,8 +141,7 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 	require.NoError(t, err)
 	cfg := &config.Config{
 		CredentialStore: "exec:fake",
-		CurrentContext:  "ctx",
-		Contexts:        map[string]config.Context{"ctx": {Server: "prod"}},
+		CurrentServer:   "prod",
 		Servers:         map[string]config.Server{"prod": {URL: "ftp://host"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
@@ -150,7 +149,7 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
 	_, err = cmd.Execute(context.Background(),
-		tin{s: map[string]string{"name": "prod"}},
+		tin{s: map[string]string{"name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// config server must be rejected by post-resolution validation")
 	assert.Contains(t, err.Error(), "ftp://host", "error must name the invalid resolved server")
@@ -189,7 +188,7 @@ func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
 	_, err = cmd.Execute(context.Background(),
-		tin{s: map[string]string{"server": srv.URL, "name": "prod"}},
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	// SAML under a non-interactive prompter fast-fails AUTH — the point is that
 	// the flow reached the interactive provider dance at all.

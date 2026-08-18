@@ -486,7 +486,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	defer srv.Close()
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret", Cluster: engine.LocalCluster})
+	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}, engine.LocalCluster)
 	require.NoError(t, err)
 	realClient, err := provider.NewClusterClient(rc)
 	require.NoError(t, err)
@@ -545,7 +545,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	defer restore()
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret", Cluster: engine.LocalCluster})
+	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}, engine.LocalCluster)
 	require.NoError(t, err)
 	realClient, err := provider.NewClusterClient(rc)
 	require.NoError(t, err)

@@ -133,10 +133,9 @@ func TestInspectClusterPositionalGateOff(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	srv, hits := managementClusterServer(t)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: false},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: false},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")

@@ -119,10 +119,9 @@ func TestMachineConfigPrefixesServedWithoutNetwork(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: false},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: false},
 	}
 	setStoredConfig(cfg, t.TempDir())
 
@@ -264,10 +263,9 @@ func TestLiveCandidatesNodeDriverFlagSitesBypassClusterPreflight(t *testing.T) {
 	t.Run("--machine-config kind/ site", func(t *testing.T) {
 		srv, hits := machineConfigServer(t)
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "prod cluster"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: true},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: true},
 		}
 		setStoredConfig(cfg, t.TempDir())
 
@@ -283,10 +281,9 @@ func TestLiveCandidatesNodeDriverFlagSitesBypassClusterPreflight(t *testing.T) {
 	t.Run("--cloud-credential site", func(t *testing.T) {
 		srv, hits := cloudCredServer(t)
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "prod cluster"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: true},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: true},
 		}
 		setStoredConfig(cfg, t.TempDir())
 
@@ -322,10 +319,9 @@ func TestCreateClusterFlagSitesFullCallback(t *testing.T) {
 		t.Helper()
 		dir := t.TempDir()
 		cfg := &config.Config{
-			CurrentContext: "ctx",
-			Contexts:       map[string]config.Context{"ctx": {Server: "srv"}},
-			Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-			Completion:     config.CompletionConfig{Network: networkOn},
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+			Completion:    config.CompletionConfig{Network: networkOn},
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())

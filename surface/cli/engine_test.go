@@ -21,15 +21,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// writeTestConfig writes a minimal config.yaml (one server, current context)
+// writeTestConfig writes a minimal config.yaml (one server, current server)
 // into a temp dir and returns the dir.
 func writeTestConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext: "acme",
-		Contexts:       map[string]config.Context{"acme": {Server: "acme", Cluster: "local"}},
-		Servers:        map[string]config.Server{"acme": {URL: "https://rancher.test"}},
+		CurrentServer: "acme",
+		Servers:       map[string]config.Server{"acme": {URL: "https://rancher.test"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -82,15 +81,12 @@ func TestFactoryRejectsEmptyClusterID(t *testing.T) {
 	}
 }
 
-func TestFactoryIdentityAndContextCluster(t *testing.T) {
+func TestFactoryIdentity(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
 	server, err := f.Identity()
 	if err != nil || server == "" {
 		t.Fatalf("Identity() = %q, %v; want the configured server name", server, err)
-	}
-	if _, err := f.ContextCluster(); err != nil {
-		t.Fatal(err)
 	}
 }
 

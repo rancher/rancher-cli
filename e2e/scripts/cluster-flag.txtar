@@ -1,0 +1,26 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# seed and read back via the explicit --cluster flag (Downstream kind —
+# routing is always typed per invocation, nothing ambient)
+exec rancher create resource -f cm.yaml --cluster testcluster --apply
+exec rancher get configmap ctx-cm --cluster testcluster --namespace default -o json
+jsonquery stdout data.metadata.name ctx-cm
+
+# bogus cluster → resolution error
+! exec rancher get configmap ctx-cm --cluster no-such-cluster --namespace default -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# missing --cluster on a Downstream kind → VALIDATION with the flag hint
+! exec rancher get configmap ctx-cm --namespace default -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'cluster is required'
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ctx-cm
+  namespace: default
+data:
+  k: v

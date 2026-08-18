@@ -33,12 +33,12 @@ jsonquery stderr data.error.code NOT_FOUND
 ! exec rancher get project definitely-absent --cluster testcluster -o table
 jsonquery stderr data.error.code NOT_FOUND
 
-# CONTEXT_NOT_SET: a generated command with no stored context and no env
+# NOT_LOGGED_IN: a generated command with no stored login and no env
 # override must not surface as an unhinted GENERIC
 env RANCHER_CLI_URL=
 env RANCHER_CLI_TOKEN=
 ! exec rancher get clusters -o json
-jsonquery stderr data.error.code CONTEXT_NOT_SET
+jsonquery stderr data.error.code NOT_LOGGED_IN
 stderr 'auth login'
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN

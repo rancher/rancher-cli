@@ -19,21 +19,19 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// seedConfig writes a config with the given current context and servers/contexts,
-// and stores a token per server. Returns dir + store.
+// seedLogout writes a config with the given current server and per-server
+// tokens. Returns dir + store.
 func seedLogout(t *testing.T, current string, servers ...string) (string, config.CredStore) {
 	t.Helper()
 	keyring.MockInit() // in-memory keychain: DeleteTokenEverywhere now deletes both backends unconditionally
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: current,
-		Servers:        map[string]config.Server{},
-		Contexts:       map[string]config.Context{},
+		CurrentServer: current,
+		Servers:       map[string]config.Server{},
 	}
 	for _, s := range servers {
 		cfg.Servers[s] = config.Server{URL: "https://" + s + ".ex"}
-		cfg.Contexts[s] = config.Context{Server: s}
 		require.NoError(t, store.SetToken(config.ServerRef{Name: s}, "id:sec"))
 	}
 	cfg.SetPath(config.FilePath(dir))
@@ -60,7 +58,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.CurrentContext) // unset
+	assert.Equal(t, "", cfg.CurrentServer) // unset
 	_, ok := cfg.Servers["acme"]
 	assert.True(t, ok, "server config entry kept") // token-only removal
 }
@@ -75,7 +73,7 @@ func TestLogoutByName(t *testing.T) {
 	require.NoError(t, err) // current untouched
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.CurrentContext) // not unset (other != current)
+	assert.Equal(t, "acme", cfg.CurrentServer) // not unset (other != current)
 }
 
 func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
@@ -101,7 +99,7 @@ func TestLogoutAll(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrNoToken)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.CurrentContext)
+	assert.Equal(t, "", cfg.CurrentServer)
 }
 
 func TestLogoutDeletesMatchingExecCache(t *testing.T) {
@@ -187,36 +185,35 @@ func TestLogoutNameAndAllIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-func TestLogoutNoCurrentContext(t *testing.T) {
-	dir, _ := seedLogout(t, "", "acme") // no current context
+func TestLogoutNoCurrentServer(t *testing.T) {
+	dir, _ := seedLogout(t, "", "acme") // no current server set
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 }
 
-func TestLogoutCurrentContextKeyAbsent(t *testing.T) {
-	dir, _ := seedLogout(t, "ghost", "acme") // CurrentContext points at a missing key
+func TestLogoutCurrentServerMissing(t *testing.T) {
+	dir, _ := seedLogout(t, "ghost", "acme") // CurrentServer points at a name not in Servers
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 }
 
-func TestLogoutCurrentContextServerAbsent(t *testing.T) {
+func TestLogoutCurrentServerNotInServersMap(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext: "acme",
-		Servers:        map[string]config.Server{}, // server missing
-		Contexts:       map[string]config.Context{"acme": {Server: "gone"}},
+		CurrentServer: "acme",
+		Servers:       map[string]config.Server{}, // server missing
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 }
 
 func TestLogoutExecPolicyReportsHelper(t *testing.T) {
@@ -255,7 +252,6 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	cfg := &config.Config{
 		CredentialStore: "exec:fake",
 		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -300,7 +296,7 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	// cfg.Write fails deterministically while the provenance write-ahead (a
 	// different, non-symlink file) still succeeds.
 	real := filepath.Join(dir, "config.real.yaml")
-	realCfg := &config.Config{CredentialStore: "exec:fake", Servers: map[string]config.Server{}, Contexts: map[string]config.Context{}}
+	realCfg := &config.Config{CredentialStore: "exec:fake", Servers: map[string]config.Server{}}
 	realCfg.SetPath(real)
 	require.NoError(t, realCfg.Write())
 	require.NoError(t, os.Symlink(real, config.FilePath(dir)))
@@ -326,15 +322,14 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	assert.Empty(t, leftovers)
 }
 
-func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
+func TestLogoutAllClearsDanglingCurrentServer(t *testing.T) {
 	keyring.MockInit()
-	// CurrentContext points at a context key that doesn't exist.
+	// CurrentServer points at a name not present in Servers (dangling pointer).
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
-		CurrentContext: "ghost",
-		Servers:        map[string]config.Server{"acme": {URL: "https://acme.ex"}},
-		Contexts:       map[string]config.Context{"acme": {Server: "acme"}},
+		CurrentServer: "ghost",
+		Servers:       map[string]config.Server{"acme": {URL: "https://acme.ex"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -344,7 +339,7 @@ func TestLogoutAllClearsDanglingCurrentContext(t *testing.T) {
 	require.NoError(t, err)
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
-	assert.Equal(t, "", cfgAfter.CurrentContext)
+	assert.Equal(t, "", cfgAfter.CurrentServer)
 }
 
 // TestDeleteFailureCancellationPassesThrough pins the fourth-review P1: a
@@ -384,37 +379,37 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	assert.Contains(t, ce.Hint, "already logged out")
 }
 
-// TestLogoutTextAndContextClearedReported verifies the TTY story: logout is
-// no longer silent — the text names the server, its URL, the backends the
-// token was removed from, and that the current context was cleared — and
-// the envelope carries contextCleared for programs.
-func TestLogoutTextAndContextClearedReported(t *testing.T) {
+// TestLogoutTextAndCurrentServerClearedReported verifies the TTY story: logout
+// is no longer silent — the text names the server, its URL, the backends the
+// token was removed from, and that the current server was cleared — and the
+// envelope carries currentServerCleared for programs.
+func TestLogoutTextAndCurrentServerClearedReported(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
-	assert.Equal(t, true, data["contextCleared"])
+	assert.Equal(t, true, data["currentServerCleared"])
 
 	assert.Contains(t, res.Text, "logged out of acme (https://acme.ex)")
 	assert.Contains(t, res.Text, "token removed from: file")
-	assert.Contains(t, res.Text, "current context cleared")
+	assert.Contains(t, res.Text, "current server cleared")
 }
 
-// TestLogoutTextNoContextClearWhenOtherServer makes sure logging out a
-// server the current context does not target says nothing about the
-// context — it was not touched.
-func TestLogoutTextNoContextClearWhenOtherServer(t *testing.T) {
+// TestLogoutTextNoCurrentServerClearWhenOtherServer makes sure logging out a
+// server other than the current one says nothing about the current server
+// pointer — it was not touched.
+func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
-	assert.Equal(t, false, data["contextCleared"])
+	assert.Equal(t, false, data["currentServerCleared"])
 	assert.Contains(t, res.Text, "logged out of other (https://other.ex)")
-	assert.NotContains(t, res.Text, "current context cleared")
+	assert.NotContains(t, res.Text, "current server cleared")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.CurrentContext, "context untouched")
+	assert.Equal(t, "acme", cfg.CurrentServer, "current server untouched")
 }

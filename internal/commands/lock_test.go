@@ -73,7 +73,7 @@ func writeSentinelServer(t *testing.T, dir string) {
 }
 
 // seedTwoServerConfig writes a config with servers "acme" and "acme2" (file
-// credential store, currentContext "acme"). keyring.MockInit is called so
+// credential store, currentServer "acme"). keyring.MockInit is called so
 // delete operations never touch the real OS keychain.
 func seedTwoServerConfig(t *testing.T) string {
 	t.Helper()
@@ -81,14 +81,10 @@ func seedTwoServerConfig(t *testing.T) string {
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CredentialStore: "file",
-		CurrentContext:  "acme",
+		CurrentServer:   "acme",
 		Servers: map[string]config.Server{
 			"acme":  {URL: "https://acme.example"},
 			"acme2": {URL: "https://acme2.example"},
-		},
-		Contexts: map[string]config.Context{
-			"acme":  {Server: "acme"},
-			"acme2": {Server: "acme2"},
 		},
 	}
 	cfg.SetPath(config.FilePath(dir))
@@ -126,30 +122,6 @@ func runLogout(t *testing.T, dir, name string) {
 func runDeleteServer(t *testing.T, dir, name string) {
 	t.Helper()
 	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
-	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
-	assert.NoError(t, err)
-}
-
-// runSetContext runs `config set-context` with the given cluster and/or project
-// on the current context. Errors are reported via assert.
-func runSetContext(t *testing.T, dir, cluster, project string) {
-	t.Helper()
-	cmd := &contextSetCmd{dir: dir}
-	a := args{s: map[string]string{}}
-	if cluster != "" {
-		a.s["cluster"] = cluster
-	}
-	if project != "" {
-		a.s["project"] = project
-	}
-	_, err := cmd.Execute(context.Background(), a, ui.Discard())
-	assert.NoError(t, err)
-}
-
-// runUseContext runs `config use-context <name>`. Errors are reported via assert.
-func runUseContext(t *testing.T, dir, name string) {
-	t.Helper()
-	cmd := &contextUseCmd{dir: dir}
 	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }
@@ -220,41 +192,6 @@ func TestDeleteServerSerializedUnderConfigLock(t *testing.T) {
 	assert.False(t, ok, "acme2 must be absent after delete-server")
 }
 
-func TestSetContextSerializedUnderConfigLock(t *testing.T) {
-	dir := seedTwoServerConfig(t)
-	// first sets cluster=c-1; second sets project=p-1. Because the second
-	// command loads the config written by the first (serialization), both
-	// fields must be present in the final current context.
-	assertSerializedWithLoadUnderLock(t, dir,
-		func() { runSetContext(t, dir, "c-1", "") },
-		func() { writeSentinelServer(t, dir) },
-		func() { runSetContext(t, dir, "", "p-1") },
-	)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	_, ok := cfg.Servers["sentinel"]
-	assert.True(t, ok, "sentinel committed by mutateWhileHeld must survive")
-	ctx := cfg.Contexts[cfg.CurrentContext]
-	assert.Equal(t, "c-1", ctx.Cluster, "cluster set by first command must survive second command's write")
-	assert.Equal(t, "p-1", ctx.Project, "project set by second command must be present")
-}
-
-func TestUseContextSerializedUnderConfigLock(t *testing.T) {
-	dir := seedTwoServerConfig(t)
-	// first switches to acme2, second switches to acme; final must be acme
-	// (order proof: the second's write always wins).
-	assertSerializedWithLoadUnderLock(t, dir,
-		func() { runUseContext(t, dir, "acme2") },
-		func() { writeSentinelServer(t, dir) },
-		func() { runUseContext(t, dir, "acme") },
-	)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	_, ok := cfg.Servers["sentinel"]
-	assert.True(t, ok, "sentinel committed by mutateWhileHeld must survive")
-	assert.Equal(t, "acme", cfg.CurrentContext, "current context must be the second command's target")
-}
-
 func TestUseServerSerializedUnderConfigLock(t *testing.T) {
 	dir := seedTwoServerConfig(t)
 	// first switches to acme, second switches to acme2; final current server
@@ -268,7 +205,7 @@ func TestUseServerSerializedUnderConfigLock(t *testing.T) {
 	require.NoError(t, err)
 	_, ok := cfg.Servers["sentinel"]
 	assert.True(t, ok, "sentinel committed by mutateWhileHeld must survive")
-	assert.Equal(t, "acme2", cfg.CurrentContext, "current context must be the second command's target")
+	assert.Equal(t, "acme2", cfg.CurrentServer, "current server must be the second command's target")
 }
 
 func TestSetCompletionSerializedUnderConfigLock(t *testing.T) {

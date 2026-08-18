@@ -46,15 +46,6 @@ func ResolveDir(flagDir string) (string, error) {
 	return filepath.Join(home, ".config", "rancher"), nil
 }
 
-// SplitContext splits a "cluster[:project]" scope value into its cluster and
-// project axes. hasProject reports whether v contained a colon at all — a
-// bare cluster name (no colon) must not clobber an already-resolved project
-// axis, so per-axis callers should only assign project when hasProject is
-// true; callers initializing a brand-new scope from scratch can ignore it.
-func SplitContext(v string) (cluster, project string, hasProject bool) {
-	return strings.Cut(v, ":")
-}
-
 // ResolveCA turns a --cacert value or config CA (pem-or-path) into a PEM
 // string. An inline PEM (has a BEGIN header) passes through; anything else is
 // a file path.
@@ -92,11 +83,9 @@ type Effective struct {
 	URL        string
 	CA         string
 	Token      string
-	Cluster    string
-	Project    string
 	// KnownServers is the configured server inventory (name → URL),
 	// carried so a downstream consumer that finds URL empty (no current
-	// context, no env) can answer with the re-login shortcut instead of
+	// server, no env) can answer with the re-login shortcut instead of
 	// the blank-machine wording — see ErrNotLoggedInFor and kube.RESTConfig.
 	KnownServers map[string]string
 }
@@ -125,7 +114,7 @@ func IsSupportedScheme(canonicalURL string) bool {
 	return ok && (scheme == "http" || scheme == "https")
 }
 
-// Effective merges env vars over the current context/server. Env wins.
+// Effective merges env vars over the current server. Env wins.
 // Ordering is deliberate: the effective URL and env token are resolved BEFORE
 // any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
 // configured store is broken (CI escape hatch), and (b) a stored token is
@@ -139,13 +128,11 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 			eff.KnownServers[n] = srv.URL
 		}
 	}
-	name, s, serverErr := c.CurrentServer()
+	name, s, serverErr := c.CurrentServerEntry()
 	if serverErr == nil {
-		ctx := c.Contexts[c.CurrentContext]
 		// Field assignments, not a struct literal: a literal would zero the
 		// KnownServers inventory built above.
 		eff.ServerName, eff.URL, eff.CA = name, s.URL, s.CA
-		eff.Cluster, eff.Project = ctx.Cluster, ctx.Project
 	}
 
 	// Effective URL first (env > file).
@@ -179,54 +166,14 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	if v := os.Getenv(EnvCACert); v != "" {
 		eff.CA = v
 	}
-	if v := os.Getenv(EnvContext); v != "" {
-		cl, pr, hasProject := SplitContext(v)
-		eff.Cluster = cl
-		if hasProject {
-			eff.Project = pr
-		}
-	}
-
-	// Flag override (flag > env > file).
-	if v := contextOverride; v != "" {
-		cl, pr, hasProject := SplitContext(v)
-		eff.Cluster = cl
-		if hasProject {
-			eff.Project = pr
-		}
-	}
 	return eff, nil
-}
-
-// contextOverride carries the global --context flag value, set once by the
-// CLI adapter before dispatch. The flag outranks RANCHER_CLI_CONTEXT (env), which
-// outranks the config file — the same env-over-file rule this block already
-// applies, extended one level up. eff.Project is the effective project scope:
-// ContextProject() returns it and EffectiveProject falls back to it when
-// --project is absent, so a context :project scopes downstream namespaced
-// reads. It is also what `config current-context` displays.
-var contextOverride string
-
-// SetContextOverride records the global --context (cluster[:project]) flag
-// value for this process. An empty string clears/skips the override.
-func SetContextOverride(contextVal string) {
-	contextOverride = contextVal
-}
-
-// ContextOverride returns the currently recorded global --context flag value
-// (see SetContextOverride). Write-commands whose own local --cluster flag is
-// empty must not silently ignore a non-empty value here — the global flag
-// scopes reads, not writes, and the two are easy to conflate since they share
-// a name with a command's local write flag.
-func ContextOverride() string {
-	return contextOverride
 }
 
 // readOnlyActive and readOnlySources carry the process-wide resolved
 // read-only state (config readOnly + RANCHER_CLI_READONLY env + --read-only
 // flag, OR'd together), set once by the CLI adapter's root Before hook
-// before any command dispatches — the same stash pattern as contextOverride
-// above. internal/runtime must not import internal/config, so the runtime
+// before any command dispatches — a process-wide stash so the resolved state
+// crosses layers. internal/runtime must not import internal/config, so the runtime
 // pipeline and the schema command never call this directly: surface/cli
 // reads it into runtime.IO.ReadOnly, and passes ReadOnlyOverride itself as
 // the schema command's resolver function.

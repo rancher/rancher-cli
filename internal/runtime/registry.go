@@ -49,8 +49,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "debug logging"},
-		{Name: "--context", Type: "string", AppliesTo: "all", Desc: "scope: cluster[:project]; the :project scopes namespaced reads on downstream clusters (--project overrides it); a trailing colon (cluster:) clears it; precedence: flag, then RANCHER_CLI_CONTEXT, then config", Env: []string{"RANCHER_CLI_CONTEXT"}},
-		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); flag overrides context; rejected with an error where it does not apply"},
+		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply"},
 		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
 }
@@ -74,7 +73,6 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_URL", Flag: "--server", Desc: "Rancher server URL, used when --server is omitted"},
 		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
 		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
-		{Name: "RANCHER_CLI_CONTEXT", Flag: "--context", Desc: "default context (cluster[:project])"},
 		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Desc: "credential store backend: auto, keychain, or file"},
 		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse commands that make changes"},
 		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking"},

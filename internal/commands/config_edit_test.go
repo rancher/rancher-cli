@@ -97,22 +97,22 @@ func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testi
 	assert.Contains(t, string(got), "futureField: hello", "the unknown field must survive the write-back verbatim (raw bytes, not a re-marshaled struct that would silently drop it)")
 }
 
-func TestConfigEditValidateCatchesDanglingContextServer(t *testing.T) {
+func TestConfigEditValidateCatchesDanglingCurrentServer(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
-	dangling := "contexts:\n  prod:\n    server: gone\nservers: {}\n"
+	dangling := "currentServer: gone\nservers: {}\n"
 
 	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(dangling)}
 	p := &fakePrompter{canPrompt: true, answers: []string{"n"}}
 	_, err := cmd.Execute(context.Background(), args{}, p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `references unknown server "gone"`)
+	assert.Contains(t, err.Error(), `currentServer "gone" is not a defined server`)
 }
 
 func TestConfigEditReEditLoopRecoversOnSecondAttempt(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
-	dangling := "contexts:\n  prod:\n    server: gone\nservers: {}\n"
+	dangling := "currentServer: gone\nservers: {}\n"
 	fixed := validConfigYAML
 
 	calls := 0
@@ -140,7 +140,7 @@ func TestConfigEditReEditLoopRecoversOnSecondAttempt(t *testing.T) {
 func TestConfigEditReEditDeclinedAbortsPreservingRejectedBuffer(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
-	dangling := "contexts:\n  prod:\n    server: gone\nservers: {}\n"
+	dangling := "currentServer: gone\nservers: {}\n"
 
 	var capturedTemp string
 	launch := func(bin string, args []string, tempPath string) error {
@@ -199,7 +199,7 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	assert.Equal(t, target, link)
 }
 
-const validConfigYAML = "currentContext: prod\nservers:\n  acme:\n    url: https://acme.ex\ncontexts:\n  prod:\n    server: acme\n"
+const validConfigYAML = "currentServer: prod\nservers:\n  prod:\n    url: https://acme.ex\n"
 
 func seedConfigFile(t *testing.T, dir, content string) {
 	t.Helper()
@@ -245,9 +245,8 @@ func TestConfigEditConflictPreservesTemp(t *testing.T) {
 	dir := t.TempDir()
 	seedConfigFile(t, dir, validConfigYAML)
 
-	const concurrentContent = "currentContext: concurrent\n" +
-		"servers:\n  concurrent:\n    url: https://concurrent.ex\n" +
-		"contexts:\n  concurrent:\n    server: concurrent\n"
+	const concurrentContent = "currentServer: concurrent\n" +
+		"servers:\n  concurrent:\n    url: https://concurrent.ex\n"
 
 	var capturedTemp string
 	launch := func(bin string, launchArgs []string, tempPath string) error {
@@ -290,9 +289,8 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 
 	t.Run("created meanwhile is conflict", func(t *testing.T) {
 		dir := t.TempDir()
-		const concurrentContent = "currentContext: created\n" +
-			"servers:\n  created:\n    url: https://created.ex\n" +
-			"contexts:\n  created:\n    server: created\n"
+		const concurrentContent = "currentServer: created\n" +
+			"servers:\n  created:\n    url: https://created.ex\n"
 
 		var capturedTemp string
 		launch := func(bin string, launchArgs []string, tempPath string) error {

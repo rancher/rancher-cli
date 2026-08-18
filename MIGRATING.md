@@ -22,8 +22,8 @@ conformance test (`internal/commands/migrating_test.go` +
 | Legacy | Disposition |
 |---|---|
 | `login` (alias `l`) | → `rancher auth login` |
-| `context switch` | → `rancher config use-context` |
-| `context current` | → `rancher config current-context` |
+| `context switch` | REMOVED — scope is per-invocation; set the active server pointer with `rancher config use-server` |
+| `context current` | REMOVED — scope is per-invocation; `rancher config status` shows the current server; `rancher config get-servers` lists all (active marked with *) |
 | `clusters ls` | → `rancher get clusters` |
 | `clusters create` | DROPPED — the `cluster` kind is read/patch only (`Deletable: false`, no fixed create-cluster command); use the Rancher UI/API to create a cluster |
 | `clusters import` | DROPPED — same reason as `clusters create` |
@@ -52,7 +52,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |
 | `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
 | `kubectl …` | → one-time `rancher kubeconfig --cluster <id>` + native `kubectl` (merge recipe below); `auth get-token` handles credentials transparently |
-| `server current` | → `rancher config current-context` (server field) |
+| `server current` | → `rancher config status` / `rancher config get-servers` (active marked with *) |
 | `server delete` | DROPPED — no config command removes a stored server; edit the config file directly |
 | `server ls` | → `rancher config get-servers` |
 | `server switch` | → `rancher config use-server` |

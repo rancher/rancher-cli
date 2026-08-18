@@ -18,8 +18,8 @@ func LoadedConfigViewForTest() runtime.ConfigView {
 	return v
 }
 
-func ResolveCompletionTokenForTest(argTail []string, clusterID string) TokenCapability {
-	return resolveCompletionToken(argTail, clusterID)
+func ResolveCompletionTokenForTest(clusterID string) TokenCapability {
+	return resolveCompletionToken(clusterID)
 }
 func TokenCapabilityForTest(url, token string, idOnly bool) TokenCapability {
 	return TokenCapability{ServerURL: url, Token: token, IDOnly: idOnly}

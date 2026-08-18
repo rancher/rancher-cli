@@ -25,7 +25,8 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "config status",
 		Usage: "Print config diagnostics: file path and effective credential store",
-		Desc: "Reports the resolved config file path (and whether it exists) " +
+		Desc: "Reports the resolved config file path (and whether it exists), " +
+			"the current server (empty when not logged in), " +
 			"and the effective credential-store policy with its source: the " +
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
@@ -72,6 +73,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	fields := []field{
 		{"path", path},
 		{"exists", exists},
+		{"currentServer", cfg.CurrentServer},
 		{"credentialStore", policy},
 		{"credentialStoreSource", source},
 	}

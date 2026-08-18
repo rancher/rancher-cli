@@ -2,7 +2,6 @@ package inspect
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -40,27 +39,6 @@ func TestCompositesRejectProjectScope(t *testing.T) {
 			assert.Contains(t, ce.Message, tt.name)
 		})
 	}
-}
-
-// TestCompositesIgnoreContextProjectWithoutFlag pins the revised PC-3 rule:
-// rejectProject checks the TYPED flag only. A context-set project with no
-// --project flag is ambient routing state — it must NOT reject a command
-// that cannot take a project scope (previously it did, which made a
-// project-carrying context break every non-scopable command while blaming
-// a flag the user never typed). DR-004's no-silent-no-op guarantee holds
-// for the typed flag alone.
-func TestCompositesIgnoreContextProjectWithoutFlag(t *testing.T) {
-	// The downstream client errors on purpose: this test cares only that
-	// execution gets PAST the scope check — the failure must be the
-	// cluster fetch, never the "--project does not apply" validation.
-	fac := &fakeFactory{
-		ctxProject:    "p-x",
-		perClusterErr: map[string]error{"c-abc": errors.New("fetch stops here")},
-	}
-	_, err := execRead(t, NewImages(fac), input{s: map[string]string{"cluster": "c-abc"}})
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "--project does not apply")
-	assert.Contains(t, err.Error(), "fetch stops here")
 }
 
 func TestOwnerChainUIDMismatchStopsWalk(t *testing.T) {

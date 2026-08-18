@@ -18,24 +18,15 @@ const fileName = "config.yaml"
 const LoginHint = "run: rancher auth login --server <url>"
 
 // LoginOrEnvHint is LoginHint's counterpart for connection resolution, which
-// also accepts an env-only session (no stored context needed).
+// also accepts an env-only session (no stored server needed).
 const LoginOrEnvHint = "run: rancher auth login --server <url>, or set " + EnvURL + " and " + EnvToken
 
-// ErrContextNotSet builds the standard error for the choke point where
-// connection resolution found no effective server URL at all — no stored
-// context and no RANCHER_CLI_URL. Every caller of Effective that reaches this
-// point (kube.RESTConfig, kubeconfig) shares one error so a future wording
-// change lands once. Returns a fresh *clierr.Error each call.
-func ErrContextNotSet() *clierr.Error {
-	return clierr.New(clierr.CodeContextNotSet, "no current context and no "+EnvURL+" set").WithHint(LoginOrEnvHint)
-}
-
-// ErrNotLoggedIn is ErrContextNotSet for callers that HAVE the loaded config
-// and can see stored servers: after a logout the current context is cleared
-// but server entries survive, so the answer to "am I logged in" is "no —
-// and here is the shortcut back", never a hint that implies a blank
-// machine. With no stored servers it falls back to ErrContextNotSet's
-// wording, which is then accurate.
+// ErrNotLoggedIn builds the standard not-logged-in error for callers that
+// HAVE the loaded config and can see stored servers: after a logout the
+// current-server pointer is cleared but server entries survive, so the
+// answer to "am I logged in" is "no — and here is the shortcut back", never
+// a hint that implies a blank machine. With no stored servers it falls back
+// to the blank-machine wording, which is then accurate.
 func (c *Config) ErrNotLoggedIn() *clierr.Error {
 	servers := make(map[string]string, len(c.Servers))
 	for n, s := range c.Servers {
@@ -51,7 +42,8 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 // requires --server, so a bare --name suggestion would fail validation.
 func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	if len(servers) == 0 {
-		return ErrContextNotSet()
+		return clierr.New(clierr.CodeNotLoggedIn,
+			"not logged in and no "+EnvURL+" set").WithHint(LoginOrEnvHint)
 	}
 	names := make([]string, 0, len(servers))
 	for n := range servers {
@@ -63,7 +55,7 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 		hint = "run: rancher auth login --server <url> --name <name> — configured servers: " +
 			strings.Join(names, ", ")
 	}
-	return clierr.New(clierr.CodeContextNotSet, "not logged in — no current context").WithHint(hint)
+	return clierr.New(clierr.CodeNotLoggedIn, "not logged in — no current server").WithHint(hint)
 }
 
 // CompletionConfig holds the shell-completion preferences written by
@@ -127,19 +119,14 @@ type Server struct {
 	CA  string `json:"ca,omitempty"`
 }
 
-// Context binds a server to a cluster+project scope.
-type Context struct {
-	Server  string `json:"server"`
-	Cluster string `json:"cluster,omitempty"`
-	Project string `json:"project,omitempty"`
-}
-
-// Config is the on-disk CLI configuration (kubeconfig-shaped).
+// Config is the on-disk CLI configuration. Beyond server entries and
+// per-machine preferences it holds exactly one piece of session state: the
+// current-server pointer. Scope (cluster, project) is never persisted —
+// every command takes it per invocation.
 type Config struct {
-	CurrentContext  string             `json:"currentContext,omitempty"`
-	Contexts        map[string]Context `json:"contexts,omitempty"`
-	Servers         map[string]Server  `json:"servers,omitempty"`
-	CredentialStore string             `json:"credentialStore,omitempty"`
+	CurrentServer   string            `json:"currentServer,omitempty"`
+	Servers         map[string]Server `json:"servers,omitempty"`
+	CredentialStore string            `json:"credentialStore,omitempty"`
 	// ReadOnly is one of the three OR'd sources (config/env/flag) that put a
 	// session into read-only mode — see runtime.IO.ReadOnly. One-way: there
 	// is no per-invocation override to turn this back off from here.
@@ -158,9 +145,8 @@ func FilePath(dir string) string { return filepath.Join(dir, fileName) }
 // Load reads a config file; a missing file yields an empty, usable Config.
 func Load(path string) (*Config, error) {
 	c := &Config{
-		Contexts: map[string]Context{},
-		Servers:  map[string]Server{},
-		path:     path,
+		Servers: map[string]Server{},
+		path:    path,
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -171,9 +157,6 @@ func Load(path string) (*Config, error) {
 	}
 	if err := yaml.Unmarshal(b, c); err != nil {
 		return c, fmt.Errorf("parsing %s: %w", path, err)
-	}
-	if c.Contexts == nil {
-		c.Contexts = map[string]Context{}
 	}
 	if c.Servers == nil {
 		c.Servers = map[string]Server{}
@@ -222,21 +205,18 @@ func (c *Config) Path() string { return c.path }
 // SetPath overrides the write target.
 func (c *Config) SetPath(p string) { c.path = p }
 
-// CurrentServer resolves the server referenced by the current context.
-func (c *Config) CurrentServer() (string, Server, error) {
-	if c.CurrentContext == "" {
-		return "", Server{}, clierr.New(clierr.CodeContextNotSet,
-			"no current context set").WithHint(LoginHint)
+// CurrentServerEntry resolves the server the current-server pointer names.
+// A dangling pointer errors here, at use time — Load stays lenient so repair
+// commands (config use-server, auth logout --all) can load and fix the file.
+func (c *Config) CurrentServerEntry() (string, Server, error) {
+	if c.CurrentServer == "" {
+		return "", Server{}, clierr.New(clierr.CodeNotLoggedIn,
+			"no current server set").WithHint(LoginHint)
 	}
-	ctx, ok := c.Contexts[c.CurrentContext]
+	s, ok := c.Servers[c.CurrentServer]
 	if !ok {
-		return "", Server{}, clierr.New(clierr.CodeContextNotSet,
-			fmt.Sprintf("current context %q not found", c.CurrentContext))
+		return "", Server{}, clierr.New(clierr.CodeNotLoggedIn,
+			fmt.Sprintf("current server %q not found", c.CurrentServer))
 	}
-	s, ok := c.Servers[ctx.Server]
-	if !ok {
-		return "", Server{}, clierr.New(clierr.CodeContextNotSet,
-			fmt.Sprintf("server %q for context %q not found", ctx.Server, c.CurrentContext))
-	}
-	return ctx.Server, s, nil
+	return c.CurrentServer, s, nil
 }

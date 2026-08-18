@@ -70,8 +70,6 @@ type recFactory struct {
 	client       engine.ClusterClient
 	resolve      map[string]string
 	resolveErr   map[string]error
-	ctxCluster   string
-	ctxProject   string
 	clusterCalls []string
 }
 
@@ -79,8 +77,6 @@ func (f *recFactory) Cluster(_ context.Context, id string) (engine.ClusterClient
 	f.clusterCalls = append(f.clusterCalls, id)
 	return f.client, nil
 }
-func (f *recFactory) ContextCluster() (string, error) { return f.ctxCluster, nil }
-func (f *recFactory) ContextProject() (string, error) { return f.ctxProject, nil }
 func (f *recFactory) ResolveCluster(_ context.Context, s string) (string, error) {
 	if s == "" || s == engine.LocalCluster {
 		return engine.LocalCluster, nil
@@ -562,14 +558,11 @@ func TestRoutePolicyMatrix(t *testing.T) {
 	}
 }
 
-// TestRouteIgnoresContextProjectOnNonScopableKinds pins the revised PC-3
-// rule: a CONTEXT-set project (no --project flag typed) must not reject a
-// kind that cannot take a project scope — it is ambient routing state, not
-// per-invocation intent. Regression for the demo-day find: with a
-// `cluster:project` context, `delete project X --cluster local` failed
-// "--project does not apply to project" for a flag the user never typed.
-// The typed-flag rejections stay pinned in TestRoutePolicyMatrix above.
-func TestRouteIgnoresContextProjectOnNonScopableKinds(t *testing.T) {
+// TestRouteIgnoresUntypedProjectOnNonScopableKinds pins the PC-3 rule:
+// when no --project flag is typed, non-scopable kinds must not produce a
+// "--project does not apply" rejection. The typed-flag rejections stay
+// pinned in TestRoutePolicyMatrix above.
+func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -597,9 +590,9 @@ func TestRouteIgnoresContextProjectOnNonScopableKinds(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}, ctxProject: "p-ambient"}
+			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
 			_, _, _, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
-			require.NoError(t, err, "context project must not reject a non-scopable kind")
+			require.NoError(t, err, "no --project flag must not reject a non-scopable kind")
 		})
 	}
 }
@@ -718,13 +711,12 @@ func TestPlural(t *testing.T) {
 }
 
 // newGetFixture builds a named-get command + input for a single ConfigMap.
-// ConfigMap is NSPlain+Downstream, so a named get requires --namespace and
-// resolves --cluster from the context cluster ("local").
+// ConfigMap is NSPlain+Downstream, so a named get requires --namespace and --cluster.
 func newGetFixture(t *testing.T, obj *unstructured.Unstructured) (runtime.Command, runtime.Input) {
 	t.Helper()
 	client := &memClient{items: []unstructured.Unstructured{*obj}}
-	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client, ctxCluster: "local"})
-	in := input{args: []string{"mf-cm"}, s: map[string]string{"namespace": "default"}}
+	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client})
+	in := input{args: []string{"mf-cm"}, s: map[string]string{"namespace": "default", "cluster": "local"}}
 	return cmd, in
 }
 
@@ -732,8 +724,8 @@ func newGetFixture(t *testing.T, obj *unstructured.Unstructured) (runtime.Comman
 func newGetListFixture(t *testing.T, obj *unstructured.Unstructured) (runtime.Command, runtime.Input) {
 	t.Helper()
 	client := &memClient{items: []unstructured.Unstructured{*obj}}
-	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client, ctxCluster: "local"})
-	return cmd, input{}
+	cmd := NewGet(mustKind(t, "configmap"), &recFactory{client: client})
+	return cmd, input{s: map[string]string{"cluster": "local"}}
 }
 
 // decodeEnvelopeDyn decodes a rendered envelope into a map[string]any so
@@ -866,11 +858,11 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			k := mustKind(t, "pod")
 			client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
-			cmd := NewGet(k, &recFactory{client: client, ctxCluster: "local"}).(runtime.ReadCommand)
+			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
 			res, err := cmd.Execute(context.Background(), input{
 				args: []string{"my-pod"},
 				b:    map[string]bool{"wait": true},
-				s:    map[string]string{"namespace": "default", "for": "condition=Ready"},
+				s:    map[string]string{"namespace": "default", "for": "condition=Ready", "cluster": "local"},
 			}, nil)
 			require.NoError(t, err)
 			assert.Empty(t, res.Warnings, "pod has WaitFailsOnStalled=false; no fresh-success advisory expected")

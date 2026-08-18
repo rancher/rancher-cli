@@ -7,7 +7,6 @@ const (
 	EnvURL               = "RANCHER_CLI_URL"
 	EnvToken             = "RANCHER_CLI_TOKEN"
 	EnvCACert            = "RANCHER_CLI_CACERT"
-	EnvContext           = "RANCHER_CLI_CONTEXT"
 	EnvCredentialStore   = "RANCHER_CLI_CREDENTIAL_STORE"
 	EnvReadOnly          = "RANCHER_CLI_READONLY"
 	EnvOAuthAuthFlow     = "RANCHER_CLI_OAUTH_AUTH_FLOW"

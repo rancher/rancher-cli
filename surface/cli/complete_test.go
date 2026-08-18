@@ -252,13 +252,12 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// Network ON, valid token, cluster in context: live path would be reached if
+	// Network ON, valid token, server configured: live path would be reached if
 	// the enum early return in dispatchSite were removed.
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "srv", Cluster: "c-abc"}},
-		Servers:        map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:     config.CompletionConfig{Network: true},
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
 	}
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
@@ -460,16 +459,12 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	}
 }
 
-// TestNewConfigViewSortsNames pins the completion output order for context
-// and server names at the source every delegating command shares — the
-// contract internal/commands' per-command tests rely on when they prove
-// delegation only.
+// TestNewConfigViewSortsNames pins the completion output order for server
+// names at the source every delegating command shares.
 func TestNewConfigViewSortsNames(t *testing.T) {
 	t.Parallel()
 	view := newConfigView(&config.Config{
-		Contexts: map[string]config.Context{"zebra-ctx": {}, "alpha-ctx": {}, "mid-ctx": {}},
-		Servers:  map[string]config.Server{"zebra-srv": {}, "alpha-srv": {}},
+		Servers: map[string]config.Server{"zebra-srv": {}, "alpha-srv": {}, "mid-srv": {}},
 	}, "")
-	assert.Equal(t, []string{"alpha-ctx", "mid-ctx", "zebra-ctx"}, view.ContextNames())
-	assert.Equal(t, []string{"alpha-srv", "zebra-srv"}, view.ServerNames())
+	assert.Equal(t, []string{"alpha-srv", "mid-srv", "zebra-srv"}, view.ServerNames())
 }

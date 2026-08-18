@@ -20,9 +20,9 @@ import (
 // ServerVersion() call does not yet consume a context, so a slow server is
 // bounded by discoveryConfig's transport timeout rather than ctx today.
 func Preflight(ctx context.Context, eff config.Effective) (string, error) {
-	rc, err := kube.RESTConfig(eff)
+	rc, err := kube.RESTConfig(eff, "local")
 	if err != nil {
-		// RESTConfig already returns a typed *clierr.Error (CONTEXT_NOT_SET,
+		// RESTConfig already returns a typed *clierr.Error (NOT_LOGGED_IN,
 		// AUTH) with the right code and hint for its own choke points — pass
 		// it through unchanged so `auth status` reports the same code/exit as
 		// every other command for the identical state, instead of relabeling

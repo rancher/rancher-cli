@@ -14,7 +14,7 @@ import (
 // the test's local httptest server.
 func TestMain(m *testing.M) {
 	for _, v := range []string{
-		config.EnvURL, config.EnvToken, config.EnvContext, config.EnvCACert, config.EnvCredentialStore,
+		config.EnvURL, config.EnvToken, config.EnvCACert, config.EnvCredentialStore,
 	} {
 		_ = os.Unsetenv(v)
 	}

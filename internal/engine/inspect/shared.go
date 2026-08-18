@@ -22,10 +22,8 @@ import (
 // rejectProject enforces PC-3 for the composites that bypass Route
 // (inspect pod/deployment, images): a TYPED --project flag would otherwise
 // reach them and be silently ignored, exactly the class of no-op DR-004
-// removed --project for. Uses resources.TypedProject, never
-// EffectiveProject — see TypedProject's doc for why reject-only checks
-// must not consult the context fallback. cmd is the command name for the
-// message ("inspect pod", "images", ...).
+// removed --project for. cmd is the command name for the message
+// ("inspect pod", "images", ...).
 func rejectProject(in runtime.Input, cmd string) error {
 	if resources.TypedProject(in) == "" {
 		return nil

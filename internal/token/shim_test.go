@@ -171,13 +171,9 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
 
-	// Config has a current context whose cluster is "c-ctx". Without
-	// NoContextCluster the shim would silently borrow this as the mint cluster,
-	// scoping the token to the wrong resource.
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "prod", Cluster: "c-ctx"}},
-		Servers:        map[string]config.Server{"prod": {URL: srv.URL}},
+		CurrentServer: "prod",
+		Servers:       map[string]config.Server{"prod": {URL: srv.URL}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -270,11 +266,10 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 	require.NoError(t, base.SetToken(config.ServerRef{Name: "server-a"}, "a-tok"))
 	require.NoError(t, base.SetToken(config.ServerRef{Name: "server-b"}, "b-login-tok"))
 
-	// Config: current context points at server A. Server A's GetToken will
+	// Config: current server points at server A. Server A's GetToken will
 	// hard-fail via errGetTokenStore, but the shim targets server B.
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "server-a"}},
+		CurrentServer: "server-a",
 		Servers: map[string]config.Server{
 			"server-a": {URL: "https://server-a.example"},
 			"server-b": {URL: srvB.URL},
@@ -287,7 +282,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
-	// but must skip cfg.Effective (noContextCluster=true, explicitServer=true)
+	// but must skip cfg.Effective (noAmbientContext=true, explicitServer=true)
 	// and never call GetToken for server A.
 	res, err := cmd.Execute(context.Background(),
 		tin{s: map[string]string{"server": srvB.URL, "user": "b-user"}},
@@ -470,11 +465,10 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	base := config.NewFileStore(dir)
 	// right-server (sorted first: "right-server" < "wrong-server") has a valid token.
 	require.NoError(t, base.SetToken(config.ServerRef{Name: "right-server"}, "right-stored-tok"))
-	// wrong-server is the current-context server; GetToken for it will hard-error.
+	// wrong-server is the current server; GetToken for it will hard-error.
 
 	cfg := &config.Config{
-		CurrentContext: "ctx",
-		Contexts:       map[string]config.Context{"ctx": {Server: "wrong-server"}},
+		CurrentServer: "wrong-server",
 		Servers: map[string]config.Server{
 			"right-server": {URL: srv.URL, CA: ""},
 			"wrong-server": {URL: srv.URL, CA: ""},

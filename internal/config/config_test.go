@@ -16,10 +16,9 @@ func TestWriteThenLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := FilePath(dir)
 	c := &Config{
-		CurrentContext: "prod",
-		Contexts:       map[string]Context{"prod": {Server: "acme", Cluster: "c-x", Project: "p-y"}},
-		Servers:        map[string]Server{"acme": {URL: "https://rancher.example.com", CA: "PEM"}},
-		path:           path,
+		CurrentServer: "acme",
+		Servers:       map[string]Server{"acme": {URL: "https://rancher.example.com", CA: "PEM"}},
+		path:          path,
 	}
 	require.NoError(t, c.Write())
 
@@ -34,14 +33,14 @@ func TestWriteThenLoadRoundTrip(t *testing.T) {
 
 	got, err := Load(path)
 	require.NoError(t, err)
-	assert.Equal(t, "prod", got.CurrentContext)
+	assert.Equal(t, "acme", got.CurrentServer)
 	assert.Equal(t, "https://rancher.example.com", got.Servers["acme"].URL)
 }
 
 func TestReadOnlyFieldRoundTrips(t *testing.T) {
 	dir := t.TempDir()
 	path := FilePath(dir)
-	c := &Config{ReadOnly: true, Contexts: map[string]Context{}, Servers: map[string]Server{}, path: path}
+	c := &Config{ReadOnly: true, Servers: map[string]Server{}, path: path}
 	require.NoError(t, c.Write())
 
 	got, err := Load(path)
@@ -55,11 +54,11 @@ func TestLoadMissingFileReturnsEmpty(t *testing.T) {
 	assert.Empty(t, got.Servers)
 }
 
-func TestCurrentServerUnsetIsContextNotSet(t *testing.T) {
-	_, _, err := (&Config{}).CurrentServer()
+func TestCurrentServerEntryUnsetIsNotLoggedIn(t *testing.T) {
+	_, _, err := (&Config{}).CurrentServerEntry()
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 }
 
 // TestCompletionTimeoutWithRaw pins the floor/cap/default contract for

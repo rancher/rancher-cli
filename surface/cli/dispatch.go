@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
@@ -311,13 +309,14 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	nodeDriverFlagSite := site.Kind == SiteFlagValue && d.Name == "create cluster" &&
 		(site.FlagName == "machine-config" || site.FlagName == "cloud-credential")
 
+	// Scope comes from the typed tail only — nothing ambient (no config, no
+	// env) may place or filter completion. A typed --project is its own
+	// announcement; absent flags leave the values empty.
 	clusterValue := ""
-	if !roleSite && !subjectSite && !nodeDriverFlagSite {
-		clusterValue = extractClusterID(tail)
-	}
 	effectiveProject := ""
 	if !roleSite && !subjectSite && !nodeDriverFlagSite {
-		effectiveProject = extractEffectiveProject(tail)
+		clusterValue = extractFlagValue(tail, "cluster")
+		effectiveProject = extractFlagValue(tail, "project")
 	}
 
 	// Finding 1 (SECURITY): validate the cluster segment before it enters any
@@ -338,7 +337,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	ctx, cancel := context.WithTimeout(ctx, completionTimeout())
 	defer cancel()
 
-	cap := resolveCompletionToken(tail, clusterValue)
+	cap := resolveCompletionToken(clusterValue)
 	if cap.Token == "" {
 		return nil
 	}
@@ -394,7 +393,8 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 			return true
 		case "role":
 			// Role completion derives scope from the typed tail only (roleVocabulary).
-			// The roleSite bypass in liveCandidates skips extractClusterID, leaving
+			// The roleSite bypass in liveCandidates skips the tail cluster
+			// extraction, leaving
 			// clusterValue="". This explicit false prevents liveCandidates' cluster
 			// early-return from silently killing role completion when clusterValue is
 			// empty. Both guards must hold together — changing either one without the
@@ -492,18 +492,18 @@ func roleVocabulary(tail []string) roleVocab {
 }
 
 // liveFlagValueCandidates handles live flag-value sites (--cluster, --project,
-// --namespace, --node, --context AC-7/AC-8/AC-9/AC-11/AC-14, --role AC-role).
-// effectiveProject is passed to suppress --namespace when a project scope is
-// active (AC-9/AC-15; round-2 finding 4).
+// --namespace, --node AC-7/AC-8/AC-9/AC-11/AC-14, --role AC-role).
+// effectiveProject is passed to suppress --namespace when a typed --project
+// scope is active (AC-9/AC-15; round-2 finding 4).
 // tail is threaded from liveCandidates for role scope detection (roleVocabulary).
 // hc is the single per-dispatch client (finding 9).
 // For role sites, clusterID and effectiveProject are intentionally empty and
 // ignored — role scope is derived exclusively from tail via roleVocabulary,
-// never from inherited context/env/config values.
+// never from inherited env/config values.
 func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {
-	case "cluster", "context":
+	case "cluster":
 		raw = fetchClusters(ctx, hc, cap)
 	case "project":
 		raw = fetchProjects(ctx, hc, cap, clusterID)
@@ -870,81 +870,6 @@ func kindForDescriptor(d runtime.Descriptor) (kinds.Kind, bool) {
 		return kinds.Kind{}, false
 	}
 	return kinds.Lookup(parts[len(parts)-1])
-}
-
-// extractClusterID returns the effective cluster from the arg tail and config,
-// honouring the same precedence as resolveCompletionConnection (finding 12):
-//  1. --cluster flag in arg tail
-//  2. --context flag in arg tail (cluster part)
-//  3. RANCHER_CLI_CONTEXT env var (cluster part)
-//  4. Config current context
-func extractClusterID(tail []string) string {
-	if v := extractFlagValue(tail, "cluster"); v != "" {
-		return v
-	}
-	if v := extractFlagValue(tail, "context"); v != "" {
-		cl, _, _ := config.SplitContext(v)
-		if cl != "" {
-			return cl
-		}
-	}
-	if v := os.Getenv(config.EnvContext); v != "" {
-		cl, _, _ := config.SplitContext(v)
-		if cl != "" {
-			return cl
-		}
-	}
-	cfg := storedConfigSnapshot()
-	if cfg == nil {
-		return ""
-	}
-	if ctx, ok := cfg.Contexts[cfg.CurrentContext]; ok {
-		return ctx.Cluster
-	}
-	return ""
-}
-
-// extractEffectiveProject returns the effective project scope from the arg tail
-// and config (AC-15 suppression rules, finding 12):
-//  1. --project flag in arg tail (explicit "" clears: fall-through to inherited is skipped)
-//  2. --context flag in arg tail (project part; explicit "c:" with empty project CLEARS it)
-//  3. RANCHER_CLI_CONTEXT env var (project part; same clearing semantics)
-//  4. Config current context
-//
-// Round-2 finding 4: an EXPLICIT empty project in "--context c:" or
-// RANCHER_CLI_CONTEXT="c:" CLEARS the inherited project (mirrors Config.Effective
-// semantics in resolve.go). Do NOT fall through to the config when the context
-// flag explicitly supplies an empty project — return "" immediately.
-//
-// Returns "" when no project scope is active (suppression does not apply).
-func extractEffectiveProject(tail []string) string {
-	if flagPresent(tail, "project") {
-		// Explicit --project in tail: return its value (may be "" to clear inherited scope).
-		return extractFlagValue(tail, "project")
-	}
-	if v := extractFlagValue(tail, "context"); v != "" {
-		_, pr, hasProject := config.SplitContext(v)
-		if hasProject {
-			// Explicit project part in --context: return it (may be "" to clear).
-			// Do NOT fall through — the caller explicitly set (or cleared) the project.
-			return pr
-		}
-	}
-	if v := os.Getenv(config.EnvContext); v != "" {
-		_, pr, hasProject := config.SplitContext(v)
-		if hasProject {
-			// Same clearing semantics for env override (round-2 finding 4).
-			return pr
-		}
-	}
-	cfg := storedConfigSnapshot()
-	if cfg == nil {
-		return ""
-	}
-	if ctx, ok := cfg.Contexts[cfg.CurrentContext]; ok {
-		return ctx.Project
-	}
-	return ""
 }
 
 // stripRoutingPrefixByCmd removes command routing tokens from argv using the

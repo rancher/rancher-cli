@@ -37,7 +37,7 @@ func seedRootConfig(t *testing.T, srv *httptest.Server) *clientFactory {
 	certPath := filepath.Join(dir, "ca.pem")
 	require.NoError(t, os.WriteFile(certPath, pemFromServer(t, srv), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
-		"currentContext: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n    ca: "+certPath+"\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
+		"currentServer: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n    ca: "+certPath+"\n"), 0o600))
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "token-abc:secret"))
 	return newClientFactory(dir, store)
@@ -67,7 +67,7 @@ func TestRootClientRejectsUnknownCA(t *testing.T) {
 	// Seed config WITHOUT the server's cert as CA (self-signed unknown CA).
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
-		"currentContext: acme\nservers:\n  acme:\n    url: "+srv.URL+"\ncontexts:\n  acme:\n    server: acme\n"), 0o600))
+		"currentServer: acme\nservers:\n  acme:\n    url: "+srv.URL+"\n"), 0o600))
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "t:s"))
 	rc, err := newClientFactory(dir, store).Root()

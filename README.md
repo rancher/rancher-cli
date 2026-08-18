@@ -94,10 +94,6 @@ in its `access-key:secret-key` form.
     # Read clusters (shows the cluster id for the next step)
     rancher get clusters
 
-    # Scope the current context to a cluster
-    rancher config set-context --current --cluster c-m-abc123
-    rancher config current-context
-
     # Create a project: preview the effect, then apply
     rancher create project web --cluster c-m-abc123 --dry-run
     rancher create project web --cluster c-m-abc123 --apply
@@ -129,7 +125,7 @@ or point any other agent's instructions file at it.
 | Group | Commands |
 |---|---|
 | [Authentication](COMMANDS.md#authentication) | login, logout, check, and the exec-credential token plugin |
-| [Contexts & configuration](COMMANDS.md#contexts--configuration) | contexts, servers, config file, completion settings |
+| [Servers & configuration](COMMANDS.md#servers--configuration) | servers, config file, completion settings |
 | [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config |
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project reads, images, usage |
@@ -195,8 +191,8 @@ Every command emits one JSON document per invocation under `-o json` — an
 ```json
 {
   "apiVersion": "cli.rancher.io/v1",
-  "kind": "Context",
-  "data": { "name": "prod", "cluster": "c-m-abc123", "project": "p-xyz789" },
+  "kind": "LoginResult",
+  "data": { "server": "prod", "url": "https://rancher.example.com" },
   "warnings": []
 }
 ```
@@ -212,7 +208,7 @@ Formats: `-o table` (default) · `json` · `yaml` · `name` ·
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
-    "data": { "error": { "code": "CONTEXT_NOT_SET", "message": "...",
+    "data": { "error": { "code": "NOT_LOGGED_IN", "message": "...",
               "hint": "run: rancher auth login --server <url>", "retryable": false } } }
   ```
 
@@ -229,9 +225,9 @@ Formats: `-o table` (default) · `json` · `yaml` · `name` ·
 
 ## Configuration
 
-- **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`),
-  kubeconfig-like in layout (`currentContext`, `contexts`, `servers`). Secrets are NOT
-  stored here.
+- **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`):
+  `servers`, `currentServer` (pointer to the active server), `credentialStore`,
+  `completion`, `readOnly`. Secrets are NOT stored here.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
 - **Credential store:** OS keychain or a `0600` file; custom backends plug

@@ -47,32 +47,17 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
 			{Name: "name", Type: "string", Desc: "`name` for the saved server entry"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
-			{Name: "context", Type: "string", Desc: "initial scope `cluster[:project]` for the new context"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 		},
 		Examples: []string{
-			"rancher auth login --server https://rancher.ex --token-stdin --name prod --context c-1:p-1 < token.txt",
+			"rancher auth login --server https://rancher.ex --token-stdin --name prod < token.txt",
 		},
 	}
 }
 
 func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prompter) (runtime.Result, error) {
-	// Guard the CW-3 footgun: the global --context flag and this command's
-	// local --context are separate, unsynchronized urfave/cli Flag objects
-	// sharing a name. If the caller supplied a global override but login's
-	// own --context is empty, the override would otherwise be silently
-	// dropped from the written config — the global flag scopes server reads,
-	// not config writes.
-	if in.String("context") == "" {
-		if ctxVal := config.ContextOverride(); ctxVal != "" {
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--context at the root scopes server operations, not config writes").
-				WithHint("pass --context explicitly: rancher auth login --context <cluster[:project]>")
-		}
-	}
-
 	// The "legacy:" prefix is reserved for the legacy token shim's cache
 	// slots. A server entry with that name would win the shim's exact-name
 	// stored-login tier and defeat its documented server-ranking guarantee,
@@ -124,11 +109,6 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		name = "default"
 	}
 
-	var cluster, project string
-	if c := in.String("context"); c != "" {
-		cluster, project, _ = config.SplitContext(c)
-	}
-
 	// Load → decide → write under the config write lock. The store is
 	// resolved from the policy read HERE, not from the dependency-resolution
 	// snapshot, which can predate a concurrent policy change
@@ -140,8 +120,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 			return err
 		}
 		cfg.Servers[name] = config.Server{URL: serverURL, CA: in.String("cacert")}
-		cfg.Contexts[name] = config.Context{Server: name, Cluster: cluster, Project: project}
-		cfg.CurrentContext = name
+		cfg.CurrentServer = name
 
 		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
 		if err != nil {
@@ -181,7 +160,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	}
 
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]string{
-		"server": name, "url": serverURL, "context": name,
+		"server": name, "url": serverURL,
 	}}
 	res.Warnings = warnings
 	versionEff := config.Effective{ServerName: name, URL: serverURL, CA: in.String("cacert"), Token: token}

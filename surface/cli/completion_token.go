@@ -28,35 +28,29 @@ type TokenCapability struct {
 
 // completionConnection is the read-only resolved connection for a TAB request.
 // It mirrors Config.Effective precedence (finding 7) without touching the
-// credential store.
+// credential store. Scope (cluster/project) is not connection state — it
+// comes from the typed arg tail alone, extracted at the dispatch layer.
 type completionConnection struct {
 	ServerURL string
 	CACert    string
-	Cluster   string
-	Project   string
 }
 
-// resolveCompletionConnection resolves server URL, CA, cluster, and project in
-// strict read-only precedence, mirroring Config.Effective (finding 7, AC-17):
+// resolveCompletionConnection resolves server URL and CA in strict read-only
+// precedence, mirroring Config.Effective (finding 7, AC-17):
 //
-//  1. Config current context/server (base)
-//  2. RANCHER_CLI_URL, RANCHER_CLI_CACERT, RANCHER_CLI_CONTEXT env overrides
-//  3. --context from the parsed arg tail (highest precedence)
+//  1. Config current server (base)
+//  2. RANCHER_CLI_URL, RANCHER_CLI_CACERT env overrides
 //
 // Never touches the credential store or keyring (AC-22).
-func resolveCompletionConnection(argTail []string) completionConnection {
+func resolveCompletionConnection() completionConnection {
 	cfg := storedConfigSnapshot()
 	var conn completionConnection
 
 	// Base from config file.
 	if cfg != nil {
-		if name, srv, err := cfg.CurrentServer(); err == nil {
-			ctx := cfg.Contexts[cfg.CurrentContext]
+		if _, srv, err := cfg.CurrentServerEntry(); err == nil {
 			conn.ServerURL = srv.URL
 			conn.CACert = srv.CA
-			conn.Cluster = ctx.Cluster
-			conn.Project = ctx.Project
-			_ = name
 		}
 	}
 
@@ -69,22 +63,6 @@ func resolveCompletionConnection(argTail []string) completionConnection {
 	}
 	if v := os.Getenv(config.EnvCACert); v != "" {
 		conn.CACert = v
-	}
-	if v := os.Getenv(config.EnvContext); v != "" {
-		cl, pr, hasProject := config.SplitContext(v)
-		conn.Cluster = cl
-		if hasProject {
-			conn.Project = pr
-		}
-	}
-
-	// --context flag in arg tail (highest precedence).
-	if v := extractFlagValue(argTail, "context"); v != "" {
-		cl, pr, hasProject := config.SplitContext(v)
-		conn.Cluster = cl
-		if hasProject {
-			conn.Project = pr
-		}
 	}
 
 	// Resolve CA PEM from file path or inline PEM.
@@ -100,7 +78,7 @@ func resolveCompletionConnection(argTail []string) completionConnection {
 // resolveCompletionToken resolves the token for a TAB completion request
 // following AC-4 → AC-5 → AC-6 order. It NEVER touches the keyring (AC-22).
 // It uses resolveCompletionConnection for URL/CA (finding 7) so env overrides
-// (RANCHER_CLI_URL, RANCHER_CLI_CACERT, RANCHER_CLI_CONTEXT) are honoured.
+// (RANCHER_CLI_URL, RANCHER_CLI_CACERT) are honoured.
 //
 //   - AC-4: RANCHER_CLI_TOKEN env — full capability (management + downstream).
 //   - AC-5: file credential store login token — full capability (explicit file
@@ -108,10 +86,9 @@ func resolveCompletionConnection(argTail []string) completionConnection {
 //   - AC-6: single unexpired exec-cred cache entry for server+cluster —
 //     downstream-scoped (ID-only for cluster-dependent sites, AC-6a).
 //
-// argTail is the pre-stripped leaf arg tail (for --context flag extraction).
 // Returns a zero TokenCapability (Token=="") when no usable source is found.
-func resolveCompletionToken(argTail []string, clusterID string) TokenCapability {
-	conn := resolveCompletionConnection(argTail)
+func resolveCompletionToken(clusterID string) TokenCapability {
+	conn := resolveCompletionConnection()
 	if conn.ServerURL == "" {
 		return TokenCapability{}
 	}
@@ -268,7 +245,7 @@ func boolFlagSet(argTail []string, flagName string) bool {
 }
 
 // extractFlagValue scans argTail for --flagName value or --flagName=value and
-// returns the value, or "" when not found. Used for --context extraction.
+// returns the value, or "" when not found.
 func extractFlagValue(argTail []string, flagName string) string {
 	long := "--" + flagName
 	prefix := long + "="

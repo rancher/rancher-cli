@@ -9,7 +9,7 @@
 [!kubectl] skip 'kubectl not on PATH'
 
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e --context c-test:
+exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
 
 seedexeccache e2e-c-test c-test
 

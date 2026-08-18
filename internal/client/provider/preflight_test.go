@@ -19,12 +19,12 @@ import (
 // state. RESTConfig's own typed errors must pass through unchanged.
 func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	t.Parallel()
-	t.Run("no context and no RANCHER_CLI_URL stays CONTEXT_NOT_SET", func(t *testing.T) {
+	t.Run("no context and no RANCHER_CLI_URL stays NOT_LOGGED_IN", func(t *testing.T) {
 		t.Parallel()
 		_, err := Preflight(context.Background(), config.Effective{})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Equal(t, clierr.CodeContextNotSet, ce.Code)
+		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
 	})
 	t.Run("URL resolved but no token stays AUTH with the login-or-env hint", func(t *testing.T) {

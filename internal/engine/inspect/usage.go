@@ -45,7 +45,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--by project --project X returns a single project bucket.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name` (defaults to the current context)"},
+			{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"},
 			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
 				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},
@@ -70,9 +70,6 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 				"--namespace does not apply to --by node").
 				WithHint("use --by pod --node N to see per-pod usage on a specific node")
 		}
-		// Typed flag only — see resources.TypedProject: a context-set
-		// project is ambient state and must not break a node-level view
-		// that cannot take a project scope.
 		if resources.TypedProject(in) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				"--project does not apply to --by node").
@@ -104,15 +101,13 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
-	projectFlag, err := resources.EffectiveProject(c.clients, in)
-	if err != nil {
-		return runtime.Result{}, err
-	}
+	projectFlag := resources.TypedProject(in)
 	podKind, _ := kinds.Lookup("pod")
 
 	var projectID string
 	var members map[string]bool
 	if projectFlag != "" {
+		var err error
 		projectID, err = projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
 		if err != nil {
 			return runtime.Result{}, err

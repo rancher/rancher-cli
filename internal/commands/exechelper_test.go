@@ -62,17 +62,15 @@ func seedExecLogout(t *testing.T, current string, servers ...string) (string, st
 
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentContext:  current,
+		CurrentServer:   current,
 		CredentialStore: "exec:fake",
 		Servers:         map[string]config.Server{},
-		Contexts:        map[string]config.Context{},
 	}
 	st, err := config.OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 	for _, s := range servers {
 		url := "https://" + s + ".ex"
 		cfg.Servers[s] = config.Server{URL: url}
-		cfg.Contexts[s] = config.Context{Server: s}
 		require.NoError(t, st.SetToken(config.ServerRef{Name: s, URL: url}, "id:sec"))
 	}
 	cfg.SetPath(config.FilePath(dir))

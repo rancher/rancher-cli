@@ -261,11 +261,11 @@ func TestImagesByWorkloadDispatch(t *testing.T) {
 			ownedPod("p1", "web", "nginx:1.25", "rs", "rs-1"),
 		}}).
 		withObject(rsGVR, "web", "rs", replicaSet("web", "rs", "rs-1", "web", "dep-1"))
-	factory := &fakeFactory{client: client, ctxCluster: "c-test"}
+	factory := &fakeFactory{client: client}
 
 	cmd := NewImages(factory)
 	res, err := execRead(t, cmd, input{
-		s: map[string]string{"by": "workload"},
+		s: map[string]string{"by": "workload", "cluster": "c-test"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "ClusterImages", res.Kind)

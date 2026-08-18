@@ -97,11 +97,11 @@ type loginInput struct {
 //     resolveConn/caForServer/storedTokenForServer), the gate for the shim's
 //     "driven purely by the flags Rancher's kubeconfig template supplies"
 //     principle: an absent --server is rejected rather than filled from the
-//     current context, an empty --cluster stays unscoped, CA selection among
+//     current server, an empty --cluster stays unscoped, CA selection among
 //     same-host Servers entries follows sorted order instead of preferring
-//     the current-context entry, and stored-login selection ignores both
+//     the current-server entry, and stored-login selection ignores both
 //     wantName (the shim's Name is a cache-slot label, not an entry-name
-//     preference) and the current-context tier.
+//     preference) and the current-server tier.
 //   - zero-expiry caching: a minted token that carries no expiry is cached
 //     (never-expiring on the legacy path); the native path refuses to.
 //   - legacy cache slots: a config.LegacyCachePrefix Name passes
@@ -135,7 +135,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to create the exec-credential token for (defaults to the current context)"},
+			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to create the exec-credential token for"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
@@ -163,6 +163,18 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
 			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
+	}
+
+	// Require --cluster BEFORE the cache probe, not only in resolveConn: a
+	// still-valid cache entry keyed with an empty cluster component (written
+	// before the flag became required) would otherwise be served without ever
+	// reaching resolveConn's check — a token returned for a cluster the
+	// caller didn't name. The pipeline's validateInput normally rejects this
+	// first; this guards direct Execute callers. The shim keeps its unscoped
+	// path via runWithParams, which run() never fronts for it.
+	if in.String("cluster") == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required").
+			WithHint("pass --cluster <cluster-id>")
 	}
 
 	flagServer := in.String("server")
@@ -836,11 +848,10 @@ func generateKey() (string, error) {
 // belongs to whatever server the context happens to point at, which may differ
 // from the server just named; instead it borrows the CA of the configured
 // server entry whose URL actually matches (see caForServer).
-// When noAmbientContext is true both the cluster fallback and caForServer's
-// current-context CA preference are suppressed: an empty --cluster stays
-// unscoped, and among same-host CA candidates sorted order wins instead of the
-// current-context entry — both driven purely by the flags, never by ambient
-// interactive-session state.
+// When noAmbientContext is true caForServer's current-server CA preference is
+// suppressed: an empty --cluster stays unscoped, and among same-host CA
+// candidates sorted order wins instead of the current-server entry — driven
+// purely by the flags, never by ambient interactive-session state.
 // resolveConn accepts the three flag values that drive connection resolution
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
 // can pass runParams fields directly without an adapter wrapper.
@@ -867,26 +878,33 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 			WithHint("pass --server")
 	}
 
-	if server == "" || cluster == "" || caIn == "" {
+	// The native get-token path requires --cluster: a token must never mint
+	// for a cluster the caller didn't name. Shim calls (noAmbientContext) keep
+	// the legacy semantic where an empty --cluster is a deliberate unscoped
+	// mint — still purely flag-driven, never filled from ambient state.
+	if cluster == "" && !noAmbientContext {
+		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required").
+			WithHint("pass --cluster <cluster-id>")
+	}
+
+	if server == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
 		if cerr != nil {
 			return "", "", "", cerr
 		}
-		// cfg.Effective reads the ambient current-context server's credential from
-		// the store — GetToken for a server that may be entirely unrelated to the
-		// --server the caller wants. Call it only when a field actually needs it:
-		// URL from config (server == ""), context-cluster fill-in
-		// (cluster == "" && !noAmbientContext), or CA from the current context
+		// cfg.Effective reads the current server's credential from the store —
+		// GetToken for a server that may be entirely unrelated to the --server
+		// the caller wants. Call it only when a field actually needs it:
+		// URL from config (server == "") or CA from the current server
 		// (!explicitServer). With an explicit --server and noAmbientContext (every
 		// shim call), config.yaml may still be needed for caForServer, but
 		// Effective must not run — a hard store error for an unrelated server must
 		// never abort an otherwise healthy mint.
-		// needsEff mirrors the three Effective fields consumed below:
-		//   - eff.URL    when server == ""
-		//   - eff.Cluster when cluster == "" && !noAmbientContext
-		//   - eff.CA     when caIn == "" && !explicitServer
+		// needsEff mirrors the two Effective fields consumed below:
+		//   - eff.URL when server == ""
+		//   - eff.CA  when caIn == "" && !explicitServer
 		// If a new Effective-sourced field is added below, add its condition here.
-		needsEff := server == "" || (cluster == "" && !noAmbientContext) || (caIn == "" && !explicitServer)
+		needsEff := server == "" || (caIn == "" && !explicitServer)
 		var eff config.Effective
 		if needsEff {
 			var effErr error
@@ -897,9 +915,6 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 		}
 		if server == "" {
 			server = eff.URL
-		}
-		if cluster == "" && !noAmbientContext {
-			cluster = eff.Cluster
 		}
 		if caIn == "" {
 			if explicitServer {
@@ -912,7 +927,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 
 	if server == "" {
 		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
-			WithHint("pass --server or set a current context")
+			WithHint("pass --server or log in: rancher auth login --server <url>")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
@@ -1043,7 +1058,7 @@ var errNoStoredCredential = errors.New("no usable stored login credential")
 // serverCandidateRank orders storedTokenForServer's BaseURL-matching
 // candidates: (0) an exact --name match, (1) a candidate whose name is a
 // prefix of --name in the "<server>-<clusterID>" entry-name shape, (2) the
-// current context's server, (3) everything else (broken by the
+// current server, (3) everything else (broken by the
 // lexicographic order candidates already carry on input).
 // serverCandidateRankCount is the number of distinct ranks serverCandidateRank
 // returns (0..serverCandidateRankCount-1), so callers can scan every rank
@@ -1093,7 +1108,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	// ("legacy:<user>"), not a principal or entry-name preference:
 	// stored-login selection must follow server-ranking alone, so the
 	// name-driven tiers (ranks 0 and 1) are suppressed the same way rank 2's
-	// current-context tier is below. A hand-edited config.yaml can contain a
+	// current-server tier is below. A hand-edited config.yaml can contain a
 	// literally "legacy:"-prefixed entry name (auth login rejects the prefix,
 	// but nothing rewrites existing files), so this cannot rely on the
 	// entry-name namespace staying clean.
@@ -1102,9 +1117,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	}
 	curServer := ""
 	if !noAmbientContext {
-		if cur := cfg.CurrentContext; cur != "" {
-			curServer = cfg.Contexts[cur].Server
-		}
+		curServer = cfg.CurrentServer
 	}
 	rankOf := func(n string) int { return serverCandidateRank(n, wantName, curServer) }
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -1226,7 +1239,7 @@ const legacyMintTTL = 15 * time.Minute
 // is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
 // the caller must surface directly.
 // noAmbientContext is forwarded to storedTokenForServer to gate rank-2
-// (current-context server preference) — see runParams.legacyShim.
+// (current-server preference) — see runParams.legacyShim.
 func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, noAmbientContext bool, p runtime.Prompter) (Token, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
@@ -1293,19 +1306,19 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 // server (compared by scheme+host via SameServerURL), or "" if none matches —
 // an explicit --server with no --cacert never silently borrows a different
 // server's trust root. When multiple entries share a host and noAmbientContext
-// is false, the current-context server wins; ties are broken by sorted entry
+// is false, the current server wins; ties are broken by sorted entry
 // name (the same determinism storedTokenForServer uses at ranks 2 and 3), so
 // repeated calls with the same config always return the same CA regardless of
-// map-iteration order. When noAmbientContext is true the current-context
+// map-iteration order. When noAmbientContext is true the current-server
 // preference is suppressed and sorted order alone determines the winner —
-// consistent with how noAmbientContext gates the cluster and rank-2 fallbacks.
+// consistent with how noAmbientContext gates the rank-2 fallback.
 func caForServer(cfg *config.Config, server string, noAmbientContext bool) string {
 	matches := matchingServerNames(cfg, server)
 	if len(matches) == 0 {
 		return ""
 	}
 	if !noAmbientContext {
-		curName, _, err := cfg.CurrentServer()
+		curName, _, err := cfg.CurrentServerEntry()
 		if err == nil {
 			for _, n := range matches {
 				if n == curName {

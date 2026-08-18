@@ -20,10 +20,10 @@ type configDeleteServerCmd struct {
 }
 
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
-// a configured server, every context field-matching it, and deletes its
-// stored credentials — the orphaned-creds cleanup nothing else performs
-// today. It does NOT revoke the server-side token (that is `auth logout
-// --revoke`, ledgered/out of scope).
+// a configured server (clearing the current-server pointer when it names it)
+// and deletes its stored credentials — the orphaned-creds cleanup nothing
+// else performs today. It does NOT revoke the server-side token (that is
+// `auth logout --revoke`, ledgered/out of scope).
 func NewConfigDeleteServer(dir string) runtime.Command {
 	return &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
 }
@@ -31,31 +31,29 @@ func NewConfigDeleteServer(dir string) runtime.Command {
 func (configDeleteServerCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "config delete-server",
-		Usage:       "Delete a configured server, its contexts, and its stored credentials",
+		Usage:       "Delete a configured server and its stored credentials",
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Examples:    []string{"rancher config delete-server prod"},
 	}
 }
 
-// Execute's ordering is safety-critical and pinned: delete credentials FIRST,
-// and abort on delete failure before touching cfg or writing anything — the
-// config file stays byte-identical to before the call. Only after a
-// successful delete does the single config write (server + field-matched
-// contexts removed, current context cleared if it was among them) happen.
-// A delete failure must never leave a live orphaned token behind a
-// disappeared server entry — the exact bug this command exists to kill; the
-// benign failure direction is creds gone + server still configured, never
-// the reverse.
+// Execute's ordering is safety-critical: delete credentials FIRST, and abort
+// on delete failure before touching cfg or writing anything — the config
+// file stays byte-identical to before the call. Only after a successful
+// delete does the single config write (server removed, current-server
+// pointer cleared if it named the deleted server) happen. A delete failure
+// must never leave a live orphaned token behind a disappeared server entry —
+// the exact bug this command exists to kill; the benign failure direction is
+// creds gone + server still configured, never the reverse.
 func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
 
 	var (
-		srv             config.Server
-		removedContexts []string
-		currentCleared  bool
-		deletedFrom     []string
-		deletedCache    []string
+		srv            config.Server
+		currentCleared bool
+		deletedFrom    []string
+		deletedCache   []string
 	)
 	if err := config.WithLock(cmdCtx, d.dir, func() error {
 		cfg, err := config.Load(config.FilePath(d.dir))
@@ -75,24 +73,10 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 					fmt.Sprintf("failed to delete credentials for %q; server config left untouched: %v", name, err))
 			})
 		}
-		for cn, cctx := range cfg.Contexts {
-			if cctx.Server == name {
-				removedContexts = append(removedContexts, cn)
-			}
-		}
-		sort.Strings(removedContexts)
-		for _, cn := range removedContexts {
-			if cn == cfg.CurrentContext {
-				currentCleared = true
-				break
-			}
-		}
-		for _, cn := range removedContexts {
-			delete(cfg.Contexts, cn)
-		}
 		delete(cfg.Servers, name)
-		if currentCleared {
-			cfg.CurrentContext = ""
+		if cfg.CurrentServer == name {
+			cfg.CurrentServer = ""
+			currentCleared = true
 		}
 		return cfg.Write()
 	}); err != nil {
@@ -102,12 +86,11 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 	sort.Strings(deletedFrom)
 	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "DeletedServer", Data: map[string]any{
-		"server":                name,
-		"url":                   srv.URL,
-		"contexts":              removedContexts,
-		"deletedFrom":           map[string][]string{"backend": deletedFrom},
-		"deletedCache":          deletedCache,
-		"currentContextCleared": currentCleared,
+		"server":               name,
+		"url":                  srv.URL,
+		"deletedFrom":          map[string][]string{"backend": deletedFrom},
+		"deletedCache":         deletedCache,
+		"currentServerCleared": currentCleared,
 	}}, nil
 }
 

@@ -16,7 +16,7 @@ import (
 // the native get-token machinery. --user is a cache-slot component and the
 // basic-auth username default; it carries no principal claim and does not
 // select among stored login credentials — stored-login selection follows the
-// same server-ranking a nameless native call uses (current context, then sorted
+// same server-ranking a nameless native call uses (current server, then sorted
 // name). Deprecated by design — it retires with the kubeconfigs that need it;
 // agents and new kubeconfigs use `auth get-token`.
 //
@@ -81,7 +81,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	name := config.LegacyCachePrefix + user
 	// Same whitespace-passes-Required gap as --user: a blank --server must
 	// fail loudly here, never fall through to resolveConn's config fallback
-	// and silently mint against the ambient current-context server.
+	// and silently mint against the ambient current server.
 	server := strings.TrimSpace(in.String("server"))
 	if server == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--server must not be empty").

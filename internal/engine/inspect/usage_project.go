@@ -26,10 +26,7 @@ import (
 func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
-	projectFlag, err := resources.EffectiveProject(c.clients, in)
-	if err != nil {
-		return runtime.Result{}, err
-	}
+	projectFlag := resources.TypedProject(in)
 	podKind, _ := kinds.Lookup("pod")
 	nsKind, _ := kinds.Lookup("namespace")
 	projectKind, _ := kinds.Lookup("project")

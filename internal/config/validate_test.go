@@ -16,41 +16,29 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid config",
 			cfg: &Config{
-				CurrentContext:  "prod",
+				CurrentServer:   "acme",
 				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "file",
 			},
 		},
 		{
 			name: "valid config with unset credentialStore",
 			cfg: &Config{
-				Servers:  map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts: map[string]Context{"prod": {Server: "acme"}},
+				Servers: map[string]Server{"acme": {URL: "https://acme.ex"}},
 			},
 		},
 		{
-			name: "dangling context server",
+			name: "dangling currentServer",
 			cfg: &Config{
-				Servers:  map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts: map[string]Context{"prod": {Server: "gone"}},
+				CurrentServer: "ghost",
+				Servers:       map[string]Server{"acme": {URL: "https://acme.ex"}},
 			},
-			wantErr: `context "prod" references unknown server "gone"`,
-		},
-		{
-			name: "dangling currentContext",
-			cfg: &Config{
-				CurrentContext: "ghost",
-				Servers:        map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:       map[string]Context{"prod": {Server: "acme"}},
-			},
-			wantErr: `currentContext "ghost" is not a defined context`,
+			wantErr: `currentServer "ghost" is not a defined server`,
 		},
 		{
 			name: "illegal credentialStore value",
 			cfg: &Config{
 				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "vault",
 			},
 			wantErr: `credentialStore: unknown credential store "vault" (valid: keychain, file, auto, exec:<name>)`,
@@ -59,7 +47,6 @@ func TestValidate(t *testing.T) {
 			name: "auto and keychain are legal credentialStore values",
 			cfg: &Config{
 				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "auto",
 			},
 		},
@@ -67,7 +54,6 @@ func TestValidate(t *testing.T) {
 			name: "exec helper is a legal credentialStore value",
 			cfg: &Config{
 				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "exec:vault",
 			},
 		},
@@ -75,7 +61,6 @@ func TestValidate(t *testing.T) {
 			name: "exec helper with invalid name is rejected",
 			cfg: &Config{
 				Servers:         map[string]Server{"acme": {URL: "https://acme.ex"}},
-				Contexts:        map[string]Context{"prod": {Server: "acme"}},
 				CredentialStore: "exec:Not_Valid",
 			},
 			wantErr: `invalid credential helper name "Not_Valid"`,
