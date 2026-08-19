@@ -103,11 +103,11 @@ func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 		rawVersion  string
 		wantSupport *bool
 	}{
-		{"in-range", ">= 1.11.0 <=1.14.x", "v1.12.3+rke2r1", boolPtr(true)},
-		{"below", ">= 1.11.0 <=1.14.x", "v1.10.9+rke2r1", boolPtr(false)},
-		{"above", ">= 1.11.0 <=1.14.x", "v1.15.0+rke2r1", boolPtr(false)},
-		{"wildcard-both-bounds-inside", ">=1.11.x <=1.14.x", "v1.14.99+rke2r1", boolPtr(true)},
-		{"wildcard-both-bounds-outside", ">=1.11.x <=1.14.x", "v1.15.0+rke2r1", boolPtr(false)},
+		{"in-range", ">= 1.11.0 <=1.14.x", "v1.12.3+rke2r1", new(true)},
+		{"below", ">= 1.11.0 <=1.14.x", "v1.10.9+rke2r1", new(false)},
+		{"above", ">= 1.11.0 <=1.14.x", "v1.15.0+rke2r1", new(false)},
+		{"wildcard-both-bounds-inside", ">=1.11.x <=1.14.x", "v1.14.99+rke2r1", new(true)},
+		{"wildcard-both-bounds-outside", ">=1.11.x <=1.14.x", "v1.15.0+rke2r1", new(false)},
 		{"empty-setting", "", "v1.12.3+rke2r1", nil},
 		{"garbage-setting", "not a range at all", "v1.12.3+rke2r1", nil},
 	}
@@ -525,8 +525,6 @@ func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
 		assert.False(t, r.Newest, "no row must be marked Newest when all version strings are unparseable")
 	}
 }
-
-func boolPtr(b bool) *bool { return &b }
 
 // noArgsInput is a minimal runtime.Input fake for commands that read no
 // args/flags at all.
