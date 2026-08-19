@@ -137,6 +137,14 @@ Completion on `--set` returns only statically-known driver fields for curated
 kinds; uncurated kinds return no completion candidates by design, not by
 failure.
 
+A machine config is SINGLE-USE: the first cluster that references it
+takes ownership (a controller ownerReference) and it is deleted with
+that cluster. Never reuse an existing machine config for a new
+cluster — even a perfectly matching one, even within the same
+cluster — create a fresh config per cluster instead. After a cluster
+delete, its machine configs are cascade-deleted with it: do not report
+them as orphaned or try to delete them separately.
+
 Unset curated machine-config fields inherit the node-driver's declared defaults,
 which may be stale (a retired image slug will loop provisioning forever). The
 `create machine-config` dry-run preview lists the unset value fields in its
