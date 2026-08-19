@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -298,7 +297,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	out := string(b)
 	assert.Contains(t, out, "tok-aaa")
 	assert.NotContains(t, out, "tok-bbb", "the other namespace's token must never leak into filtered output")
-	assert.False(t, strings.Contains(out, "c-bbb"), "the other namespace must never leak into filtered output")
+	assert.NotContains(t, out, "c-bbb", "the other namespace must never leak into filtered output")
 }
 
 // TestNewGetCRTListDegradesBadRowInsteadOfAborting is finding 3's fix: a

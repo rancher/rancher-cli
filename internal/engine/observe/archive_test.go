@@ -66,7 +66,7 @@ func TestWriteArchiveDeterministicLayout(t *testing.T) {
 	contents := readArchive(t, path)
 	assert.Equal(t, "agent log", contents["logs/c-1/agent/pod-1.log"])
 	assert.Equal(t, `{"ok":true}`, contents["manifest.json"])
-	assert.Equal(t, `{"state":"active"}`, contents["clusters/c-1/cluster.json"])
+	assert.JSONEq(t, `{"state":"active"}`, contents["clusters/c-1/cluster.json"])
 }
 
 func TestWriteArchiveRefusesExistingFile(t *testing.T) {
@@ -124,7 +124,7 @@ func TestWriteArchiveRemovesFileOnMidWriteFailure(t *testing.T) {
 
 	total, err := WriteArchive(path, []ArchiveEntry{{Path: "manifest.json", Data: []byte("{}")}})
 	require.NoError(t, err, "the same path must be writable again once the failed attempt's file is gone")
-	assert.Greater(t, total, int64(0))
+	assert.Positive(t, total)
 }
 
 func TestWriteArchiveEmptyEntries(t *testing.T) {

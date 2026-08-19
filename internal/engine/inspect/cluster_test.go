@@ -1605,7 +1605,7 @@ func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, res.Warnings)
-	assert.NotEqual(t, "", root.path, "fetch was issued when --registration is set")
+	assert.NotEmpty(t, root.path, "fetch was issued when --registration is set")
 
 	doc, _ := marshaledDoc(t, res.Data)
 	reg, ok := doc["registration"].(map[string]any)

@@ -3,7 +3,6 @@ package testrancher_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -492,7 +491,7 @@ func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
 			Error string `json:"error"`
 		}
 		require.NoError(t, json.Unmarshal(pollBody, &pending))
-		assert.Equal(t, "authorization_pending", pending.Error, fmt.Sprintf("poll %d must be pending", i))
+		assert.Equal(t, "authorization_pending", pending.Error, "poll %d must be pending", i)
 	}
 
 	finalResp, finalBody := postForm(t, srv.Client(), srv.URL+"/idp/token", map[string]string{"device_code": dc.DeviceCode})

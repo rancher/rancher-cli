@@ -87,7 +87,7 @@ func TestTruncatedScriptAtFunctionBoundaryIsSilentNoOp(t *testing.T) {
 	// A well-formed file ends with \n, so splitting on "\n" yields an empty
 	// last element. The second-to-last element is the final non-empty line.
 	lines := strings.Split(string(content), "\n")
-	require.Equal(t, "", lines[len(lines)-1], "install.sh must end with a newline")
+	require.Empty(t, lines[len(lines)-1], "install.sh must end with a newline")
 	lastLine := lines[len(lines)-2]
 	require.Equal(t, `main "$@"`, lastLine,
 		"last non-empty line of install.sh must be the main invocation")

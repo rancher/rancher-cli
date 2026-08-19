@@ -57,7 +57,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.CurrentServer) // unset
+	assert.Empty(t, cfg.CurrentServer) // unset
 	_, ok := cfg.Servers["acme"]
 	assert.True(t, ok, "server config entry kept") // token-only removal
 }

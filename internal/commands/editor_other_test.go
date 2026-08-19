@@ -39,5 +39,5 @@ func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 // Windows build's concern (editor_windows.go), exercised by the Windows
 // acceptance pass — it cannot execute here.
 func TestDefaultEditorEmptyOffWindows(t *testing.T) {
-	assert.Equal(t, "", defaultEditor())
+	assert.Empty(t, defaultEditor())
 }

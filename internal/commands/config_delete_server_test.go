@@ -85,7 +85,7 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 	assert.False(t, ok, "server entry removed")
 	_, ok = cfg.Servers["other"]
 	assert.True(t, ok, "unrelated server kept")
-	assert.Equal(t, "", cfg.CurrentServer, "current server pointer cleared")
+	assert.Empty(t, cfg.CurrentServer, "current server pointer cleared")
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken, "token deleted")

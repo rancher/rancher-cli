@@ -187,13 +187,13 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 
 	got, err := os.ReadFile(matches[0])
 	require.NoError(t, err)
-	assert.Equal(t, validConfigYAML, string(got))
+	assert.YAMLEq(t, validConfigYAML, string(got))
 
 	// The symlink itself, and its target, must be untouched — atomicWriteFile
 	// refuses BEFORE any rename.
 	targetAfter, err := os.ReadFile(target)
 	require.NoError(t, err)
-	assert.Equal(t, validConfigYAML, string(targetAfter))
+	assert.YAMLEq(t, validConfigYAML, string(targetAfter))
 	link, err := os.Readlink(realPath)
 	require.NoError(t, err)
 	assert.Equal(t, target, link)
@@ -284,7 +284,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 		require.NoError(t, err)
 		got, readErr := os.ReadFile(config.FilePath(dir))
 		require.NoError(t, readErr)
-		assert.Equal(t, validConfigYAML, string(got))
+		assert.YAMLEq(t, validConfigYAML, string(got))
 	})
 
 	t.Run("created meanwhile is conflict", func(t *testing.T) {

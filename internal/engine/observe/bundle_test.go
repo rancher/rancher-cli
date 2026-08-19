@@ -70,8 +70,8 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 	data, ok := res.Data.(bundleResult)
 	require.True(t, ok)
 	assert.Equal(t, path, data.Path)
-	assert.Greater(t, data.Errors, 0)
-	assert.Greater(t, data.Skipped, 0)
+	assert.Positive(t, data.Errors)
+	assert.Positive(t, data.Skipped)
 }
 
 // TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError is the exercise bug 6
@@ -105,7 +105,7 @@ func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {
 	data, ok := res.Data.(bundleResult)
 	require.True(t, ok)
 	assert.Equal(t, 0, data.Errors, "a non-ACE cluster must not count as an error")
-	assert.Greater(t, data.Skipped, 0)
+	assert.Positive(t, data.Skipped)
 }
 
 func TestSupportBundleRBACFailingCollectorStillShipsBundle(t *testing.T) {
@@ -238,7 +238,7 @@ func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
 	assert.Contains(t, item.Status, "rbac denied listing clusters")
 
 	data := res.Data.(bundleResult)
-	assert.Greater(t, data.Errors, 0)
+	assert.Positive(t, data.Errors)
 
 	contents := readArchive(t, path)
 	_, hasManifest := contents["manifest.json"]
