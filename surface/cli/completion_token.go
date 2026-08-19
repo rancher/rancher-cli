@@ -234,8 +234,8 @@ func boolFlagSet(argTail []string, flagName string) bool {
 		if a == long {
 			return true
 		}
-		if strings.HasPrefix(a, prefix) {
-			if v, err := strconv.ParseBool(strings.TrimPrefix(a, prefix)); err == nil {
+		if after, ok := strings.CutPrefix(a, prefix); ok {
+			if v, err := strconv.ParseBool(after); err == nil {
 				return v
 			}
 			return true // unparseable: mid-edit token, treat as present

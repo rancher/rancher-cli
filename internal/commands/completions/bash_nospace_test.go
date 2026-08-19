@@ -120,8 +120,8 @@ printf 'DONE\n'
 
 	var entries []string
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "R:") {
-			entries = append(entries, strings.TrimPrefix(line, "R:"))
+		if after, ok := strings.CutPrefix(line, "R:"); ok {
+			entries = append(entries, after)
 		}
 	}
 	return entries

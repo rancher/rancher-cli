@@ -160,8 +160,8 @@ func realImportEdges(t *testing.T) map[string]bool {
 			require.NoError(t, err)
 			for _, imp := range f.Imports {
 				p := strings.Trim(imp.Path.Value, `"`)
-				if strings.HasPrefix(p, modulePrefix) {
-					edges[pkg+" -> "+strings.TrimPrefix(p, modulePrefix)] = true
+				if after, ok := strings.CutPrefix(p, modulePrefix); ok {
+					edges[pkg+" -> "+after] = true
 				}
 			}
 		}
