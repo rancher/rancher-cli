@@ -289,7 +289,7 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "registration token unavailable")
+	assert.Contains(t, res.Warnings[0], "registration unavailable")
 	assert.Contains(t, strings.ToLower(res.Warnings[0]), "deadline",
 		"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
 

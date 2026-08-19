@@ -21,12 +21,11 @@ import (
 // cluster but absent from the metrics response reports empty usage (no
 // measurement), unlike the pod/namespace groupings where an absent pod-metrics
 // entry contributes zero to a sum.
-func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClient, sec *sections, in runtime.Input) (runtime.Result, error) {
 	nodeKind, _ := kinds.Lookup("node")
 	podKind, _ := kinds.Lookup("pod")
 	nodeName := in.String("node")
 
-	var warnings []string
 	rows := usageRows{}
 
 	if nodeName != "" {
@@ -53,18 +52,16 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 			MemoryRequest: memReq.String(), MemoryLimit: memLim.String(),
 		}
 		if m, merr := client.Get(ctx, nodeMetricsGVR, "", nodeName); merr != nil {
-			warnings = append(warnings, metricsUnavailableWarning(clusterID))
+			if cerr := sec.Unavailable(sectionMetrics, merr); cerr != nil {
+				return runtime.Result{}, cerr
+			}
 		} else {
 			usage, _, _ := unstructured.NestedMap(m.Object, "usage")
 			totals.CPUUsage = canonicalUsage(usage, "cpu")
 			totals.MemoryUsage = canonicalUsage(usage, "memory")
 		}
 		rows[nodeName] = totals
-		return runtime.Result{
-			Kind:     "ResourceUsage",
-			Data:     usageEnvelope{By: byNode, Data: rows},
-			Warnings: warnings,
-		}, nil
+		return usageResult(byNode, rows, nil, sec), nil
 	}
 
 	// List path: all nodes, pods grouped by spec.nodeName.
@@ -106,7 +103,9 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 	metricsOK := true
 	usageByName := map[string]map[string]any{}
 	if metrics, merr := client.List(ctx, nodeMetricsGVR, "", ""); merr != nil {
-		warnings = append(warnings, metricsUnavailableWarning(clusterID))
+		if cerr := sec.Unavailable(sectionMetrics, merr); cerr != nil {
+			return runtime.Result{}, cerr
+		}
 		metricsOK = false
 	} else {
 		for i := range metrics.Items {
@@ -129,11 +128,7 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 		}
 		rows[nn] = totals
 	}
-	return runtime.Result{
-		Kind:     "ResourceUsage",
-		Data:     usageEnvelope{By: byNode, Data: rows},
-		Warnings: warnings,
-	}, nil
+	return usageResult(byNode, rows, nil, sec), nil
 }
 
 // canonicalUsage parses a metrics.k8s.io usage quantity and re-serializes it

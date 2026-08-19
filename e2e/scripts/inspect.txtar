@@ -10,7 +10,9 @@ exec rancher inspect pod bare-pod --cluster testcluster --namespace default -o j
 jsonquery stdout data.owners ''
 jsonquery stdout data.metrics ''
 jsonquery stdout 'data.logs.app' ''
-jsonquery stdout warnings.0 'metrics.k8s.io unavailable on cluster c-test'
+jsonquery stdout 'data.degraded.#' 1
+jsonquery stdout 'data.degraded.0.section' metrics
+jsonquery stdout 'data.degraded.0.state' unavailable
 jsonquery stdout 'warnings.#' 1
 
 -- pod.yaml --

@@ -89,9 +89,10 @@ func TestUsageByNodeDegradesWithoutMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, "metrics.k8s.io unavailable on cluster c-abc", res.Warnings[0])
+	assert.Equal(t, "metrics unavailable: no metrics server", res.Warnings[0])
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{{Section: sectionMetrics, State: stateUnavailable, Code: clierr.CodeGeneric}}, env.Degraded)
 	assert.Empty(t, env.Data["n1"].CPUUsage)
 }
 
@@ -137,9 +138,12 @@ func TestUsageByNodeSingleNodeDegradesWithoutMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, "metrics.k8s.io unavailable on cluster c-abc", res.Warnings[0])
+	assert.Contains(t, res.Warnings[0], "metrics unavailable: ")
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	require.Len(t, env.Degraded, 1)
+	assert.Equal(t, sectionMetrics, env.Degraded[0].Section)
+	assert.Equal(t, stateUnavailable, env.Degraded[0].State)
 	require.Contains(t, env.Data, "n1")
 	assert.Empty(t, env.Data["n1"].CPUUsage)
 	assert.Equal(t, "50m", env.Data["n1"].CPURequest)

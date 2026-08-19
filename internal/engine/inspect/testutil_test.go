@@ -55,7 +55,8 @@ type fakeClient struct {
 	listsByNS      map[objKey]*unstructured.UnstructuredList // key: {gvr, ns, ""} — takes precedence over lists
 	listErrs       map[schema.GroupVersionResource]error
 	listSelectors  []string
-	listNamespaces []string // parallel to listSelectors: the ns each List call carried
+	listNamespaces []string                      // parallel to listSelectors: the ns each List call carried
+	listGVRs       []schema.GroupVersionResource // parallel to listSelectors: the kind each List call asked for
 
 	logs    map[string]string
 	logErrs map[string]error
@@ -129,6 +130,7 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 	f.mu.Lock()
 	f.listSelectors = append(f.listSelectors, selector)
 	f.listNamespaces = append(f.listNamespaces, ns)
+	f.listGVRs = append(f.listGVRs, gvr)
 	f.mu.Unlock()
 	if err, ok := f.listErrs[gvr]; ok {
 		return nil, err
@@ -140,6 +142,19 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 		return l, nil
 	}
 	return &unstructured.UnstructuredList{}, nil
+}
+
+// listed reports whether any List call asked for that kind — the seam for
+// short-circuit tests, which must fail when a skipped read is issued.
+func (f *fakeClient) listed(gvr schema.GroupVersionResource) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, g := range f.listGVRs {
+		if g == gvr {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

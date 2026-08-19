@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -21,10 +22,10 @@ type projectCmd struct {
 // NewInspectProject builds `inspect project <name-or-id> --cluster <c>`: the
 // project's identity, member namespaces with workload counts, members
 // (prtbs), resourceQuota spec, and a usage summary, joined into one
-// document. Mirrors pod.go/topnode.go's degradation pattern (NOT
-// deployment.go, which is fail-hard): a prtb-read or metrics failure becomes
-// a warning, never a command error. resourceQuota absence is not a
-// failure — null is enough, no warning.
+// document. Only the project itself is required: every other collector
+// degrades to a `degraded` entry and its warning rather than failing the
+// command. resourceQuota absence is not a failure — null is enough, no
+// warning.
 func NewInspectProject(clients engine.ClusterClientFactory) runtime.Command {
 	return &projectCmd{clients: clients}
 }
@@ -32,9 +33,17 @@ func NewInspectProject(clients engine.ClusterClientFactory) runtime.Command {
 func (c *projectCmd) Describe() runtime.Descriptor {
 	k, _ := kinds.Lookup("project")
 	return runtime.Descriptor{
-		Name:        "inspect project",
-		Aliases:     k.Aliases,
-		Usage:       "Inspect a project: namespaces, members, quota, and usage",
+		Name:    "inspect project",
+		Aliases: k.Aliases,
+		Usage:   "Inspect a project: namespaces, members, quota, and usage",
+		Desc: degradedContractDesc +
+			"Cluster resolution and the project resolve plus GET are required and hard-error. " +
+			"Degradable sections: namespaces (unavailable — the namespace rows, whose integer counts " +
+			"cannot represent an unknown), members (unavailable — collected independently from the " +
+			"management plane, so downstream failures leave it intact), usage (unavailable — blocked by " +
+			"a downstream-client, membership, or pod-list failure), metrics (unavailable — request and " +
+			"limit totals stay). A membership set that resolves to zero namespaces is a verified-empty " +
+			"scope: no workload or usage read is issued and nothing degrades.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"}},
@@ -63,89 +72,41 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 	displayName, _, _ := unstructured.NestedString(project.Object, "spec", "displayName")
 
-	client, err := c.clients.Cluster(ctx, clusterID)
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	members, err := projects.ProjectNamespaces(ctx, client, projectID)
-	if err != nil {
-		return runtime.Result{}, err
-	}
+	sec := newSections(ctx, sectionNamespaces, sectionMembers, sectionUsage, sectionMetrics)
 
-	podKind, _ := kinds.Lookup("pod")
-	depKind, _ := kinds.Lookup("deployment")
-	namespaces := make([]string, 0, len(members))
-	for ns := range members {
-		namespaces = append(namespaces, ns)
-	}
+	// nsRows stays nil until the namespace section is fully known: the row's
+	// workload counts are non-pointer integers, so a failed workload list
+	// cannot be reported without fabricating zeroes. null is the whole
+	// section's unavailable shape; [] means verified empty.
+	var nsRows []projectNamespace
+	var usage *resourceTotals
 
-	// ONE cluster-wide List per kind, filtered client-side by membership —
-	// N per-namespace List pairs would cost 2N round trips for no reason.
-	podList, err := client.List(ctx, podKind.GVR, "", "")
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	depList, err := client.List(ctx, depKind.GVR, "", "")
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	podCounts := map[string]int{}
-	depCounts := map[string]int{}
-	allPods := map[string][]unstructured.Unstructured{}
-	// Seed before the loop so aggregateUsage produces verified-zero totals when
-	// there are namespaces but no matching pods. append-to-nil is safe.
-	if len(namespaces) > 0 {
-		allPods[projectID] = nil
-	}
-	for i := range podList.Items {
-		ns := podList.Items[i].GetNamespace()
-		if !members[ns] {
-			continue
+	client, cerr := c.clients.Cluster(ctx, clusterID)
+	if cerr != nil {
+		// The management-plane document is already readable; only the
+		// downstream sections are lost.
+		if herr := sec.Unavailable(sectionNamespaces, cerr); herr != nil {
+			return runtime.Result{}, herr
 		}
-		podCounts[ns]++
-		allPods[projectID] = append(allPods[projectID], podList.Items[i])
-	}
-	for i := range depList.Items {
-		ns := depList.Items[i].GetNamespace()
-		if members[ns] {
-			depCounts[ns]++
+		if herr := sec.Blocked(sectionUsage, sectionNamespaces, cerr); herr != nil {
+			return runtime.Result{}, herr
+		}
+	} else {
+		var derr error
+		nsRows, usage, derr = c.downstreamSections(ctx, client, projectID, sec)
+		if derr != nil {
+			return runtime.Result{}, derr
 		}
 	}
-	nsRows := make([]projectNamespace, 0, len(members))
-	for ns := range members {
-		nsRows = append(nsRows, projectNamespace{
-			Name:      ns,
-			Workloads: projectWorkloads{Pods: podCounts[ns], Deployments: depCounts[ns]},
-		})
-	}
-	sort.Slice(nsRows, func(i, j int) bool { return nsRows[i].Name < nsRows[j].Name })
 
-	var warnings []string
-	memberRows, mwarn, merr := projectMembers(ctx, mgmtClient, project)
+	memberRows, warnings, merr := projectMembers(ctx, mgmtClient, project, sec)
 	if merr != nil {
 		return runtime.Result{}, merr
 	}
-	warnings = append(warnings, mwarn...)
 
 	quota, _, _ := unstructured.NestedMap(project.Object, "spec", "resourceQuota")
 
-	var usage *resourceTotals
-	if len(namespaces) > 0 {
-		// aggregateUsage degrades fetch errors (e.g. metrics unavailable) to
-		// warnings and never returns a non-nil error; the guard is a seam for
-		// future genuine failures.
-		res, uerr := aggregateUsage(ctx, client, clusterID, allPods, namespaces)
-		if uerr != nil {
-			return runtime.Result{}, uerr
-		}
-		warnings = append(warnings, res.Warnings...)
-		if rows, ok := res.Data.(usageRows); ok {
-			if totals, ok := rows[projectID]; ok {
-				usage = &totals
-			}
-		}
-	}
-
+	degraded, degradedWarnings := sec.Finalize()
 	result := projectResult{
 		ID:            projectID,
 		DisplayName:   displayName,
@@ -154,13 +115,115 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		Members:       memberRows,
 		ResourceQuota: quota,
 		Usage:         usage,
+		Degraded:      degraded,
 	}
 	return runtime.Result{
 		Kind:     "ProjectInspection",
 		Data:     result,
 		Text:     renderProjectText(result),
-		Warnings: warnings,
+		Warnings: append(warnings, degradedWarnings...),
 	}, nil
+}
+
+// downstreamSections collects the namespace rows and the usage summary from
+// the downstream cluster. Membership defines both domains, so a membership
+// failure degrades them together; a pod-list failure additionally blocks
+// usage (it aggregates pods), while a deployment-list failure leaves usage
+// intact. A membership set proven empty short-circuits both workload lists:
+// the caller established the scope, and reads that could not have
+// contributed rows must not turn a verified-empty project into an RBAC
+// failure.
+func (c *projectCmd) downstreamSections(ctx context.Context, client engine.ClusterClient, projectID string, sec *sections) ([]projectNamespace, *resourceTotals, error) {
+	members, err := projects.ProjectNamespaces(ctx, client, projectID)
+	if err != nil {
+		if herr := sec.Unavailable(sectionNamespaces, err); herr != nil {
+			return nil, nil, herr
+		}
+		if herr := sec.Blocked(sectionUsage, sectionNamespaces, err); herr != nil {
+			return nil, nil, herr
+		}
+		return nil, nil, nil
+	}
+	namespaces := make([]string, 0, len(members))
+	for ns := range members {
+		namespaces = append(namespaces, ns)
+	}
+	if len(namespaces) == 0 {
+		return []projectNamespace{}, nil, nil
+	}
+
+	podKind, _ := kinds.Lookup("pod")
+	depKind, _ := kinds.Lookup("deployment")
+
+	// ONE cluster-wide List per kind, filtered client-side by membership —
+	// N per-namespace List pairs would cost 2N round trips for no reason.
+	// The two lists are independent reads feeding disjoint outputs, so they
+	// run concurrently (the errgroup/WaitGroup pattern inspect cluster uses);
+	// the degrade DECISIONS stay sequential after the join — recording both
+	// failures would hit the accumulator's duplicate-namespaces rule.
+	var (
+		podList, depList *unstructured.UnstructuredList
+		podErr, depErr   error
+	)
+	var wg sync.WaitGroup
+	wg.Go(func() { podList, podErr = client.List(ctx, podKind.GVR, "", "") })
+	wg.Go(func() { depList, depErr = client.List(ctx, depKind.GVR, "", "") })
+	wg.Wait()
+	if podErr != nil {
+		if herr := sec.Unavailable(sectionNamespaces, podErr); herr != nil {
+			return nil, nil, herr
+		}
+		if herr := sec.Blocked(sectionUsage, sectionPods, podErr); herr != nil {
+			return nil, nil, herr
+		}
+		return nil, nil, nil
+	}
+	podCounts := map[string]int{}
+	allPods := map[string][]unstructured.Unstructured{}
+	// Seed before the loop so aggregateUsage produces verified-zero totals when
+	// there are namespaces but no matching pods. append-to-nil is safe.
+	allPods[projectID] = nil
+	for i := range podList.Items {
+		ns := podList.Items[i].GetNamespace()
+		if !members[ns] {
+			continue
+		}
+		podCounts[ns]++
+		allPods[projectID] = append(allPods[projectID], podList.Items[i])
+	}
+
+	var nsRows []projectNamespace
+	if depErr != nil {
+		if herr := sec.Unavailable(sectionNamespaces, depErr); herr != nil {
+			return nil, nil, herr
+		}
+	} else {
+		depCounts := map[string]int{}
+		for i := range depList.Items {
+			ns := depList.Items[i].GetNamespace()
+			if members[ns] {
+				depCounts[ns]++
+			}
+		}
+		nsRows = make([]projectNamespace, 0, len(members))
+		for ns := range members {
+			nsRows = append(nsRows, projectNamespace{
+				Name:      ns,
+				Workloads: projectWorkloads{Pods: podCounts[ns], Deployments: depCounts[ns]},
+			})
+		}
+		sort.Slice(nsRows, func(i, j int) bool { return nsRows[i].Name < nsRows[j].Name })
+	}
+
+	rows, err := aggregateUsage(ctx, client, sec, allPods, namespaces)
+	if err != nil {
+		return nil, nil, err
+	}
+	var usage *resourceTotals
+	if totals, ok := rows[projectID]; ok {
+		usage = &totals
+	}
+	return nsRows, usage, nil
 }
 
 // projectMembers lists the project's prtbs from status.backingNamespace
@@ -168,7 +231,7 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 // names via resolveMembers, and degrades a listing failure (typically RBAC)
 // to a warning plus a nil member slice (serializes "members":null — the
 // pre-existing non-omitempty contract; [] means verified empty).
-func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured) ([]projectMember, []string, error) {
+func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured, sec *sections) ([]projectMember, []string, error) {
 	backingNS, found, _ := unstructured.NestedString(project.Object, "status", "backingNamespace")
 	if !found || backingNS == "" {
 		backingNS = project.GetName()
@@ -176,12 +239,12 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 	prtbKind, _ := kinds.Lookup("projectroletemplatebinding")
 	list, err := mgmtClient.List(ctx, prtbKind.GVR, backingNS, "")
 	if err != nil {
-		if lookupCanceled(ctx, err) {
-			return nil, nil, err
-		}
 		// nil (not empty) on unavailability: serializes "members":null — the
 		// pre-existing non-omitempty contract; [] means verified empty.
-		return nil, []string{"projectroletemplatebindings unavailable: " + err.Error()}, nil
+		if herr := sec.Unavailable(sectionMembers, err); herr != nil {
+			return nil, nil, herr
+		}
+		return nil, nil, nil
 	}
 	resolved, warnings, err := resolveMembers(ctx, mgmtClient, list.Items)
 	if err != nil {
@@ -223,6 +286,9 @@ type projectResult struct {
 	Members       []projectMember    `json:"members"`
 	ResourceQuota map[string]any     `json:"resourceQuota"`
 	Usage         *resourceTotals    `json:"usage"`
+	// Degraded names the sections this run could not read in full. Absent
+	// when every collector succeeded.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
 // renderProjectText is the default rendering: the same multi-section card
@@ -233,11 +299,15 @@ func renderProjectText(r projectResult) string {
 	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  display: %s\n  cluster: %s\n", r.ID, r.DisplayName, r.Cluster)
 
 	b.WriteString("\nNAMESPACES\n")
-	if len(r.Namespaces) == 0 {
+	switch {
+	case r.Namespaces == nil:
+		b.WriteString("  namespaces: unavailable\n")
+	case len(r.Namespaces) == 0:
 		b.WriteString("  none\n")
-	}
-	for _, ns := range r.Namespaces {
-		fmt.Fprintf(&b, "  %s (pods: %d, deployments: %d)\n", ns.Name, ns.Workloads.Pods, ns.Workloads.Deployments)
+	default:
+		for _, ns := range r.Namespaces {
+			fmt.Fprintf(&b, "  %s (pods: %d, deployments: %d)\n", ns.Name, ns.Workloads.Pods, ns.Workloads.Deployments)
+		}
 	}
 
 	b.WriteString("\nMEMBERS\n")
@@ -280,15 +350,12 @@ func renderProjectText(r projectResult) string {
 			mem += " usage=" + r.Usage.MemoryUsage
 		}
 		b.WriteString(mem + "\n")
-	case len(r.Namespaces) == 0:
+	case r.Namespaces != nil && len(r.Namespaces) == 0:
 		// A project with zero namespaces has nothing to measure — a
-		// verified-empty state, not an unavailable one.
+		// verified-empty state, not an unavailable one. Namespaces null is a
+		// failed read, which says nothing about usage.
 		b.WriteString("  none (no namespaces)\n")
 	default:
-		// Defensive fallback: Usage is nil despite non-empty Namespaces.
-		// Unreachable from Execute today (seeding guarantees a row), but
-		// renders an explicit marker rather than a silent bare header if
-		// the invariant ever breaks.
 		b.WriteString("  usage: unavailable\n")
 	}
 	return b.String()

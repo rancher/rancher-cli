@@ -2,7 +2,6 @@ package inspect
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +55,9 @@ type imagesResult struct {
 	By       string         `json:"by"`
 	RowData  output.Tabular `json:"rows,omitempty"`
 	Clusters output.Tabular `json:"clusters,omitempty"`
+	// Degraded names the collectors this run could not read in full. Absent
+	// when every collector succeeded.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
 func (r imagesResult) Columns() []string {
@@ -105,7 +107,14 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 			"--by workload resolves each pod's controller owner chain and reports one row per " +
 			"image and owning workload object (apiVersion, kind, name, uid) with the count of " +
 			"pods controlled by exactly that object; owner-resolution failures degrade to the " +
-			"first-level reference plus a warning.",
+			"first-level reference plus a warning. " +
+			degradedContractDesc +
+			"Cluster resolution and the pod list are required and hard-error; with --all-clusters the " +
+			"management cluster list is required, zero listed clusters is a verified-empty success, and " +
+			"every listed cluster failing its scan is an error. Degradable sections: ownerResolution " +
+			"(partial, target = the canonical owner identity apiVersion|kind|namespace|name|uid, " +
+			"cluster-id prefixed under --all-clusters), clusters (partial, target = cluster id, " +
+			"--all-clusters only).",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name`; pass exactly one of --cluster or --all-clusters"},
@@ -157,13 +166,14 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return runtime.Result{}, err
 	}
 	if by == byWorkload {
-		rows, warns, werr := workloadImagesFor(ctx, client, needles)
+		sec := newSections(ctx, sectionOwnerResolution)
+		rows, werr := workloadImagesFor(ctx, client, sec, "", needles)
 		if werr != nil {
 			return runtime.Result{}, werr
 		}
-		sort.Strings(warns)
+		degraded, warns := sec.Finalize()
 		return runtime.Result{Kind: "ClusterImages",
-			Data: imagesResult{By: byWorkload, RowData: rows}, Warnings: warns}, nil
+			Data: imagesResult{By: byWorkload, RowData: rows, Degraded: degraded}, Warnings: warns}, nil
 	}
 	imgs, err := imagesFor(ctx, client, needles)
 	if err != nil {
@@ -187,55 +197,97 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 		ids = append(ids, list.Items[i].GetName())
 	}
 
+	sec := newSections(ctx, sectionClusters, sectionOwnerResolution)
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(imagesFanOutLimit)
 	var mu sync.Mutex
 	perImages := clusterImages{}
 	perWorkloads := clusterImageWorkloads{}
-	var warns []string
+	failures := map[string]error{}
+	// Degrade the cluster, never abort the group: partial results beat none
+	// for a fleet-wide scan. The accumulator returns the error only when the
+	// caller canceled, which is the group's abort.
+	scanFailed := func(id string, err error) error {
+		if herr := sec.Partial(sectionClusters, id, err); herr != nil {
+			return herr
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		failures[id] = err
+		return nil
+	}
 	for _, id := range ids {
 		id := id
 		g.Go(func() error {
 			client, cerr := c.clients.Cluster(gctx, id)
 			if cerr != nil {
-				mu.Lock()
-				warns = append(warns, fmt.Sprintf("cluster %s: %v", id, cerr))
-				mu.Unlock()
-				return nil // degrade, never abort the group
+				return scanFailed(id, cerr)
 			}
 			if by == byWorkload {
-				rows, ws, ierr := workloadImagesFor(gctx, client, needles)
+				rows, ierr := workloadImagesFor(gctx, client, sec, id, needles)
+				if ierr != nil {
+					return scanFailed(id, ierr)
+				}
 				mu.Lock()
 				defer mu.Unlock()
-				if ierr != nil {
-					warns = append(warns, fmt.Sprintf("cluster %s: %v", id, ierr))
-					return nil
-				}
 				perWorkloads[id] = rows
-				for _, w := range ws {
-					warns = append(warns, fmt.Sprintf("cluster %s: %s", id, w))
-				}
 				return nil
 			}
 			imgs, ierr := imagesFor(gctx, client, needles)
+			if ierr != nil {
+				return scanFailed(id, ierr)
+			}
 			mu.Lock()
 			defer mu.Unlock()
-			if ierr != nil {
-				warns = append(warns, fmt.Sprintf("cluster %s: %v", id, ierr))
-				return nil
-			}
 			perImages[id] = imgs
 			return nil
 		})
 	}
-	_ = g.Wait()
-	sort.Strings(warns)
+	if werr := g.Wait(); werr != nil {
+		return runtime.Result{}, werr
+	}
+	// A scan that ended because the caller went away is not a fleet-wide
+	// availability answer, whatever the individual errors said.
+	if ctx.Err() != nil {
+		return runtime.Result{}, ctx.Err()
+	}
+	// Zero listed clusters is a verified-empty success. Every listed cluster
+	// failing is not partial access to a fleet — there is no fleet-wide
+	// answer left to return.
+	if len(ids) > 0 && len(failures) == len(ids) {
+		return runtime.Result{}, everyScanFailed(failures)
+	}
+	degraded, warns := sec.Finalize()
 	if by == byWorkload {
 		return runtime.Result{Kind: "ClusterImages",
-			Data: imagesResult{By: byWorkload, Clusters: perWorkloads}, Warnings: warns}, nil
+			Data: imagesResult{By: byWorkload, Clusters: perWorkloads, Degraded: degraded}, Warnings: warns}, nil
 	}
 	return runtime.Result{Kind: "ClusterImages",
-		Data: imagesResult{By: byImage, Clusters: perImages}, Warnings: warns}, nil
+		Data: imagesResult{By: byImage, Clusters: perImages, Degraded: degraded}, Warnings: warns}, nil
+}
+
+// everyScanFailed is the hard error for a fleet-wide scan that reached no
+// cluster at all: partial results beat none, but here there are none. The
+// shape is deterministic — the shared code when every cluster failed the
+// same way, GENERIC when they disagree, and causes in cluster id order.
+func everyScanFailed(failures map[string]error) error {
+	ids := make([]string, 0, len(failures))
+	for id := range failures {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	code := degradedCode(failures[ids[0]])
+	for _, id := range ids[1:] {
+		if degradedCode(failures[id]) != code {
+			code = clierr.CodeGeneric
+			break
+		}
+	}
+	causes := make([]string, 0, len(ids))
+	for _, id := range ids {
+		causes = append(causes, id+": "+failures[id].Error())
+	}
+	return clierr.New(code, "no cluster could be scanned: "+strings.Join(causes, "; "))
 }
 
 // podActive reports whether a pod counts toward the image inventory. Only

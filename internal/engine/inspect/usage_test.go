@@ -1,10 +1,12 @@
 package inspect
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -92,9 +94,10 @@ func TestUsageDegradesWithoutMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, "metrics.k8s.io unavailable on cluster c-abc", res.Warnings[0])
+	assert.Equal(t, "metrics unavailable: no metrics server", res.Warnings[0])
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{{Section: sectionMetrics, State: stateUnavailable, Code: clierr.CodeGeneric}}, env.Degraded)
 	rows := env.Data
 	assert.Empty(t, rows["ns1"].CPUUsage)
 }
@@ -479,4 +482,211 @@ func TestSumPodResourcesMultiContainer(t *testing.T) {
 	assert.Equal(t, "300m", cpuLim.String())
 	assert.Equal(t, "96Mi", memReq.String())
 	assert.Equal(t, "192Mi", memLim.String())
+}
+
+// TestUsageVerifiedEmptyMembershipSkipsPodList asserts a membership list the
+// caller could read, returning zero namespaces, short-circuits: no pod or
+// metrics read is issued, so a denied read on either cannot degrade a scope
+// that provably has nothing in it. The fake fails the test by serving errors
+// for the reads that must not happen.
+func TestUsageVerifiedEmptyMembershipSkipsPodList(t *testing.T) {
+	t.Parallel()
+	for _, by := range []string{byNamespace, byPod} {
+		t.Run(by, func(t *testing.T) {
+			t.Parallel()
+			podKind := mustKind(t, "pod")
+			nsKind := mustKind(t, "namespace")
+			projectKind := mustKind(t, "project")
+
+			client := newFakeClient().
+				withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					*projectFixtureObj("p-x", "web", ""),
+				}}).
+				withList(nsKind.GVR, &unstructured.UnstructuredList{}).
+				withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
+				withListErr(podMetricsGVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+			cmd := NewUsage(&fakeFactory{client: client})
+			res, err := execRead(t, cmd, input{s: map[string]string{
+				"cluster": "c-abc", "project": "p-x", "by": by,
+			}})
+			require.NoError(t, err)
+
+			env, ok := res.Data.(usageEnvelope)
+			require.True(t, ok)
+			assert.Empty(t, env.Data)
+			assert.Nil(t, env.Degraded, "a verified-empty scope degrades nothing")
+			assert.Empty(t, res.Warnings)
+			assert.False(t, client.listed(podKind.GVR), "no pod read for a scope with no namespaces")
+			assert.False(t, client.listed(podMetricsGVR), "no metrics read either")
+		})
+	}
+}
+
+// TestUsageByProjectVerifiedZeroBucketSkipsReads asserts the same rule for
+// --by project: an ownership map proving the named project owns no namespace
+// yields the verified-zero bucket with no pod or metrics read.
+func TestUsageByProjectVerifiedZeroBucketSkipsReads(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	projectKind := mustKind(t, "project")
+
+	client := newFakeClient().
+		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*projectFixtureObj("p-x", "web", ""),
+			*projectFixtureObj("p-y", "api", ""),
+		}}).
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-y"}),
+		}}).
+		withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
+		withListErr(podMetricsGVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{
+		"cluster": "c-abc", "by": byProject, "project": "p-x",
+	}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	require.Equal(t, usageRows{"p-x": {
+		CPURequest: "0", CPULimit: "0", MemoryRequest: "0", MemoryLimit: "0",
+	}}, env.Data, "the bucket is a verified zero, not a missing row")
+	assert.Nil(t, env.Degraded)
+	assert.False(t, client.listed(podKind.GVR), "no pod read for a project that owns no namespace")
+	assert.False(t, client.listed(podMetricsGVR), "no metrics read either")
+}
+
+// TestUsageRequiredCollectorsHardError asserts every collector the matrix
+// calls required keeps its error identity instead of degrading: the scope
+// reads define which rows may exist, and a fabricated or unscoped result
+// would lie about what the caller can see.
+func TestUsageRequiredCollectorsHardError(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	nodeKind := mustKind(t, "node")
+	projectKind := mustKind(t, "project")
+	denied := clierr.New(clierr.CodeRBAC, "forbidden")
+
+	base := func() *fakeClient {
+		return newFakeClient().
+			withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				*projectFixtureObj("p-x", "web", ""),
+			}}).
+			withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			}}).
+			withList(nodeKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				*nodeObj("n1"),
+			}}).
+			withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
+			withList(podKind.GVR, &unstructured.UnstructuredList{}).
+			withList(podMetricsGVR, &unstructured.UnstructuredList{})
+	}
+
+	for _, tc := range []struct {
+		name string
+		in   input
+		set  func(c *fakeClient)
+	}{
+		{"pod list", input{s: map[string]string{"cluster": "c-abc"}}, func(c *fakeClient) {
+			c.withListErr(podKind.GVR, denied)
+		}},
+		{"membership", input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}}, func(c *fakeClient) {
+			c.withListErr(nsKind.GVR, denied)
+		}},
+		{"ownership map", input{s: map[string]string{"cluster": "c-abc", "by": byProject}}, func(c *fakeClient) {
+			c.withListErr(nsKind.GVR, denied)
+		}},
+		{"node list", input{s: map[string]string{"cluster": "c-abc", "by": byNode}}, func(c *fakeClient) {
+			c.withListErr(nodeKind.GVR, denied)
+		}},
+		{"named node get", input{s: map[string]string{"cluster": "c-abc", "by": byNode, "node": "n1"}}, func(c *fakeClient) {
+			c.withGetErr(nodeKind.GVR, "", "n1", denied)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := base()
+			tc.set(client)
+
+			cmd := NewUsage(&fakeFactory{client: client})
+			_, err := execRead(t, cmd, tc.in)
+			require.Error(t, err)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeRBAC, ce.Code, "a required collector keeps its error identity")
+		})
+	}
+}
+
+// TestUsageNamedNodeNeverListsNodes asserts the filtered mode gets exactly
+// the named node: a caller allowed to get one node must not be forced to
+// list all of them.
+func TestUsageNamedNodeNeverListsNodes(t *testing.T) {
+	t.Parallel()
+	nodeKind := mustKind(t, "node")
+	podKind := mustKind(t, "pod")
+
+	client := newFakeClient().
+		withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
+		withListErr(nodeKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
+		withList(podKind.GVR, &unstructured.UnstructuredList{}).
+		withObject(nodeMetricsGVR, "", "n1", nodeMetricsObjPtr("n1", "100m", "1Gi"))
+
+	cmd := NewUsage(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": byNode, "node": "n1"}})
+	require.NoError(t, err)
+
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	assert.Contains(t, env.Data, "n1")
+	assert.False(t, client.listed(nodeKind.GVR), "the filtered mode must never list nodes")
+}
+
+// TestUsageMetricsCancellationStaysHard asserts a canceled caller context
+// fails the command instead of recording a metrics section, in every mode
+// that reads metrics.
+func TestUsageMetricsCancellationStaysHard(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nodeKind := mustKind(t, "node")
+
+	for _, tc := range []struct {
+		name string
+		in   input
+		set  func(c *fakeClient)
+	}{
+		{"pod metrics", input{s: map[string]string{"cluster": "c-abc"}}, func(c *fakeClient) {
+			c.withListErr(podMetricsGVR, context.Canceled)
+		}},
+		{"node metrics list", input{s: map[string]string{"cluster": "c-abc", "by": byNode}}, func(c *fakeClient) {
+			c.withListErr(nodeMetricsGVR, context.Canceled)
+		}},
+		{"named node metrics", input{s: map[string]string{"cluster": "c-abc", "by": byNode, "node": "n1"}}, func(c *fakeClient) {
+			c.withGetErr(nodeMetricsGVR, "", "n1", context.Canceled)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := newFakeClient().
+				withList(podKind.GVR, &unstructured.UnstructuredList{}).
+				withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+				withList(nodeKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*nodeObj("n1")}}).
+				withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
+				withList(nodeMetricsGVR, &unstructured.UnstructuredList{}).
+				withObject(nodeMetricsGVR, "", "n1", nodeMetricsObjPtr("n1", "100m", "1Gi"))
+			tc.set(client)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			rc := NewUsage(&fakeFactory{client: client}).(runtime.ReadCommand)
+			_, err := rc.Execute(ctx, tc.in, nil)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
 }

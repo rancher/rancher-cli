@@ -58,7 +58,9 @@ jsonquery stdout data.id web
 jsonquery stdout 'data.namespaces.#' 1
 jsonquery stdout data.namespaces.0.name proj-ns-member
 jsonquery stdout 'data.members.#' 0
-jsonquery stdout warnings.0 'metrics.k8s.io unavailable on cluster c-test'
+jsonquery stdout 'data.degraded.#' 1
+jsonquery stdout data.degraded.0.section metrics
+jsonquery stdout data.degraded.0.state unavailable
 jsonquery stdout 'warnings.#' 1
 
 # PC-8: quota flags on create project (mandatory-together, matching keys).

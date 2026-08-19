@@ -2,16 +2,17 @@ package inspect
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -49,7 +50,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
 		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause.",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. " + degradedContractDesc + "Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable — the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable — a machine list that failed after a successful correlation), members (unavailable — the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable — the token read).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Flags: []runtime.ArgSpec{{
@@ -90,6 +91,10 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		KubernetesVersion: observedVersion,
 	}}
 	res.Agent = agentFrom(obj)
+	sec := newSections(ctx, sectionProvisioning, sectionMachines, sectionMembers, sectionRegistration)
+	// Advisory warnings: agent verdicts, member display-name enrichment, and
+	// registration placeholder drops describe a section that is present and
+	// usable, so they never become degraded entries.
 	var warnings []string
 	switch res.Agent.verdict() {
 	case agentDisconnected:
@@ -106,45 +111,81 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		warnings = append(warnings, w)
 	}
 
-	prov, lookup, pwarn, absentNote, perr := correlateProvisioningCluster(ctx, mgmt, clusterID)
-	if perr != nil {
-		return runtime.Result{}, perr
-	}
-	warnings = append(warnings, pwarn...)
-	var imported bool
-	switch lookup {
-	case provFound:
-		res.Status = statusFrom(prov)
-		// provisioning.IsImported: spec.rkeConfig nil-vs-{} is the create path's discriminator.
-		imported = provisioning.IsImported(prov)
-		pools := machinePoolsFrom(prov)
-		res.MachinePools = &pools
-		machs, machWarn, machErr := clusterMachines(ctx, mgmt, prov.GetName())
-		if machErr != nil {
-			return runtime.Result{}, machErr
+	// The two independent legs fan out concurrently (the errgroup pattern
+	// images --all-clusters already uses; the accumulator is mutex-guarded
+	// for exactly this): the provisioning correlation with its dependent
+	// machine lookup, and the member list. Each leg writes only its own
+	// variables; a non-nil leg error is the caller's cancellation, which
+	// aborts the group. The registration fetch stays AFTER the join: it
+	// needs the provisioning leg's imported verdict, and — pinned by the
+	// cancellation tests — a join-token fetch must never be issued once the
+	// caller has gone away. Warnings are appended in a fixed order after
+	// the join so output stays deterministic.
+	var (
+		imported bool
+		lookup   provLookup
+		members  *[]clusterMember
+		mwarn    []string
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var prov *unstructured.Unstructured
+		var absentNote string
+		var perr error
+		prov, lookup, absentNote, perr = correlateProvisioningCluster(gctx, mgmt, sec, clusterID)
+		if perr != nil {
+			return perr
 		}
-		warnings = append(warnings, machWarn...)
-		res.Machines = machs
-		if res.Cluster.KubernetesVersion == "" {
-			// IC-4b: pending clusters carry only the DESIRED version on the
-			// provisioning spec; "" stays "" — never a fabricated value.
-			desired, _, _ := unstructured.NestedString(prov.Object, "spec", "kubernetesVersion")
-			res.Cluster.KubernetesVersion = desired
+		switch lookup {
+		case provFound:
+			res.Status = statusFrom(prov)
+			// provisioning.IsImported: spec.rkeConfig nil-vs-{} is the create path's discriminator.
+			imported = provisioning.IsImported(prov)
+			pools := machinePoolsFrom(prov)
+			res.MachinePools = &pools
+			machs, machErr := clusterMachines(gctx, mgmt, sec, prov.GetName())
+			if machErr != nil {
+				return machErr
+			}
+			res.Machines = machs
+			if res.Cluster.KubernetesVersion == "" {
+				// IC-4b: pending clusters carry only the DESIRED version on the
+				// provisioning spec; "" stays "" — never a fabricated value.
+				desired, _, _ := unstructured.NestedString(prov.Object, "spec", "kubernetesVersion")
+				res.Cluster.KubernetesVersion = desired
+			}
+		case provAbsent:
+			res.ProvisioningNote = absentNote
+		case provUnavailable:
+			// Sections stay omitted; the warning already names the cause (IC-7a).
 		}
-	case provAbsent:
-		res.ProvisioningNote = absentNote
-	case provUnavailable:
-		// Sections stay omitted; the warning already names the cause (IC-7a).
+		return nil
+	})
+	g.Go(func() error {
+		var merr error
+		members, mwarn, merr = clusterMembers(gctx, mgmt, sec, clusterID)
+		return merr
+	})
+	if err := g.Wait(); err != nil {
+		return runtime.Result{}, err
 	}
 
 	if in.Bool("registration") {
-		reg, rwarn, rerr := c.fetchRegistration(ctx, clusterID)
+		reg, rwarn, rerr := c.fetchRegistration(ctx, sec, clusterID)
 		if rerr != nil {
 			return runtime.Result{}, rerr
 		}
 		warnings = append(warnings, rwarn...)
-		if imported && reg != nil {
+		switch {
+		case imported && reg != nil:
 			reg.markNodeCommandsInapplicable()
+		case lookup == provUnavailable && reg != nil:
+			// imported is UNKNOWN, not false: the provisioning correlation
+			// was unreadable, so the node-join fields cannot be annotated
+			// either way. Advisory — the section itself is present and
+			// usable, only its applicability verdict is missing.
+			warnings = append(warnings,
+				"cannot determine whether the node-join commands apply: the provisioning correlation was unavailable")
 		}
 		res.Registration = reg
 	} else {
@@ -156,12 +197,12 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		}
 	}
 
-	members, mwarn, merr := clusterMembers(ctx, mgmt, clusterID)
-	if merr != nil {
-		return runtime.Result{}, merr
-	}
 	warnings = append(warnings, mwarn...)
 	res.Members = members
+
+	degraded, dwarn := sec.Finalize()
+	res.Degraded = degraded
+	warnings = append(warnings, dwarn...)
 
 	return runtime.Result{
 		Kind:     "ClusterInspection",
@@ -169,26 +210,6 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		Text:     renderClusterText(res),
 		Warnings: warnings,
 	}, nil
-}
-
-// lookupCanceled reports whether a failed optional lookup was aborted
-// because the CALLER's context was canceled or its deadline expired. The
-// optional lookups degrade only on ordinary availability failures — a
-// caller abort must propagate as the command's error, never continue
-// issuing requests behind a warning. Two complementary checks: ctx.Err()
-// consults the caller context's OWN state, which survives any error
-// wrapping — the production adapters rebuild their errors from strings
-// (provider's mapErr, the root client's GetJSON), so the sentinel never
-// survives the chain there; the errors.Is walk covers callers and fakes
-// that DO preserve the cause. An adapter-owned per-request deadline firing
-// while the caller's context is still active — the provider's opCtx child
-// timeout (internal/client/provider requestTimeout) or the root
-// http.Client's timeout (surface/cli rootTimeout) — is deliberately NOT
-// cancellation: neither check trips (the caller ctx is fine and the
-// rebuilt error carries no sentinel), so it degrades to a warning like any
-// other availability failure.
-func lookupCanceled(ctx context.Context, err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil
 }
 
 type provLookup int
@@ -205,19 +226,19 @@ const (
 // user-supplied provisioning name and spec.displayName can be renamed —
 // neither correlates reliably (IC-4). Zero matches is confirmed absence
 // (IC-7); a list failure or multiple matches is "could not determine"
-// (IC-7a), each with a warning naming the cause. The fourth return is the
-// IC-7 confirmed-absence note (non-empty only when provAbsent), scoped to
-// the namespace that was searched — derived from provKind.DefaultNamespace,
-// never a second hardcoded string. An expired context is the one list
-// failure that does NOT degrade: it returns as the error.
-func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (*unstructured.Unstructured, provLookup, []string, string, error) {
+// (IC-7a), each recorded as one `provisioning` degraded entry: the
+// correlation is why status, machinePools, and the dependent machine
+// lookup are all absent, so its fan-out gets one entry and one warning,
+// not one per missing key. The third return is the IC-7 confirmed-absence
+// note (non-empty only when provAbsent), scoped to the namespace that was
+// searched — derived from provKind.DefaultNamespace, never a second
+// hardcoded string. An expired context is the one list failure that does
+// NOT degrade: it returns as the error.
+func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*unstructured.Unstructured, provLookup, string, error) {
 	provKind, _ := kinds.Lookup("provisioning-cluster")
 	list, err := mgmt.List(ctx, provKind.GVR, provKind.DefaultNamespace, "")
 	if err != nil {
-		if lookupCanceled(ctx, err) {
-			return nil, provUnavailable, nil, "", err
-		}
-		return nil, provUnavailable, []string{"provisioning cluster lookup unavailable: " + err.Error()}, "", nil
+		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, err)
 	}
 	var matches []*unstructured.Unstructured
 	for i := range list.Items {
@@ -228,13 +249,14 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 	}
 	switch len(matches) {
 	case 0:
-		return nil, provAbsent, nil, "no provisioning.cattle.io Cluster for this cluster in " + provKind.DefaultNamespace, nil
+		return nil, provAbsent, "no provisioning.cattle.io Cluster for this cluster in " + provKind.DefaultNamespace, nil
 	case 1:
-		return matches[0], provFound, nil, "", nil
+		return matches[0], provFound, "", nil
 	default:
-		return nil, provUnavailable, []string{fmt.Sprintf(
-			"provisioning cluster lookup ambiguous: %d provisioning.cattle.io Clusters report status.clusterName %q",
-			len(matches), clusterID)}, "", nil
+		ambiguous := clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
+			"%d provisioning.cattle.io Clusters report status.clusterName %q, so the correlation is ambiguous",
+			len(matches), clusterID))
+		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, ambiguous)
 	}
 }
 
@@ -339,25 +361,24 @@ func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 // fetchRegistration reads the default registration token via the IC-4a
 // fetch and applies inspect's OWN placeholder policy over the
 // policy-neutral reporter: a placeholder-bearing field is dropped (its
-// omitempty tag makes it disappear from the wire) and warned about; a
-// failed read — Root() or the fetch — omits the whole section with a
-// warning (IC-8), except an expired context, which returns as the error.
+// omitempty tag makes it disappear from the wire) and warned about — an
+// advisory warning, since the section is still present and usable. A
+// failed read — Root() or the fetch — omits the whole section as a
+// `registration` degraded entry (IC-8), except an expired context, which
+// returns as the error.
 // When NO surfaced field survives (all five empty after placeholder
 // drops, or a server response with every field empty) the section is nil
 // — absent from the wire, never "registration":{}. The named-get and
 // list-get policies live solely in their respective callers in
 // internal/engine/provisioning.
-func (c *clusterCmd) fetchRegistration(ctx context.Context, clusterID string) (*registration, []string, error) {
+func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clusterID string) (*registration, []string, error) {
 	root, err := c.roots.Root()
 	if err != nil {
-		return nil, []string{"registration token unavailable: " + err.Error()}, nil
+		return nil, nil, sec.Unavailable(sectionRegistration, err)
 	}
 	obj, err := provisioning.FetchDefaultCRT(ctx, root, clusterID)
 	if err != nil {
-		if lookupCanceled(ctx, err) {
-			return nil, nil, err
-		}
-		return nil, []string{"registration token unavailable: " + err.Error()}, nil
+		return nil, nil, sec.Unavailable(sectionRegistration, err)
 	}
 	dropped := map[string]bool{}
 	var warnings []string
@@ -403,15 +424,14 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, clusterID string) (*
 
 // clusterMembers lists the cluster's crtbs (namespace = cluster id) and
 // enriches them via resolveMembers. nil = binding LIST failed (field
-// omitted, text renders unavailable); non-nil empty = verified no members.
-func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (*[]clusterMember, []string, error) {
+// omitted, text renders unavailable, one `members` degraded entry);
+// non-nil empty = verified no members. Display-name enrichment failures
+// stay advisory: the rows are there, only their names are missing.
+func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*[]clusterMember, []string, error) {
 	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
 	list, err := mgmt.List(ctx, crtbKind.GVR, clusterID, "")
 	if err != nil {
-		if lookupCanceled(ctx, err) {
-			return nil, nil, err
-		}
-		return nil, []string{"clusterroletemplatebindings unavailable: " + err.Error()}, nil
+		return nil, nil, sec.Unavailable(sectionMembers, err)
 	}
 	resolved, warnings, err := resolveMembers(ctx, mgmt, list.Items)
 	if err != nil {
@@ -430,15 +450,12 @@ func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, clusterID st
 // LIST failed (field omitted from JSON, text renders unavailable); non-nil
 // empty = verified no machines. Runs only when the provisioning cluster was
 // found (the caller is responsible for the provFound guard).
-func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, provName string) (*[]clusterMachine, []string, error) {
+func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, sec *sections, provName string) (*[]clusterMachine, error) {
 	machineKind, _ := kinds.Lookup("capimachine")
 	sel := capiClusterNameLabel + "=" + provName
 	list, err := mgmt.List(ctx, machineKind.GVR, machineKind.DefaultNamespace, sel)
 	if err != nil {
-		if lookupCanceled(ctx, err) {
-			return nil, nil, err
-		}
-		return nil, []string{"machines unavailable: " + err.Error()}, nil
+		return nil, sec.Unavailable(sectionMachines, err)
 	}
 	rows := make([]clusterMachine, 0, len(list.Items))
 	for i := range list.Items {
@@ -447,7 +464,7 @@ func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, provName st
 		errMsg := machineErrorMessage(list.Items[i].Object)
 		rows = append(rows, clusterMachine{Name: name, Phase: phase, Error: errMsg})
 	}
-	return &rows, nil, nil
+	return &rows, nil
 }
 
 // machineErrorMessage extracts the most relevant failing condition message
@@ -490,6 +507,9 @@ type clusterResult struct {
 	Members          *[]clusterMember  `json:"members,omitempty"`
 	Machines         *[]clusterMachine `json:"machines,omitempty"`
 	Registration     *registration     `json:"registration,omitempty"`
+	// Degraded names the collectors this run could not read in full. Absent
+	// when every collector succeeded.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
 // agentStatus is the MANAGEMENT Cluster's agent-connectivity view — the

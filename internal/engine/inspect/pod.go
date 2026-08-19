@@ -32,9 +32,14 @@ func NewPod(clients engine.ClusterClientFactory) runtime.Command {
 func (c *podCmd) Describe() runtime.Descriptor {
 	k, _ := kinds.Lookup("pod")
 	return runtime.Descriptor{
-		Name:        "inspect pod",
-		Aliases:     k.Aliases,
-		Usage:       "Inspect a pod: owners, metrics, and container logs",
+		Name:    "inspect pod",
+		Aliases: k.Aliases,
+		Usage:   "Inspect a pod: owners, metrics, and container logs",
+		Desc: degradedContractDesc +
+			"Cluster resolution, the namespace, and the pod GET are required and hard-error. " +
+			"Degradable sections: owners (partial, target = the canonical owner identity " +
+			"apiVersion|kind|namespace|name|uid), metrics (unavailable), logs (partial, target = " +
+			"container name, one entry per container whose log read failed).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -70,29 +75,50 @@ func (c *podCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 		return runtime.Result{}, err
 	}
 
-	owners, warnings := ownerChain(ctx, client, ns, pod)
+	sec := newSections(ctx, sectionOwners, sectionMetrics, sectionLogs)
+
+	owners, _, oerr := ownerChain(ctx, client, sec, sectionOwners, "", ns, pod)
+	if oerr != nil {
+		return runtime.Result{}, oerr
+	}
 
 	var metrics map[string]any
 	if m, merr := client.Get(ctx, podMetricsGVR, ns, name); merr != nil {
-		warnings = append(warnings, metricsUnavailableWarning(clusterID))
+		if herr := sec.Unavailable(sectionMetrics, merr); herr != nil {
+			return runtime.Result{}, herr
+		}
 	} else {
 		metrics = m.Object
 	}
 
 	tl := int64(tailLines)
 	logs := map[string]string{}
+	// seenContainers guards the accumulator's duplicate-(section,target)
+	// rule against wire data: admission rejects a pod whose containers and
+	// initContainers share a name, but this CLI reads unvalidated objects
+	// through a proxy and must degrade, never crash, on one that does.
+	seenContainers := map[string]bool{}
 	for _, cname := range engine.ContainerNames(pod.Object) {
+		if seenContainers[cname] {
+			continue
+		}
+		seenContainers[cname] = true
 		out, lerr := client.Logs(ctx, ns, name, engine.LogOptions{Container: cname, TailLines: &tl})
 		if lerr != nil {
-			warnings = append(warnings, fmt.Sprintf("logs unavailable for container %s: %v", cname, lerr))
+			// One entry per failed container: the other containers' logs
+			// are still there, so the section is partial, not lost.
+			if herr := sec.Partial(sectionLogs, cname, lerr); herr != nil {
+				return runtime.Result{}, herr
+			}
 			continue
 		}
 		logs[cname] = out
 	}
 
+	degraded, warnings := sec.Finalize()
 	return runtime.Result{
 		Kind:     "PodInspection",
-		Data:     podResult{Pod: pod.Object, Owners: owners, Metrics: metrics, Logs: logs},
+		Data:     podResult{Pod: pod.Object, Owners: owners, Metrics: metrics, Logs: logs, Degraded: degraded},
 		Warnings: warnings,
 	}, nil
 }
@@ -119,6 +145,9 @@ type podResult struct {
 	Owners  []map[string]any  `json:"owners"`
 	Metrics map[string]any    `json:"metrics"`
 	Logs    map[string]string `json:"logs"`
+	// Degraded names the sections this run could not read in full. Absent
+	// when every collector succeeded.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
 func (p podResult) Columns() []string { return []string{"NAME", "READY", "STATUS", "OWNER"} }

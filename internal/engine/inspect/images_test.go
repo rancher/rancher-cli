@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -147,8 +148,28 @@ func TestImagesOneClusterFailingDegrades(t *testing.T) {
 	require.True(t, ok)
 	require.Contains(t, perCluster, "c-a")
 	require.NotContains(t, perCluster, "c-b")
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "cluster c-b: connection refused")
+	require.Equal(t, []string{"clusters unavailable for c-b: connection refused"}, res.Warnings)
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionClusters, State: statePartial, Code: clierr.CodeGeneric, Target: "c-b"},
+	}, env.Degraded)
+}
+
+// TestImagesSingleClusterPodListDeniedIsHardRBAC verifies the required
+// collector for a single-cluster scan: the pod list is the whole answer, so a
+// denial is the command's error, not a degraded envelope with no rows.
+func TestImagesSingleClusterPodListDeniedIsHardRBAC(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	client := newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
+
+	cmd := NewImages(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Nil(t, res.Data, "a required collector's denial yields no payload to degrade")
+	assert.Empty(t, res.Warnings)
 }
 
 func TestImagesClusterAndAllClustersConflict(t *testing.T) {
@@ -348,4 +369,158 @@ func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
 		runtime.IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "the pipeline must reject a non-enum --by before Execute")
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// allClustersFactory builds the --all-clusters fixture: a management client
+// listing ids, and one downstream client per id.
+func allClustersFactory(t *testing.T, downstream map[string]engine.ClusterClient) *fakeFactory {
+	t.Helper()
+	clusterKind := mustKind(t, "cluster")
+	ids := make([]string, 0, len(downstream))
+	for id := range downstream {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	items := make([]unstructured.Unstructured, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, managementClusterObj(id))
+	}
+	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{Items: items})
+	return &fakeFactory{client: mgmt, perCluster: downstream}
+}
+
+// TestImagesAllClustersZeroClustersIsVerifiedEmpty asserts a management list
+// the caller was authorized to read, returning no cluster, is an empty scan
+// rather than a failure: no downstream client is built at all.
+func TestImagesAllClustersZeroClustersIsVerifiedEmpty(t *testing.T) {
+	t.Parallel()
+	clusterKind := mustKind(t, "cluster")
+	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{})
+	factory := &fakeFactory{client: mgmt}
+
+	res, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	require.NoError(t, err)
+	assert.Empty(t, res.Warnings)
+	env, ok := res.Data.(imagesResult)
+	require.True(t, ok)
+	assert.Nil(t, env.Degraded)
+	perCluster, ok := env.Clusters.(clusterImages)
+	require.True(t, ok)
+	assert.Empty(t, perCluster)
+	assert.Equal(t, []string{engine.LocalCluster}, factory.clusterCalls,
+		"an empty scan domain must not build a downstream client")
+}
+
+// TestImagesAllClustersEveryScanFailedIsHardError asserts a fleet-wide scan
+// that reached no cluster fails, keeping the code every cluster agreed on
+// and listing the causes in cluster id order.
+func TestImagesAllClustersEveryScanFailedIsHardError(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+		"c-b": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden on b")),
+		"c-a": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden on a")),
+	})
+
+	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "no cluster could be scanned: c-a: forbidden on a; c-b: forbidden on b", ce.Message)
+}
+
+// TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric asserts failures
+// that disagree collapse to GENERIC rather than picking one cluster's code.
+func TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+		"c-a": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")),
+		"c-b": newFakeClient().withListErr(podKind.GVR, errors.New("connection refused")),
+	})
+
+	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.True(t, errors.As(err, &ce))
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Equal(t, "no cluster could be scanned: c-a: forbidden; c-b: connection refused", ce.Message)
+}
+
+// TestImagesAllClustersOwnerWalkFailureIsNotAScanFailure asserts an owner
+// walk that failed inside a successful scan keeps its rows and stays out of
+// the every-scan-failed count.
+func TestImagesAllClustersOwnerWalkFailureIsNotAScanFailure(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	client := newFakeClient().
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			ownedPod("p1", "web", "nginx:1.25", "rs", "rs-1"),
+		}}).
+		withGetErr(rsGVR, "web", "rs", clierr.New(clierr.CodeRBAC, "forbidden"))
+	factory := allClustersFactory(t, map[string]engine.ClusterClient{"c-a": client})
+
+	res, err := execRead(t, NewImages(factory), input{
+		s: map[string]string{"by": "workload"},
+		b: map[string]bool{"all-clusters": true},
+	})
+	require.NoError(t, err)
+	env, ok := res.Data.(imagesResult)
+	require.True(t, ok)
+	require.Len(t, env.Degraded, 1)
+	assert.Equal(t, sectionOwnerResolution, env.Degraded[0].Section)
+	perCluster, ok := env.Clusters.(clusterImageWorkloads)
+	require.True(t, ok)
+	require.Len(t, perCluster["c-a"], 1)
+}
+
+// TestImagesAllClustersScanCancellationStaysHard asserts a canceled caller
+// fails the scan instead of reporting every cluster as degraded.
+func TestImagesAllClustersScanCancellationStaysHard(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+		"c-a": newFakeClient().withListErr(podKind.GVR, context.Canceled),
+		"c-b": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
+		}}),
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	rc := NewImages(factory).(runtime.ReadCommand)
+	_, err := rc.Execute(ctx, input{b: map[string]bool{"all-clusters": true}}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// TestImagesAllClustersDegradedEntriesAreDeterministic asserts the
+// concurrent fan-out yields the same sorted entries and warnings on every
+// run, so the output is golden-stable.
+func TestImagesAllClustersDegradedEntriesAreDeterministic(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	for range 20 {
+		factory := allClustersFactory(t, map[string]engine.ClusterClient{
+			"c-c": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")),
+			"c-b": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
+			}}),
+			"c-a": newFakeClient().withListErr(podKind.GVR, errors.New("connection refused")),
+		})
+
+		res, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+		require.NoError(t, err)
+		env, ok := res.Data.(imagesResult)
+		require.True(t, ok)
+		require.Equal(t, []sectionOutcome{
+			{Section: sectionClusters, State: statePartial, Code: clierr.CodeGeneric, Target: "c-a"},
+			{Section: sectionClusters, State: statePartial, Code: clierr.CodeRBAC, Target: "c-c"},
+		}, env.Degraded)
+		require.Equal(t, []string{
+			"clusters unavailable for c-a: connection refused",
+			"clusters unavailable for c-c: forbidden",
+		}, res.Warnings)
+	}
 }

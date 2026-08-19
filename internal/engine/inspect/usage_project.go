@@ -23,7 +23,7 @@ import (
 // list (never projects.ResolveProject, which would repeat the same List).
 // --namespace narrows to that namespace's pods (a member check applies when
 // --project is also set); --node narrows to pods on that node.
-func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
 	projectFlag := resources.TypedProject(in)
@@ -122,6 +122,18 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 			"pass a member namespace, or omit --namespace to scope the whole project")
 	}
 
+	// An ownership map the caller was authorized to read, showing the named
+	// project owns no namespace, is a verified-empty scope: the bucket is a
+	// verified zero, so no pod or metrics read is issued.
+	if filterID != "" && !ownsAnyNamespace(nsByProject, filterID) {
+		cpuReq, cpuLim, memReq, memLim := sumPodResources(nil)
+		rows := usageRows{filterID: {
+			CPURequest: cpuReq.String(), CPULimit: cpuLim.String(),
+			MemoryRequest: memReq.String(), MemoryLimit: memLim.String(),
+		}}
+		return usageResult(byProject, rows, displayByID, sec), nil
+	}
+
 	// Pod List — namespace-scoped when --namespace narrows to one namespace.
 	pods, err := client.List(ctx, podKind.GVR, namespace, "")
 	if err != nil {
@@ -164,17 +176,23 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	if namespace != "" {
 		namespaces = []string{namespace}
 	}
-	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	rows, err := aggregateUsage(ctx, client, sec, grouped, namespaces)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	rows, _ := inner.Data.(usageRows)
-	return runtime.Result{
-		Kind: "ResourceUsage",
-		// names makes the table SCOPE column show project display names while
-		// JSON row keys stay project ids (UU-18/UU-25). "<none>" has no entry
-		// and renders as-is.
-		Data:     usageEnvelope{By: byProject, Data: rows, names: displayByID},
-		Warnings: inner.Warnings,
-	}, nil
+	// names makes the table SCOPE column show project display names while
+	// JSON row keys stay project ids (UU-18/UU-25). "<none>" has no entry
+	// and renders as-is.
+	return usageResult(byProject, rows, displayByID, sec), nil
+}
+
+// ownsAnyNamespace reports whether the ownership map assigns at least one
+// namespace to projectID.
+func ownsAnyNamespace(nsByProject map[string]string, projectID string) bool {
+	for _, pid := range nsByProject {
+		if pid == projectID {
+			return true
+		}
+	}
+	return false
 }

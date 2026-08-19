@@ -326,7 +326,7 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 	require.NoError(t, err, "a failed provisioning lookup degrades, never errors")
 
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "provisioning cluster lookup unavailable")
+	assert.Contains(t, res.Warnings[0], "provisioning unavailable")
 	assert.Contains(t, res.Warnings[0], "forbidden", "the warning names the cause")
 
 	doc, _ := marshaledDoc(t, res.Data)
@@ -384,7 +384,7 @@ func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err, "a registration failure degrades, never errors")
 		require.Len(t, res.Warnings, 1)
-		assert.Contains(t, res.Warnings[0], "registration token unavailable")
+		assert.Contains(t, res.Warnings[0], "registration unavailable")
 		doc, _ := marshaledDoc(t, res.Data)
 		_, hasReg := doc["registration"]
 		assert.False(t, hasReg, "registration must be ABSENT from the wire on a failed read")
@@ -555,9 +555,13 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "provisioning cluster lookup unavailable")
-	assert.Contains(t, strings.ToLower(res.Warnings[0]), "deadline",
+	// Two warnings: the node-join applicability advisory (the correlation
+	// that decides imported-vs-not is the thing that just degraded) and the
+	// provisioning degrade itself.
+	require.Len(t, res.Warnings, 2)
+	assert.Contains(t, res.Warnings[0], "cannot determine whether the node-join commands apply")
+	assert.Contains(t, res.Warnings[1], "provisioning unavailable")
+	assert.Contains(t, strings.ToLower(res.Warnings[1]), "deadline",
 		"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
 
 	doc, _ := marshaledDoc(t, res.Data)
@@ -568,6 +572,10 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	reg, hasReg := doc["registration"]
 	assert.True(t, hasReg, "the registration lookup still proceeds after the degraded provisioning lookup")
 	assert.NotEmpty(t, reg)
+	regMap, _ := reg.(map[string]any)
+	_, hasNA := regMap["notApplicable"]
+	assert.False(t, hasNA,
+		"imported is UNKNOWN under a degraded correlation — the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
 	assert.Equal(t, "/v1/management.cattle.io.clusterregistrationtokens/c-abc/default-token", root.path,
 		"the registration fetch was issued despite the provisioning timeout")
 }
@@ -959,23 +967,32 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
 
 	failed := newFakeClient().withListErr(crtbKind.GVR, errors.New("forbidden"))
-	members, warns, err := clusterMembers(context.Background(), failed, "c-x")
+	sec := newSections(t.Context(), sectionMembers)
+	members, warns, err := clusterMembers(t.Context(), failed, sec, "c-x")
 	require.NoError(t, err)
 	assert.Nil(t, members, "failed LIST → nil pointer (JSON field omitted)")
-	require.Len(t, warns, 1)
-	assert.Contains(t, warns[0], "clusterroletemplatebindings unavailable")
+	assert.Empty(t, warns, "the failure is a degraded entry; the advisory channel stays empty")
+	degraded, dwarn := sec.Finalize()
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMembers, State: stateUnavailable, Code: clierr.CodeGeneric},
+	}, degraded)
+	assert.Equal(t, []string{"members unavailable: forbidden"}, dwarn)
 
 	empty := newFakeClient().withListNS(crtbKind.GVR, "c-x", &unstructured.UnstructuredList{})
-	members, warns, err = clusterMembers(context.Background(), empty, "c-x")
+	sec = newSections(t.Context(), sectionMembers)
+	members, warns, err = clusterMembers(t.Context(), empty, sec, "c-x")
 	require.NoError(t, err)
 	require.NotNil(t, members, "verified empty LIST → non-nil pointer")
 	assert.Empty(t, *members)
 	assert.Empty(t, warns)
+	degraded, dwarn = sec.Finalize()
+	assert.Nil(t, degraded)
+	assert.Nil(t, dwarn)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	canceled := newFakeClient().withListErr(crtbKind.GVR, context.Canceled)
-	_, _, err = clusterMembers(ctx, canceled, "c-x")
+	_, _, err = clusterMembers(ctx, canceled, newSections(ctx, sectionMembers), "c-x")
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
@@ -988,28 +1005,35 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 	machineKind, _ := kinds.Lookup("capimachine")
 
 	failed := newFakeClient().withListErr(machineKind.GVR, errors.New("forbidden"))
-	machines, warns, err := clusterMachines(context.Background(), failed, "my-cluster")
+	sec := newSections(t.Context(), sectionMachines)
+	machines, err := clusterMachines(t.Context(), failed, sec, "my-cluster")
 	require.NoError(t, err)
 	assert.Nil(t, machines, "failed LIST → nil pointer (JSON field omitted)")
-	require.Len(t, warns, 1)
-	assert.Contains(t, warns[0], "machines unavailable")
+	degraded, dwarn := sec.Finalize()
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMachines, State: stateUnavailable, Code: clierr.CodeGeneric},
+	}, degraded)
+	assert.Equal(t, []string{"machines unavailable: forbidden"}, dwarn)
 
 	empty := newFakeClient().withListNS(machineKind.GVR, machineKind.DefaultNamespace, &unstructured.UnstructuredList{})
-	machines, warns, err = clusterMachines(context.Background(), empty, "my-cluster")
+	sec = newSections(t.Context(), sectionMachines)
+	machines, err = clusterMachines(t.Context(), empty, sec, "my-cluster")
 	require.NoError(t, err)
 	require.NotNil(t, machines, "verified empty LIST → non-nil pointer")
 	assert.Empty(t, *machines)
-	assert.Empty(t, warns)
+	degraded, dwarn = sec.Finalize()
+	assert.Nil(t, degraded)
+	assert.Nil(t, dwarn)
 	require.Len(t, empty.listSelectors, 1)
 	assert.Equal(t, capiClusterNameLabel+"=my-cluster", empty.listSelectors[0],
 		"machines LIST must use the cluster-name label selector")
 	assert.Equal(t, machineKind.DefaultNamespace, empty.listNamespaces[0],
 		"machines LIST must be scoped to machineKind.DefaultNamespace, never a hardcoded string")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	canceled := newFakeClient().withListErr(machineKind.GVR, context.Canceled)
-	_, _, err = clusterMachines(ctx, canceled, "my-cluster")
+	_, err = clusterMachines(ctx, canceled, newSections(ctx, sectionMachines), "my-cluster")
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
@@ -1170,7 +1194,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 		assert.Contains(t, stdout, "CLUSTER\n")
 		assert.Contains(t, stdout, "registration: withheld (contains join credentials)")
 		assert.NotContains(t, stdout, "default-token vanished", "the cause of any fetch failure never prints to stdout")
-		assert.NotContains(t, stderr, "registration token unavailable", "no fetch was attempted; no warning")
+		assert.NotContains(t, stderr, "registration unavailable", "no fetch was attempted; no warning")
 	})
 
 	t.Run("withheld default: token absent from stdout when root serves live data", func(t *testing.T) {
@@ -1201,7 +1225,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 		assert.Contains(t, stdout, "registration: not available")
 		assert.NotContains(t, stdout, "# warning:", "warnings never print to stdout")
 		assert.NotContains(t, stdout, "default-token vanished", "the cause never prints to stdout")
-		assert.Contains(t, stderr, "# warning: registration token unavailable")
+		assert.Contains(t, stderr, "# warning: registration unavailable")
 		assert.Contains(t, stderr, "default-token vanished")
 	})
 }
@@ -1598,4 +1622,175 @@ func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
 
 	assert.Contains(t, res.Text, "node join:")
 	assert.Contains(t, res.Text, "tok-abc")
+}
+
+// TestInspectClusterProvisioningFailureIsOneEntry asserts the correlation
+// failure records ONE provisioning entry covering its whole fan-out: the
+// status, machinePools, and machines keys it leaves absent get no entries
+// of their own.
+func TestInspectClusterProvisioningFailureIsOneEntry(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
+		withListErr(provKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionProvisioning, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, payload.Degraded)
+	assert.Equal(t, []string{"provisioning unavailable: forbidden"}, res.Warnings)
+	assert.Nil(t, payload.Status)
+	assert.Nil(t, payload.MachinePools)
+	assert.Nil(t, payload.Machines)
+
+	doc, _ := marshaledDoc(t, payload)
+	entries, ok := doc["degraded"].([]any)
+	require.True(t, ok, "degraded must reach the wire")
+	require.Len(t, entries, 1)
+	entry, ok := entries[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, sectionProvisioning, entry["section"])
+	assert.Equal(t, stateUnavailable, entry["state"])
+	assert.Equal(t, clierr.CodeRBAC, entry["code"])
+	_, hasTarget := entry["target"]
+	assert.False(t, hasTarget, "a whole-section entry carries no target")
+}
+
+// TestInspectClusterAmbiguousCorrelationIsAmbiguousSelection asserts the
+// server-side anomaly keeps its own code rather than collapsing to GENERIC.
+func TestInspectClusterAmbiguousCorrelationIsAmbiguousSelection(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	a := provClusterFixture("prov-a", "c-abc")
+	b := provClusterFixture("prov-b", "c-abc")
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*a, *b}})
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	require.Len(t, payload.Degraded, 1)
+	assert.Equal(t, sectionProvisioning, payload.Degraded[0].Section)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, payload.Degraded[0].Code)
+}
+
+// TestInspectClusterMachinesFailAfterCorrelation asserts a machine list
+// that failed AFTER a successful correlation is its own entry, leaving the
+// provisioning-derived sections intact.
+func TestInspectClusterMachinesFailAfterCorrelation(t *testing.T) {
+	t.Parallel()
+	machineKind := mustKind(t, "capimachine")
+	client, root := inspectClusterFixture(t)
+	client.withListErr(machineKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMachines, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, payload.Degraded)
+	assert.Equal(t, []string{"machines unavailable: forbidden"}, res.Warnings)
+	assert.Nil(t, payload.Machines, "a failed machine list omits the field")
+	assert.NotNil(t, payload.Status, "the provisioning sections survive a machine-list failure")
+	assert.NotNil(t, payload.MachinePools)
+}
+
+// TestInspectClusterMembersFailureIsItsOwnEntry asserts the CRTB list is an
+// independent collector: its failure never touches the other sections.
+func TestInspectClusterMembersFailureIsItsOwnEntry(t *testing.T) {
+	t.Parallel()
+	crtbKind := mustKind(t, "clusterroletemplatebinding")
+	client, root := inspectClusterFixture(t)
+	client.withListErr(crtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMembers, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, payload.Degraded)
+	assert.Equal(t, []string{"members unavailable: forbidden"}, res.Warnings)
+	assert.Nil(t, payload.Members)
+	assert.NotNil(t, payload.Status)
+	assert.NotNil(t, payload.Machines)
+}
+
+// TestInspectClusterRegistrationFailureIsItsOwnEntry asserts the token read
+// records a registration entry carrying the read's own code.
+func TestInspectClusterRegistrationFailureIsItsOwnEntry(t *testing.T) {
+	t.Parallel()
+	client, _ := inspectClusterFixture(t)
+	roots := fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionRegistration, State: stateUnavailable, Code: clierr.CodeNotFound},
+	}, payload.Degraded)
+	assert.Equal(t, []string{"registration unavailable: default-token vanished"}, res.Warnings)
+	assert.Nil(t, payload.Registration)
+}
+
+// TestInspectClusterDegradedParity asserts every typed outcome pairs with
+// exactly one warning, in the same order, and that the advisory agent
+// warning stays outside that pairing.
+func TestInspectClusterDegradedParity(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+	crtbKind := mustKind(t, "clusterroletemplatebinding")
+
+	mgmt := mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")
+	require.NoError(t, unstructured.SetNestedSlice(mgmt.Object, []any{
+		map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "agent gone"},
+	}, "status", "conditions"))
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmt).
+		withListErr(provKind.GVR, clierr.New(clierr.CodeRBAC, "provisioning forbidden")).
+		withListErr(crtbKind.GVR, clierr.New(clierr.CodeRBAC, "bindings forbidden"))
+	roots := fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	payload, ok := res.Data.(clusterResult)
+	require.True(t, ok)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMembers, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionProvisioning, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionRegistration, State: stateUnavailable, Code: clierr.CodeNotFound},
+	}, payload.Degraded, "entries are sorted by section")
+
+	require.Len(t, res.Warnings, len(payload.Degraded)+1,
+		"one warning per entry, plus the advisory agent verdict")
+	assert.Equal(t, "cluster agent is not connected: agent gone", res.Warnings[0],
+		"the advisory warning is not a degraded entry")
+	typed := res.Warnings[1:]
+	for i, entry := range payload.Degraded {
+		assert.True(t, strings.HasPrefix(typed[i], entry.Section+" unavailable: "),
+			"warning %q must pair with entry %q", typed[i], entry.Section)
+	}
 }

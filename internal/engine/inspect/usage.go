@@ -42,7 +42,13 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. " +
 			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
 			"--project without --by returns member-namespace rows (namespace grouping filtered to the project). " +
-			"--by project --project X returns a single project bucket.",
+			"--by project --project X returns a single project bucket. " +
+			degradedContractDesc +
+			"Required collectors hard-error: cluster resolution and the pod list always; project " +
+			"resolution and the membership list with --project; the project and namespace maps with " +
+			"--by project; the node list with --by node, or the named node GET with --by node --node N. " +
+			"Degradable section: metrics (unavailable — requests and limits stay). A scope that resolves " +
+			"to zero namespaces is verified empty: no pod or metrics read is issued.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"},
@@ -86,19 +92,34 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 		return runtime.Result{}, err
 	}
 
+	// Every usage mode's required collectors (cluster resolution, the pod
+	// list, and the scope-establishing reads) hard-error; only the metrics
+	// fetch degrades.
+	sec := newSections(ctx, sectionMetrics)
 	switch by {
 	case byNode:
-		return c.collectByNode(ctx, client, clusterID, in)
+		return c.collectByNode(ctx, client, sec, in)
 	case byPod:
-		return c.collectByPod(ctx, client, clusterID, in)
+		return c.collectByPod(ctx, client, clusterID, sec, in)
 	case byProject:
-		return c.collectByProject(ctx, client, clusterID, in)
+		return c.collectByProject(ctx, client, clusterID, sec, in)
 	default:
-		return c.collectByNamespace(ctx, client, clusterID, in)
+		return c.collectByNamespace(ctx, client, clusterID, sec, in)
 	}
 }
 
-func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+// usageResult builds the command's Result from the collected rows and the
+// accumulator, so entries and their warnings always travel together.
+func usageResult(by string, rows usageRows, names map[string]string, sec *sections) runtime.Result {
+	degraded, warnings := sec.Finalize()
+	return runtime.Result{
+		Kind:     "ResourceUsage",
+		Data:     usageEnvelope{By: by, Data: rows, Degraded: degraded, names: names},
+		Warnings: warnings,
+	}
+}
+
+func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
 	projectFlag := resources.TypedProject(in)
@@ -134,6 +155,12 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 		grouped[namespace] = filterPodsByNode(l.Items, nodeName)
 
 	case projectID != "":
+		// A membership list the caller was authorized to read, returning zero
+		// namespaces, is a verified-empty scope: no pod could belong to it, so
+		// no pod or metrics read is issued and no collector can degrade.
+		if len(members) == 0 {
+			return usageResult(byNamespace, usageRows{}, nil, sec), nil
+		}
 		// UU-5 BREAKING: --project without --by now returns member-namespace
 		// rows, not a single project bucket. The single-bucket form is
 		// --by project --project X (collectByProject). Every member namespace
@@ -170,16 +197,11 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 		}
 	}
 
-	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	rows, err := aggregateUsage(ctx, client, sec, grouped, namespaces)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	rows, _ := inner.Data.(usageRows)
-	return runtime.Result{
-		Kind:     "ResourceUsage",
-		Data:     usageEnvelope{By: byNamespace, Data: rows},
-		Warnings: inner.Warnings,
-	}, nil
+	return usageResult(byNamespace, rows, nil, sec), nil
 }
 
 // fetchPodMetrics lists pod metrics with ONE List call: scoped to the single
@@ -207,16 +229,22 @@ func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespace
 
 // aggregateUsage sums CPU/memory requests, limits, and (when metrics.k8s.io
 // is reachable) usage per grouped key, degrading a metrics fetch failure to
-// a warning rather than a command error. Shared by usage's own per-namespace/
-// per-project modes and inspect project's usage summary. One row is emitted
-// per key present in grouped, even for nil (empty) pod slices — callers that
-// need a guaranteed row for a scope with no pods must seed the key first.
-func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID string, grouped map[string][]unstructured.Unstructured, namespaces []string) (runtime.Result, error) {
-	var warnings []string
+// a metrics section rather than a command error — request and limit totals
+// stay readable, so the usage section itself is never unavailable for this.
+// Shared by usage's own per-namespace/per-project modes and inspect
+// project's usage summary. sec MUST have sectionMetrics registered in its
+// vocabulary — the metrics degrade records against it, and an unregistered
+// section is the accumulator's programmer-error panic. One row is emitted
+// per key present in grouped, even for nil (empty) pod slices — callers
+// that need a guaranteed row for a scope with no pods must seed the key
+// first.
+func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *sections, grouped map[string][]unstructured.Unstructured, namespaces []string) (usageRows, error) {
 	metricsOK := true
 	metricsByKey, merr := fetchPodMetrics(ctx, client, namespaces)
 	if merr != nil {
-		warnings = append(warnings, metricsUnavailableWarning(clusterID))
+		if cerr := sec.Unavailable(sectionMetrics, merr); cerr != nil {
+			return nil, cerr
+		}
 		metricsOK = false
 	}
 
@@ -251,7 +279,7 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, clusterID 
 		}
 		result[scope] = totals
 	}
-	return runtime.Result{Kind: "ResourceUsage", Data: result, Warnings: warnings}, nil
+	return result, nil
 }
 
 // addQuantity parses the string quantity at path within container (a
@@ -330,9 +358,12 @@ func (u usageRows) Rows() [][]string {
 // (the project grouping keys rows by project id but displays the project
 // name, UU-18/UU-25); it is unexported so the JSON shape stays {"by","rows"}.
 type usageEnvelope struct {
-	By    string    `json:"by"`
-	Data  usageRows `json:"rows"`
-	names map[string]string
+	By   string    `json:"by"`
+	Data usageRows `json:"rows"`
+	// Degraded names the collectors that failed while the required ones
+	// succeeded; absent when everything the command needed was readable.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
+	names    map[string]string
 }
 
 func (e usageEnvelope) Columns() []string { return e.Data.Columns() }

@@ -797,9 +797,9 @@ func (n nodeMetricsRows) Rows() [][]string {
 // pre-existing bug (every command's warnings vanished in default/table
 // output, not just provisioning's) is fixed, using a Result shaped exactly
 // like `top node`'s real output — Kind "NodeMetrics", an output.Tabular Data
-// payload, and the one metrics.k8s.io-unavailable warning
-// (inspect.metricsUnavailableWarning) topnode.go emits when metrics-server is
-// absent. Before the fix, this warning was silently dropped in table/default
+// payload, and the one metrics-unavailable warning topnode.go emits when
+// metrics-server is absent. Before the fix, this warning was silently
+// dropped in table/default
 // format; a user running `rancher-cli top node` with no metrics-server saw
 // no indication their CPU/MEMORY columns were "<none>" because metrics were
 // unreachable, not because usage was legitimately zero.

@@ -1,12 +1,15 @@
 package inspect
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -151,13 +154,250 @@ func TestInspectProjectDegradesForbiddenMemberListToWarning(t *testing.T) {
 	data := res.Data.(projectResult)
 	assert.Empty(t, data.Members)
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "projectroletemplatebindings")
+	assert.Equal(t, "members unavailable: forbidden", res.Warnings[0])
+	assert.Equal(t, []sectionOutcome{{Section: sectionMembers, State: stateUnavailable, Code: clierr.CodeRBAC}}, data.Degraded)
 
 	// everything else stays intact.
 	assert.Equal(t, "p-1", data.ID)
 	require.Len(t, data.Namespaces, 2)
 	require.NotNil(t, data.ResourceQuota)
 	require.NotNil(t, data.Usage)
+}
+
+// TestInspectProjectMemberShapedAccess is the anchor case: a project member
+// passes the project GET and the PRTB list but cannot list namespaces. The
+// command succeeds with the readable sections and annotates the rest.
+func TestInspectProjectMemberShapedAccess(t *testing.T) {
+	t.Parallel()
+	fac, _, downstream := setUpProjectFixture(t, "")
+	nsKind := mustKind(t, "namespace")
+	podKind := mustKind(t, "pod")
+	depKind := mustKind(t, "deployment")
+	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	assert.Equal(t, "p-1", data.ID)
+	assert.Equal(t, "web", data.DisplayName)
+	require.Len(t, data.Members, 2)
+	require.NotNil(t, data.ResourceQuota)
+	assert.Nil(t, data.Namespaces)
+	assert.Nil(t, data.Usage)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, data.Degraded)
+	assert.Equal(t, []string{
+		"namespaces unavailable: namespaces is forbidden",
+		"usage unavailable: namespaces unknown (namespaces is forbidden)",
+	}, res.Warnings)
+
+	// A lost membership set makes the workload lists meaningless; they are
+	// not issued.
+	assert.False(t, downstream.listed(podKind.GVR), "pod list must not run without a membership set")
+	assert.False(t, downstream.listed(depKind.GVR), "deployment list must not run without a membership set")
+
+	// The wire shape an agent sees: identity and members carry values, the
+	// lost sections are null, and degraded names them.
+	b, err := json.Marshal(data)
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(b, &doc))
+	nsRaw, has := doc["namespaces"]
+	require.True(t, has, "namespaces key must be present")
+	assert.Nil(t, nsRaw, "unavailable namespaces must serialize as null")
+	usageRaw, has := doc["usage"]
+	require.True(t, has, "usage key must be present")
+	assert.Nil(t, usageRaw, "unavailable usage must serialize as null")
+	members, ok := doc["members"].([]any)
+	require.True(t, ok, "members must be an array")
+	assert.Len(t, members, 2)
+	assert.Len(t, doc["degraded"], 2)
+
+	// Text card marks both sections in place.
+	assert.Contains(t, res.Text, "NAMESPACES\n  namespaces: unavailable\n")
+	assert.Contains(t, res.Text, "USAGE\n  usage: unavailable\n")
+}
+
+func TestInspectProjectMembershipAndMembersBothDenied(t *testing.T) {
+	t.Parallel()
+	fac, mgmt, downstream := setUpProjectFixture(t, "")
+	nsKind := mustKind(t, "namespace")
+	prtbKind := mustKind(t, "projectroletemplatebinding")
+	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
+	mgmt.withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "prtbs is forbidden"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	assert.Nil(t, data.Namespaces)
+	assert.Nil(t, data.Members)
+	assert.Nil(t, data.Usage)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMembers, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, data.Degraded)
+	assert.Len(t, res.Warnings, 3)
+}
+
+func TestInspectProjectDownstreamClientFailureMatchesMembershipFailure(t *testing.T) {
+	t.Parallel()
+	fac, _, _ := setUpProjectFixture(t, "")
+	fac.perClusterErr = map[string]error{"c-test": clierr.New(clierr.CodeGeneric, "no kubeconfig for c-test")}
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	assert.Nil(t, data.Namespaces)
+	assert.Nil(t, data.Usage)
+	require.Len(t, data.Members, 2, "the management plane is still readable")
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeGeneric},
+		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeGeneric},
+	}, data.Degraded)
+}
+
+func TestInspectProjectPodListDeniedBlocksUsage(t *testing.T) {
+	t.Parallel()
+	fac, _, downstream := setUpProjectFixture(t, "")
+	podKind := mustKind(t, "pod")
+	depKind := mustKind(t, "deployment")
+	downstream.withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	assert.Nil(t, data.Namespaces, "unknown pod counts cannot be rendered as zeroes")
+	assert.Nil(t, data.Usage, "usage aggregates pods")
+	require.Len(t, data.Members, 2)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
+		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, data.Degraded)
+	assert.Equal(t, "usage unavailable: pods unknown (pods is forbidden)", res.Warnings[1])
+	// The deployment list runs concurrently with the pod list and SUCCEEDS
+	// here — a readable deployment list must not restore a namespace section
+	// whose pod counts are unknown.
+	assert.True(t, downstream.listed(depKind.GVR), "the lists fan out together")
+}
+
+func TestInspectProjectDeploymentListDeniedKeepsUsage(t *testing.T) {
+	t.Parallel()
+	fac, _, downstream := setUpProjectFixture(t, "")
+	depKind := mustKind(t, "deployment")
+	downstream.withListErr(depKind.GVR, clierr.New(clierr.CodeRBAC, "deployments is forbidden"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	assert.Nil(t, data.Namespaces)
+	require.NotNil(t, data.Usage, "pods were readable, so the totals stand")
+	require.Len(t, data.Members, 2)
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, data.Degraded)
+	assert.Equal(t, []string{"namespaces unavailable: deployments is forbidden"}, res.Warnings)
+}
+
+func TestInspectProjectMetricsOnlyFailureKeepsUsage(t *testing.T) {
+	t.Parallel()
+	fac, _, downstream := setUpProjectFixture(t, "")
+	downstream.withListErr(podMetricsGVR, errors.New("no metrics server"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	require.Len(t, data.Namespaces, 2, "requests and limits come from the pod specs")
+	require.NotNil(t, data.Usage)
+	assert.Equal(t, "0", data.Usage.CPURequest)
+	assert.Empty(t, data.Usage.CPUUsage, "no measurement, but the totals stand")
+	assert.Equal(t, []sectionOutcome{
+		{Section: sectionMetrics, State: stateUnavailable, Code: clierr.CodeGeneric},
+	}, data.Degraded)
+	assert.Equal(t, []string{"metrics unavailable: no metrics server"}, res.Warnings)
+}
+
+// TestInspectProjectZeroMembersSkipsWorkloadLists covers the verified-empty
+// short-circuit: membership was read and is empty, so the workload and
+// metrics reads that could not have contributed rows are never issued — a
+// denial on them must not turn a verified-empty project into a failure.
+func TestInspectProjectZeroMembersSkipsWorkloadLists(t *testing.T) {
+	t.Parallel()
+	fac, _, downstream := setUpProjectFixture(t, "")
+	nsKind := mustKind(t, "namespace")
+	podKind := mustKind(t, "pod")
+	depKind := mustKind(t, "deployment")
+	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	downstream.withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
+	downstream.withListErr(depKind.GVR, clierr.New(clierr.CodeRBAC, "deployments is forbidden"))
+	downstream.withListErr(podMetricsGVR, errors.New("no metrics server"))
+	cmd := NewInspectProject(fac)
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+
+	require.NotNil(t, data.Namespaces, "a read membership set is verified empty, not unavailable")
+	assert.Empty(t, data.Namespaces)
+	assert.Nil(t, data.Usage)
+	assert.Empty(t, data.Degraded)
+	assert.Empty(t, res.Warnings)
+	assert.False(t, downstream.listed(podKind.GVR), "pod list must be skipped")
+	assert.False(t, downstream.listed(depKind.GVR), "deployment list must be skipped")
+	assert.False(t, downstream.listed(podMetricsGVR), "metrics list must be skipped")
+	assert.Contains(t, res.Text, "USAGE\n  none (no namespaces)\n")
+}
+
+func TestInspectProjectCancellationStaysHard(t *testing.T) {
+	t.Parallel()
+	nsKind := mustKind(t, "namespace")
+	prtbKind := mustKind(t, "projectroletemplatebinding")
+	podKind := mustKind(t, "pod")
+
+	for _, tc := range []struct {
+		name string
+		set  func(mgmt, downstream *fakeClient)
+	}{
+		{"membership", func(_, downstream *fakeClient) {
+			downstream.withListErr(nsKind.GVR, context.Canceled)
+		}},
+		{"members", func(mgmt, _ *fakeClient) {
+			mgmt.withListErr(prtbKind.GVR, context.Canceled)
+		}},
+		{"pods", func(_, downstream *fakeClient) {
+			downstream.withListErr(podKind.GVR, context.Canceled)
+		}},
+		{"metrics", func(_, downstream *fakeClient) {
+			downstream.withListErr(podMetricsGVR, context.Canceled)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fac, mgmt, downstream := setUpProjectFixture(t, "")
+			tc.set(mgmt, downstream)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+
+			rc := NewInspectProject(fac).(runtime.ReadCommand)
+			_, err := rc.Execute(ctx, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}}, nil)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
 }
 
 func TestRenderProjectTextSections(t *testing.T) {
@@ -184,19 +424,25 @@ func TestRenderProjectTextSections(t *testing.T) {
 
 func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 	t.Parallel()
+	// null namespaces is a failed read, which says nothing about usage.
 	r := projectResult{ID: "p-x", DisplayName: "X", Cluster: "c-x", Members: nil}
 	text := renderProjectText(r)
-	assert.Contains(t, text, "NAMESPACES\n  none\n")
+	assert.Contains(t, text, "NAMESPACES\n  namespaces: unavailable\n")
 	assert.Contains(t, text, "MEMBERS\n  members: unavailable\n")
 	assert.Contains(t, text, "QUOTA\n  none\n")
-	// zero namespaces → verified-empty usage, NOT unavailable.
+	assert.Contains(t, text, "USAGE\n  usage: unavailable\n")
+
+	// zero namespaces read successfully → verified-empty usage, NOT unavailable.
+	r.Namespaces = []projectNamespace{}
+	text = renderProjectText(r)
+	assert.Contains(t, text, "NAMESPACES\n  none\n")
 	assert.Contains(t, text, "USAGE\n  none (no namespaces)\n")
 
 	r.Members = []projectMember{}
 	assert.Contains(t, renderProjectText(r), "MEMBERS\n  none\n")
 
 	// Defensive: Usage nil with non-empty Namespaces renders an explicit
-	// marker, not a bare header. Unreachable from Execute today but pins the
+	// marker, not a bare header. Unreachable from Execute today but asserts the
 	// renderer contract independent of the seeding invariant.
 	r.Namespaces = []projectNamespace{{Name: "ns1"}}
 	assert.Contains(t, renderProjectText(r), "USAGE\n  usage: unavailable\n")
@@ -353,6 +599,36 @@ func TestInspectProjectNotFoundCurated(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-gone", ce.Message)
 	assert.NotEmpty(t, ce.Hint, "curated project error must carry a list hint")
+}
+
+// TestInspectProjectGetDeniedIsHardRBAC verifies the first required
+// collector: the project GET is the document's substance, so a denial is the
+// command's error with its RBAC identity intact, never a degraded envelope.
+func TestInspectProjectGetDeniedIsHardRBAC(t *testing.T) {
+	t.Parallel()
+	projectKind := mustKind(t, "project")
+	nsKind := mustKind(t, "namespace")
+	denied := clierr.New(clierr.CodeRBAC, "projects.management.cattle.io \"p-test\" is forbidden")
+	mgmt := newFakeClient().
+		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
+			Items: []unstructured.Unstructured{*projectFixtureObj("p-test", "Test", "")},
+		}).
+		withGetErr(projectKind.GVR, "c-test", "p-test", denied)
+	downstream := newFakeClient().
+		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{
+		engine.LocalCluster: mgmt,
+		"c-test":            downstream,
+	}}
+
+	cmd := NewInspectProject(fac)
+	res, err := execRead(t, cmd, input{args: []string{"p-test"}, s: map[string]string{"cluster": "c-test"}})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Nil(t, res.Data, "a required collector's denial yields no payload to degrade")
+	assert.Empty(t, res.Warnings)
 }
 
 // TestInspectProjectNotFoundWithHintPassesThrough pins that an already-curated

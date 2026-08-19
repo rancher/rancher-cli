@@ -133,6 +133,10 @@ or point any other agent's instructions file at it.
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
 
+Composite reads (`inspect *`, `images`, `usage`) answer with what the caller
+can see: a collector they cannot read is named in the payload's `degraded`
+field with a paired warning, and the command still exits 0.
+
 Generated `get`/`patch`/`delete` commands cover every kind in the 48-kind
 vocabulary. The full catalog is [COMMANDS.md](COMMANDS.md), and
 `rancher schema` is its live version. Per-kind verb rules:

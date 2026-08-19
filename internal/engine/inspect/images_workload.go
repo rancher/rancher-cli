@@ -47,15 +47,16 @@ type rowKey struct {
 // workloadImagesFor scans active pods, filters by needles, resolves each
 // pod's owning workload (memoized per unique owner reference), and
 // aggregates per-pod image sets by (image, namespace, workload identity).
-func workloadImagesFor(ctx context.Context, client engine.ClusterClient, needles []string) (imageWorkloadRows, []string, error) {
+// Owner-resolution failures are recorded on sec; clusterID prefixes their
+// targets in all-clusters mode and is empty otherwise.
+func workloadImagesFor(ctx context.Context, client engine.ClusterClient, sec *sections, clusterID string, needles []string) (imageWorkloadRows, error) {
 	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, "", "")
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	memo := map[ownerKey]workloadIdentity{}
 	counts := map[rowKey]int{}
-	var warnings []string
 	for i := range list.Items {
 		pod := &list.Items[i]
 		if !podActive(pod.Object) {
@@ -71,8 +72,16 @@ func workloadImagesFor(ctx context.Context, client engine.ClusterClient, needles
 			continue
 		}
 		ns := pod.GetNamespace()
-		id, warns := resolveWorkload(ctx, client, ns, pod, memo)
-		warnings = append(warnings, warns...)
+		// resolveWorkload returns a non-nil error ONLY for the caller's
+		// cancellation (ownerChain's contract): ordinary owner-lookup
+		// failures degrade to an ownerResolution entry and return nil, so
+		// this abort never fires for a single pod's bad owner. A new error
+		// return inside ownerChain would turn per-pod degradation into a
+		// whole-scan abort here — keep that contract.
+		id, rerr := resolveWorkload(ctx, client, sec, clusterID, ns, pod, memo)
+		if rerr != nil {
+			return nil, rerr
+		}
 		for img := range imgSet {
 			counts[rowKey{image: img, ns: ns, id: id}]++
 		}
@@ -81,6 +90,11 @@ func workloadImagesFor(ctx context.Context, client engine.ClusterClient, needles
 	for k, n := range counts {
 		rows = append(rows, imageWorkloadRow{Image: k.image, Namespace: k.ns, Workload: k.id, Pods: n})
 	}
+	sortWorkloadRows(rows)
+	return rows, nil
+}
+
+func sortWorkloadRows(rows imageWorkloadRows) {
 	sort.Slice(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
 		if a.Image != b.Image {
@@ -96,14 +110,14 @@ func workloadImagesFor(ctx context.Context, client engine.ClusterClient, needles
 		}
 		return a.Workload.UID < b.Workload.UID
 	})
-	return rows, warnings, nil
 }
 
 // resolveWorkload maps a pod to its owning workload identity. Ownerless
 // pods are their own workload (IM-16: apiVersion v1, the pod's own uid).
-// The owner chain runs once per unique owner reference; a memo hit emits
-// no repeat warnings, which is IM-16's warning dedup.
-func resolveWorkload(ctx context.Context, client engine.ClusterClient, ns string, pod *unstructured.Unstructured, memo map[ownerKey]workloadIdentity) (workloadIdentity, []string) {
+// The owner chain runs once per unique owner reference; a memo hit walks
+// nothing, so a failed owner is recorded exactly once, which is IM-16's
+// warning dedup.
+func resolveWorkload(ctx context.Context, client engine.ClusterClient, sec *sections, clusterID, ns string, pod *unstructured.Unstructured, memo map[ownerKey]workloadIdentity) (workloadIdentity, error) {
 	ref, ok := controllerRef(pod)
 	if !ok {
 		return workloadIdentity{
@@ -115,11 +129,14 @@ func resolveWorkload(ctx context.Context, client engine.ClusterClient, ns string
 	if id, hit := memo[key]; hit {
 		return id, nil
 	}
-	owners, warns := ownerChain(ctx, client, ns, pod)
+	owners, degraded, err := ownerChain(ctx, client, sec, sectionOwnerResolution, clusterID, ns, pod)
+	if err != nil {
+		return workloadIdentity{}, err
+	}
 	// IM-16: any walk failure retains the FIRST-level reference — a
 	// partially-walked chain's last element is an unverified guess.
 	src := owners[len(owners)-1]
-	if len(warns) > 0 {
+	if degraded {
 		src = owners[0]
 	}
 	id := workloadIdentity{
@@ -129,7 +146,7 @@ func resolveWorkload(ctx context.Context, client engine.ClusterClient, ns string
 		UID:        stringAt(src, "uid"),
 	}
 	memo[key] = id
-	return id, warns
+	return id, nil
 }
 
 func stringAt(m map[string]any, k string) string {

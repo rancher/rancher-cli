@@ -10,11 +10,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
 
 var rsGVR = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}
+
+// workloadImagesWith runs the scan with its own accumulator and returns what
+// a caller would publish: the rows plus the finalized degradation entries and
+// their paired warnings.
+func workloadImagesWith(ctx context.Context, client engine.ClusterClient, clusterID string, needles []string) (imageWorkloadRows, []sectionOutcome, []string, error) {
+	sec := newSections(ctx, sectionOwnerResolution)
+	rows, err := workloadImagesFor(ctx, client, sec, clusterID, needles)
+	degraded, warns := sec.Finalize()
+	return rows, degraded, warns, err
+}
 
 func ownedPod(name, ns, image, rsName, rsUID string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{
@@ -50,7 +61,7 @@ func TestWorkloadImagesEmptyPodListYieldsNonNilEmpty(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{})
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, rows, "non-nil even for an empty pod list")
 	assert.Len(t, rows, 0)
@@ -74,7 +85,7 @@ func TestWorkloadImagesMalformedOwnerRefsFallsBackToPod(t *testing.T) {
 	}, "metadata", "ownerReferences"))
 	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}})
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	assert.Empty(t, client.getCalls, "no Get calls for unresolvable owner references")
@@ -94,7 +105,7 @@ func TestWorkloadImagesResolvesAndMemoizes(t *testing.T) {
 		withList(podKind.GVR, list).
 		withObject(rsGVR, "web", "web-rs", replicaSet("web", "web-rs", "rs-1", "web", "dep-1"))
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	require.Len(t, rows, 1)
@@ -118,7 +129,7 @@ func TestWorkloadImagesGenerationsStaySeparate(t *testing.T) {
 		withObject(rsGVR, "web", "old-rs", replicaSet("web", "old-rs", "rs-old", "app", "dep-GEN1")).
 		withObject(rsGVR, "web", "new-rs", replicaSet("web", "new-rs", "rs-new", "app", "dep-GEN2"))
 
-	rows, _, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, _, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "same-name generations must not collapse (IM-17)")
 	assert.NotEqual(t, rows[0].Workload.UID, rows[1].Workload.UID)
@@ -135,7 +146,7 @@ func TestWorkloadImagesDegradesToFirstLevelRef(t *testing.T) {
 		withList(podKind.GVR, list).
 		withGetErr(rsGVR, "web", "gone-rs", fmt.Errorf("boom"))
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, degraded, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, workloadIdentity{
@@ -143,7 +154,35 @@ func TestWorkloadImagesDegradesToFirstLevelRef(t *testing.T) {
 	}, rows[0].Workload, "failure keeps the first-level ref (IM-16)")
 	assert.Equal(t, 2, rows[0].Pods)
 	require.Len(t, warns, 1, "memoization dedupes the warning")
-	assert.Equal(t, "owner web/replicaset.apps/gone-rs unavailable: boom", warns[0])
+	assert.Equal(t, "ownerResolution unavailable for apps/v1|ReplicaSet|web|gone-rs|rs-gone: boom", warns[0])
+	require.Len(t, degraded, 1)
+	assert.Equal(t, sectionOutcome{
+		Section: sectionOwnerResolution, State: statePartial,
+		Code: clierr.CodeGeneric, Target: "apps/v1|ReplicaSet|web|gone-rs|rs-gone",
+	}, degraded[0])
+}
+
+// TestWorkloadImagesOwnerRefWithDelimiterIsEscaped verifies the owner walk
+// survives an ownerReference this CLI never validated: a name carrying the
+// target delimiter degrades to an escaped target, never a crash.
+func TestWorkloadImagesOwnerRefWithDelimiterIsEscaped(t *testing.T) {
+	t.Parallel()
+	podKind, _ := kinds.Lookup("pod")
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		ownedPod("p1", "web", "app:1", "od|d-rs", "rs-odd"),
+	}}
+	client := newFakeClient().
+		withList(podKind.GVR, list).
+		withGetErr(rsGVR, "web", "od|d-rs", fmt.Errorf("boom"))
+
+	rows, degraded, warns, err := workloadImagesWith(t.Context(), client, "", nil)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Len(t, degraded, 1)
+	assert.Equal(t, "apps/v1|ReplicaSet|web|od%7Cd-rs|rs-odd", degraded[0].Target)
+	assert.Equal(t, []string{
+		"ownerResolution unavailable for apps/v1|ReplicaSet|web|od%7Cd-rs|rs-odd: boom",
+	}, warns)
 }
 
 func TestWorkloadImagesOwnerlessPodFallback(t *testing.T) {
@@ -158,7 +197,7 @@ func TestWorkloadImagesOwnerlessPodFallback(t *testing.T) {
 	}}
 	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{bare}})
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	require.Len(t, rows, 1)
@@ -187,7 +226,7 @@ func TestWorkloadImagesDeepWalkFailureKeepsFirstLevelRef(t *testing.T) {
 		withObject(rsGVR, "web", "mid-rs", rs).
 		withGetErr(stsGVR, "web", "deep-sts", fmt.Errorf("boom"))
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, warns, 1)
 	require.Len(t, rows, 1)
@@ -211,7 +250,7 @@ func TestWorkloadImagesMemoKeyIsolatesUID(t *testing.T) {
 		withList(podKind.GVR, list).
 		withObject(rsGVR, "web", "app-rs", replicaSet("web", "app-rs", "rs-NEW", "app", "dep-1"))
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "identical ns/kind/name with distinct uids must not share a memo entry (IM-15)")
 	assert.Len(t, client.getCalls, 2, "one resolution per distinct owner reference")
@@ -243,7 +282,7 @@ func TestWorkloadImagesIdentityIsolatesAPIVersion(t *testing.T) {
 	}}
 	client := newFakeClient().withList(podKind.GVR, list)
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	assert.Empty(t, client.getCalls, "non-recursable owners are never fetched")
@@ -269,12 +308,12 @@ func TestWorkloadImagesMatchAndEphemeralThroughGrouping(t *testing.T) {
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}).
 		withObject(rsGVR, "web", "rs", replicaSet("web", "rs", "rs-1", "app", "dep-1"))
 
-	rows, _, err := workloadImagesFor(context.Background(), client, []string{"drop-me"})
+	rows, _, _, err := workloadImagesWith(t.Context(), client, "", []string{"drop-me"})
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "ephemeral-container image is visible to workload grouping (IM-6)")
 	assert.Equal(t, "drop-me:1", rows[0].Image, "--match filters inside the workload path (IM-3)")
 
-	rows, _, err = workloadImagesFor(context.Background(), client, []string{"keep-me", "drop-me"})
+	rows, _, _, err = workloadImagesWith(t.Context(), client, "", []string{"keep-me", "drop-me"})
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "repeatable needles OR through workload grouping (IM-3)")
 	images := []string{rows[0].Image, rows[1].Image}
@@ -293,11 +332,14 @@ func TestWorkloadImagesWarningsDistinctAcrossNamespaces(t *testing.T) {
 		withGetErr(rsGVR, "ns-a", "same-name", fmt.Errorf("boom")).
 		withGetErr(rsGVR, "ns-b", "same-name", fmt.Errorf("boom"))
 
-	_, warns, err := workloadImagesFor(context.Background(), client, nil)
+	_, degraded, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, warns, 2)
-	assert.Contains(t, warns, "owner ns-a/replicaset.apps/same-name unavailable: boom")
-	assert.Contains(t, warns, "owner ns-b/replicaset.apps/same-name unavailable: boom")
+	assert.Contains(t, warns, "ownerResolution unavailable for apps/v1|ReplicaSet|ns-a|same-name|u1: boom")
+	assert.Contains(t, warns, "ownerResolution unavailable for apps/v1|ReplicaSet|ns-b|same-name|u2: boom")
+	require.Len(t, degraded, 2)
+	assert.Equal(t, "apps/v1|ReplicaSet|ns-a|same-name|u1", degraded[0].Target)
+	assert.Equal(t, "apps/v1|ReplicaSet|ns-b|same-name|u2", degraded[1].Target)
 }
 
 func TestWorkloadImagesPerPodImageDedup(t *testing.T) {
@@ -311,7 +353,7 @@ func TestWorkloadImagesPerPodImageDedup(t *testing.T) {
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}).
 		withObject(rsGVR, "web", "rs", replicaSet("web", "rs", "rs-1", "app", "dep-1"))
 
-	rows, _, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, _, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 1, rows[0].Pods, "one pod, twice-referenced image, pods = 1 (IM-17)")
@@ -389,7 +431,7 @@ func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
 		withList(podKind.GVR, list).
 		withObject(rsGVR, "default", "phase-rs", replicaSet("default", "phase-rs", "rs-1", "phase-dep", "dep-1"))
 
-	rows, warns, err := workloadImagesFor(context.Background(), client, nil)
+	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	require.Len(t, rows, 3, "Succeeded and Failed pods must not contribute rows (IM-24)")
@@ -403,7 +445,7 @@ func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
 	assert.NotContains(t, images, "img-gone", "completed-job images must not appear in the inventory")
 }
 
-func TestAllClustersWorkloadWarningsPrefixedAndSorted(t *testing.T) {
+func TestAllClustersWorkloadDegradationTargetedAndSorted(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
 	clusterKind, _ := kinds.Lookup("cluster")
@@ -431,7 +473,14 @@ func TestAllClustersWorkloadWarningsPrefixedAndSorted(t *testing.T) {
 	res, err := cmd.allClusters(context.Background(), byWorkload, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"cluster c-aaa: owner web/replicaset.apps/gone-rs unavailable: boom",
-		"cluster c-bbb: unreachable",
-	}, res.Warnings, "per-cluster warnings prefixed with cluster id, combined array sorted")
+		"clusters unavailable for c-bbb: unreachable",
+		"ownerResolution unavailable for c-aaa|apps/v1|ReplicaSet|web|gone-rs|rs-gone: boom",
+	}, res.Warnings, "entries sort by section then target, and warnings follow them")
+	data, ok := res.Data.(imagesResult)
+	require.True(t, ok)
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionClusters, State: statePartial, Code: clierr.CodeGeneric, Target: "c-bbb"},
+		{Section: sectionOwnerResolution, State: statePartial, Code: clierr.CodeGeneric,
+			Target: "c-aaa|apps/v1|ReplicaSet|web|gone-rs|rs-gone"},
+	}, data.Degraded, "an all-clusters owner target carries its cluster prefix")
 }

@@ -22,9 +22,12 @@ func NewDeployment(clients engine.ClusterClientFactory) runtime.Command {
 func (c *deploymentCmd) Describe() runtime.Descriptor {
 	k, _ := kinds.Lookup("deployment")
 	return runtime.Descriptor{
-		Name:        "inspect deployment",
-		Aliases:     k.Aliases,
-		Usage:       "Inspect a deployment and the pods it selects",
+		Name:    "inspect deployment",
+		Aliases: k.Aliases,
+		Usage:   "Inspect a deployment and the pods it selects",
+		Desc: degradedContractDesc +
+			"Cluster resolution, the namespace, and the deployment GET are required and hard-error. " +
+			"Degradable section: pods (unavailable — the selector-scoped pod list; the pods field is null).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -58,22 +61,36 @@ func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	sec := newSections(ctx, sectionPods)
 	podKind, _ := kinds.Lookup("pod")
-	list, err := client.List(ctx, podKind.GVR, ns, selector)
-	if err != nil {
-		return runtime.Result{}, err
+
+	// The deployment itself is readable; a denied pod list nulls that
+	// section rather than losing the whole document.
+	var pods []map[string]any
+	list, lerr := client.List(ctx, podKind.GVR, ns, selector)
+	if lerr != nil {
+		if herr := sec.Unavailable(sectionPods, lerr); herr != nil {
+			return runtime.Result{}, herr
+		}
+	} else {
+		pods = make([]map[string]any, 0, len(list.Items))
+		for i := range list.Items {
+			pods = append(pods, list.Items[i].Object)
+		}
 	}
-	pods := make([]map[string]any, 0, len(list.Items))
-	for i := range list.Items {
-		pods = append(pods, list.Items[i].Object)
-	}
+
+	degraded, warnings := sec.Finalize()
 	return runtime.Result{
-		Kind: "DeploymentInspection",
-		Data: deploymentResult{Deployment: dep.Object, Pods: pods},
+		Kind:     "DeploymentInspection",
+		Data:     deploymentResult{Deployment: dep.Object, Pods: pods, Degraded: degraded},
+		Warnings: warnings,
 	}, nil
 }
 
 type deploymentResult struct {
 	Deployment map[string]any   `json:"deployment"`
 	Pods       []map[string]any `json:"pods"`
+	// Degraded names the sections this run could not read in full. Absent
+	// when every collector succeeded.
+	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }

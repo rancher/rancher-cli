@@ -128,9 +128,191 @@ func TestInspectPodDegradesWithoutMetricsAndLogs(t *testing.T) {
 	data, ok := res.Data.(podResult)
 	require.True(t, ok)
 	assert.Nil(t, data.Metrics)
-	assert.Contains(t, res.Warnings, "metrics.k8s.io unavailable on cluster c-abc")
-	require.Len(t, res.Warnings, 2)
-	assert.Contains(t, res.Warnings[1], "logs unavailable for container app: container not ready")
+	require.Equal(t, []string{
+		"logs unavailable for app: container not ready",
+		"metrics unavailable: not found",
+	}, res.Warnings)
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionLogs, State: statePartial, Code: clierr.CodeGeneric, Target: "app"},
+		{Section: sectionMetrics, State: stateUnavailable, Code: clierr.CodeGeneric},
+	}, data.Degraded)
+}
+
+// TestInspectPodOneContainerLogDeniedKeepsTheOthers is the pod anchor: a
+// caller who may read the pod but not one container's log still gets the
+// document, the surviving logs, and one partial entry naming the container.
+func TestInspectPodOneContainerLogDeniedKeepsTheOthers(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+		"status":   map[string]any{"phase": "Running"},
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{"name": "app"},
+				map[string]any{"name": "sidecar"},
+			},
+		},
+	}}
+	metrics := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+	}}
+
+	client := newFakeClient().
+		withObject(podKind.GVR, "ns1", "web", pod).
+		withObject(podMetricsGVR, "ns1", "web", metrics).
+		withLog("app", "app log").
+		withLogErr("sidecar", clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewPod(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.NoError(t, err)
+
+	data, ok := res.Data.(podResult)
+	require.True(t, ok)
+	assert.Equal(t, map[string]string{"app": "app log"}, data.Logs,
+		"the readable container's log survives its neighbor's denial")
+	require.NotNil(t, data.Metrics)
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionLogs, State: statePartial, Code: clierr.CodeRBAC, Target: "sidecar"},
+	}, data.Degraded)
+	require.Equal(t, []string{"logs unavailable for sidecar: forbidden"}, res.Warnings)
+}
+
+// TestInspectPodDuplicateContainerNamesDegradeOnce guards the accumulator's
+// duplicate-(section,target) rule against wire data: admission rejects a pod
+// whose containers and initContainers share a name, but the CLI reads
+// unvalidated objects through a proxy and must degrade, never crash, on one
+// that does. One failing name appearing twice yields ONE degraded entry.
+func TestInspectPodDuplicateContainerNamesDegradeOnce(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+		"status":   map[string]any{"phase": "Running"},
+		"spec": map[string]any{
+			"containers":     []any{map[string]any{"name": "app"}},
+			"initContainers": []any{map[string]any{"name": "app"}},
+		},
+	}}
+	metrics := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+	}}
+
+	client := newFakeClient().
+		withObject(podKind.GVR, "ns1", "web", pod).
+		withObject(podMetricsGVR, "ns1", "web", metrics).
+		withLogErr("app", clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewPod(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.NoError(t, err, "a duplicate container name must degrade, never panic")
+
+	data, ok := res.Data.(podResult)
+	require.True(t, ok)
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionLogs, State: statePartial, Code: clierr.CodeRBAC, Target: "app"},
+	}, data.Degraded)
+}
+
+// TestInspectPodOwnerWalkDeniedTargetsTheOwner asserts the owners section's
+// target is the canonical owner identity, not a rendered name.
+func TestInspectPodOwnerWalkDeniedTargetsTheOwner(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	rsKind := mustKind(t, "replicaset")
+	pod := podObj("ns1", "web", map[string]any{
+		"apiVersion": "apps/v1", "kind": "ReplicaSet",
+		"name": "web-abc", "uid": "rs-uid-1", "controller": true,
+	})
+
+	client := newFakeClient().
+		withObject(podKind.GVR, "ns1", "web", pod).
+		withGetErr(rsKind.GVR, "ns1", "web-abc", clierr.New(clierr.CodeRBAC, "forbidden")).
+		withGetErr(podMetricsGVR, "ns1", "web", errors.New("not found")).
+		withLog("app", "ok")
+
+	cmd := NewPod(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.NoError(t, err)
+
+	data, ok := res.Data.(podResult)
+	require.True(t, ok)
+	require.Len(t, data.Owners, 1, "the walk keeps the first-level reference")
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionMetrics, State: stateUnavailable, Code: clierr.CodeGeneric},
+		{Section: sectionOwners, State: statePartial, Code: clierr.CodeRBAC,
+			Target: "apps/v1|ReplicaSet|ns1|web-abc|rs-uid-1"},
+	}, data.Degraded)
+	require.Equal(t, []string{
+		"metrics unavailable: not found",
+		"owners unavailable for apps/v1|ReplicaSet|ns1|web-abc|rs-uid-1: forbidden",
+	}, res.Warnings, "warnings stay parallel to the entries")
+}
+
+// TestInspectPodCancellationStaysHard asserts a canceled caller context is
+// a command error for every degradable collector, never a degraded section.
+func TestInspectPodCancellationStaysHard(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	rsKind := mustKind(t, "replicaset")
+
+	for _, tc := range []struct {
+		name string
+		set  func(c *fakeClient)
+	}{
+		{"owners", func(c *fakeClient) {
+			c.withGetErr(rsKind.GVR, "ns1", "web-abc", context.Canceled)
+		}},
+		{"metrics", func(c *fakeClient) {
+			c.withGetErr(podMetricsGVR, "ns1", "web", context.Canceled)
+		}},
+		{"logs", func(c *fakeClient) {
+			c.withLogErr("app", context.Canceled)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			pod := podObj("ns1", "web", map[string]any{
+				"apiVersion": "apps/v1", "kind": "ReplicaSet",
+				"name": "web-abc", "uid": "rs-uid-1", "controller": true,
+			})
+			rs := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "apps/v1", "kind": "ReplicaSet",
+				"metadata": map[string]any{"name": "web-abc", "namespace": "ns1", "uid": "rs-uid-1"},
+			}}
+			metrics := &unstructured.Unstructured{Object: map[string]any{
+				"metadata": map[string]any{"name": "web", "namespace": "ns1"},
+			}}
+			// Everything else succeeds, so the canceled collector is the
+			// only reason the command can fail.
+			client := newFakeClient().
+				withObject(podKind.GVR, "ns1", "web", pod).
+				withObject(rsKind.GVR, "ns1", "web-abc", rs).
+				withObject(podMetricsGVR, "ns1", "web", metrics).
+				withLog("app", "ok")
+			tc.set(client)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			rc := NewPod(&fakeFactory{client: client}).(runtime.ReadCommand)
+			_, err := rc.Execute(ctx, input{
+				args: []string{"web"},
+				s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+			}, nil)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
 }
 
 func TestInspectPodUnknownOwnerKindReported(t *testing.T) {

@@ -17,7 +17,7 @@ import (
 // namespace grouping treats pods without metrics. --namespace narrows the pod
 // List; --node filters pods by spec.nodeName client-side; --project scopes to
 // member namespaces.
-func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, in runtime.Input) (runtime.Result, error) {
+func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
 	projectFlag := resources.TypedProject(in)
@@ -38,6 +38,12 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 		if namespace != "" && !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
 				"pass a member namespace, or omit --namespace to scope the whole project")
+		}
+		// A membership list the caller was authorized to read, returning zero
+		// namespaces, is a verified-empty scope: no pod could belong to it, so
+		// no pod or metrics read is issued and no collector can degrade.
+		if len(members) == 0 {
+			return usageResult(byPod, usageRows{}, nil, sec), nil
 		}
 	}
 
@@ -62,14 +68,9 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 		grouped[key] = []unstructured.Unstructured{pod}
 	}
 
-	inner, err := aggregateUsage(ctx, client, clusterID, grouped, namespaces)
+	rows, err := aggregateUsage(ctx, client, sec, grouped, namespaces)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	rows, _ := inner.Data.(usageRows)
-	return runtime.Result{
-		Kind:     "ResourceUsage",
-		Data:     usageEnvelope{By: byPod, Data: rows},
-		Warnings: inner.Warnings,
-	}, nil
+	return usageResult(byPod, rows, nil, sec), nil
 }

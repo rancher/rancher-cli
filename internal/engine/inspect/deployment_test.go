@@ -1,10 +1,13 @@
 package inspect
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -74,6 +77,70 @@ func TestInspectDeploymentHonorsMatchExpressions(t *testing.T) {
 	assert.Equal(t, "DeploymentInspection", res.Kind)
 	require.Len(t, client.listSelectors, 1)
 	assert.Equal(t, "app in (api,web)", client.listSelectors[0])
+}
+
+// TestInspectDeploymentPodListDeniedNullsPods is the deployment anchor: a
+// caller who may read the deployment but not its pods gets the deployment,
+// a null pods list, and one entry — the whole document used to be lost.
+func TestInspectDeploymentPodListDeniedNullsPods(t *testing.T) {
+	t.Parallel()
+	depKind := mustKind(t, "deployment")
+	podKind := mustKind(t, "pod")
+
+	dep := deploymentObj("ns1", "web", map[string]any{"matchLabels": map[string]any{"app": "web"}})
+	client := newFakeClient().
+		withObject(depKind.GVR, "ns1", "web", dep).
+		withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+
+	cmd := NewDeployment(&fakeFactory{client: client})
+	res, err := execRead(t, cmd, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	})
+	require.NoError(t, err, "a denied pod list must not fail the command")
+
+	data, ok := res.Data.(deploymentResult)
+	require.True(t, ok)
+	require.NotNil(t, data.Deployment)
+	assert.Nil(t, data.Pods, "pods serializes as null when the list is denied")
+	require.Equal(t, []sectionOutcome{
+		{Section: sectionPods, State: stateUnavailable, Code: clierr.CodeRBAC},
+	}, data.Degraded)
+	require.Equal(t, []string{"pods unavailable: forbidden"}, res.Warnings)
+
+	var payload struct {
+		Pods     []map[string]any `json:"pods"`
+		Degraded []sectionOutcome `json:"degraded"`
+	}
+	raw, merr := json.Marshal(data)
+	require.NoError(t, merr)
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	assert.Nil(t, payload.Pods)
+	require.Len(t, payload.Degraded, 1)
+	assert.Equal(t, sectionPods, payload.Degraded[0].Section)
+}
+
+// TestInspectDeploymentCancellationStaysHard asserts a canceled caller
+// context fails the command instead of degrading the pods section.
+func TestInspectDeploymentCancellationStaysHard(t *testing.T) {
+	t.Parallel()
+	depKind := mustKind(t, "deployment")
+	podKind := mustKind(t, "pod")
+
+	dep := deploymentObj("ns1", "web", map[string]any{"matchLabels": map[string]any{"app": "web"}})
+	client := newFakeClient().
+		withObject(depKind.GVR, "ns1", "web", dep).
+		withListErr(podKind.GVR, context.Canceled)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	rc := NewDeployment(&fakeFactory{client: client}).(runtime.ReadCommand)
+	_, err := rc.Execute(ctx, input{
+		args: []string{"web"},
+		s:    map[string]string{"cluster": "c-abc", "namespace": "ns1"},
+	}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestInspectDeploymentEmptySelectorErrors(t *testing.T) {

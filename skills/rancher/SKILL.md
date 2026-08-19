@@ -223,7 +223,16 @@ the bare resource name — no need to receive or parse the full object.
 ### 7. Triage composites
 
 One call each, with graceful degradation (missing metrics/logs become
-`warnings`, never failures):
+`warnings`, never failures).
+
+A composite answers with what you can read. A collector you lack access to
+is named in `data.degraded` — `{section, state: unavailable|partial, code,
+target?}` — with one matching `warnings` entry, and the command still exits
+0. Exit 0 therefore does not mean "complete": read `data.degraded` (and
+`warnings`) before concluding a section is empty, absent, or zero. Only a
+command's required collectors — its identity, scope, and substance reads,
+listed in each command's `rancher schema <command>` card — fail the command
+outright.
 
 - `rancher inspect pod <name>` — status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
