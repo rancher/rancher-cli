@@ -176,7 +176,7 @@ func driverFromDataKeys(obj *unstructured.Unstructured) string {
 	if !ok {
 		return ""
 	}
-	data, ok := raw.(map[string]interface{})
+	data, ok := raw.(map[string]any)
 	if !ok {
 		return ""
 	}

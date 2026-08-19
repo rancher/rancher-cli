@@ -567,7 +567,7 @@ func fetchUserIDs(ctx context.Context, hc *http.Client, cap TokenCapability) []s
 // isSystemUserItem reports whether the user item represents a system account:
 // any entry in principalIds that engine.IsSystemPrincipal matches.
 func isSystemUserItem(item map[string]any) bool {
-	pids, ok := item["principalIds"].([]interface{})
+	pids, ok := item["principalIds"].([]any)
 	if !ok {
 		return false
 	}
