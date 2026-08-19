@@ -358,7 +358,9 @@ call can reach.
 
 ## Output formats
 
-`-o`/`--output`: `table` (default, for users) · `json` · `yaml` ·
+`-o`/`--output`: `table` (default, for users) · `wide` (table plus any
+Wide-marked columns — presentation, never a scope change: a payload with no
+wide-only columns renders identically to `table`) · `json` · `yaml` ·
 `name` (`.metadata.name`/ids only) · `template=<go-template>` — a Go template
 over the JSON view of `data` (same shape as `-o json`). Any other value is
 rejected with a `VALIDATION` error before the command runs. A kind without a

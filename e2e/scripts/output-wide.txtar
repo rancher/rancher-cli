@@ -1,0 +1,37 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# -o wide on a kind with Wide-marked columns (pod's IP/NODE): the default
+# table omits them, -o wide adds them after every default column. envtest has
+# no scheduler/kubelet, so spec.nodeName set in the manifest never gets
+# overwritten (logs-target.txtar's precedent).
+exec rancher create resource -f wide-pod.yaml --cluster testcluster --apply
+
+exec rancher get pod wide-pod --cluster testcluster --namespace default
+stdout 'NAME\s+STATUS\s+AGE'
+! stdout 'NODE'
+! stdout 'some-node'
+
+exec rancher get pod wide-pod --cluster testcluster --namespace default -o wide
+stdout 'NAME\s+STATUS\s+IP\s+NODE\s+AGE'
+stdout 'some-node'
+
+# -o wide on a kind with no Wide columns (namespace) renders the same column
+# set as -o table — presentation, never a scope change. (AGE ticks between
+# the two invocations, so this checks the header/shape, not a byte-identical
+# capture; TestRenderWideFallsBackToTabularByteIdentical pins the exact
+# byte-identical guarantee at the unit level.)
+exec rancher get namespace default --cluster testcluster -o wide
+stdout 'NAME\s+STATUS\s+AGE'
+
+-- wide-pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wide-pod
+  namespace: default
+spec:
+  nodeName: some-node
+  containers:
+    - name: main
+      image: busybox

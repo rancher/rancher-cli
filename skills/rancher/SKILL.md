@@ -86,10 +86,11 @@ envelope:
 ```
 
 Read `data`; surface `warnings` to the user. Other formats: `table` (default,
-for users), `yaml`, `name` (ids only), or `template=<go-template>` — a Go template
-over the JSON view of `data` (same shape as `-o json`). Anything else is a
-`VALIDATION` error. `metadata.managedFields` never appears in CLI output across
-all formats.
+for users), `wide` (table family — adds extra columns to the same rows, never
+a filter), `yaml`, `name` (ids only), or `template=<go-template>` — a Go
+template over the JSON view of `data` (same shape as `-o json`). Anything
+else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
+output across all formats.
 
 ### 4. Mutation safety loop — never skip
 

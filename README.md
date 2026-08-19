@@ -201,7 +201,7 @@ Every command emits one JSON document per invocation under `-o json` — an
 }
 ```
 
-Formats: `-o table` (default) · `json` · `yaml` · `name` ·
+Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 `template=<go-template>`. Full format semantics:
 [REFERENCE.md](REFERENCE.md#output-formats).
 
