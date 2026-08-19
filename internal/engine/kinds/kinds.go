@@ -426,24 +426,49 @@ var table = []Kind{
 	},
 
 	{
+		// Setting is a flat CRD: value/default/customized/source live at the
+		// object root, not under spec/status. An effective-value VALUE column
+		// (value when set, else default) is a plain string AltPaths fallback —
+		// but some settings (cacerts and friends) carry credential-adjacent
+		// material in value/default, and support-bundle's settingsAllowlist
+		// (internal/engine/observe/bundle.go) deliberately withholds every
+		// setting outside a short named list. The Column axes have no
+		// per-object, name-keyed conditional (Path/AltPaths/Default/Join/Bool/
+		// Condition all project the same field(s) for every row) — expressing
+		// "reveal for these names, withhold for the rest" needs a hook this
+		// package does not have, so VALUE stays unshipped rather than bending
+		// an axis. CUSTOMIZED and SOURCE carry no secret material (provenance
+		// only), so they ship instead.
 		Key: "setting", Name: "setting", Aliases: []string{"settings"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"},
 		Policy: NSNone, K8sKind: "Setting", Scope: Management, Deletable: false, Sensitive: true,
 		NoDeleteReason: "server configuration — tune, never remove",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "CUSTOMIZED", Path: []string{"customized"}},
+			{Header: "SOURCE", Path: []string{"source"}},
+		},
 	},
 	{
 		// Feature's interesting fields (spec.value, status.default,
-		// status.lockedValue) are BOOLS. The table renderer can render bools
-		// now (nodedriver's ACTIVE/BUILTIN), but the single DESCRIPTION column
-		// stays: spec.value is a tri-state (absent = follow the default), and
-		// a blank-vs-"false" cell would misread — -o json is the real read.
+		// status.dynamic, status.lockedValue) are BOOLS. A merged
+		// effective-value VALUE column (spec.value when set, else
+		// status.default) would need AltPaths to fall through from one bool
+		// field to another — AltPaths only tries unstructured.NestedString,
+		// so it never matches a bool leaf; there is no bool-typed fallback
+		// axis. DEFAULT/DYNAMIC/LOCKED are each a single bool field, so they
+		// ship as their own columns instead of the merged one.
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
 		NoDeleteReason: "server configuration — tune, never remove",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns:        []Column{{Header: "DESCRIPTION", Path: []string{"status", "description"}}},
+		Columns: []Column{
+			{Header: "DEFAULT", Path: []string{"status", "default"}},
+			{Header: "DYNAMIC", Path: []string{"status", "dynamic"}},
+			{Header: "LOCKED", Path: []string{"status", "lockedValue"}},
+			{Header: "DESCRIPTION", Path: []string{"status", "description"}},
+		},
 	},
 	{
 		Key: "user", Name: "user", Aliases: []string{"users"},

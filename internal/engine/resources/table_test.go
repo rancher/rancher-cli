@@ -244,3 +244,64 @@ func TestTableRowsRenderJoinAndDefault(t *testing.T) {
 	assert.Equal(t, []string{"u-1", "true", "system://local,local://u-1"}, tab.Rows()[2])
 	assert.Equal(t, []string{"u-2", "true", ""}, tab.Rows()[3])
 }
+
+// TestTableRowsRenderSettingProvenance pins Setting's CUSTOMIZED/SOURCE
+// columns against the real wire shape: value/default/customized/source sit
+// at the object root (Setting is a flat CRD, not spec/status), and both
+// fields are always emitted (never omitempty), verified live against a
+// v2.14.3 Rancher server on 2026-08-18.
+func TestTableRowsRenderSettingProvenance(t *testing.T) {
+	t.Parallel()
+	k, ok := kinds.Lookup("setting")
+	require.True(t, ok)
+	stock := unstructured.Unstructured{Object: map[string]any{
+		"metadata":   map[string]any{"name": "agent-tls-mode"},
+		"value":      "system-store",
+		"default":    "strict",
+		"customized": false,
+		"source":     "",
+	}}
+	overridden := unstructured.Unstructured{Object: map[string]any{
+		"metadata":   map[string]any{"name": "server-url"},
+		"value":      "https://rancher.peterm.dev",
+		"default":    "",
+		"customized": true,
+		"source":     "env",
+	}}
+	tab := newTable(k, []unstructured.Unstructured{stock, overridden}, false)
+	require.Len(t, tab.Rows(), 2)
+	assert.Equal(t, []string{"agent-tls-mode", "false", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"server-url", "true", "env"}, tab.Rows()[1])
+}
+
+// TestTableRowsRenderFeatureBoolStatus pins Feature's DEFAULT/DYNAMIC/LOCKED
+// columns: all three are plain status bools verified live against a v2.14.3
+// Rancher server on 2026-08-18. lockedValue is an omitempty *bool — absent
+// (unlocked) must render blank, never "false", since a locked-false feature
+// is a real, different state.
+func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
+	t.Parallel()
+	k, ok := kinds.Lookup("feature")
+	require.True(t, ok)
+	unlocked := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "cluster-autoscaling"},
+		"status": map[string]any{
+			"default":     true,
+			"dynamic":     true,
+			"description": "Enable Rancher cluster-autoscaler support",
+		},
+	}}
+	locked := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "some-locked-feature"},
+		"status": map[string]any{
+			"default":     false,
+			"dynamic":     false,
+			"lockedValue": false,
+			"description": "Locked off",
+		},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{unlocked, locked}, false)
+	require.Len(t, tab.Rows(), 2)
+	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "", "Enable Rancher cluster-autoscaler support"}, tab.Rows()[0])
+	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "Locked off"}, tab.Rows()[1])
+}
