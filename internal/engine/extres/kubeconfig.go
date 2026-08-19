@@ -67,7 +67,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	var clusterList []string
 	hasWildcard := false
 	if raw := in.String("clusters"); raw != "" {
-		for _, tok := range strings.Split(raw, ",") {
+		for tok := range strings.SplitSeq(raw, ",") {
 			tok = strings.TrimSpace(tok)
 			if tok == "" {
 				continue

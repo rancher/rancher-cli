@@ -287,7 +287,7 @@ func TestKindClaimsMatchTable(t *testing.T) {
 func commandRows(t *testing.T) []string {
 	t.Helper()
 	var names []string
-	for _, line := range strings.Split(anchoredBlock(t, "COMMANDS.md", tableAnchor), "\n") {
+	for line := range strings.SplitSeq(anchoredBlock(t, "COMMANDS.md", tableAnchor), "\n") {
 		line = strings.TrimSpace(line)
 		cell, isRow := strings.CutPrefix(line, "| `")
 		if !isRow {
@@ -296,7 +296,7 @@ func commandRows(t *testing.T) []string {
 		quoted, _, closed := strings.Cut(cell, "`")
 		require.True(t, closed, "unterminated backtick in Commands table row %q", line)
 		var name []string
-		for _, tok := range strings.Fields(quoted) {
+		for tok := range strings.FieldsSeq(quoted) {
 			if strings.ContainsAny(tok[:1], "<[-(") {
 				break
 			}

@@ -446,7 +446,7 @@ func TestSchemaCommandCardReadOnlyLine(t *testing.T) {
 		"read-only (RANCHER_CLI_READONLY)")
 
 	inactive := Manifest{ExitCodes: map[string]int{"GENERIC": 1}}
-	for _, l := range strings.Split(renderCommandCard(inactive, c), "\n") {
+	for l := range strings.SplitSeq(renderCommandCard(inactive, c), "\n") {
 		assert.False(t, strings.HasPrefix(l, "read-only"),
 			"no read-only line when inactive: got %q", l)
 	}
@@ -469,7 +469,7 @@ func TestSchemaKindCardReadOnlyLine(t *testing.T) {
 	assert.Contains(t, lines, "read-only (--read-only)")
 
 	inactive := Manifest{}
-	for _, l := range strings.Split(renderKindCard(inactive, k), "\n") {
+	for l := range strings.SplitSeq(renderKindCard(inactive, k), "\n") {
 		assert.False(t, strings.HasPrefix(l, "read-only"),
 			"no read-only line when inactive: got %q", l)
 	}

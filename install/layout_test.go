@@ -413,7 +413,7 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 	// paths are absolute (the download work dir), so match on the asset stem
 	// rather than the whole argument.
 	var verified []string
-	for _, line := range strings.Split(string(logBytes), "\n") {
+	for line := range strings.SplitSeq(string(logBytes), "\n") {
 		// The capability probe is also an "attestation verify" line
 		// ("--help"); only the real calls carry the pinned workflow.
 		if strings.HasPrefix(line, "attestation verify ") && strings.Contains(line, "--signer-workflow ") {

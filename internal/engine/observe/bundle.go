@@ -238,7 +238,7 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 		return Targets, nil
 	}
 	var out []Target
-	for _, tok := range strings.Split(raw, ",") {
+	for tok := range strings.SplitSeq(raw, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -286,7 +286,7 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 		return out, nil, nil
 	}
 	var out []string
-	for _, tok := range strings.Split(raw, ",") {
+	for tok := range strings.SplitSeq(raw, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue

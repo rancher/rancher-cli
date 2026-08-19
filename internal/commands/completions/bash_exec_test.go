@@ -76,7 +76,7 @@ printf 'MARKER:%%s\n' "$([ -e %q ] && echo true || echo false)"
 
 	var reply string
 	var markerCreated bool
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "REPLY:"):
@@ -105,7 +105,7 @@ printf 'MARKER:%%s\n' "$([ -e %q ] && echo true || echo false)"
 
 func splitLines(s string) []string {
 	var out []string
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line != "" {
 			out = append(out, line)
 		}
@@ -170,7 +170,7 @@ printf 'EVIL:%%s\n' "$([ -e %q ] && echo true || echo false)"
 
 	var reply string
 	var evilCreated bool
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "REPLY:"):

@@ -27,7 +27,7 @@ func TestMigratingCoversLegacyInventory(t *testing.T) {
 	legacy, err := os.ReadFile(filepath.Join(repoRoot, "internal", "commands", "testdata", "legacy-commands.txt"))
 	require.NoError(t, err)
 
-	for _, line := range strings.Split(strings.TrimSpace(string(legacy)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(legacy)), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

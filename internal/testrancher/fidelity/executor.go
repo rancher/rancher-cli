@@ -235,7 +235,7 @@ func substitute(s string, captured map[string]string) string {
 
 func captureValue(body map[string]any, path string) (string, error) {
 	var node any = body
-	for _, seg := range strings.Split(path, ".") {
+	for seg := range strings.SplitSeq(path, ".") {
 		m, ok := node.(map[string]any)
 		if !ok {
 			return "", fmt.Errorf("capture %s: not an object at %q", path, seg)

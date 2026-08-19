@@ -66,7 +66,7 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 	mutations := map[string]func(sums string) string{
 		"missing helper entry": func(sums string) string {
 			var keep []string
-			for _, l := range strings.Split(sums, "\n") {
+			for l := range strings.SplitSeq(sums, "\n") {
 				if !strings.HasSuffix(l, "  "+helper) {
 					keep = append(keep, l)
 				}
@@ -75,7 +75,7 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 		},
 		"duplicate cli entry masking the helper": func(sums string) string {
 			var out []string
-			for _, l := range strings.Split(sums, "\n") {
+			for l := range strings.SplitSeq(sums, "\n") {
 				if strings.HasSuffix(l, "  "+helper) {
 					continue
 				}
@@ -88,7 +88,7 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 		},
 		"missing cli entry": func(sums string) string {
 			var keep []string
-			for _, l := range strings.Split(sums, "\n") {
+			for l := range strings.SplitSeq(sums, "\n") {
 				if !strings.HasSuffix(l, "  "+cli) {
 					keep = append(keep, l)
 				}
@@ -97,7 +97,7 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 		},
 		"duplicate helper entry masking the cli": func(sums string) string {
 			var out []string
-			for _, l := range strings.Split(sums, "\n") {
+			for l := range strings.SplitSeq(sums, "\n") {
 				if strings.HasSuffix(l, "  "+cli) {
 					continue
 				}

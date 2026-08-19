@@ -44,7 +44,7 @@ func quotaKeysHint() string {
 // or with an empty key.
 func parsePairs(s string, allowEmptyValue bool, malformed func(pair string) error) (map[string]any, error) {
 	data := map[string]any{}
-	for _, pair := range strings.Split(s, ",") {
+	for pair := range strings.SplitSeq(s, ",") {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok || k == "" || (!allowEmptyValue && v == "") {
 			return nil, malformed(pair)

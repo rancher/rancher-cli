@@ -119,7 +119,7 @@ printf 'DONE\n'
 	}
 
 	var entries []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if after, ok := strings.CutPrefix(line, "R:"); ok {
 			entries = append(entries, after)
 		}

@@ -38,7 +38,7 @@ func runNameLikeCompletion(t *testing.T, words []string, currentWord string) str
 // candidate line (the part before the first ":", stripping trailing newlines).
 func extractTokens(output string) []string {
 	var tokens []string
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}
@@ -192,7 +192,7 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 	// Flag colon format: --output has usage "table|json|yaml|name|template=<tpl>".
 	flagOut := runNameLikeCompletion(t, []string{"usage"}, "--")
 	foundFlagColon := false
-	for _, line := range strings.Split(strings.TrimSpace(flagOut), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(flagOut), "\n") {
 		if strings.HasPrefix(line, "--output:") {
 			foundFlagColon = true
 			break
@@ -203,7 +203,7 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 	// Subcommand colon format: top-level subcommands like "get" have a usage string.
 	subOut := runNameLikeCompletion(t, []string{}, "")
 	foundSubColon := false
-	for _, line := range strings.Split(strings.TrimSpace(subOut), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(subOut), "\n") {
 		if strings.HasPrefix(line, "get:") || strings.HasPrefix(line, "config:") || strings.HasPrefix(line, "auth:") {
 			foundSubColon = true
 			break

@@ -96,7 +96,7 @@ Write-Output ('MARKER:' + (Test-Path %s))
 
 	var kinds, afterPayload []string
 	var markerCreated bool
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "KINDS:"):
@@ -224,7 +224,7 @@ $null = TabExpansion2 -inputScript $line -cursorColumn %d
 
 func splitNonEmpty(s string) []string {
 	var out []string
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		if part != "" {
 			out = append(out, part)
 		}
@@ -383,7 +383,7 @@ Write-Output ('GLOB:' + (($rg.CompletionMatches | Where-Object { $_.ResultType -
 	}
 
 	var midline, glob []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "MIDLINE:"):

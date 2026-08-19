@@ -639,7 +639,7 @@ func TestTagGrammarSharedSource(t *testing.T) {
 	extract := func(path string) string {
 		raw, err := os.ReadFile(path)
 		require.NoError(t, err)
-		for _, line := range strings.Split(string(raw), "\n") {
+		for line := range strings.SplitSeq(string(raw), "\n") {
 			if strings.HasPrefix(line, "TAG_RE=") {
 				return line
 			}
