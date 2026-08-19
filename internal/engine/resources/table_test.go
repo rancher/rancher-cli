@@ -399,11 +399,14 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 	assert.Equal(t, []string{"server-url", "true", "env", ""}, tab.Rows()[1])
 }
 
-// TestTableRowsRenderFeatureBoolStatus pins Feature's DEFAULT/DYNAMIC/LOCKED
-// columns: all three are plain status bools verified live against a v2.14.3
+// TestTableRowsRenderFeatureBoolStatus pins Feature's VALUE/DEFAULT/DYNAMIC/
+// LOCKED columns: all are plain status bools (or, for VALUE, the merged
+// spec.value/status.default fallback) verified live against a v2.14.3
 // Rancher server on 2026-08-18. lockedValue is an omitempty *bool — absent
 // (unlocked) must render blank, never "false", since a locked-false feature
-// is a real, different state.
+// is a real, different state. VALUE is pinned both directions: spec.value
+// absent falls through to status.default, and spec.value present (even
+// false) wins over status.default.
 func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("feature")
@@ -425,10 +428,20 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 			"description": "Locked off",
 		},
 	}}
-	tab := newTable(k, []unstructured.Unstructured{unlocked, locked}, false)
-	require.Len(t, tab.Rows(), 2)
-	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "", "Enable Rancher cluster-autoscaler support", ""}, tab.Rows()[0])
-	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "Locked off", ""}, tab.Rows()[1])
+	overridden := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "explicitly-off"},
+		"spec":     map[string]any{"value": false},
+		"status": map[string]any{
+			"default":     true,
+			"dynamic":     true,
+			"description": "Explicitly disabled despite a true default",
+		},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{unlocked, locked, overridden}, false)
+	require.Len(t, tab.Rows(), 3)
+	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "true", "", "Enable Rancher cluster-autoscaler support", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "false", "Locked off", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"explicitly-off", "false", "true", "true", "", "Explicitly disabled despite a true default", ""}, tab.Rows()[2])
 }
 
 // TestTableRowsRenderCount pins the Count axis: len() of the map/slice at
@@ -516,4 +529,197 @@ func TestTableWideColumnsAndRowsOrder(t *testing.T) {
 
 	assert.Equal(t, []string{"NAME", "DISPLAY", "URL", "AGE"}, tab.WideColumns())
 	assert.Equal(t, [][]string{{"w1", "Widget One", "https://example.com", ""}}, tab.WideRows())
+}
+
+// TestShippedColumnRows spot-checks the column-audit rows shipped in this
+// slice against real kinds.Lookup rows and wire-shaped fixtures, decoding
+// fields per repo convention rather than string-matching rendered output.
+func TestShippedColumnRows(t *testing.T) {
+	t.Parallel()
+
+	t.Run("project BACKING-NS", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("project")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "p-1"},
+			"spec":     map[string]any{"displayName": "Default", "clusterName": "c-x"},
+			"status":   map[string]any{"backingNamespace": "c-x-p-1"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"p-1", "Default", "c-x", "c-x-p-1", ""}, tab.Rows()[0])
+	})
+
+	t.Run("node STATUS/VERSION default, OS-IMAGE wide", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("node")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "n-1"},
+			"status": map[string]any{
+				"conditions": []any{map[string]any{"type": "Ready", "status": "True"}},
+				"nodeInfo":   map[string]any{"kubeletVersion": "v1.30.5", "osImage": "K3s v1.30.5"},
+			},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"n-1", "Ready", "v1.30.5", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"n-1", "Ready", "v1.30.5", "K3s v1.30.5", ""}, tab.WideRows()[0])
+	})
+
+	t.Run("pod IP/NODE wide", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("pod")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "pod-1"},
+			"status":   map[string]any{"phase": "Running", "podIP": "10.0.0.1"},
+			"spec":     map[string]any{"nodeName": "n-1"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"pod-1", "Running", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"pod-1", "Running", "10.0.0.1", "n-1", ""}, tab.WideRows()[0])
+	})
+
+	t.Run("service TYPE/CLUSTER-IP", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("service")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "svc-1"},
+			"spec":     map[string]any{"type": "ClusterIP", "clusterIP": "10.43.0.1"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"svc-1", "ClusterIP", "10.43.0.1", ""}, tab.Rows()[0])
+	})
+
+	t.Run("configmap/secret DATA count", func(t *testing.T) {
+		t.Parallel()
+		cm, ok := kinds.Lookup("configmap")
+		require.True(t, ok)
+		cmObj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "cm-1"},
+			"data":     map[string]any{"a": "1", "b": "2"},
+		}}
+		assert.Equal(t, []string{"cm-1", "2", ""}, newTable(cm, []unstructured.Unstructured{cmObj}, false).Rows()[0])
+
+		sec, ok := kinds.Lookup("secret")
+		require.True(t, ok)
+		secObj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "sec-1"},
+			"type":     "Opaque",
+			"data":     map[string]any{"key": "v"},
+		}}
+		assert.Equal(t, []string{"sec-1", "Opaque", "1", ""}, newTable(sec, []unstructured.Unstructured{secObj}, false).Rows()[0])
+	})
+
+	t.Run("serviceaccount SECRETS count", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("serviceaccount")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "sa-1"},
+			"secrets":  []any{map[string]any{"name": "sa-1-token"}},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"sa-1", "1", ""}, tab.Rows()[0])
+	})
+
+	t.Run("fleet-cluster LAST-SEEN", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("fleet-cluster")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "c-x"},
+			"status":   map[string]any{"agent": map[string]any{"lastSeen": "2026-08-01T00:00:00Z"}},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"c-x", "2026-08-01T00:00:00Z", ""}, tab.Rows()[0])
+	})
+
+	t.Run("deployment UP-TO-DATE/AVAILABLE default 0 on omitted zero", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("deployment")
+		require.True(t, ok)
+		// omitempty ints at zero are absent from the wire entirely.
+		zero := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "d-zero"},
+			"status":   map[string]any{},
+		}}
+		nonzero := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "d-1"},
+			"status":   map[string]any{"updatedReplicas": int64(2), "availableReplicas": int64(1)},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{zero, nonzero}, false)
+		assert.Equal(t, []string{"d-zero", "0", "0", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"d-1", "2", "1", ""}, tab.Rows()[1])
+	})
+
+	t.Run("daemonset DESIRED/CURRENT/AVAILABLE", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("daemonset")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "ds-1"},
+			"status": map[string]any{
+				"desiredNumberScheduled": int64(3),
+				"currentNumberScheduled": int64(3),
+				// numberAvailable omitted: omitempty at zero.
+			},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"ds-1", "3", "3", "0", ""}, tab.Rows()[0])
+	})
+
+	t.Run("replicaset DESIRED/CURRENT", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("replicaset")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "rs-1"},
+			"spec":     map[string]any{"replicas": int64(2)},
+			"status":   map[string]any{"replicas": int64(2)},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"rs-1", "2", "2", ""}, tab.Rows()[0])
+	})
+
+	t.Run("provisioning-cluster VERSION/CLUSTER-NAME/READY", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("provisioning-cluster")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "c-x"},
+			"spec":     map[string]any{"kubernetesVersion": "v1.30.5+rke2r1"},
+			"status":   map[string]any{"clusterName": "c-m-abc", "ready": "true"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"c-x", "v1.30.5+rke2r1", "c-m-abc", "true", ""}, tab.Rows()[0])
+	})
+
+	t.Run("nodedriver URL wide", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("nodedriver")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "amazonec2"},
+			"spec":     map[string]any{"displayName": "Amazon EC2", "active": true, "builtin": true, "url": "local://"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"amazonec2", "Amazon EC2", "true", "true", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"amazonec2", "Amazon EC2", "true", "true", "local://", ""}, tab.WideRows()[0])
+	})
+
+	t.Run("kubeconfig DESCRIPTION wide", func(t *testing.T) {
+		t.Parallel()
+		k, ok := kinds.Lookup("kubeconfig")
+		require.True(t, ok)
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "kc-1"},
+			"status":   map[string]any{"summary": "1 cluster"},
+			"spec":     map[string]any{"description": "ci pipeline"},
+		}}
+		tab := newTable(k, []unstructured.Unstructured{obj}, false)
+		assert.Equal(t, []string{"kc-1", "1 cluster", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"kc-1", "1 cluster", "ci pipeline", ""}, tab.WideRows()[0])
+	})
 }

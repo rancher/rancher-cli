@@ -282,7 +282,11 @@ var table = []Kind{
 		DeleteCascadeWarning: "deleting this project cascades: namespaces created through Rancher are deleted along with their workloads (namespaces moved into the project are released and survive); the project's role bindings and project-scoped secrets are removed",
 		Completable:          true,
 		Binding:              safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
-		Columns:              []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
+		Columns: []Column{
+			{Header: "DISPLAY", Path: []string{"spec", "displayName"}},
+			{Header: "CLUSTER", Path: []string{"spec", "clusterName"}},
+			{Header: "BACKING-NS", Path: []string{"status", "backingNamespace"}},
+		},
 	},
 	{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
@@ -291,6 +295,11 @@ var table = []Kind{
 		NoDeleteReason: "owned by the cluster lifecycle; remove the machine instead",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "STATUS", Condition: "Ready"},
+			{Header: "VERSION", Path: []string{"status", "nodeInfo", "kubeletVersion"}},
+			{Header: "OS-IMAGE", Path: []string{"status", "nodeInfo", "osImage"}, Wide: true},
+		},
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
@@ -298,6 +307,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true,
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns:     []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
@@ -305,7 +315,11 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns:     []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
+		Columns: []Column{
+			{Header: "STATUS", Path: []string{"status", "phase"}},
+			{Header: "IP", Path: []string{"status", "podIP"}, Wide: true},
+			{Header: "NODE", Path: []string{"spec", "nodeName"}, Wide: true},
+		},
 	},
 	{
 		Key: "deployment", Name: "deployment", Aliases: []string{"deployments", "deploy"},
@@ -313,24 +327,41 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true, WaitDefault: "condition=Available",
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		// status.updatedReplicas/availableReplicas are omitempty ints: zero is
+		// ABSENT on the wire, so Default:"0" carries it — without it we'd
+		// render blank where kubectl shows 0 under the same header (the
+		// User.enabled Default:"true" pattern, applied to a numeric absence).
+		Columns: []Column{
+			{Header: "UP-TO-DATE", Path: []string{"status", "updatedReplicas"}, Default: "0"},
+			{Header: "AVAILABLE", Path: []string{"status", "availableReplicas"}, Default: "0"},
+		},
 	},
 	{
 		Key: "service", Name: "service", Aliases: []string{"services", "svc"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"},
 		Policy: NSPlain, K8sKind: "Service", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "TYPE", Path: []string{"spec", "type"}},
+			{Header: "CLUSTER-IP", Path: []string{"spec", "clusterIP"}},
+		},
 	},
 	{
 		Key: "configmap", Name: "configmap", Aliases: []string{"configmaps", "cm"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"},
 		Policy: NSPlain, K8sKind: "ConfigMap", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{{Header: "DATA", Count: []string{"data"}}},
 	},
 	{
 		Key: "secret", Name: "secret", Aliases: []string{"secrets"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"},
 		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "TYPE", Path: []string{"type"}},
+			{Header: "DATA", Count: []string{"data"}},
+		},
 	},
 
 	{
@@ -344,12 +375,27 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"},
 		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		// Field names verified against the apps/v1 DaemonSetStatus schema, not
+		// the audit appendix (its daemonset capture carries no paths).
+		// desiredNumberScheduled/currentNumberScheduled are non-omitempty;
+		// numberAvailable is omitempty, so Default:"0" carries its absence.
+		Columns: []Column{
+			{Header: "DESIRED", Path: []string{"status", "desiredNumberScheduled"}},
+			{Header: "CURRENT", Path: []string{"status", "currentNumberScheduled"}},
+			{Header: "AVAILABLE", Path: []string{"status", "numberAvailable"}, Default: "0"},
+		},
 	},
 	{
 		Key: "replicaset", Name: "replicaset", Aliases: []string{"replicasets", "rs"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"},
 		Policy: NSPlain, K8sKind: "ReplicaSet", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		// spec.replicas is *int32 omitempty (absent only when explicitly
+		// nil); status.replicas is non-omitempty. Neither needs a Default.
+		Columns: []Column{
+			{Header: "DESIRED", Path: []string{"spec", "replicas"}},
+			{Header: "CURRENT", Path: []string{"status", "replicas"}},
+		},
 	},
 	{
 		Key: "job", Name: "job", Aliases: []string{"jobs"},
@@ -387,6 +433,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"},
 		Policy: NSPlain, K8sKind: "ServiceAccount", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{{Header: "SECRETS", Count: []string{"secrets"}}},
 	},
 	{
 		Key: "event", Name: "event", Aliases: []string{"events", "ev"},
@@ -435,6 +482,7 @@ var table = []Kind{
 		WaitFailsOnStalled: true,
 		NoDeleteReason:     "controller-owned; delete the owning source object",
 		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns:            []Column{{Header: "LAST-SEEN", Path: []string{"status", "agent", "lastSeen"}}},
 	},
 
 	{
@@ -476,6 +524,11 @@ var table = []Kind{
 		NoDeleteReason: "server configuration — tune, never remove",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
+			// VALUE is the merged effective value: spec.value (*bool,
+			// omitempty — absent means "follow default") falling through to
+			// status.default when absent, via the typed leaf ladder's
+			// bool-typed AltPaths fallback.
+			{Header: "VALUE", Path: []string{"spec", "value"}, AltPaths: [][]string{{"status", "default"}}},
 			{Header: "DEFAULT", Path: []string{"status", "default"}},
 			{Header: "DYNAMIC", Path: []string{"status", "dynamic"}},
 			{Header: "LOCKED", Path: []string{"status", "lockedValue"}},
@@ -562,6 +615,16 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Completable: true, Sensitive: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		// READY's wire type was contested (CRD printer column vs. the audit
+		// table); the CRD's additionalPrinterColumns declares
+		// status.ready's type as "string" (verified in the audit appendix),
+		// so a plain Path is correct — the typed leaf ladder renders a real
+		// bool leaf identically if the wire ever carries one.
+		Columns: []Column{
+			{Header: "VERSION", Path: []string{"spec", "kubernetesVersion"}},
+			{Header: "CLUSTER-NAME", Path: []string{"status", "clusterName"}},
+			{Header: "READY", Path: []string{"status", "ready"}},
+		},
 	},
 	{
 		// Empty GVR version: cluster.x-k8s.io is resolved via discovery at call
@@ -656,7 +719,9 @@ var table = []Kind{
 			// limit. Add them once a verifying environment confirms the
 			// paths (TOKENS/CLUSTERS would be Count-expressible).
 			{Header: "SUMMARY", Path: []string{"status", "summary"}},
-			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
+			// DESCRIPTION is wide-only: kubectl's own printer treats it (and
+			// USER/CLUSTERS) as wide-only material too.
+			{Header: "DESCRIPTION", Path: []string{"spec", "description"}, Wide: true},
 		},
 	},
 
@@ -729,6 +794,7 @@ var table = []Kind{
 			{Header: "DISPLAYNAME", Path: []string{"spec", "displayName"}},
 			{Header: "ACTIVE", Path: []string{"spec", "active"}, Bool: true},
 			{Header: "BUILTIN", Path: []string{"spec", "builtin"}, Bool: true},
+			{Header: "URL", Path: []string{"spec", "url"}, Wide: true},
 		},
 	},
 
