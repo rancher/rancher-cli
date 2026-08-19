@@ -485,7 +485,7 @@ func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
 	assert.NotEmpty(t, dc.UserCode)
 	assert.Equal(t, 1, dc.Interval)
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		pollResp, pollBody := postForm(t, srv.Client(), srv.URL+"/idp/token", map[string]string{"device_code": dc.DeviceCode})
 		require.Equal(t, http.StatusOK, pollResp.StatusCode)
 		var pending struct {

@@ -64,7 +64,7 @@ func TestDryRunNoStableRelease(t *testing.T) {
 func TestPreSkipsDraftsAcrossPages(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
-	for i := 0; i < 100; i++ { // a full first page of drafts
+	for range 100 { // a full first page of drafts
 		writeRelease(s, "v9.9.9-alpha.1", true)
 	}
 	writeRelease(s, "v0.1.0-alpha.1", false) // page 2

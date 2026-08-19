@@ -260,7 +260,7 @@ func TestWithLockPreCanceledContextNeverRunsFn(t *testing.T) {
 		ran := false
 		// The two-ready-arms choice is random: iterate so a lucky Done pick
 		// cannot hide the bug.
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			err := WithLock(ctx, dir, func() error { ran = true; return nil })
 			require.Error(t, err)
 			assert.ErrorIs(t, err, context.Canceled)

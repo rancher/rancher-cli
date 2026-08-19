@@ -40,7 +40,7 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -51,7 +51,7 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 	wg.Wait()
 	total := 0
 	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
-		for i := 0; i < 20; i++ {
+		for i := range 20 {
 			total += len(s.forServer(fmt.Sprintf("s%d", i)))
 		}
 		return nil

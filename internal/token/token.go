@@ -1149,7 +1149,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		}
 		hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], hit{n, t, r})
 	}
-	for rank := 0; rank < serverCandidateRankCount; rank++ {
+	for rank := range serverCandidateRankCount {
 		hs := hitsByRank[rank]
 		if len(hs) == 0 {
 			continue

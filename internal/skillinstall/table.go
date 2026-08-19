@@ -70,7 +70,7 @@ func dirExists(f func() (string, error)) func() bool {
 		if err != nil {
 			return false
 		}
-		for i := 0; i < harnessRootDepth; i++ {
+		for range harnessRootDepth {
 			p = filepath.Dir(p)
 		}
 		info, err := os.Stat(p)

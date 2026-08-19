@@ -548,7 +548,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "tokens.ext.cattle.io is forbidden")
 		},
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
 		require.NoError(t, err)
 		require.Len(t, res.Warnings, 3)

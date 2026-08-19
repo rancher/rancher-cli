@@ -396,7 +396,7 @@ var recursableOwnerKinds = map[string]bool{
 func ownerChain(ctx context.Context, client engine.ClusterClient, sec *sections, section, clusterID, ns string, obj *unstructured.Unstructured) ([]map[string]any, bool, error) {
 	var owners []map[string]any
 	current := obj
-	for depth := 0; depth < ownerChainMaxDepth; depth++ {
+	for range ownerChainMaxDepth {
 		ref, ok := controllerRef(current)
 		if !ok {
 			break

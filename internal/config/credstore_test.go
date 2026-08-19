@@ -926,7 +926,7 @@ func TestSetTokenLostUpdateWithoutConfigLock(t *testing.T) {
 	// Wait for both goroutines to reach the hook (both have read, neither
 	// has written). They now hold stale in-memory snapshots of the same
 	// empty file.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		select {
 		case <-hookCalls:
 		case <-time.After(10 * time.Second):

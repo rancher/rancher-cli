@@ -245,7 +245,7 @@ func TestResolveSubjectBareAmbiguousDisplay(t *testing.T) {
 
 func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 	users := []map[string]any{}
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		users = append(users, userObj(fmt.Sprintf("u-jan%02d", i), fmt.Sprintf("Jan %d", i), fmt.Sprintf("jan%d", i), fmt.Sprintf("okta_user://%d", i)))
 	}
 	users = append(users, userObj("u-zzz", "Zed", "zed", "okta_user://z"))

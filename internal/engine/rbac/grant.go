@@ -208,7 +208,7 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 func candidatesWithFallback(n int, hay func(i int) string, cand func(i int) clierr.Candidate, needle string) []clierr.Candidate {
 	lneedle := strings.ToLower(needle)
 	var near, fallback []clierr.Candidate
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if len(fallback) < candidateCap {
 			fallback = append(fallback, cand(i))
 		}

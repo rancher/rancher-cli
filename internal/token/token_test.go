@@ -2003,7 +2003,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 			},
 		}
 		// Run many times: map iteration order varies, so nondeterminism surfaces.
-		for i := 0; i < 20; i++ {
+		for i := range 20 {
 			got := caForServer(cfg, "https://shared.example", false)
 			assert.Equal(t, caAlpha, got, "alpha < zeta: caAlpha must win on every call (iteration %d)", i)
 		}

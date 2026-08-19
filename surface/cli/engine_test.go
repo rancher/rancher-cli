@@ -94,7 +94,7 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		id := fmt.Sprintf("c-%d", i%3)
 		wg.Add(1)
 		go func() {
@@ -223,7 +223,7 @@ func TestResolveClusterMemoizes(t *testing.T) {
 		mgmtClusterObj("c-def", "dev"),
 	}}
 	f := resolveFactory(t, client)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := f.ResolveCluster(context.Background(), "prod")
 		require.NoError(t, err)
 		assert.Equal(t, "c-abc", got)
