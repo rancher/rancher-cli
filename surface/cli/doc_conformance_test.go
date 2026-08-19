@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -231,7 +230,7 @@ func TestCRTPatchRefusalClaim(t *testing.T) {
 
 	mc, ok := o.patch(crt, runDeps{}).(runtime.MutatingCommand)
 	require.True(t, ok, "the clusterregistrationtoken patch override must build a mutating command")
-	_, _, err := mc.Plan(context.Background(), nil)
+	_, _, err := mc.Plan(t.Context(), nil)
 	require.Error(t, err,
 		"REFERENCE.md claims patch clusterregistrationtoken is refused, but Plan accepted — update REFERENCE.md and this test together")
 	assert.Contains(t, err.Error(), "read-only")

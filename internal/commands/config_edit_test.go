@@ -45,7 +45,7 @@ func (f *fakePrompter) NoInput() bool                                { return !f
 
 func TestConfigEditNoTTYIsValidationNamingPath(t *testing.T) {
 	dir := t.TempDir()
-	_, err := NewConfigEdit(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	_, err := NewConfigEdit(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -65,7 +65,7 @@ func TestConfigEditEditorNonZeroExitAbortsRealFileUntouched(t *testing.T) {
 	before, err := os.ReadFile(config.FilePath(dir))
 	require.NoError(t, err)
 
-	_, err = NewConfigEdit(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err = NewConfigEdit(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.Error(t, err)
 
 	after, err := os.ReadFile(config.FilePath(dir))
@@ -88,7 +88,7 @@ func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testi
 	require.NoError(t, loadErr, "Load must accept an unrecognized field")
 
 	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(withUnknownField)}
-	res, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	res, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigEdit", res.Kind)
 
@@ -104,7 +104,7 @@ func TestConfigEditValidateCatchesDanglingCurrentServer(t *testing.T) {
 
 	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(dangling)}
 	p := &fakePrompter{canPrompt: true, answers: []string{"n"}}
-	_, err := cmd.Execute(context.Background(), args{}, p)
+	_, err := cmd.Execute(t.Context(), args{}, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `currentServer "gone" is not a defined server`)
 }
@@ -126,7 +126,7 @@ func TestConfigEditReEditLoopRecoversOnSecondAttempt(t *testing.T) {
 
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	p := &fakePrompter{canPrompt: true, answers: []string{"y"}}
-	res, err := cmd.Execute(context.Background(), args{}, p)
+	res, err := cmd.Execute(t.Context(), args{}, p)
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigEdit", res.Kind)
 	assert.Equal(t, 2, calls, "the editor must be re-invoked on the same temp file after an accepted re-edit")
@@ -150,7 +150,7 @@ func TestConfigEditReEditDeclinedAbortsPreservingRejectedBuffer(t *testing.T) {
 
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	p := &fakePrompter{canPrompt: true, answers: []string{"n"}}
-	_, err := cmd.Execute(context.Background(), args{}, p)
+	_, err := cmd.Execute(t.Context(), args{}, p)
 	require.Error(t, err)
 	require.NotEmpty(t, capturedTemp)
 	assert.Contains(t, err.Error(), capturedTemp, "the error must name the preserved buffer's path")
@@ -177,7 +177,7 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	launch := writesContent(validConfigYAML)
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	p := &fakePrompter{canPrompt: true}
-	_, err := cmd.Execute(context.Background(), args{}, p)
+	_, err := cmd.Execute(t.Context(), args{}, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "symlink")
 
@@ -230,7 +230,7 @@ func TestConfigEditCleanWriteRemovesTemp(t *testing.T) {
 	}
 
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
-	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(capturedTemp)
@@ -257,7 +257,7 @@ func TestConfigEditConflictPreservesTemp(t *testing.T) {
 	}
 
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
-	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
@@ -280,7 +280,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 	t.Run("still absent is clean write", func(t *testing.T) {
 		dir := t.TempDir()
 		cmd := &configEditCmd{dir: dir, launchEditor: writesContent(validConfigYAML)}
-		_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+		_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 		require.NoError(t, err)
 		got, readErr := os.ReadFile(config.FilePath(dir))
 		require.NoError(t, readErr)
@@ -301,7 +301,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 		}
 
 		cmd := &configEditCmd{dir: dir, launchEditor: launch}
-		_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+		_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeConflict, ce.Code)
@@ -331,7 +331,7 @@ func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	_, err := cmd.Execute(ctx, args{}, &fakePrompter{canPrompt: true})
@@ -364,7 +364,7 @@ func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
 	}
 
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
-	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "check for concurrent changes", "the failing step must be named")
 	assert.NotContains(t, err.Error(), "writing config failed")
@@ -395,7 +395,7 @@ func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
 	defer restoreHook()
 	holderDone := make(chan error, 1)
 	go func() {
-		holderDone <- config.WithLock(context.Background(), dir, func() error { return nil })
+		holderDone <- config.WithLock(t.Context(), dir, func() error { return nil })
 	}()
 	select {
 	case <-parked:
@@ -410,7 +410,7 @@ func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
 		return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
 	}
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
-	_, err := cmd.Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)

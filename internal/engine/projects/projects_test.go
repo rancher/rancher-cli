@@ -74,7 +74,7 @@ func planProject(t *testing.T, cmd runtime.Command, input runtime.Input) (safety
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "create project must be a MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }
 
 func TestCreateProjectPlanBuildsObjectAndDryRuns(t *testing.T) {
@@ -108,7 +108,7 @@ func TestCreateProjectExecutorWrites(t *testing.T) {
 	_, exec, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}})
 	require.NoError(t, err)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "Project", res.Kind)
 	assert.Equal(t, []bool{true, false}, client.dryRuns, "Plan dry-runs, then the executor writes for real")
@@ -334,5 +334,5 @@ func planMember(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "member commands must be MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }

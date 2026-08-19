@@ -129,7 +129,7 @@ func TestResolveCloudCredentialByExactNamespacedID(t *testing.T) {
 	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": obj}}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(context.Background(), factory, "cattle-global-data:cc-abc12")
+	ref, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:cc-abc12")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID)
 	assert.Equal(t, "cc-abc12", ref.SecretName)
@@ -142,7 +142,7 @@ func TestResolveCloudCredentialByBareID(t *testing.T) {
 	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": obj}}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(context.Background(), factory, "cc-abc12")
+	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-abc12")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID, "bare cc- ids normalize to the namespaced form")
 }
@@ -156,7 +156,7 @@ func TestResolveCloudCredentialByDisplayName(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(context.Background(), factory, "AWS Prod")
+	ref, err := ResolveCloudCredential(t.Context(), factory, "AWS Prod")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID)
 }
@@ -167,7 +167,7 @@ func TestResolveCloudCredentialDisplayNameBackfillFromObjectName(t *testing.T) {
 	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-noannotation": obj}}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(context.Background(), factory, "cc-noannotation")
+	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-noannotation")
 	require.NoError(t, err)
 	assert.Equal(t, "cc-noannotation", ref.DisplayName, "display name backfills from the object name when the annotation is absent")
 }
@@ -180,7 +180,7 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(context.Background(), factory, "unknown")
+	_, err := ResolveCloudCredential(t.Context(), factory, "unknown")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -204,7 +204,7 @@ func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(context.Background(), factory, "cc-missing")
+	_, err := ResolveCloudCredential(t.Context(), factory, "cc-missing")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -229,11 +229,11 @@ func TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID(t *te
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	bare, err := ResolveCloudCredential(context.Background(), factory, "my-legacy-cred")
+	bare, err := ResolveCloudCredential(t.Context(), factory, "my-legacy-cred")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:my-legacy-cred", bare.ID)
 
-	namespaced, err := ResolveCloudCredential(context.Background(), factory, "cattle-global-data:my-legacy-cred")
+	namespaced, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:my-legacy-cred")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:my-legacy-cred", namespaced.ID)
 
@@ -249,7 +249,7 @@ func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(context.Background(), factory, "Shared")
+	_, err := ResolveCloudCredential(t.Context(), factory, "Shared")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -271,7 +271,7 @@ func TestResolveCloudCredentialAmbiguousCandidatesNarrowed(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(context.Background(), factory, "Shared")
+	_, err := ResolveCloudCredential(t.Context(), factory, "Shared")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -301,7 +301,7 @@ func TestResolveCloudCredentialDriverFromDataKeyPrefix(t *testing.T) {
 			client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-drv1": obj}}
 			factory := fakeFactory{c: client}
 
-			ref, err := ResolveCloudCredential(context.Background(), factory, "cc-drv1")
+			ref, err := ResolveCloudCredential(t.Context(), factory, "cc-drv1")
 			require.NoError(t, err)
 			assert.Equal(t, tc.driver, ref.Driver)
 		})
@@ -327,7 +327,7 @@ func TestGetCloudCredentialListsOnlyCredentialShapedSecrets(t *testing.T) {
 	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
 	require.True(t, ok)
 
-	result, err := cmd.Execute(context.Background(), in{}, nil)
+	result, err := cmd.Execute(t.Context(), in{}, nil)
 	require.NoError(t, err)
 	rows, ok := result.Data.(cloudCredRows)
 	require.True(t, ok)
@@ -342,7 +342,7 @@ func TestGetCloudCredentialByNameResolvesOne(t *testing.T) {
 	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
 	require.True(t, ok)
 
-	result, err := cmd.Execute(context.Background(), in{args: []string{"cc-abc12"}}, nil)
+	result, err := cmd.Execute(t.Context(), in{args: []string{"cc-abc12"}}, nil)
 	require.NoError(t, err)
 	rows, ok := result.Data.(cloudCredRows)
 	require.True(t, ok)
@@ -366,7 +366,7 @@ func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {
 	}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(context.Background(), factory, "cc-secret1")
+	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-secret1")
 	require.NoError(t, err)
 	assert.NotContains(t, fmt.Sprintf("%v", ref), sentinel)
 	assert.NotContains(t, fmt.Sprintf("%+v", ref), sentinel)
@@ -374,19 +374,19 @@ func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {
 	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
 	require.True(t, ok)
 
-	listResult, err := cmd.Execute(context.Background(), in{}, nil)
+	listResult, err := cmd.Execute(t.Context(), in{}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, fmt.Sprintf("%v", listResult), sentinel)
 	assert.NotContains(t, fmt.Sprintf("%+v", listResult), sentinel)
 
-	singleResult, err := cmd.Execute(context.Background(), in{args: []string{"cc-secret1"}}, nil)
+	singleResult, err := cmd.Execute(t.Context(), in{args: []string{"cc-secret1"}}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, fmt.Sprintf("%v", singleResult), sentinel)
 	assert.NotContains(t, fmt.Sprintf("%+v", singleResult), sentinel)
 
 	// An ambiguous/not-found error path also builds candidates from these
 	// same secrets — assert its rendering is clean too.
-	_, err = ResolveCloudCredential(context.Background(), factory, "no-such-credential")
+	_, err = ResolveCloudCredential(t.Context(), factory, "no-such-credential")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), sentinel)
 }

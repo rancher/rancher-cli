@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -105,27 +104,27 @@ func TestSchemaFilter(t *testing.T) {
 	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 
 	t.Run("no args returns the full manifest", func(t *testing.T) {
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 		require.NoError(t, err)
 		toc := viewTOC(t, res)
 		assert.Equal(t, float64(2), toc["commandCount"])
 	})
 
 	t.Run("multi-word name filters to one", func(t *testing.T) {
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
 		require.NoError(t, err)
 		got := viewCard(t, res)
 		assert.Equal(t, "get pod", got["name"])
 	})
 
 	t.Run("alias matches", func(t *testing.T) {
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pods"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pods"}}, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "get pod", viewCard(t, res)["name"])
 	})
 
 	t.Run("unknown command is VALIDATION", func(t *testing.T) {
-		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "nonsense"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "nonsense"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -171,7 +170,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 
 	t.Run("readonly command card", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher get pod [name]", lines[0])
@@ -182,7 +181,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 
 	t.Run("destructive deprecated mutating command card", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"delete", "project"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"delete", "project"}}, nil)
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher delete project <name>", lines[0])
@@ -192,7 +191,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 
 	t.Run("bare manifest renders the TOC as Text (SE-9)", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "rancher test — "),
 			"bare schema Text is the TOC, headed by the CLI version and counts")
@@ -205,7 +204,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 func TestSchemaSelectionCardShape(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
-	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pod"}}, nil)
+	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
 	require.NoError(t, err)
 	got := viewCard(t, res)
 	assert.Equal(t, "get pod", got["name"])
@@ -318,7 +317,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 
 	t.Run("command match wins the bare positional", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"kubeconfig"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"kubeconfig"}}, nil)
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher kubeconfig", lines[0])
@@ -330,7 +329,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 
 	t.Run("--kind flips the collision to the kind card", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "kind: kubeconfig\n"))
@@ -340,7 +339,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 
 	t.Run("non-colliding command card carries no kind footnote", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"get", "clusterregistrationtoken"}}, nil)
 		require.NoError(t, err)
 		assert.NotContains(t, res.Text, "kind view:")
@@ -348,7 +347,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 
 	t.Run("a kind identifier resolves without --kind", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"crt"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"crt"}}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "kind: clusterregistrationtoken\n"),
 			"a kind alias is a valid selector when no command matches")
@@ -365,7 +364,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	sel := func(t *testing.T, name string) ([]string, SchemaKind) {
 		t.Helper()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{name}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
 		return strings.Split(res.Text, "\n"), viewKind(t, res)
@@ -419,7 +418,7 @@ func TestSchemaKindStructured(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, tin{a: []string{"clusterregistrationtoken"}},
+	_, ce := Run(t.Context(), cmd, tin{a: []string{"clusterregistrationtoken"}},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 
@@ -447,7 +446,7 @@ func TestSchemaKindStructured(t *testing.T) {
 func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-	_, err := cmd.(ReadCommand).Execute(context.Background(),
+	_, err := cmd.(ReadCommand).Execute(t.Context(),
 		tin{flags: map[string]bool{"kind": true}}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -462,7 +461,7 @@ func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd,
+	_, ce := Run(t.Context(), cmd,
 		tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
@@ -489,7 +488,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("alias substring matches, case-insensitive", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"PODS"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"PODS"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -501,7 +500,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("name substring matches multiple commands", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"proj"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"proj"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -514,7 +513,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("no match keeps the plain error", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"frobnicate"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"frobnicate"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -525,7 +524,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("kind names join the candidate set", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"widg"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"widg"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -539,7 +538,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("a command/kind collision yields one candidate", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"kubeconf"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"kubeconf"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		names := make([]string, len(ce.Candidates))
@@ -552,7 +551,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("--kind restricts candidates to kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(),
+		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"kubeconf"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -568,7 +567,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("hint without --kind covers both commands and kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"frobnicate"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"frobnicate"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Contains(t, ce.Hint, "rancher schema -o name")
@@ -582,7 +581,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		// command typo — kinds are single tokens, always — so the noun and
 		// hint collapse to the command tier.
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get", "pdo"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pdo"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Contains(t, ce.Message, `unknown command "get pdo"`)
@@ -593,7 +592,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("dual hint on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"pdo"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"pdo"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -605,7 +604,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("hint with --kind points to -o json kinds array", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(),
+		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"frobnicate"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -618,7 +617,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("hint with --kind and nearest matches still points to -o json kinds array", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(),
+		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"kubeconf"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -637,7 +636,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Run("padded single-token selector gets dual hint not command hint", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := kcmd.(ReadCommand).Execute(context.Background(), tin{a: []string{" pod"}}, nil)
+		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{" pod"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -657,7 +656,7 @@ func TestSchemaSelectionFormats(t *testing.T) {
 		t.Helper()
 		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), cmd, tin{a: []string{"get", "pod"}},
+		_, ce := Run(t.Context(), cmd, tin{a: []string{"get", "pod"}},
 			IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce)
 		return out.String(), errBuf.String()
@@ -718,7 +717,7 @@ func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
 		return true, []string{"config readOnly"}
 	})
 
-	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 	require.NoError(t, err)
 	toc := viewTOC(t, res)
 	assert.Equal(t, true, toc["readOnly"])
@@ -732,7 +731,7 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 	reg.Register(fakeRead{d: Descriptor{Name: "get pod", CommandType: ReadOnly}})
 	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 
-	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{}, nil)
+	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 	require.NoError(t, err)
 	toc := viewTOC(t, res)
 	assert.Equal(t, false, toc["readOnly"])
@@ -748,7 +747,7 @@ func TestSchemaFilters(t *testing.T) {
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
 	run := func(t *testing.T, in tin) (map[string]any, string) {
 		t.Helper()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), in, nil)
 		require.NoError(t, err)
 		return viewTOC(t, res), res.Text
 	}
@@ -815,7 +814,7 @@ func TestSchemaSearch(t *testing.T) {
 
 	t.Run("desc match is case-insensitive and shows the fragment", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{strs: map[string]string{"search": "MANAGEMENT"}}, nil)
 		require.NoError(t, err)
 		toc := viewTOC(t, res)
@@ -830,7 +829,7 @@ func TestSchemaSearch(t *testing.T) {
 
 	t.Run("name match needs no fragment", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{strs: map[string]string{"search": "delete"}}, nil)
 		require.NoError(t, err)
 		toc := viewTOC(t, res)
@@ -846,7 +845,7 @@ func TestSchemaSearch(t *testing.T) {
 	t.Run("zero hits exit 0 with a message naming the filters", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), cmd, tin{strs: map[string]string{"search": "zzz"}},
+		_, ce := Run(t.Context(), cmd, tin{strs: map[string]string{"search": "zzz"}},
 			IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce, "zero hits are not an error")
 		assert.Equal(t, "no commands match --search \"zzz\"\n", out.String())
@@ -862,7 +861,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 	t.Run("command selector plus --verb", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
-		_, err := cmd.(ReadCommand).Execute(context.Background(),
+		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -875,7 +874,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 	t.Run("kind selector plus --search", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := cmd.(ReadCommand).Execute(context.Background(),
+		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"crt"}, strs: map[string]string{"search": "pod"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -886,7 +885,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 	t.Run("--kind plus a filter", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
-		_, err := cmd.(ReadCommand).Execute(context.Background(),
+		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{flags: map[string]bool{"kind": true}, strs: map[string]string{"contract": "internal"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -906,7 +905,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 			{a: []string{"get", "pod"}, strs: map[string]string{"search": "pod"}},
 		}
 		for _, in := range cases {
-			_, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+			_, err := cmd.(ReadCommand).Execute(t.Context(), in, nil)
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -947,7 +946,7 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 			case "filtered", "search hit", "zero hit":
 				m = filterManifest(full, filtersFrom(tc.in))
 			default:
-				res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
+				res, err := cmd.(ReadCommand).Execute(t.Context(), tc.in, nil)
 				require.NoError(t, err)
 				if cv, ok := res.Data.(cardView); ok {
 					// cardView carries only exitCodes+cmd; reconstruct the
@@ -996,7 +995,7 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 			if tc.name != "bare" && tc.name != "filtered" && tc.name != "search hit" && tc.name != "zero hit" {
 				return
 			}
-			res, err := cmd.(ReadCommand).Execute(context.Background(), tc.in, nil)
+			res, err := cmd.(ReadCommand).Execute(t.Context(), tc.in, nil)
 			require.NoError(t, err)
 			decoded := viewTOC(t, res)
 			if tc.zeroHit {
@@ -1073,10 +1072,10 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 			sc, ok := cmd.(ShellCompleter)
 			require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
-			cands := sc.CompleteArgs(context.Background(), nil)
+			cands := sc.CompleteArgs(t.Context(), nil)
 			require.NotEmpty(t, cands)
 			for _, cand := range cands {
-				res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: strings.Fields(cand)}, nil)
+				res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: strings.Fields(cand)}, nil)
 				require.NoError(t, err, "candidate %q must resolve as a schema selector", cand)
 				if cv, ok := res.Data.(cardView); ok {
 					assert.NotEmpty(t, cv.cmd.Name, "candidate %q must resolve to a named command", cand)
@@ -1101,7 +1100,7 @@ func TestSchemaAllReturnsFullManifest(t *testing.T) {
 	t.Parallel()
 	reg := kindRegistry()
 	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
-	res, err := cmd.(ReadCommand).Execute(context.Background(), tin{flags: map[string]bool{"all": true}}, nil)
+	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{flags: map[string]bool{"all": true}}, nil)
 	require.NoError(t, err)
 	got, err := json.Marshal(res.Data)
 	require.NoError(t, err)
@@ -1128,7 +1127,7 @@ func TestSchemaAllConflicts(t *testing.T) {
 		{flags: map[string]bool{"all": true, "destructive": true}},
 	}
 	for _, in := range cases {
-		_, err := cmd.(ReadCommand).Execute(context.Background(), in, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), in, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -1146,7 +1145,7 @@ func TestSchemaPositionalCompletionShape(t *testing.T) {
 	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14", nil)
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
-	cands := sc.CompleteArgs(context.Background(), nil)
+	cands := sc.CompleteArgs(t.Context(), nil)
 
 	assert.True(t, sort.StringsAreSorted(cands), "candidates are deterministically sorted: %v", cands)
 	counts := map[string]int{}
@@ -1211,7 +1210,7 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 
 	t.Run("group name resolves to group card text", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(res.Text, "group: create\n"),
 			"group card text starts with the group name line")
@@ -1222,7 +1221,7 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 
 	t.Run("group card JSON shape", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
 		gv := viewGroup(t, res)
 		b, err := json.Marshal(gv)
@@ -1252,7 +1251,7 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 
 	t.Run("Result.Kind is Schema", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Schema", res.Kind)
 		gv := viewGroup(t, res)
@@ -1276,7 +1275,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 			{Name: "", Commands: []string{"auth"}},
 		})
 		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		_, isCard := res.Data.(cardView)
 		assert.True(t, isCard, "command wins: must resolve to command card, not group card")
@@ -1297,7 +1296,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 			{Name: "create", Desc: "Create group", Commands: []string{"create project"}},
 		})
 		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"create"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
 		_, isKind := res.Data.(kindView)
 		assert.True(t, isKind, "kind wins: must resolve to kind card, not group card")
@@ -1316,7 +1315,7 @@ func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
 
 	t.Run("group-only selector with --kind → kind-not-found VALIDATION", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(),
+		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"auth"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -1326,7 +1325,7 @@ func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
 
 	t.Run("group selector without --kind still resolves to group card", func(t *testing.T) {
 		t.Parallel()
-		res, err := cmd.(ReadCommand).Execute(context.Background(),
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		_, isGroup := res.Data.(groupView)
@@ -1344,7 +1343,7 @@ func TestSchemaUnknownSelectionSuggestsGroups(t *testing.T) {
 
 	t.Run("partial group name appears in candidates", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"aut"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"aut"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -1360,7 +1359,7 @@ func TestSchemaUnknownSelectionSuggestsGroups(t *testing.T) {
 
 	t.Run("--kind excludes groups from candidates", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(context.Background(),
+		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"aut"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -1415,7 +1414,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 	t.Run("text lists bespoke and collapses generated", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		assert.Contains(t, res.Text, "get cloud-credential", "bespoke command listed")
 		assert.Contains(t, res.Text, "Get a cloud credential", "bespoke usage listed")
@@ -1428,7 +1427,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 	t.Run("JSON has bespoke commands array + generated summary", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		gv := viewGroup(t, res)
 		b, err := json.Marshal(gv)
@@ -1450,7 +1449,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 	t.Run("all-bespoke group has no generated key in JSON", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"auth"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		gv := viewGroup(t, res)
 		b, err := json.Marshal(gv)
@@ -1466,7 +1465,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 	t.Run("size sanity: mixed get-group card stays small", func(t *testing.T) {
 		t.Parallel()
 		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: []string{"get"}}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		lines := strings.Split(strings.TrimRight(res.Text, "\n"), "\n")
 		assert.Less(t, len(lines), 15, "group card stays compact even with many generated commands")
@@ -1483,12 +1482,12 @@ func TestSchemaGroupCompletionCandidates(t *testing.T) {
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok)
 
-	cands := sc.CompleteArgs(context.Background(), nil)
+	cands := sc.CompleteArgs(t.Context(), nil)
 	assert.Contains(t, cands, "create", "named group is a completion candidate")
 	assert.Contains(t, cands, "auth", "named group is a completion candidate")
 
 	for _, cand := range cands {
-		res, err := cmd.(ReadCommand).Execute(context.Background(), tin{a: strings.Fields(cand)}, nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: strings.Fields(cand)}, nil)
 		require.NoError(t, err, "candidate %q must resolve", cand)
 		switch res.Data.(type) {
 		case cardView, kindView, groupView:

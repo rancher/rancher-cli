@@ -31,7 +31,7 @@ func TestPromptReadsLineToErr(t *testing.T) {
 	t.Parallel()
 	var errw bytes.Buffer
 	p := New(&errw, strings.NewReader("alice\n"), false, true)
-	got, err := p.Prompt(context.Background(), "user: ")
+	got, err := p.Prompt(t.Context(), "user: ")
 	require.NoError(t, err)
 	assert.Equal(t, "alice", got)
 	assert.Equal(t, "user: ", errw.String(), "label goes to Err")
@@ -40,9 +40,9 @@ func TestPromptReadsLineToErr(t *testing.T) {
 func TestPromptRefusesWhenDisabled(t *testing.T) {
 	t.Parallel()
 	p := New(&bytes.Buffer{}, strings.NewReader("x\n"), true, true)
-	_, err := p.Prompt(context.Background(), "user: ")
+	_, err := p.Prompt(t.Context(), "user: ")
 	assert.ErrorIs(t, err, ErrNoInput)
-	_, err = p.PromptSecret(context.Background(), "pw: ")
+	_, err = p.PromptSecret(t.Context(), "pw: ")
 	assert.ErrorIs(t, err, ErrNoInput)
 }
 
@@ -50,14 +50,14 @@ func TestPromptSecretReadsLineFromBuffer(t *testing.T) {
 	t.Parallel()
 	var errw bytes.Buffer
 	p := New(&errw, strings.NewReader("s3cret\n"), false, true)
-	got, err := p.PromptSecret(context.Background(), "pw: ")
+	got, err := p.PromptSecret(t.Context(), "pw: ")
 	require.NoError(t, err)
 	assert.Equal(t, "s3cret", got)
 }
 
 func TestPromptHonorsContextCancellation(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	// A reader that would block forever if read synchronously.
 	p := New(&bytes.Buffer{}, blockingReader{}, false, true)
@@ -93,7 +93,7 @@ func TestNoticeIsSafeForConcurrentUse(t *testing.T) {
 
 func TestDiscardRefuses(t *testing.T) {
 	t.Parallel()
-	_, err := Discard().Prompt(context.Background(), "x")
+	_, err := Discard().Prompt(t.Context(), "x")
 	assert.ErrorIs(t, err, ErrNoInput)
 }
 
@@ -106,7 +106,7 @@ func TestReadLineReadsFromInputUngated(t *testing.T) {
 	t.Parallel()
 	// noInput=true, isTTY=false: ReadLine is NOT gated (unlike Prompt/PromptSecret).
 	p := New(&bytes.Buffer{}, strings.NewReader("id:secret\n"), true, false)
-	got, err := p.ReadLine(context.Background())
+	got, err := p.ReadLine(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "id:secret", got)
 }
@@ -114,13 +114,13 @@ func TestReadLineReadsFromInputUngated(t *testing.T) {
 func TestReadLineEmptyIsEOF(t *testing.T) {
 	t.Parallel()
 	p := New(&bytes.Buffer{}, strings.NewReader(""), true, false)
-	_, err := p.ReadLine(context.Background())
+	_, err := p.ReadLine(t.Context())
 	assert.ErrorIs(t, err, io.EOF)
 }
 
 func TestReadLineHonorsContextCancellation(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	p := New(&bytes.Buffer{}, blockingReader{}, true, false)
 	_, err := p.ReadLine(ctx)

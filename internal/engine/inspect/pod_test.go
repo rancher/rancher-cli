@@ -55,7 +55,7 @@ func execRead(t *testing.T, cmd runtime.Command, in runtime.Input) (runtime.Resu
 	t.Helper()
 	rc, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok, "command must be a ReadCommand")
-	return rc.Execute(context.Background(), in, nil)
+	return rc.Execute(t.Context(), in, nil)
 }
 
 func TestInspectPodAssemblesDocument(t *testing.T) {
@@ -427,7 +427,7 @@ func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer
-			_, ce := runtime.Run(context.Background(), cmd, in,
+			_, ce := runtime.Run(t.Context(), cmd, in,
 				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 			assert.NotContains(t, buf.String(), "managedFields",

@@ -6,7 +6,6 @@
 package real
 
 import (
-	"context"
 	"flag"
 	"os"
 	"path/filepath"
@@ -29,7 +28,7 @@ func TestOracle(t *testing.T) {
 	dir := filepath.Join("..", "..", "internal", "testrancher", "fidelity", "testdata", "oracle")
 	for _, p := range fidelity.All() {
 		t.Run(p.Name, func(t *testing.T) {
-			results, err := fidelity.RunProbe(context.Background(), tgt, p)
+			results, err := fidelity.RunProbe(t.Context(), tgt, p)
 			require.NoError(t, err)
 			got := fidelity.Golden{OracleImage: oracleImage, Observations: results}
 			path := fidelity.GoldenPath(dir, p.Name)

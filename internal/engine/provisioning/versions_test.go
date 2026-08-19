@@ -2,7 +2,6 @@ package provisioning
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -80,7 +79,7 @@ func TestFetchVersionsMergesBothDistrosWithDefaults(t *testing.T) {
 	})
 	factory := fakeFactory{c: client}
 
-	rows, err := FetchVersions(context.Background(), rootsFor(srv), factory)
+	rows, err := FetchVersions(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
 
@@ -125,7 +124,7 @@ func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 			})
 			factory := fakeFactory{c: client}
 
-			rows, err := FetchVersions(context.Background(), rootsFor(srv), factory)
+			rows, err := FetchVersions(t.Context(), rootsFor(srv), factory)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			if tc.wantSupport == nil {
@@ -152,7 +151,7 @@ func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 	client := settingsClient(nil)
 	factory := fakeFactory{c: client}
 
-	rows, err := FetchVersions(context.Background(), rootsFor(srv), factory)
+	rows, err := FetchVersions(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err, "a 404 on one distro's route must never surface as an error")
 	require.Len(t, rows, 1)
 	assert.Equal(t, "k3s", rows[0].Distro)
@@ -161,7 +160,7 @@ func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 	cmd := NewGetKubernetesVersions(rootsFor(srv), factory)
 	rc, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok)
-	res, err := rc.Execute(context.Background(), noArgsInput{}, nil)
+	res, err := rc.Execute(t.Context(), noArgsInput{}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Warnings, "the omitted distro must be surfaced as a warning, not silently dropped")
 }
@@ -208,7 +207,7 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 			defer srv.Close()
 
 			factory := fakeFactory{c: settingsClient(nil)}
-			rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+			rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 			require.NoError(t, err, "a 404 on either (or both) distro's route must never surface as an error")
 
 			var gotDistros []string
@@ -241,7 +240,7 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 	factory := fakeFactory{c: client}
 
 	assert.NotPanics(t, func() {
-		rows, err := FetchVersions(context.Background(), rootsFor(srv), factory)
+		rows, err := FetchVersions(t.Context(), rootsFor(srv), factory)
 		require.Error(t, err)
 		ce, ok := err.(*clierr.Error)
 		require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
@@ -269,7 +268,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 	client := settingsClient(nil)
 	factory := fakeFactory{c: client}
 
-	_, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	_, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "context canceled", "a sibling's hard failure must never cancel this distro's in-flight request")
 
@@ -301,7 +300,7 @@ func TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure(t
 	clusterErr := clierr.New(clierr.CodeGeneric, "cluster resolution failed")
 	factory := fakeFactory{clusterErr: clusterErr}
 
-	_, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	_, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.ErrorIs(t, err, clusterErr, "a clients.Cluster() failure must precede a simultaneous release-fetch failure")
 }
 
@@ -335,7 +334,7 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 
 	cmd := NewGetKubernetesVersions(rootsFor(srv), factory)
 	rc := cmd.(runtime.ReadCommand)
-	res, err := rc.Execute(context.Background(), noArgsInput{}, nil)
+	res, err := rc.Execute(t.Context(), noArgsInput{}, nil)
 	require.NoError(t, err)
 
 	tab, ok := res.Data.(interface {
@@ -383,7 +382,7 @@ func TestFetchVersionsNewestMarkedWhenSettingsPresent(t *testing.T) {
 	})
 	factory := fakeFactory{c: client}
 
-	rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
 
@@ -420,7 +419,7 @@ func TestFetchVersionsNewestMarkedWhenSettingsAbsent(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, warnings, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
 
@@ -465,7 +464,7 @@ func TestFetchVersionsNewestPicksSemverMaxNotLexicographic(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
@@ -491,7 +490,7 @@ func TestFetchVersionsNewestReleaseNumberTieBreaker(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
@@ -517,7 +516,7 @@ func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(context.Background(), rootsFor(srv), factory)
+	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "rows still returned even when versions are unparseable")
 

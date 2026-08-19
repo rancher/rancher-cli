@@ -47,15 +47,15 @@ func TestCLIImagesWorkload(t *testing.T) {
 	depListPath := fmt.Sprintf("%s/k8s/clusters/local/apis/apps/v1/namespaces/%s/deployments", base, depNS)
 	podListPath := fmt.Sprintf("%s/k8s/clusters/local/api/v1/namespaces/%s/pods", base, depNS)
 
-	deleteDeployment(context.Background(), t, apiClient, adminToken, depListPath, depName)
-	t.Cleanup(func() { deleteDeployment(context.Background(), t, apiClient, adminToken, depListPath, depName) })
+	deleteDeployment(t.Context(), t, apiClient, adminToken, depListPath, depName)
+	t.Cleanup(func() { deleteDeployment(context.Background(), t, apiClient, adminToken, depListPath, depName) }) // survives the test body
 
 	// After deleting a prior fixture deployment, wait for all pods carrying the
 	// fixture label to leave the API before creating a new one. k3s retains
 	// Running-phase pods until they are fully removed, and the CLI's owner-chain
 	// walk would generate a uid-mismatch warning for any old pod whose ownerRef
 	// chain resolves to a same-name-but-different-uid Deployment.
-	ctx := context.Background()
+	ctx := t.Context()
 	require.NoError(t,
 		waitPodsGone(ctx, t, apiClient, adminToken,
 			fmt.Sprintf("%s?labelSelector=app%%3D%s", podListPath, fixtureLabel),

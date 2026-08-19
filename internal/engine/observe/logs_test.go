@@ -1,7 +1,6 @@
 package observe
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 func execLogs(t *testing.T, clients engine.ClusterClientFactory, in input) (runtime.Result, error) {
 	t.Helper()
 	cmd := NewLogs(clients).(runtime.ReadCommand)
-	return cmd.Execute(context.Background(), in, nil)
+	return cmd.Execute(t.Context(), in, nil)
 }
 
 func TestLogsExecuteMergesAndPrefixesMultiPod(t *testing.T) {

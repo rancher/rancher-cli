@@ -103,7 +103,7 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 		"regoin":     "typo",
 	}}
 
-	eff, dryRun, exec, err := PlanCreateObserved(context.Background(), client, gvr, "fleet-default", obj, LocalCluster, "DigitaloceanConfig", false)
+	eff, dryRun, exec, err := PlanCreateObserved(t.Context(), client, gvr, "fleet-default", obj, LocalCluster, "DigitaloceanConfig", false)
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, []bool{true}, client.dryRuns)
@@ -113,7 +113,7 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 	assert.Empty(t, eff.Diff, "create previews are diff-less (MC-11)")
 	assert.False(t, eff.Destructive)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []bool{true, false}, client.dryRuns)
 }
@@ -123,7 +123,7 @@ func TestPlanCreate(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, exec, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project", false)
+	eff, exec, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", false)
 	require.NoError(t, err)
 	assert.True(t, client.lastCreateDryRun, "Plan must call Create with dryRun=true")
 	assert.Equal(t, safety.ActionCreate, eff.Action)
@@ -135,7 +135,7 @@ func TestPlanCreate(t *testing.T) {
 
 	// The returned closure performs the real (non-dry-run) create.
 	require.NotNil(t, exec)
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.False(t, client.lastCreateDryRun, "exec must call Create with dryRun=false")
 	assert.Equal(t, "Project", res.Kind)
@@ -147,7 +147,7 @@ func TestPlanUpdate(t *testing.T) {
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x", "resourceVersion": "9"},
 	}}
 	diff := []safety.DiffEntry{{Path: "/spec/x", From: nil, To: "y"}}
-	eff, exec, err := PlanUpdate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project", diff, true)
+	eff, exec, err := PlanUpdate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", diff, true)
 	require.NoError(t, err)
 	assert.True(t, client.lastUpdateDryRun, "Plan must call Update with dryRun=true")
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
@@ -159,7 +159,7 @@ func TestPlanUpdate(t *testing.T) {
 	assert.Equal(t, diff, eff.Diff)
 
 	require.NotNil(t, exec)
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.False(t, client.lastUpdateDryRun, "exec must call Update with dryRun=false")
 	assert.Equal(t, "Project", res.Kind)
@@ -167,7 +167,7 @@ func TestPlanUpdate(t *testing.T) {
 
 func TestPlanUpdatePropagatesError(t *testing.T) {
 	client := &stubClient{updateErr: assert.AnError}
-	_, _, err := PlanUpdate(context.Background(), client, testGVR, "c-x",
+	_, _, err := PlanUpdate(t.Context(), client, testGVR, "c-x",
 		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}},
 		"c-x", "Project", nil, false)
 	require.Error(t, err)
@@ -175,7 +175,7 @@ func TestPlanUpdatePropagatesError(t *testing.T) {
 
 func TestPlanCreatePropagatesError(t *testing.T) {
 	client := &stubClient{createErr: assert.AnError}
-	_, _, err := PlanCreate(context.Background(), client, testGVR, "c-x",
+	_, _, err := PlanCreate(t.Context(), client, testGVR, "c-x",
 		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "Project", false)
 	require.Error(t, err)
 }
@@ -189,7 +189,7 @@ func TestPlanCreateDestructiveParameter(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, _, err := PlanCreate(context.Background(), client, testGVR, "c-x", obj, "c-x", "Project", true)
+	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", true)
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive)
 }

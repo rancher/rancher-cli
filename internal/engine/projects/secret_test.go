@@ -1,7 +1,6 @@
 package projects
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -80,7 +79,7 @@ func TestCreateSecretProjectScopedWithBackingNamespaceSet(t *testing.T) {
 	label, _, _ := unstructured.NestedString(client.created.Object, "metadata", "labels", projectScopedSecretLabel)
 	assert.Equal(t, "p-1", label)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings, "a set backingNamespace needs no propagation warning")
 }
@@ -101,7 +100,7 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", client.createdNS, "empty status.backingNamespace falls back to the project id")
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "requires Rancher >= 2.14, the supported minimum")
@@ -226,7 +225,7 @@ func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNo
 		a: []string{"shared-cred"},
 	})
 	require.NoError(t, err)
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings, "status.backingNamespace was explicitly set (even though it equals the project id) — no propagation warning")
 }

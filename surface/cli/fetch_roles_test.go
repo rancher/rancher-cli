@@ -45,12 +45,12 @@ func TestFetchRoleTemplatesFiltersContext(t *testing.T) {
 	t.Parallel()
 	srv, _ := roleServer(t)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	got := fetchRoleTemplates(context.Background(), srv.Client(), cap, "project")
+	got := fetchRoleTemplates(t.Context(), srv.Client(), cap, "project")
 	// project-context only; "bad name!" sanitized out; duplicate deduped;
 	// cluster-context and context-less rows excluded; sorted.
 	assert.Equal(t, []string{"project-member", "project-owner"}, got)
 
-	got = fetchRoleTemplates(context.Background(), srv.Client(), cap, "cluster")
+	got = fetchRoleTemplates(t.Context(), srv.Client(), cap, "cluster")
 	assert.Equal(t, []string{"cluster-owner"}, got)
 }
 
@@ -58,7 +58,7 @@ func TestFetchGlobalRoles(t *testing.T) {
 	t.Parallel()
 	srv, _ := roleServer(t)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	got := fetchGlobalRoles(context.Background(), srv.Client(), cap)
+	got := fetchGlobalRoles(t.Context(), srv.Client(), cap)
 	assert.Equal(t, []string{"admin", "user"}, got)
 }
 
@@ -74,8 +74,8 @@ func TestFetchRolesTokenBoundary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Nil(t, fetchRoleTemplates(context.Background(), srv.Client(), tt.cap, "project"))
-			assert.Nil(t, fetchGlobalRoles(context.Background(), srv.Client(), tt.cap))
+			assert.Nil(t, fetchRoleTemplates(t.Context(), srv.Client(), tt.cap, "project"))
+			assert.Nil(t, fetchGlobalRoles(t.Context(), srv.Client(), tt.cap))
 		})
 	}
 	assert.Zero(t, hits.Load(), "token boundary must return nil WITHOUT a request")
@@ -89,16 +89,16 @@ func TestFetchRolesFailEmpty(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	assert.Nil(t, fetchRoleTemplates(context.Background(), srv.Client(), cap, "project"))
-	assert.Nil(t, fetchGlobalRoles(context.Background(), srv.Client(), cap))
+	assert.Nil(t, fetchRoleTemplates(t.Context(), srv.Client(), cap, "project"))
+	assert.Nil(t, fetchGlobalRoles(t.Context(), srv.Client(), cap))
 
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{not json`))
 	}))
 	t.Cleanup(srv2.Close)
 	cap2 := TokenCapability{Token: "token-abc:secret", ServerURL: srv2.URL}
-	require.Nil(t, fetchRoleTemplates(context.Background(), srv2.Client(), cap2, "project"))
-	require.Nil(t, fetchGlobalRoles(context.Background(), srv2.Client(), cap2))
+	require.Nil(t, fetchRoleTemplates(t.Context(), srv2.Client(), cap2, "project"))
+	require.Nil(t, fetchGlobalRoles(t.Context(), srv2.Client(), cap2))
 }
 
 func TestFetchRolesTimeout(t *testing.T) {
@@ -111,7 +111,7 @@ func TestFetchRolesTimeout(t *testing.T) {
 	}))
 	t.Cleanup(func() { close(block); srv.Close() })
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 	assert.Nil(t, fetchRoleTemplates(ctx, srv.Client(), cap, "project"))
 	assert.Nil(t, fetchGlobalRoles(ctx, srv.Client(), cap))

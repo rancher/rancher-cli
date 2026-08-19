@@ -1,7 +1,6 @@
 package token_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -44,7 +43,7 @@ func TestDeleteTokenCompleteArgsReturnsEntryNames(t *testing.T) {
 	cmd := token.NewDeleteTokenCommand("", store)
 	sc, ok := cmd.(runtime.ShellCompleter)
 	require.True(t, ok, "deleteTokenCmd must implement ShellCompleter")
-	got := sc.CompleteArgs(context.Background(), testConfigView{dir: cacheDir})
+	got := sc.CompleteArgs(t.Context(), testConfigView{dir: cacheDir})
 	assert.Equal(t, []string{"k8s-prod", "k8s-staging"}, got)
 }
 
@@ -61,7 +60,7 @@ func TestDeleteTokenCompleteArgsExcludesCompositeKeys(t *testing.T) {
 	// Command constructed with EMPTY dir (finding 2: proving candidates come from view).
 	cmd := token.NewDeleteTokenCommand("", store)
 	sc := cmd.(runtime.ShellCompleter)
-	got := sc.CompleteArgs(context.Background(), testConfigView{dir: cacheDir})
+	got := sc.CompleteArgs(t.Context(), testConfigView{dir: cacheDir})
 	// Name field only ("ctx"), not the composite key.
 	assert.Equal(t, []string{"ctx"}, got)
 	for _, c := range got {
@@ -84,6 +83,6 @@ func TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil(t *testing.T) {
 	// must return nil (not the entries from cacheDir).
 	cmd := token.NewDeleteTokenCommand(cacheDir, store)
 	sc := cmd.(runtime.ShellCompleter)
-	got := sc.CompleteArgs(context.Background(), testConfigView{dir: ""})
+	got := sc.CompleteArgs(t.Context(), testConfigView{dir: ""})
 	assert.Nil(t, got, "finding 2: empty view dir must yield nil, not fall back to d.dir")
 }

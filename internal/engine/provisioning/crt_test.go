@@ -147,7 +147,7 @@ func TestNewGetCRTNamedReturnsSplicedFields(t *testing.T) {
 	rc, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok)
 
-	res, err := rc.Execute(context.Background(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
+	res, err := rc.Execute(t.Context(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "ClusterRegistrationToken", res.Kind)
 	rows, ok := res.Data.(crtRows)
@@ -191,7 +191,7 @@ func TestNewGetCRTPlaceholderGuardTable(t *testing.T) {
 
 			cmd := NewGetCRT(crtKind(t), rootsFor(srv))
 			rc := cmd.(runtime.ReadCommand)
-			res, err := rc.Execute(context.Background(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
+			res, err := rc.Execute(t.Context(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
 
 			require.Error(t, err)
 			ce, ok := err.(*clierr.Error)
@@ -219,7 +219,7 @@ func TestNewGetCRTNotFound(t *testing.T) {
 
 	cmd := NewGetCRT(crtKind(t), rootsFor(srv))
 	rc := cmd.(runtime.ReadCommand)
-	res, err := rc.Execute(context.Background(), crtInput{args: []string{"missing"}, ns: "c-aaa"}, nil)
+	res, err := rc.Execute(t.Context(), crtInput{args: []string{"missing"}, ns: "c-aaa"}, nil)
 
 	require.Error(t, err)
 	ce, ok := err.(*clierr.Error)
@@ -244,7 +244,7 @@ func TestNewGetCRTMalformedBody(t *testing.T) {
 	rc := cmd.(runtime.ReadCommand)
 
 	assert.NotPanics(t, func() {
-		res, err := rc.Execute(context.Background(), crtInput{}, nil)
+		res, err := rc.Execute(t.Context(), crtInput{}, nil)
 		require.Error(t, err)
 		ce, ok := err.(*clierr.Error)
 		require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
@@ -276,7 +276,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	rc := cmd.(runtime.ReadCommand)
 
 	// Bare list: both namespaces present.
-	res, err := rc.Execute(context.Background(), crtInput{}, nil)
+	res, err := rc.Execute(t.Context(), crtInput{}, nil)
 	require.NoError(t, err)
 	all, ok := res.Data.(crtRows)
 	require.True(t, ok)
@@ -285,7 +285,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	// --namespace c-aaa: only that namespace's row, and c-bbb's token is
 	// absent from the ENTIRE marshaled output, not merely "the right one is
 	// present" — the real leak check.
-	res, err = rc.Execute(context.Background(), crtInput{ns: "c-aaa"}, nil)
+	res, err = rc.Execute(t.Context(), crtInput{ns: "c-aaa"}, nil)
 	require.NoError(t, err)
 	filtered, ok := res.Data.(crtRows)
 	require.True(t, ok)
@@ -325,7 +325,7 @@ func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 
 	cmd := NewGetCRT(crtKind(t), rootsFor(srv))
 	rc := cmd.(runtime.ReadCommand)
-	res, err := rc.Execute(context.Background(), crtInput{}, nil)
+	res, err := rc.Execute(t.Context(), crtInput{}, nil)
 	require.NoError(t, err, "one bad row must not abort the whole list")
 
 	rows, ok := res.Data.(crtRows)
@@ -374,7 +374,7 @@ func TestNewGetCRTNamedGetOnBadRowStaysStrict(t *testing.T) {
 
 	cmd := NewGetCRT(crtKind(t), rootsFor(srv))
 	rc := cmd.(runtime.ReadCommand)
-	res, err := rc.Execute(context.Background(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
+	res, err := rc.Execute(t.Context(), crtInput{args: []string{"default-token"}, ns: "c-aaa"}, nil)
 
 	require.Error(t, err, "a single-object get on a bad row must still fail loud, not degrade")
 	ce, ok := err.(*clierr.Error)
@@ -393,7 +393,7 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "NewRefuseCRTPatch must be a MutatingCommand")
 
-	eff, exec, err := mc.Plan(context.Background(), crtInput{args: []string{"default-token"}, ns: "c-aaa"})
+	eff, exec, err := mc.Plan(t.Context(), crtInput{args: []string{"default-token"}, ns: "c-aaa"})
 	require.Error(t, err)
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)

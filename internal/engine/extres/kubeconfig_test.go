@@ -1,7 +1,6 @@
 package extres
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func planKubeconfig(t *testing.T, cmd runtime.Command, input runtime.Input) (saf
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "create kubeconfig must be a MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }
 
 func TestCreateKubeconfigClustersSplitAndResolution(t *testing.T) {
@@ -169,7 +168,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
 
@@ -194,7 +193,7 @@ func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {
 		cmd := NewCreateKubeconfig(stubFactory{c: client})
 		_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
 		require.NoError(t, err)
-		_, err = exec(context.Background())
+		_, err = exec(t.Context())
 		require.Error(t, err)
 	})
 
@@ -204,7 +203,7 @@ func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {
 		cmd := NewCreateKubeconfig(stubFactory{c: client})
 		_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
 		require.NoError(t, err)
-		_, err = exec(context.Background())
+		_, err = exec(t.Context())
 		require.Error(t, err)
 	})
 }

@@ -27,7 +27,7 @@ func planMutating(t *testing.T, cmd runtime.Command, in runtime.Input) error {
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "command must be a MutatingCommand")
-	_, _, err := mc.Plan(context.Background(), in)
+	_, _, err := mc.Plan(t.Context(), in)
 	return err
 }
 
@@ -231,13 +231,13 @@ func TestDeleteGuardDerivedTokenExecUsesGuardFetchRV(t *testing.T) {
 
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok)
-	_, exec, err := mc.Plan(context.Background(), stubInput{args: []string{"my-token-abc"}})
+	_, exec, err := mc.Plan(t.Context(), stubInput{args: []string{"my-token-abc"}})
 	require.NoError(t, err, "derived token must pass through the guard without error")
 	require.NotNil(t, exec)
 
 	assert.Equal(t, 1, client.getCount, "guard must issue exactly one GET, not two")
 
-	_, execErr := exec(context.Background())
+	_, execErr := exec(t.Context())
 	require.NoError(t, execErr)
 
 	// The real delete (non-dry-run) must carry the rv from the guard's single GET.

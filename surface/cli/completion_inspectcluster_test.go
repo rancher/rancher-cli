@@ -43,7 +43,7 @@ func TestInspectClusterPositionalCompletesLive(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "inspect cluster"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
@@ -61,7 +61,7 @@ func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
 	cap := TokenCapability{Token: "kubeconfig-user:secret", ServerURL: srv.URL, IDOnly: true}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "inspect cluster"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
@@ -77,7 +77,7 @@ func TestOtherInspectLeavesRetainPositionalDeny(t *testing.T) {
 	srv, hits := managementClusterServer(t)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	for _, name := range []string{"inspect pod", "inspect deployment"} {
@@ -108,7 +108,7 @@ func TestInspectProjectPositionalCompletes(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "inspect project"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", "", nil)
@@ -142,7 +142,7 @@ func TestInspectClusterPositionalGateOff(t *testing.T) {
 
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "inspect cluster"}
-	got := dispatchSite(context.Background(), site, d, nil, nil, nil)
+	got := dispatchSite(t.Context(), site, d, nil, nil, nil)
 	assert.Nil(t, got)
 	assert.Zero(t, hits.Load(), "gate off: zero requests")
 }

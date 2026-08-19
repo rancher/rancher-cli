@@ -58,12 +58,12 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": "v1beta1"}}
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
-	_, err := c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default", "")
+	_, err := c.List(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default", "")
 	require.NoError(t, err)
 	assert.Equal(t, "v1beta1", lastVersion, "the empty version is filled from discovery before the API call")
 
 	// Second call, same group: discovery is memoized, not consulted again.
-	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "fleet-default", "")
+	_, err = c.List(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "fleet-default", "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, disc.calls)
 }
@@ -81,7 +81,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
 	machines := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}
-	_, err := c.List(context.Background(), machines, "fleet-default", "")
+	_, err := c.List(t.Context(), machines, "fleet-default", "")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
@@ -91,7 +91,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	assert.Equal(t, 1, disc.calls)
 
 	// Second call: the empty version was not cached, so discovery is consulted again.
-	_, err = c.List(context.Background(), machines, "fleet-default", "")
+	_, err = c.List(t.Context(), machines, "fleet-default", "")
 	require.Error(t, err)
 	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
 }
@@ -108,7 +108,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
 	tokens := schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"}
-	_, err := c.List(context.Background(), tokens, "", "")
+	_, err := c.List(t.Context(), tokens, "", "")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
@@ -117,7 +117,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	assert.Contains(t, ce.Hint, "auth list-tokens")
 
 	// A non-ext group absence carries the generic "not served" hint (not the ext hint).
-	_, err = c.List(context.Background(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "")
+	_, err = c.List(t.Context(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "")
 	require.Error(t, err)
 	require.True(t, errors.As(err, &ce))
 	assert.NotContains(t, ce.Hint, "auth list-tokens", "non-ext group must not carry ext hint")
@@ -139,7 +139,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 		t.Parallel()
 		disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
 		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
-		_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "", "m-1")
+		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "", "m-1")
 		require.Error(t, err)
 		var ce *clierr.Error
 		require.True(t, errors.As(err, &ce))
@@ -154,7 +154,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 		t.Parallel()
 		disc := &stubDiscovery{groups: map[string]string{}}
 		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
-		_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "w-1")
+		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "w-1")
 		require.Error(t, err)
 		var ce *clierr.Error
 		require.True(t, errors.As(err, &ce))
@@ -208,11 +208,11 @@ func project(ns, name string) *unstructured.Unstructured {
 func TestDynamicRepoCreateAndGet(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	out, err := r.Create(context.Background(), projectGVR, "c-x", project("c-x", "p-1"), false)
+	out, err := r.Create(t.Context(), projectGVR, "c-x", project("c-x", "p-1"), false)
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", out.GetName())
 
-	got, err := r.Get(context.Background(), projectGVR, "c-x", "p-1")
+	got, err := r.Get(t.Context(), projectGVR, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", got.GetName())
 }
@@ -225,7 +225,7 @@ func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
 		sawDryRun = a.(k8stesting.CreateActionImpl).GetCreateOptions().DryRun
 		return false, nil, nil
 	})
-	_, err := r.Create(context.Background(), projectGVR, "c-x", project("c-x", "p-2"), true)
+	_, err := r.Create(t.Context(), projectGVR, "c-x", project("c-x", "p-2"), true)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"All"}, sawDryRun)
 }
@@ -233,12 +233,12 @@ func TestDynamicRepoCreatePassesDryRun(t *testing.T) {
 func TestDynamicRepoListAndDelete(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient(project("c-x", "p-1"), project("c-x", "p-2"))
-	list, err := r.List(context.Background(), projectGVR, "c-x", "")
+	list, err := r.List(t.Context(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Len(t, list.Items, 2)
 
-	require.NoError(t, r.Delete(context.Background(), projectGVR, "c-x", "p-1", "", false))
-	after, err := r.List(context.Background(), projectGVR, "c-x", "")
+	require.NoError(t, r.Delete(t.Context(), projectGVR, "c-x", "p-1", "", false))
+	after, err := r.List(t.Context(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Len(t, after.Items, 1)
 }
@@ -258,12 +258,12 @@ func TestListPassesLabelSelector(t *testing.T) {
 		return false, nil, nil
 	})
 
-	_, err := r.List(context.Background(), projectGVR, "c-x", "app=web")
+	_, err := r.List(t.Context(), projectGVR, "c-x", "app=web")
 	require.NoError(t, err)
 	assert.True(t, sawSelector)
 	assert.Equal(t, "app=web", lastSelector)
 
-	_, err = r.List(context.Background(), projectGVR, "c-x", "")
+	_, err = r.List(t.Context(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Empty(t, lastSelector)
 }
@@ -296,7 +296,7 @@ func TestLogsFetchesTail(t *testing.T) {
 		r := &dynamicClient{cs: cs}
 
 		tail := int64(50)
-		out, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{
+		out, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{
 			Container: "app", TailLines: &tail, Previous: true, Timestamps: true,
 		})
 		require.NoError(t, err)
@@ -317,7 +317,7 @@ func TestLogsFetchesTail(t *testing.T) {
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
-		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app"})
+		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
 		require.NoError(t, err)
 		assert.Nil(t, lastOpts(t, cs).SinceSeconds)
 	})
@@ -328,7 +328,7 @@ func TestLogsFetchesTail(t *testing.T) {
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
-		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app"})
+		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
 		require.NoError(t, err)
 		assert.Nil(t, lastOpts(t, cs).TailLines)
 	})
@@ -340,7 +340,7 @@ func TestLogsFetchesTail(t *testing.T) {
 		r := &dynamicClient{cs: cs}
 		zero := int64(0)
 
-		_, err := r.Logs(context.Background(), "ns1", "web", engine.LogOptions{Container: "app", SinceSeconds: &zero})
+		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app", SinceSeconds: &zero})
 		require.NoError(t, err)
 		got := lastOpts(t, cs).SinceSeconds
 		require.NotNil(t, got)
@@ -351,7 +351,7 @@ func TestLogsFetchesTail(t *testing.T) {
 func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Hour))
 	defer cancel()
 	_, err := r.Get(ctx, projectGVR, "c-x", "p-1")
 	require.Error(t, err, "an already-expired parent context must surface a deadline error")
@@ -360,7 +360,7 @@ func TestDynamicClientBoundsRequestWithDeadline(t *testing.T) {
 func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	_, err := r.Get(context.Background(), projectGVR, "c-x", "nope")
+	_, err := r.Get(t.Context(), projectGVR, "c-x", "nope")
 	require.Error(t, err)
 	// mapErr turns the k8s NotFound into a CodeNotFound clierr; curateNotFound
 	// then adds the kind-aware message and list hint.
@@ -372,7 +372,7 @@ func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	_, err := r.Get(context.Background(), projectGVR, "c-x", "p-missing")
+	_, err := r.Get(t.Context(), projectGVR, "c-x", "p-missing")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -392,7 +392,7 @@ func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
 	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
 
-	_, err := c.Get(context.Background(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "ns", "x")
+	_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "ns", "x")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -415,7 +415,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 		versions: map[string]string{},
 	}
 
-	_, err := c.Get(context.Background(), unknownGVR, "", "w-missing")
+	_, err := c.Get(t.Context(), unknownGVR, "", "w-missing")
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -428,7 +428,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	err := r.Delete(context.Background(), projectGVR, "c-x", "p-missing", "", false)
+	err := r.Delete(t.Context(), projectGVR, "c-x", "p-missing", "", false)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -443,7 +443,7 @@ func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
 	obj := project("c-x", "p-missing")
-	_, err := r.Update(context.Background(), projectGVR, "c-x", obj, false)
+	_, err := r.Update(t.Context(), projectGVR, "c-x", obj, false)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))

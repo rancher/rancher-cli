@@ -466,7 +466,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 	)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1184,7 +1184,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 		t.Parallel()
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 		var out, errBuf bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
+		_, ce := runtime.Run(t.Context(), cmd, input{args: []string{"c-abc"}},
 			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce)
 
@@ -1200,7 +1200,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 		var out, errBuf bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"c-abc"}},
+		_, ce := runtime.Run(t.Context(), cmd, input{args: []string{"c-abc"}},
 			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce)
 
@@ -1213,7 +1213,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 		t.Parallel()
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 		var out, errBuf bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd,
+		_, ce := runtime.Run(t.Context(), cmd,
 			registrationInput("c-abc"),
 			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce)

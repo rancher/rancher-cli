@@ -1,7 +1,6 @@
 package token
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,7 +69,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -113,7 +112,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 			require.NoError(t, cfg.Write())
 
 			cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
-			_, err = cmd.Execute(context.Background(),
+			_, err = cmd.Execute(t.Context(),
 				tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 				ui.Discard())
 			require.Error(t, err, "a hard helper failure must not be swallowed")
@@ -148,7 +147,7 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// config server must be rejected by post-resolution validation")
@@ -187,7 +186,7 @@ func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	// SAML under a non-interactive prompter fast-fails AUTH — the point is that

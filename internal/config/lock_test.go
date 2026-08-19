@@ -18,7 +18,7 @@ import (
 func TestWithLockRunsFnAndCreatesLockFile(t *testing.T) {
 	dir := t.TempDir()
 	ran := false
-	err := WithLock(context.Background(), dir, func() error {
+	err := WithLock(t.Context(), dir, func() error {
 		ran = true
 		return nil
 	})
@@ -31,13 +31,13 @@ func TestWithLockRunsFnAndCreatesLockFile(t *testing.T) {
 func TestWithLockPropagatesErrorAndReleases(t *testing.T) {
 	dir := t.TempDir()
 	sentinel := errors.New("sentinel error")
-	err := WithLock(context.Background(), dir, func() error {
+	err := WithLock(t.Context(), dir, func() error {
 		return sentinel
 	})
 	require.ErrorIs(t, err, sentinel)
 
 	// the lock must have been released — a second WithLock must succeed
-	err2 := WithLock(context.Background(), dir, func() error { return nil })
+	err2 := WithLock(t.Context(), dir, func() error { return nil })
 	require.NoError(t, err2)
 }
 
@@ -60,7 +60,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	// Launch A.
 	aErr := make(chan error, 1)
 	go func() {
-		aErr <- WithLock(context.Background(), dir, func() error {
+		aErr <- WithLock(t.Context(), dir, func() error {
 			aCounter++
 			return nil
 		})
@@ -82,7 +82,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	bDone := make(chan struct{})
 	go func() {
 		close(bStarted)
-		_ = WithLock(context.Background(), dir, func() error {
+		_ = WithLock(t.Context(), dir, func() error {
 			bCounter++
 			close(bDone)
 			return nil
@@ -134,7 +134,7 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 	require.True(t, locked)
 	defer func() { _ = fl.Unlock() }()
 
-	err = WithLock(context.Background(), dir, func() error { return nil })
+	err = WithLock(t.Context(), dir, func() error { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "another rancher process")
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
@@ -157,7 +157,7 @@ func TestWithLockEnvOptOutSkipsFlock(t *testing.T) {
 	defer func() { _ = fl.Unlock() }()
 
 	ran := false
-	err = WithLock(context.Background(), dir, func() error {
+	err = WithLock(t.Context(), dir, func() error {
 		ran = true
 		return nil
 	})
@@ -173,7 +173,7 @@ func TestSetLockHookForTestFiresWhileHeld(t *testing.T) {
 	})
 	defer restore()
 
-	err := WithLock(context.Background(), dir, func() error { return nil })
+	err := WithLock(t.Context(), dir, func() error { return nil })
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
@@ -192,7 +192,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		require.True(t, locked)
 		defer func() { _ = fl.Unlock() }()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() { done <- WithLock(ctx, dir, func() error { return nil }) }()
 		time.Sleep(150 * time.Millisecond) // let the waiter reach TryLockContext
@@ -216,7 +216,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 			once.Do(func() { close(holderParked) })
 			<-holderRelease
 		})
-		go func() { holderDone <- WithLock(context.Background(), dir, func() error { return nil }) }()
+		go func() { holderDone <- WithLock(t.Context(), dir, func() error { return nil }) }()
 
 		// Wait until the holder is provably inside the hook (semaphore held);
 		// the channel gives the happens-before edge that makes removing the
@@ -228,7 +228,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		}
 		restore()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		waiterDone := make(chan error, 1)
 		go func() { waiterDone <- WithLock(ctx, dir, func() error { return nil }) }()
 		time.Sleep(150 * time.Millisecond) // let the waiter block on the semaphore
@@ -255,7 +255,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 func TestWithLockPreCanceledContextNeverRunsFn(t *testing.T) {
 	run := func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "never-created")
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		ran := false
 		// The two-ready-arms choice is random: iterate so a lucky Done pick

@@ -30,7 +30,7 @@ func TestRunHonorsDeclaredExitStatus(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	streams := IO{Out: &out, Err: &errBuf, Format: "json"}
 	cmd := exitStatusCmd{exitDeclCmd{name: "probe", codes: []int{0, 7}}, 7}
-	status, ce := Run(context.Background(), cmd, mapInput{}, streams, safety.Binding{})
+	status, ce := Run(t.Context(), cmd, mapInput{}, streams, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, 7, status)
 
@@ -51,7 +51,7 @@ func TestRunRejectsUndeclaredExitStatus(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	streams := IO{Out: &out, Err: &errBuf, Format: "json"}
 	cmd := exitStatusCmd{exitDeclCmd{name: "probe", codes: nil}, 7}
-	status, ce := Run(context.Background(), cmd, mapInput{}, streams, safety.Binding{})
+	status, ce := Run(t.Context(), cmd, mapInput{}, streams, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, 0, status)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)

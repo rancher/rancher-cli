@@ -55,7 +55,7 @@ func TestResolveMembersUsersGroupsAndUnresolved(t *testing.T) {
 			}),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-owner"}),
 		memberBinding(map[string]any{"groupPrincipalName": "github_org://8341", "roleTemplateName": "cluster-member"}),
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://never-logged-in", "roleTemplateName": "cluster-member"}),
@@ -75,12 +75,12 @@ func TestResolveMembersLazyAndEmpty(t *testing.T) {
 		withListErr(userGVR, errors.New("forbidden")).
 		withListErr(userAttrGVR, errors.New("forbidden"))
 
-	rows, warns, err := resolveMembers(context.Background(), fc, nil)
+	rows, warns, err := resolveMembers(t.Context(), fc, nil)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 	assert.Empty(t, warns, "empty input must issue zero requests and zero warnings")
 
-	rows, warns, err = resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err = resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"groupPrincipalName": "github_org://1", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestResolveMembersCollisionStaysUnresolved(t *testing.T) {
 			userObj("u-2", "Second", "okta_user://dup"),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestResolveMembersDuplicateUserOwnershipSameDisplay(t *testing.T) {
 			userObj("u-2", "Same Name", "okta_user://dup"),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestResolveMembersUnrelatedCollisionsStaySilent(t *testing.T) {
 			userObj("u-y", "Y", "okta_user://unrelated-dup"),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestResolveMembersGroupDisplayDisagreement(t *testing.T) {
 			}),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"groupPrincipalName": "github_org://flap", "roleTemplateName": "r"}),
 		memberBinding(map[string]any{"groupPrincipalName": "github_org://ok", "roleTemplateName": "r"}),
 	})
@@ -182,7 +182,7 @@ func TestResolveMembersRepeatedPrincipalIDInOneUserIsNotACollision(t *testing.T)
 			userObj("u-1", "Alice Ann", "okta_user://rep", "okta_user://rep"),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://rep", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 	fc := newFakeClient().
 		withListErr(userGVR, errors.New("users forbidden")).
 		withListErr(userAttrGVR, errors.New("attrs forbidden"))
-	_, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	_, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"groupPrincipalName": "github_org://g", "roleTemplateName": "r"}),
 		memberBinding(map[string]any{"userName": "u-a", "roleTemplateName": "r"}),
 	})
@@ -213,7 +213,7 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 			userObj("u-3", "C", "okta_user://alpha"),
 			userObj("u-4", "D", "okta_user://alpha"),
 		}})
-	_, warns2, err := resolveMembers(context.Background(), fc2, []unstructured.Unstructured{
+	_, warns2, err := resolveMembers(t.Context(), fc2, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://zeta", "roleTemplateName": "r"}),
 		memberBinding(map[string]any{"userPrincipalName": "okta_user://alpha", "roleTemplateName": "r"}),
 	})
@@ -232,7 +232,7 @@ func TestResolveMembersSamePrincipalTwoRoles(t *testing.T) {
 			userObj("u-alice", "Alice Ann", "local://u-alice"),
 		}})
 
-	rows, warns, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, warns, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-owner"}),
 		memberBinding(map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-member"}),
 	})
@@ -248,7 +248,7 @@ func TestResolveMembersFlagsSystemPrincipals(t *testing.T) {
 	t.Parallel()
 	fc := newFakeClient()
 
-	rows, _, err := resolveMembers(context.Background(), fc, []unstructured.Unstructured{
+	rows, _, err := resolveMembers(t.Context(), fc, []unstructured.Unstructured{
 		memberBinding(map[string]any{"userPrincipalName": "system://provisioning/fleet-default/lx-import-k3d", "roleTemplateName": "cluster-owner"}),
 		memberBinding(map[string]any{"userPrincipalName": "system:serviceaccount:cattle-system:x", "roleTemplateName": "cluster-owner"}),
 		memberBinding(map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member"}),
@@ -269,7 +269,7 @@ func TestResolveMembersFlagsSystemPrincipals(t *testing.T) {
 
 func TestResolveMembersCancellationAborts(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	fc := newFakeClient().withListErr(userGVR, context.Canceled)
 
@@ -303,7 +303,7 @@ func TestResolveMembersNoRequestAfterMidFlightCancel(t *testing.T) {
 	// The users LIST SUCCEEDS but the caller context is canceled by the
 	// time it returns — the userattributes LIST must never be issued and
 	// the command must abort, not succeed on partial enrichment.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	fc := &cancelAfterUsersClient{
 		fakeClient: newFakeClient().
 			withList(userGVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{

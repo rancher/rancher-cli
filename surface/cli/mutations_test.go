@@ -40,7 +40,7 @@ func TestCreateResourceShortFlag(t *testing.T) {
 	// the test process; keep the error as a return value instead.
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(context.Background(), []string{
+	runErr := root.Run(t.Context(), []string{
 		"rancher", "--config", dir, "create", "resource", "-f", "-", "--dry-run",
 	})
 	require.Error(t, runErr, "-f - must parse and the unsupported kind must fail validation")
@@ -68,7 +68,7 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 	root.ErrWriter = &errBuf
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(context.Background(), []string{"rancher", "--config", dir, "create", "resource"})
+	runErr := root.Run(t.Context(), []string{"rancher", "--config", dir, "create", "resource"})
 	require.Error(t, runErr)
 
 	var env errEnvelope
@@ -92,7 +92,7 @@ func TestPatchShortFlag(t *testing.T) {
 	root.ErrWriter = &errBuf
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(context.Background(), []string{
+	runErr := root.Run(t.Context(), []string{
 		"rancher", "--config", dir, "patch", "pod", "web",
 		"-f", "does-not-exist.json", "--cluster", "local", "--namespace", "default", "--dry-run",
 	})

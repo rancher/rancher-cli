@@ -121,7 +121,7 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
 		return setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}, "", nil
 	}}
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
 	require.NoError(t, err, "read-only helper must not fail login")
@@ -142,7 +142,7 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "https://r.ex", "name": config.LegacyCachePrefix + "alice"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
 	var ce *clierr.Error
@@ -162,7 +162,7 @@ func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
 		return setErrStore{CredStore: store, setErr: errors.New("keychain exploded")}, "", nil
 	}}
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
 	require.Error(t, err)
@@ -180,7 +180,7 @@ func TestLoginTokenViaStdin(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id-1:secret-1\n"))
+	res, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id-1:secret-1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -203,7 +203,7 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	res, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
+	res, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -224,7 +224,7 @@ func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
 			b: map[string]bool{"token-stdin": true},
 		}
 		_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).
-			Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+			Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce, extra)
 		assert.Equal(t, clierr.CodeValidation, ce.Code, extra)
@@ -253,7 +253,7 @@ func TestLoginProviderFlowNonTTYAllowedWithExplicitProvider(t *testing.T) {
 		"server": fake.URL, "name": "prod", "auth-provider": "azureADProvider", "auth-flow": "devicecode",
 	}}
 	p := ui.New(&bytes.Buffer{}, strings.NewReader(""), false, false) // no TTY, no --no-input
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.Error(t, err, "device-code will fail on OAuth config/network, but not on login's own gate")
 	assert.NotContains(t, err.Error(), "token required", "non-TTY must bypass login's outer gate when --auth-provider is explicit")
 }
@@ -267,7 +267,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	// lineReader's doc comment) — a plain strings.Reader would drop "id:sec".
 	p := ui.New(&bytes.Buffer{}, newLineReader("1", "id:sec"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
-	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, p)
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 
 func TestLoginServerRequired(t *testing.T) {
 	t.Parallel()
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"token-stdin": true}}, stdinPrompter("id:sec\n"))
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}}, stdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -289,7 +289,7 @@ func TestLoginUnaffectedWithoutGlobalOverride(t *testing.T) {
 		b: map[string]bool{"token-stdin": true},
 	}
 	_, err := newLoginCmd(dir, store).
-		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+		Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 }
 
@@ -297,7 +297,7 @@ func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 	t.Parallel()
 	// No --token-stdin and !CanPrompt (Discard) -> VALIDATION "token required".
 	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), in, ui.Discard())
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -306,7 +306,7 @@ func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 func TestLoginEmptyStdinToken(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter(""))
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter(""))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -316,7 +316,7 @@ func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
 	p := ui.New(&bytes.Buffer{}, errReader{}, true, false)
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -325,7 +325,7 @@ func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 func TestLoginBadTokenShape(t *testing.T) {
 	t.Parallel()
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("notacolon\n"))
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("notacolon\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -338,7 +338,7 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
 		b: map[string]bool{"token-stdin": true},
 	}
-	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -349,7 +349,7 @@ func TestLoginDefaultName(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -361,7 +361,7 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 	// TTY prompt returns a blank line -> "no token", not an id:secret shape error.
 	p := ui.New(&bytes.Buffer{}, strings.NewReader("\n"), false, true)
 	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -383,7 +383,7 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 	// Inject a file store; under auto with a usable (mock) keychain, login must
 	// re-pin to keychain and write the token there, not to the file store.
 	_, err := newLoginCmd(dir, config.NewFileStore(dir)).
-		Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+		Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 
 	if got := config.ReadPin(dir); got != "keychain" {
@@ -420,7 +420,7 @@ func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
 		newStore:       config.OpenStoreWithNotice,
 		rancherVersion: stubRancherVersion,
 	}
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
@@ -447,7 +447,7 @@ func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
 		newStore:       config.OpenStoreWithNotice,
 		rancherVersion: stubRancherVersion,
 	}
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
@@ -521,7 +521,7 @@ func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T)
 	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -545,7 +545,7 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
@@ -562,7 +562,7 @@ func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T)
 	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
@@ -579,7 +579,7 @@ func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
 	dir, _ := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider", "ttl": "12h"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	select {
@@ -609,7 +609,7 @@ func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
 	dir, _ := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	select {
@@ -636,7 +636,7 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 		"server": "https://r.ex", "name": "prod", "auth-provider": "localProvider", "ttl": "500us",
 	}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, p)
+	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -675,7 +675,7 @@ func TestLoginWarnsWhenServerBelowMinVersion(t *testing.T) {
 	fake := newVersionProbeFake(t, "v2.13.0", http.StatusOK)
 	dir, _ := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
@@ -687,7 +687,7 @@ func TestLoginNoWarningAtOrAboveMinVersion(t *testing.T) {
 		fake := newVersionProbeFake(t, v, http.StatusOK)
 		dir, _ := filePolicyDir(t)
 		in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-		res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+		res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 		require.NoError(t, err, v)
 		assert.Empty(t, res.Warnings, v)
 	}
@@ -698,7 +698,7 @@ func TestLoginUnparseableVersionWarnsCannotDetermine(t *testing.T) {
 	fake := newVersionProbeFake(t, "dev", http.StatusOK)
 	dir, _ := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
@@ -712,7 +712,7 @@ func TestLoginVersionProbeFailureNeverFailsLogin(t *testing.T) {
 	fake := newVersionProbeFake(t, "", http.StatusForbidden)
 	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
@@ -729,7 +729,7 @@ func TestLoginVersionProbeUnreachableServerNeverFailsLogin(t *testing.T) {
 	t.Parallel()
 	dir, _ := filePolicyDir(t)
 	in := args{s: map[string]string{"server": "https://127.0.0.1:1", "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(context.Background(), in, stdinPrompter("id:sec\n"))
+	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
@@ -744,7 +744,7 @@ func TestLoginCanonicalizesStoredURL(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": "HTTPS://Rancher2.Example.Local:443", "name": "canon"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
 	require.NoError(t, err)
@@ -799,7 +799,7 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	loginDone := make(chan error, 1)
 	go func() {
 		cmd := &loginCmd{dir: dir, newStore: factory, rancherVersion: stubRancherVersion}
-		_, lerr := cmd.Execute(context.Background(),
+		_, lerr := cmd.Execute(t.Context(),
 			args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
 			stdinPrompter("id:sec\n"))
 		loginDone <- lerr

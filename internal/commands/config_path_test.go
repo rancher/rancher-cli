@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -15,7 +14,7 @@ func TestConfigPathPrintsResolvedPathAndExistsFalseWhenNoFile(t *testing.T) {
 	dir := t.TempDir()
 	want := config.FilePath(dir)
 
-	res, err := NewConfigPath(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewConfigPath(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigPath", res.Kind)
 	assert.Equal(t, want+"\n", res.Text, "Text carries the path plus a trailing newline")
@@ -32,7 +31,7 @@ func TestConfigPathExistsTrueWhenFilePresent(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	res, err := NewConfigPath(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewConfigPath(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data, ok := res.Data.(map[string]any)

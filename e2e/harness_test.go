@@ -412,7 +412,7 @@ func seedManagementCluster() {
 		"metadata":   map[string]any{"name": "c-test"},
 		"spec":       map[string]any{"displayName": "testcluster"},
 	}}
-	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding management cluster c-test: " + err.Error())
 	}
 }
@@ -434,7 +434,7 @@ func seedNamespaces() {
 			"kind":       "Namespace",
 			"metadata":   map[string]any{"name": name},
 		}}
-		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 			panic("seeding namespace " + name + ": " + err.Error())
 		}
 	}
@@ -472,7 +472,7 @@ func seedCloudCredential() {
 			},
 			"data": map[string]any{cred.dataKey: "ZHVtbXk="},
 		}}
-		if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(gvr).Namespace("cattle-global-data").Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 			panic("seeding cloud credential secret " + cred.name + ": " + err.Error())
 		}
 	}
@@ -502,7 +502,7 @@ func seedRoleObjects() {
 			"metadata":   map[string]any{"name": rt.name},
 			"context":    rt.context,
 		}}
-		if _, err := dynCli.Resource(rtGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(rtGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 			panic("seeding roletemplate " + rt.name + ": " + err.Error())
 		}
 	}
@@ -513,7 +513,7 @@ func seedRoleObjects() {
 		"kind":       "GlobalRole",
 		"metadata":   map[string]any{"name": "e2e-global-role"},
 	}}
-	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil {
+	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding globalrole e2e-global-role: " + err.Error())
 	}
 }
@@ -538,7 +538,7 @@ func seedUserObjects() {
 			"username":     u.username,
 			"principalIds": []any{"local://" + u.id},
 		}}
-		if _, err := dynCli.Resource(userGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(userGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 			panic("seeding user " + u.id + ": " + err.Error())
 		}
 	}
@@ -560,7 +560,7 @@ func seedManagementToken() {
 		"userId":       "u-session",
 		"authProvider": "local",
 	}}
-	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding management token e2e: " + err.Error())
 	}
 }

@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -17,6 +16,6 @@ func TestLogoutCompleteArgsReturnsServerNames(t *testing.T) {
 	cmd := NewLogout(dir)
 	sc, ok := cmd.(runtime.ShellCompleter)
 	require.True(t, ok, "logoutCmd must implement ShellCompleter")
-	got := sc.CompleteArgs(context.Background(), testView{srvNames: []string{"acme", "prod"}})
+	got := sc.CompleteArgs(t.Context(), testView{srvNames: []string{"acme", "prod"}})
 	assert.Equal(t, []string{"acme", "prod"}, got)
 }

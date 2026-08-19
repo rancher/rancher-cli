@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -103,7 +102,7 @@ func runLogin(t *testing.T, dir, name, server string) {
 		newStore:       func(string, string) (config.CredStore, string, error) { return store, "", nil },
 		rancherVersion: stubRancherVersion,
 	}
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		args{s: map[string]string{"server": server, "name": name}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:sec\n"))
 	assert.NoError(t, err)
@@ -113,7 +112,7 @@ func runLogin(t *testing.T, dir, name, server string) {
 func runLogout(t *testing.T, dir, name string) {
 	t.Helper()
 	cmd := &logoutCmd{dir: dir}
-	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), args{a: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }
 
@@ -122,7 +121,7 @@ func runLogout(t *testing.T, dir, name string) {
 func runDeleteServer(t *testing.T, dir, name string) {
 	t.Helper()
 	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
-	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), args{a: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }
 
@@ -130,7 +129,7 @@ func runDeleteServer(t *testing.T, dir, name string) {
 func runUseServer(t *testing.T, dir, name string) {
 	t.Helper()
 	cmd := &serverSwitchCmd{dir: dir}
-	_, err := cmd.Execute(context.Background(), args{a: []string{name}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), args{a: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }
 
@@ -146,7 +145,7 @@ func runSetCompletion(t *testing.T, dir, network, timeout string) {
 	if timeout != "" {
 		a.s["timeout"] = timeout
 	}
-	_, err := cmd.Execute(context.Background(), a, ui.Discard())
+	_, err := cmd.Execute(t.Context(), a, ui.Discard())
 	assert.NoError(t, err)
 }
 

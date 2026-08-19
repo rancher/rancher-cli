@@ -1,7 +1,6 @@
 package rbac
 
 import (
-	"context"
 	"errors"
 	"sort"
 	"testing"
@@ -73,7 +72,7 @@ func planGrant(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Effe
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "grant must be MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 func TestGrantProjectUserByID(t *testing.T) {

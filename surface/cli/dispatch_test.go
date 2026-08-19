@@ -170,7 +170,7 @@ func TestNoClusterNoRequests(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get namespace"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "no cluster → nil candidates with zero requests")
@@ -206,7 +206,7 @@ func TestNetworkGateZeroHits(t *testing.T) {
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster"}
 	tail := []string{"--cluster"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := dispatchSite(ctx, site, d, nil, nil, tail)
 	assert.Nil(t, got, "network=false must yield nil candidates")
@@ -239,7 +239,7 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 		Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster",
 		EqualsForm: false, Partial: "c-",
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	hc := &http.Client{}
 	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "", nil)
@@ -251,7 +251,7 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
 	t.Parallel()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "namespace", FlagSpelling: "--namespace"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	cap := TokenCapability{Token: "tok", ServerURL: "https://example.invalid"}
 	hc := &http.Client{}
@@ -283,7 +283,7 @@ func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get pod"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "finding 1: path injection via cluster segment must yield nil")
@@ -313,7 +313,7 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get pod"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "finding 1: path injection via namespace segment must yield nil")
@@ -344,7 +344,7 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "get pod"}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveCandidates(ctx, site, d, nil, tail)
 		assert.Nil(t, got, "round-4 finding 1: bare-dot namespace %q must yield nil", ns)
@@ -376,7 +376,7 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get pod"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "round-4 finding 1: bare-dot cluster segment must yield nil")
@@ -410,7 +410,7 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get service"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "round-4 finding 3: non-completable downstream kind must yield nil")
@@ -487,7 +487,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, _ := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
 		assert.Equal(t, []string{"admin", "user"}, got)
@@ -498,7 +498,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, _ := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--project", "Default", "--role"})
 		assert.Equal(t, []string{"project-member", "project-owner"}, got)
@@ -509,7 +509,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, _ := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--cluster", "c-x", "--role"})
 		assert.Equal(t, []string{"cluster-owner"}, got)
@@ -520,7 +520,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, hits := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--role"})
 		assert.Nil(t, got)
@@ -532,7 +532,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, hits := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--project", "Default", "--role"})
 		assert.Nil(t, got)
@@ -544,7 +544,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		srv, _ := roleServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role", EqualsForm: true}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
 		assert.Equal(t, []string{"--role=admin", "--role=user"}, got)
@@ -570,7 +570,7 @@ func TestLiveCandidatesRoleBypassesClusterPreflight(t *testing.T) {
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "role"}
 	d := runtime.Descriptor{Name: "grant"}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Equal(t, []string{"admin", "user"}, got)
@@ -588,7 +588,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "grant"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Contains(t, got, "u-alice")
@@ -602,7 +602,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "revoke"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Contains(t, got, "u-alice")
@@ -624,7 +624,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "get pod"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		// With no --namespace in tail, livePositionalCandidates returns nil for
 		// namespace-scoped resources — the important thing is the user endpoint is not hit.
@@ -642,7 +642,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "grant"}
 		tail := []string{"--type", "group"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
 		assert.Nil(t, got, "--type group: no group source, must return nil")
@@ -656,7 +656,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: "grant"}
 		tail := []string{"--type=group"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
 		assert.Nil(t, got, "--type=group: no group source, must return nil")
@@ -671,7 +671,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		d := runtime.Descriptor{Name: "grant"}
 		// Bare --type with no following value: extractFlagValue returns "" → treat as user.
 		tail := []string{"--type"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
 		assert.Contains(t, got, "u-alice")
@@ -699,7 +699,7 @@ func TestLiveCandidatesSubjectBypassesClusterPreflight(t *testing.T) {
 		site := CompletionSite{Kind: SitePositional, Index: 0}
 		d := runtime.Descriptor{Name: name}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveCandidates(ctx, site, d, nil, tail)
 		assert.Contains(t, got, "u-alice", "%s: subject completion must work despite invalid inherited cluster", name)

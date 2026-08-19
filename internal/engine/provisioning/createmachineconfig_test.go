@@ -408,7 +408,7 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	client := &mcRecClient{}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
-	eff, exec, err := cmd.Plan(context.Background(), mcInput{
+	eff, exec, err := cmd.Plan(t.Context(), mcInput{
 		a:  []string{"digitaloceanconfig", "web-pool"},
 		s:  map[string]string{"region": "nyc3", "size": "s-2vcpu-4gb", "image": "ubuntu-24-10-x64", "tags": "web"},
 		is: map[string]bool{"region": true, "size": true, "image": true, "tags": true},
@@ -440,7 +440,7 @@ func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	}}}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
-	eff, _, err := cmd.Plan(context.Background(), mcInput{
+	eff, _, err := cmd.Plan(t.Context(), mcInput{
 		a:  []string{"amazonec2config", "web-pool"},
 		sl: []string{"region=us-east-1", "regoin=typo"},
 	})
@@ -465,7 +465,7 @@ func TestCreateMachineConfigNullValuePruned(t *testing.T) {
 	}}}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
-	eff, _, err := cmd.Plan(context.Background(), mcInput{
+	eff, _, err := cmd.Plan(t.Context(), mcInput{
 		a:  []string{"amazonec2config", "web-pool"},
 		sl: []string{"region=us-east-1", "keypairName=null"},
 	})
@@ -492,7 +492,7 @@ func TestCreateMachineConfigNullValueKept(t *testing.T) {
 	}}}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
-	eff, _, err := cmd.Plan(context.Background(), mcInput{
+	eff, _, err := cmd.Plan(t.Context(), mcInput{
 		a:  []string{"amazonec2config", "web-pool"},
 		sl: []string{"region=us-east-1", "keypairName=null"},
 	})
@@ -519,7 +519,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(t.Context(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut}, binding)
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeConfirmationRequired, ce.Code)
@@ -532,7 +532,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(t.Context(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut, Format: "json", DryRun: true}, binding)
 		require.Nil(t, ce)
 		var env struct {
@@ -552,7 +552,7 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client})
 		var out, errOut bytes.Buffer
-		_, ce := runtime.Run(context.Background(), cmd, in,
+		_, ce := runtime.Run(t.Context(), cmd, in,
 			runtime.IO{Out: &out, Err: &errOut, Format: "json", Apply: true}, binding)
 		require.Nil(t, ce)
 		assert.Equal(t, []bool{true, false}, client.dryRuns)
@@ -568,13 +568,13 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 	client := &mcRecClient{execErr: clierr.New(clierr.CodeConflict, "digitaloceanconfigs \"web-pool\" already exists")}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
 
-	_, exec, err := cmd.Plan(context.Background(), mcInput{
+	_, exec, err := cmd.Plan(t.Context(), mcInput{
 		a:  []string{"digitaloceanconfig", "web-pool"},
 		s:  map[string]string{"region": "nyc3"},
 		is: map[string]bool{"region": true},
 	})
 	require.NoError(t, err)
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
@@ -600,7 +600,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		t.Parallel()
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
-		eff, _, err := cmd.Plan(context.Background(), mcInput{
+		eff, _, err := cmd.Plan(t.Context(), mcInput{
 			a: []string{"digitaloceanconfig", "web-pool"},
 		})
 		require.NoError(t, err)
@@ -616,7 +616,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		t.Parallel()
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
-		eff, _, err := cmd.Plan(context.Background(), mcInput{
+		eff, _, err := cmd.Plan(t.Context(), mcInput{
 			a:  []string{"digitaloceanconfig", "web-pool"},
 			s:  map[string]string{"image": "ubuntu-24-10-x64", "region": "nyc3"},
 			is: map[string]bool{"image": true, "region": true},
@@ -634,7 +634,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		t.Parallel()
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
-		eff, _, err := cmd.Plan(context.Background(), allValueFieldsInput)
+		eff, _, err := cmd.Plan(t.Context(), allValueFieldsInput)
 		require.NoError(t, err)
 		assert.Empty(t, eff.Warnings, "bool fields unset must not trigger the warning")
 	})
@@ -643,7 +643,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		t.Parallel()
 		client := &mcRecClient{}
 		cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
-		eff, _, err := cmd.Plan(context.Background(), mcInput{
+		eff, _, err := cmd.Plan(t.Context(), mcInput{
 			a: []string{"amazonec2config", "aws-pool"},
 		})
 		require.NoError(t, err)

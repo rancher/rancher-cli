@@ -83,7 +83,7 @@ func planDeleteCluster(t *testing.T, cmd runtime.Command, in runtime.Input) (saf
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "delete provisioning-cluster must be a MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 // TestDeleteProvisioningClusterRefusesLocal pins the D-6 guard's core
@@ -129,7 +129,7 @@ func TestDeleteProvisioningClusterCarriesCascadeWarning(t *testing.T) {
 	assert.Equal(t, "5", eff.ResourceVersion)
 	assert.Equal(t, []string{cascadeWarning}, eff.Warnings)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"deleted": "imported-1"}, res.Data)
 }

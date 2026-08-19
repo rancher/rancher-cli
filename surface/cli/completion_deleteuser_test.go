@@ -19,7 +19,7 @@ func TestLivePositionalDeleteUserCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "delete user"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
@@ -42,7 +42,7 @@ func TestLivePositionalDeleteUserTokenBoundary(t *testing.T) {
 		{ServerURL: srv.URL},
 		{Token: "downstream", IDOnly: true, ServerURL: srv.URL},
 	} {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		cancel()
 		assert.Nil(t, got)
@@ -58,7 +58,7 @@ func TestLivePositionalGetUserCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get user"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
@@ -75,7 +75,7 @@ func TestLivePositionalPatchUserCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "patch user"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 

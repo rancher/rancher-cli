@@ -69,7 +69,7 @@ func planCreate(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Eff
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "create must be a MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 func requireValidation(t *testing.T, err error) {
@@ -118,7 +118,7 @@ func TestCreateResourcePlansFromManifest(t *testing.T) {
 	assert.Equal(t, "deployments/web", eff.Target)
 	assert.False(t, eff.Destructive)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "Deployment", res.Kind)
 	require.Len(t, client.creates, 2, "exec performs the real create")

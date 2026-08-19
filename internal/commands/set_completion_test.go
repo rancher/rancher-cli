@@ -1,7 +1,6 @@
 package commands_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -31,7 +30,7 @@ func TestSetCompletionNetwork(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), setCompletionInput{flags: map[string]string{"network": "true"}}, nil)
+	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"network": "true"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -42,7 +41,7 @@ func TestSetCompletionNetworkFalse(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), setCompletionInput{flags: map[string]string{"network": "false"}}, nil)
+	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"network": "false"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -53,7 +52,7 @@ func TestSetCompletionTimeout(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), setCompletionInput{flags: map[string]string{"timeout": "750ms"}}, nil)
+	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"timeout": "750ms"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -66,7 +65,7 @@ func TestSetCompletionTimeoutClampsAt2s(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), setCompletionInput{flags: map[string]string{"timeout": "10s"}}, nil)
+	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"timeout": "10s"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -99,7 +98,7 @@ func TestSetCompletionResultDecodable(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(), setCompletionInput{flags: map[string]string{"network": "true"}}, nil)
+	res, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"network": "true"}}, nil)
 	require.NoError(t, err)
 	b, err := json.Marshal(res.Data)
 	require.NoError(t, err)

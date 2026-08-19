@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -13,7 +12,7 @@ import (
 
 func execConfigInfoResult(t *testing.T, dir string) runtime.Result {
 	t.Helper()
-	res, err := NewConfigInfo(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewConfigInfo(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigInfo", res.Kind)
 	return res

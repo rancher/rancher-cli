@@ -75,7 +75,7 @@ func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
 	// skill status with no harness dirs in the sandboxed home: exit 0,
 	// empty data, one warning. If resolveDeps ran on the invalid config the
 	// action would fail silently before any output was produced.
-	runErr := root.Run(context.Background(), []string{"rancher", "skill", "status", "-o", "json"})
+	runErr := root.Run(t.Context(), []string{"rancher", "skill", "status", "-o", "json"})
 	require.NoError(t, runErr, "skill status must complete without error even with an invalid Rancher config path")
 
 	var env struct {

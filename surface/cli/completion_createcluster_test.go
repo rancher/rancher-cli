@@ -130,7 +130,7 @@ func TestMachineConfigPrefixesServedWithoutNetwork(t *testing.T) {
 		Flags: []runtime.ArgSpec{{Name: "machine-config", Type: "string"}},
 	}
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := dispatchSite(ctx, site, d, nil, nil, []string{"node-1", "--machine-config"})
 	assert.Contains(t, got, "amazonec2config/")
@@ -150,7 +150,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		srv, hits := machineConfigServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", Partial: "amazonec2config/"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
 		assert.Equal(t, []string{"amazonec2config/cfg-a", "amazonec2config/cfg-b"}, got)
@@ -162,7 +162,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		srv, _ := machineConfigServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", EqualsForm: true, Partial: "amazonec2config/cf"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
 		assert.Equal(t, []string{"--machine-config=amazonec2config/cfg-a", "--machine-config=amazonec2config/cfg-b"}, got)
@@ -173,7 +173,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		srv, hits := machineConfigServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "nonesuch/cf"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
@@ -184,7 +184,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		srv, hits := machineConfigServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "pod/x"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
@@ -195,7 +195,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		srv, hits := machineConfigServer(t)
 		cap := TokenCapability{Token: "downstream", IDOnly: true, ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "amazonec2config/"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
@@ -215,7 +215,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		srv, hits := cloudCredServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
 		assert.Equal(t, []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "marker-only"}, got)
@@ -229,7 +229,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		srv, _ := cloudCredServer(t)
 		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential", EqualsForm: true}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
 		assert.Contains(t, got, "--cloud-credential=cc-abc12")
@@ -244,7 +244,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 			{ServerURL: srv.URL},
 			{Token: "downstream", IDOnly: true, ServerURL: srv.URL},
 		} {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 			assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
 			cancel()
 		}
@@ -271,7 +271,7 @@ func TestLiveCandidatesNodeDriverFlagSitesBypassClusterPreflight(t *testing.T) {
 
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", Partial: "amazonec2config/"}
 		d := runtime.Descriptor{Name: "create cluster"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveCandidates(ctx, site, d, nil, []string{"node-1", "--machine-config"})
 		assert.Equal(t, []string{"amazonec2config/cfg-a", "amazonec2config/cfg-b"}, got)
@@ -289,7 +289,7 @@ func TestLiveCandidatesNodeDriverFlagSitesBypassClusterPreflight(t *testing.T) {
 
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential"}
 		d := runtime.Descriptor{Name: "create cluster"}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveCandidates(ctx, site, d, nil, []string{"node-1", "--cloud-credential"})
 		assert.Contains(t, got, "cc-abc12")
@@ -347,7 +347,7 @@ func TestCreateClusterFlagSitesFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 

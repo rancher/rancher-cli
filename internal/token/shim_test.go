@@ -1,7 +1,6 @@
 package token
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -55,12 +54,12 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
 		ui.Discard())
 	require.NoError(t, err)
 
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "bob"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -103,7 +102,7 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "cluster-name"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -180,7 +179,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 	// --cluster is intentionally absent; the shim must NOT pick up "c-ctx".
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testcluster"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -220,7 +219,7 @@ func TestLegacyTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -284,7 +283,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
 	// but must skip cfg.Effective (noAmbientContext=true, explicitServer=true)
 	// and never call GetToken for server A.
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srvB.URL, "user": "b-user"}},
 		ui.Discard())
 	require.NoError(t, err, "store error for ambient server A must not block a mint against server B")
@@ -298,7 +297,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 	t.Parallel()
 	cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": ""}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -312,7 +311,7 @@ func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 	t.Parallel()
 	cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": "   "}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -330,7 +329,7 @@ func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 	t.Parallel()
 	for _, server := range []string{"", "   "} {
 		cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
-		_, err := cmd.Execute(context.Background(),
+		_, err := cmd.Execute(t.Context(),
 			tin{s: map[string]string{"server": server, "user": "alice"}},
 			ui.Discard())
 		var ce *clierr.Error
@@ -361,7 +360,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 
 	// Call with canonical name — writes the cache slot.
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -381,7 +380,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 	assert.NoError(t, err, "canonical key must be present after any invocation")
 
 	// Execute with padded user — must NOT create the padded slot.
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "  alice"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -411,7 +410,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 
 	// Call with canonical cluster — writes the cache slot.
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -427,7 +426,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	assert.NoError(t, err, "canonical key must be present after the first invocation")
 
 	// Execute with padded cluster — must NOT create a distinct padded slot.
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "  local  "}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -487,7 +486,7 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	// current-context preference and returns right-server's CA (sorted first).
 	// storedTokenForServer ignores rank-2 (wrong-server) and falls to rank-3;
 	// right-server is first in sorted order and has a valid token.
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testuser"}},
 		ui.Discard())
 	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a mint via right-server")

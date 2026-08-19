@@ -54,7 +54,7 @@ func TestFetchClustersReturnsSanitizedSorted(t *testing.T) {
 	srv, hits := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := fetchClusters(ctx, hc, cap)
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
@@ -70,7 +70,7 @@ func TestFetchClustersDropsSpacedDisplayNames(t *testing.T) {
 	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := fetchClusters(ctx, hc, cap)
 	assert.Equal(t, []string{"c-abc"}, got)
@@ -85,7 +85,7 @@ func TestFetchClustersTimeoutYieldsEmpty(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 	got := fetchClusters(ctx, hc, cap)
 	assert.Empty(t, got)
@@ -100,7 +100,7 @@ func TestFetchClusters401YieldsEmpty(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := fetchClusters(ctx, hc, cap)
 	assert.Empty(t, got)
@@ -133,7 +133,7 @@ func TestTwoRequestFlowClusterResolution(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	// Finding 3: use resolveDisplayNameToClusterID (real production function).
 	resolvedID := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
@@ -154,7 +154,7 @@ func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
 	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "nonexistent")
 	assert.Equal(t, "", got, "finding 3: not-found must return empty string")
@@ -170,7 +170,7 @@ func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
 	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
 	assert.Equal(t, "", got, "finding 3: ambiguous match must return empty string")
@@ -185,7 +185,7 @@ func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
 	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
 	assert.Equal(t, "c-abc", got, "finding 3: single match must return the cluster ID")
@@ -269,7 +269,7 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 	}
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "by", EqualsForm: false}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := dispatchSite(ctx, site, d, nil, nil, []string{})
 	assert.Equal(t, []string{"namespace", "node", "pod", "project"}, got)
@@ -302,7 +302,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	// The expected set is the descriptor's own enum (sorted, as
 	// resolveStaticEnum emits) — no third hand-copied verb list; the enum's
@@ -344,7 +344,7 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	var want []string
 	for _, f := range token.NewTokenCommand(t.TempDir(), nil).Describe().Flags {
@@ -383,7 +383,7 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	var want []string
 	for _, f := range token.NewLegacyTokenCommand(t.TempDir(), nil).Describe().Flags {
@@ -436,7 +436,7 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{
+	require.NoError(t, root.Run(t.Context(), []string{
 		"rancher", "--config", dir, "schema", "--generate-shell-completion",
 	}))
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")

@@ -105,7 +105,7 @@ func TestRunRefusesMutatingUnderReadOnly(t *testing.T) {
 			t.Parallel()
 			cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
 			var out, errBuf bytes.Buffer
-			_, ce := Run(context.Background(), cmd, mapInput{},
+			_, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: tc.sources},
 				safety.Binding{})
 			require.NotNil(t, ce)
@@ -123,7 +123,7 @@ func TestRunRefusesMutatingDryRunUnderReadOnly(t *testing.T) {
 	t.Parallel()
 	cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"--read-only"}, DryRun: true},
 		safety.Binding{})
 	require.NotNil(t, ce)
@@ -135,7 +135,7 @@ func TestRunReadOnlyCommandUnaffectedByReadOnlyMode(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly}, res: Result{Kind: "Thing"}}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"--read-only"}},
 		safety.Binding{})
 	require.Nil(t, ce)
@@ -145,7 +145,7 @@ func TestRunLocalCommandUnaffectedByReadOnlyMode(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "auth login", CommandType: Local}, res: Result{Kind: "LoginResult"}}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", ReadOnly: true, ReadOnlySources: []string{"RANCHER_CLI_READONLY"}},
 		safety.Binding{})
 	require.Nil(t, ce)
@@ -163,7 +163,7 @@ func TestRunMutatingUnaffectedWhenReadOnlyFalse(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, // ReadOnly defaults false
 		safety.Binding{})
 	require.Nil(t, ce)
@@ -178,7 +178,7 @@ func TestRunRejectsInvalidAction(t *testing.T) {
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -193,7 +193,7 @@ func TestRunRejectsNonDestructiveDelete(t *testing.T) {
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -208,7 +208,7 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, // no --allow-deprecated
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Deprecated})
 	require.NotNil(t, ce)
@@ -228,7 +228,7 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true},
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 	require.Nil(t, ce)
@@ -255,7 +255,7 @@ func TestRenderEffectWarningsTableStderrOnly(t *testing.T) {
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "", DryRun: true},
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 	require.Nil(t, ce)
@@ -282,7 +282,7 @@ func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 				exec: unusedExec(t),
 			}
 			var out, errBuf bytes.Buffer
-			_, ce := Run(context.Background(), cmd, mapInput{},
+			_, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: &out, Err: &errBuf, Format: format, DryRun: true},
 				safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 			require.Nil(t, ce)
@@ -309,7 +309,7 @@ func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	t.Run("json", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{},
+		_, ce := Run(t.Context(), newCmd(), mapInput{},
 			IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true},
 			safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 		require.Nil(t, ce)
@@ -324,7 +324,7 @@ func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	t.Run("table", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{},
+		_, ce := Run(t.Context(), newCmd(), mapInput{},
 			IO{Out: &out, Err: &errBuf, Format: "", DryRun: true},
 			safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 		require.Nil(t, ce)
@@ -350,7 +350,7 @@ func TestRunApplyRendersEffectWarnings(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true},
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 	require.Nil(t, ce)
@@ -375,7 +375,7 @@ func TestRunApplyCombinesEffectWarnings(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true},
 		safety.Binding{Contract: safety.ContractInternal, Stability: safety.Stable})
 	require.Nil(t, ce)
@@ -399,7 +399,7 @@ func TestRunExecClosureResultRendered(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, 1, called, "exec must be called exactly once")
@@ -417,7 +417,7 @@ func TestRunStampsEffectServer(t *testing.T) {
 	var out bytes.Buffer
 	io := IO{Out: &out, Err: &out, DryRun: true, Format: "json",
 		ServerIdentity: func() (string, error) { return "prod", nil }}
-	_, ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
+	_, ce := Run(t.Context(), cmd, mapInput{}, io, safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	data := env["data"].(map[string]any)
@@ -433,7 +433,7 @@ func TestRunRejectsNilExecutor(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	io := IO{Out: &out, Err: &errOut, Apply: true, Format: "json"}
-	_, ce := Run(context.Background(), cmd, mapInput{}, io, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, io, safety.Binding{})
 	if ce == nil || ce.Code != clierr.CodeGeneric {
 		t.Fatalf("nil executor: got %v, want GENERIC command-bug error (not a panic)", ce)
 	}
@@ -443,7 +443,7 @@ func TestRunReadCommandDryRunRejected(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly}, res: Result{Kind: "Thing"}}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeDryRunNotApplicable, ce.Code)
@@ -453,7 +453,7 @@ func TestRunUnimplementedContractRejected(t *testing.T) {
 	t.Parallel()
 	cmd := describeOnly{d: Descriptor{Name: "broken", CommandType: ReadOnly}}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -467,7 +467,7 @@ func TestReadCommandExecutes(t *testing.T) {
 		res: Result{Kind: "LoginResult", Data: map[string]string{"ok": "true"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
@@ -482,7 +482,7 @@ func TestRawResultBypassesEnvelope(t *testing.T) {
 			Data: map[string]any{"apiVersion": "client.authentication.k8s.io/v1beta1", "kind": "ExecCredential"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", env["apiVersion"])
@@ -496,7 +496,7 @@ func TestEnvelopeHasNoContractOrStability(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly}, res: Result{Kind: "ClusterList", Data: map[string]string{"a": "b"}}}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json"},
 		safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta})
 	require.Nil(t, ce)
@@ -520,14 +520,14 @@ func TestValidateInput(t *testing.T) {
 	t.Parallel()
 	t.Run("required missing", func(t *testing.T) {
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), flaggedReadCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		_, ce := Run(t.Context(), flaggedReadCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
 	t.Run("bad enum", func(t *testing.T) {
 		var out, errBuf bytes.Buffer
 		in := mapInput{s: map[string]string{"token": "id:sec", "auth-flow": "bogus"}}
-		_, ce := Run(context.Background(), flaggedReadCmd(), in, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		_, ce := Run(t.Context(), flaggedReadCmd(), in, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
@@ -539,7 +539,7 @@ func TestValidateInput(t *testing.T) {
 			{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh"}},
 		}}, res: Result{Kind: "OK"}}
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), cmd, mapInput{a: []string{"powershell-classic"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		_, ce := Run(t.Context(), cmd, mapInput{a: []string{"powershell-classic"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Contains(t, ce.Message, "powershell-classic")
@@ -549,7 +549,7 @@ func TestValidateInput(t *testing.T) {
 			{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh"}},
 		}}, res: Result{Kind: "OK"}}
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), cmd, mapInput{a: []string{"bash"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		_, ce := Run(t.Context(), cmd, mapInput{a: []string{"bash"}}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		assert.Nil(t, ce)
 	})
 }
@@ -563,7 +563,7 @@ func TestRunRawBytesWrittenVerbatim(t *testing.T) {
 	}
 	var out bytes.Buffer
 	streams := IO{Out: &out, Err: &bytes.Buffer{}, Format: "json"} // format ignored for raw bytes
-	_, ce := Run(context.Background(), cmd, mapInput{}, streams, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, streams, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, payload, out.Bytes()) // no envelope, no JSON quoting, no trailing mutation
 }
@@ -575,7 +575,7 @@ func TestRunRejectsResultWithBothRawFields(t *testing.T) {
 		res: Result{Raw: true, RawBytes: []byte("x")},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
@@ -583,7 +583,7 @@ func TestRunRejectsResultWithBothRawFields(t *testing.T) {
 func TestQuietErrorStillRendersJSON(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), flaggedReadCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
+	_, ce := Run(t.Context(), flaggedReadCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.NotEmpty(t, errBuf.String(), "error must not be silent under -o name")
@@ -608,7 +608,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("default format writes Text verbatim and warnings to stderr", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.Equal(t, text, out.String())
 		assert.Contains(t, errBuf.String(), "# warning: pod-3: rbac denied\n")
@@ -618,7 +618,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("table format identical to default", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.Equal(t, text, out.String())
 		assert.Contains(t, errBuf.String(), "# warning: pod-3: rbac denied\n")
@@ -627,7 +627,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("json format renders envelope over Data, not raw text", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 		require.Nil(t, ce)
 		env := decodeEnvelope(t, out.Bytes())
 		assert.Equal(t, "LogsResult", env["kind"])
@@ -643,7 +643,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("yaml format renders envelope over Data", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "yaml"}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "yaml"}, safety.Binding{})
 		require.Nil(t, ce)
 		var env map[string]any
 		require.NoError(t, yaml.Unmarshal(out.Bytes(), &env))
@@ -654,7 +654,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("template renders over JSON view of Data", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "template={{index .pods 0}}"}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "template={{index .pods 0}}"}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.Equal(t, "pod-1\n", out.String())
 	})
@@ -662,7 +662,7 @@ func TestRenderResultTextMode(t *testing.T) {
 	t.Run("-o name is a documented no-op for non-Tabular Data", func(t *testing.T) {
 		t.Parallel()
 		var out, errBuf bytes.Buffer
-		_, ce := Run(context.Background(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
+		_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
 		require.Nil(t, ce)
 		assert.Empty(t, out.String())
 	})
@@ -675,7 +675,7 @@ func TestRenderResultRejectsTextAndRawBytes(t *testing.T) {
 		res: Result{Text: "x", RawBytes: []byte("y")},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
@@ -687,7 +687,7 @@ func TestRenderResultRejectsTextAndRaw(t *testing.T) {
 		res: Result{Text: "x", Raw: true},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
@@ -699,7 +699,7 @@ func TestRenderResultRejectsSummaryAndRawBytes(t *testing.T) {
 		res: Result{Summary: "done", RawBytes: []byte("y")},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "command bug")
@@ -712,7 +712,7 @@ func TestRenderResultRejectsTextAndSummary(t *testing.T) {
 		res: Result{Text: "hello\n", Summary: "done"},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "command bug")
@@ -725,7 +725,7 @@ func TestRenderResultRejectsSummaryAndRaw(t *testing.T) {
 		res: Result{Summary: "done", Raw: true, Data: map[string]string{"k": "v"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "command bug")
@@ -747,7 +747,7 @@ func TestRenderResultEnvelopeWarningsTableStderr(t *testing.T) {
 		res: Result{Kind: "Thing", Data: map[string]string{"a": "b"}, Warnings: []string{"note-a"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Contains(t, errBuf.String(), "# warning: note-a\n")
 	assert.NotContains(t, out.String(), "note-a")
@@ -765,7 +765,7 @@ func TestRenderResultEnvelopeWarningsJSONEnvelopeOnly(t *testing.T) {
 		res: Result{Kind: "Thing", Data: map[string]string{"a": "b"}, Warnings: []string{"note-a"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	warnings, ok := env["warnings"].([]any)
@@ -814,7 +814,7 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table"}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Contains(t, out.String(), "node-1", "the table must still render the node rows")
 	assert.Contains(t, errBuf.String(), "# warning: "+warning+"\n")
@@ -842,7 +842,7 @@ func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 				},
 			}
 			var out, errBuf bytes.Buffer
-			_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 			assert.Contains(t, errBuf.String(), "# warning: cert-expiry: 3 days\n")
 			assert.NotContains(t, out.String(), "cert-expiry")
@@ -867,7 +867,7 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 				res: Result{Kind: "Thing", Data: map[string]string{"foo": "bar"}},
 			}
 			var out, errBuf bytes.Buffer
-			_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 		})
 	}
@@ -911,7 +911,7 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 				res: Result{Kind: "Thing", Data: map[string]string{"foo": "bar"}},
 			}
 			var out, errBuf bytes.Buffer
-			_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: tc.format}, safety.Binding{})
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: tc.format}, safety.Binding{})
 			require.NotNil(t, ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Contains(t, ce.Message, tc.message)
@@ -937,7 +937,7 @@ func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
 	t.Parallel()
 	cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{},
+	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "wide", Apply: true},
 		safety.Binding{})
 	require.NotNil(t, ce)
@@ -1015,7 +1015,7 @@ func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
 		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}, Summary: summary},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	assert.Equal(t, summary, env["summary"])
@@ -1031,7 +1031,7 @@ func TestResultEmptySummaryAbsentFromJSONEnvelope(t *testing.T) {
 		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	_, hasSummary := env["summary"]
@@ -1053,7 +1053,7 @@ func TestResultSummaryPrintsBeforeTableInDefaultMode(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := Run(context.Background(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 	require.Nil(t, ce)
 	outStr := out.String()
 	assert.Contains(t, outStr, summary)

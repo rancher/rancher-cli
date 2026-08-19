@@ -86,7 +86,7 @@ func planMembership(t *testing.T, cmd runtime.Command, input runtime.Input) (saf
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "membership commands must be MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }
 
 func TestAddNamespaceSetsLabelAndAnnotation(t *testing.T) {

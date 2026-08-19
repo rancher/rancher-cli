@@ -1,7 +1,6 @@
 package token
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -19,7 +18,7 @@ func TestListTokens(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("dev", "r.ex", "c-2"), "t2", time.Now().Add(time.Hour), "dev", "r.ex", "c-2"))
 
 	res, err := NewListTokensCommand(dir, store).(runtime.ReadCommand).
-		Execute(context.Background(), tin{}, ui.Discard())
+		Execute(t.Context(), tin{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "TokenList", res.Kind)
 	list := res.Data.(credList)

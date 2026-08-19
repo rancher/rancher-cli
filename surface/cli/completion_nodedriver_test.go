@@ -44,7 +44,7 @@ func TestLivePositionalNodeDriverCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get nodedriver"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 	assert.Equal(t, []string{"amazonec2", "digitalocean"}, got)
@@ -63,7 +63,7 @@ func TestLivePositionalNodeDriverTokenBoundary(t *testing.T) {
 		{ServerURL: srv.URL},
 		{Token: "downstream", IDOnly: true, ServerURL: srv.URL},
 	} {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		cancel()
 		assert.Nil(t, got)
@@ -111,7 +111,7 @@ func TestNodeDriverPositionalSiteFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 

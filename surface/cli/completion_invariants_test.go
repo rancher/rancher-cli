@@ -97,7 +97,7 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(context.Background(), []string{"rancher", "usage", "--cluster", "my-cluster", "--generate-shell-completion"})
+	runErr := root.Run(t.Context(), []string{"rancher", "usage", "--cluster", "my-cluster", "--generate-shell-completion"})
 	assert.NoError(t, runErr, "AC-22: completion must not fail when keyring is unavailable")
 	assert.Empty(t, stderr.String(), "AC-22: completion must not write to stderr")
 	assert.Equal(t, int32(0), keyringOps.Load(), "AC-22: completion must not contact the keyring")
@@ -150,7 +150,7 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(context.Background(), surfacecli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), surfacecli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
@@ -214,7 +214,7 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	_ = root.Run(ctx, surfacecli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
@@ -319,7 +319,7 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 		root.ErrWriter = io.Discard
 		// root.Run receives sanitized args (proto sentinel stripped for urfave).
 		runArgv := surfacecli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
-		_ = root.Run(context.Background(), runArgv)
+		_ = root.Run(t.Context(), runArgv)
 		return out.String()
 	}
 
@@ -431,7 +431,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	root.ErrWriter = io.Discard
 	// Capture runErr: a failed invocation must not masquerade as a no-write success
 	// (round-3 finding 5).
-	runErr := root.Run(context.Background(), surfacecli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), surfacecli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))

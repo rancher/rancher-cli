@@ -470,7 +470,7 @@ func TestAllClustersWorkloadDegradationTargetedAndSorted(t *testing.T) {
 	}
 
 	cmd := NewImages(factory).(*imagesCmd)
-	res, err := cmd.allClusters(context.Background(), byWorkload, nil)
+	res, err := cmd.allClusters(t.Context(), byWorkload, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{
 		"clusters unavailable for c-bbb: unreachable",

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -143,7 +142,7 @@ func TestSchemaProjectShadowing(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(),
+	require.NoError(t, root.Run(t.Context(),
 		[]string{"rancher", "--config", dir, "schema", "project", "-o", "json"}))
 
 	var env struct {

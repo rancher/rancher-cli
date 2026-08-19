@@ -3,7 +3,6 @@
 package commands
 
 import (
-	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -25,7 +24,7 @@ func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	dir := t.TempDir()
 
-	_, err := NewConfigEdit(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, &fakePrompter{canPrompt: true})
+	_, err := NewConfigEdit(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)

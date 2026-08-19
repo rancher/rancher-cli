@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"testing"
 
@@ -47,7 +46,7 @@ func TestCompletionEmissionHasNoSideEffects(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "completion", "bash"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "completion", "bash"}))
 	require.NotEmpty(t, out.String(), "the script must still have been emitted")
 
 	after, err := os.ReadDir(dir)
@@ -84,6 +83,6 @@ func TestCompletionSelfCompletesShellArgument(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "completion", "--generate-shell-completion"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "completion", "--generate-shell-completion"}))
 	assert.Equal(t, "bash\nfish\npwsh\nzsh\n", out.String())
 }

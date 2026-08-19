@@ -60,7 +60,7 @@ func TestRunProbeThreadsCapturesAndNormalizes(t *testing.T) {
 			},
 		},
 	}
-	results, err := RunProbe(context.Background(), tgt, p)
+	results, err := RunProbe(t.Context(), tgt, p)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	assert.Equal(t, http.StatusCreated, results[0].Status)
@@ -100,7 +100,7 @@ func TestRunProbeExtBearerNameCapture(t *testing.T) {
 			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/tokens/{tokname}", Identity: IdentityAdmin}},
 		},
 	}
-	results, err := RunProbe(context.Background(), tgt, p)
+	results, err := RunProbe(t.Context(), tgt, p)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	assert.Equal(t, "/tokens/fac-token-7", gotPath,
@@ -142,7 +142,7 @@ func TestCapturesResolveBeforeNormalizationScrubs(t *testing.T) {
 			{Name: "use", Request: RequestSpec{Method: "GET", Path: "/use/{rv}/{tokname}", Identity: IdentityAdmin}},
 		},
 	}
-	results, err := RunProbe(context.Background(), tgt, p)
+	results, err := RunProbe(t.Context(), tgt, p)
 	require.NoError(t, err)
 	assert.Equal(t, "/use/42/tok-9", gotPath,
 		"captures must read the pre-normalization values")
@@ -182,7 +182,7 @@ func TestRunProbeHeadersForwardAndSubstitute(t *testing.T) {
 			},
 		},
 	}
-	_, err := RunProbe(context.Background(), tgt, p)
+	_, err := RunProbe(t.Context(), tgt, p)
 	require.NoError(t, err)
 	assert.Equal(t, "application/json-patch+json", contentType,
 		"an explicit Content-Type must override the JSON default")
@@ -205,7 +205,7 @@ func TestRunProbeObservationTimeout(t *testing.T) {
 			{Name: "hang", Request: RequestSpec{Method: "GET", Path: "/x", Identity: IdentityAdmin}},
 		},
 	}
-	_, err := runProbe(context.Background(), tgt, p, 50*time.Millisecond)
+	_, err := runProbe(t.Context(), tgt, p, 50*time.Millisecond)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded, "a stalled observation must time out, not hang the suite")
 }
@@ -231,7 +231,7 @@ func TestRunProbeFixtureStepsAreBounded(t *testing.T) {
 			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/x", Identity: IdentityAdmin}},
 		},
 	}
-	_, err := runProbe(context.Background(), tgt, p, 50*time.Millisecond)
+	_, err := runProbe(t.Context(), tgt, p, 50*time.Millisecond)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded,
 		"setup and teardown steps run under the same per-step deadline as observations")
@@ -257,7 +257,7 @@ func TestRunProbeJoinsTeardownErrorsWithPrimary(t *testing.T) {
 			{Name: "clean-b", Do: func(context.Context, Target, map[string]string) error { return fmt.Errorf("clean-b failed") }},
 		},
 	}
-	_, err := RunProbe(context.Background(), tgt, p)
+	_, err := RunProbe(t.Context(), tgt, p)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "setup boom", "the primary failure survives")
 	assert.ErrorContains(t, err, "clean-a failed", "every teardown failure is reported")
@@ -365,7 +365,7 @@ func TestRunProbeTeardownRunsAfterSetupFailureWithCaptures(t *testing.T) {
 			},
 		}},
 	}
-	_, err := RunProbe(context.Background(), tgt, p)
+	_, err := RunProbe(t.Context(), tgt, p)
 	require.ErrorContains(t, err, "setup boom")
 	assert.True(t, tornDown, "teardown must run even when setup fails partway")
 }
@@ -406,7 +406,7 @@ func TestRunProbeMissingCaptureFailsAndTearsDown(t *testing.T) {
 			},
 		}},
 	}
-	results, err := RunProbe(context.Background(), tgt, p)
+	results, err := RunProbe(t.Context(), tgt, p)
 	require.ErrorContains(t, err, `capture "name"`,
 		"a declared capture that cannot be resolved is a probe execution error")
 	assert.Len(t, results, 1, "the recorded observation survives for diagnostics")
@@ -435,7 +435,7 @@ func TestRunProbeExtBearerCaptureTransformFailureFails(t *testing.T) {
 			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/t/{tokname}", Identity: IdentityAdmin}},
 		},
 	}
-	_, err := RunProbe(context.Background(), tgt, p)
+	_, err := RunProbe(t.Context(), tgt, p)
 	require.ErrorContains(t, err, "not ext-shaped")
 	assert.NotContains(t, err.Error(), "token-abc:secret",
 		"a malformed credential is still a live secret; errors never embed it")
@@ -458,7 +458,7 @@ func TestRunProbeIdentityHeaders(t *testing.T) {
 			{Name: "garbage", Request: RequestSpec{Method: "GET", Path: "/x", Identity: IdentityGarbage}},
 		},
 	}
-	_, err := RunProbe(context.Background(), tgt, p)
+	_, err := RunProbe(t.Context(), tgt, p)
 	require.NoError(t, err)
 	require.Len(t, auth, 2)
 	assert.Empty(t, auth[0], "IdentityNone sends no Authorization header")

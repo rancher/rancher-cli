@@ -388,7 +388,7 @@ func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout
 	root.Writer = &out
 	root.ErrWriter = &errOut
 	argv := append([]string{"rancher", "--config", dir}, args...)
-	runErr = root.Run(context.Background(), argv)
+	runErr = root.Run(t.Context(), argv)
 	return out.Bytes(), errOut.Bytes(), runErr
 }
 

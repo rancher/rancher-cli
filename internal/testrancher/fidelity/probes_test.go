@@ -1,7 +1,6 @@
 package fidelity
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -92,7 +91,7 @@ func TestAdminDoSendsBearerAndReturnsStatus(t *testing.T) {
 	defer srv.Close()
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "admin-tok"}}
 
-	status, err := adminDo(context.Background(), tgt, http.MethodPost, "/x", `{"a":1}`)
+	status, err := adminDo(t.Context(), tgt, http.MethodPost, "/x", `{"a":1}`)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, status)
 	assert.Equal(t, "Bearer admin-tok", gotAuth)
@@ -107,7 +106,7 @@ func TestAdminDoSurfacesTransportError(t *testing.T) {
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
 	srv.Close() // requests now fail at the transport
 
-	_, err := adminDo(context.Background(), tgt, http.MethodGet, "/x", "")
+	_, err := adminDo(t.Context(), tgt, http.MethodGet, "/x", "")
 	require.Error(t, err, "a transport failure is surfaced, never swallowed")
 }
 
@@ -120,7 +119,7 @@ func TestDeleteFixtureStatusHandling(t *testing.T) {
 	}))
 	defer srv.Close()
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	code = http.StatusOK
 	require.NoError(t, deleteFixture("f", "/x/y").Do(ctx, tgt, map[string]string{}), "a 2xx delete is clean")
@@ -137,7 +136,7 @@ func TestDeleteFixtureUnresolvedTemplateNeverHitsServer(t *testing.T) {
 	defer srv.Close()
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
 
-	err := deleteFixture("f", "/x/{tokname}").Do(context.Background(), tgt, map[string]string{})
+	err := deleteFixture("f", "/x/{tokname}").Do(t.Context(), tgt, map[string]string{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unresolved")
 	assert.False(t, hit, "an unresolved capture must never delete against a synthetic URL")
@@ -159,7 +158,7 @@ func TestCreateSecretFixtureDeletesBeforeCreate(t *testing.T) {
 	defer srv.Close()
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
 
-	require.NoError(t, createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(context.Background(), tgt, map[string]string{}))
+	require.NoError(t, createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(t.Context(), tgt, map[string]string{}))
 	assert.Equal(t, []string{"delete", "create"}, order,
 		"an interrupted prior run's leftover is removed before the create")
 }
@@ -177,7 +176,7 @@ func TestCreateSecretFixtureNon201Errors(t *testing.T) {
 	defer srv.Close()
 	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
 
-	err := createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(context.Background(), tgt, map[string]string{})
+	err := createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(t.Context(), tgt, map[string]string{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 500", "a non-201 create is surfaced with its status")
 }

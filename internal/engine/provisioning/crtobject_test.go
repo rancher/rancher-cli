@@ -1,7 +1,6 @@
 package provisioning
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -233,7 +232,7 @@ func TestFetchDefaultCRTPathAndDecode(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := FetchDefaultCRT(context.Background(), fakeRootClient{srv: srv}, "c-abc")
+	got, err := FetchDefaultCRT(t.Context(), fakeRootClient{srv: srv}, "c-abc")
 	require.NoError(t, err)
 	assert.Equal(t, "c-abc", got.Namespace)
 	assert.Equal(t, "default-token", got.Name)
@@ -251,7 +250,7 @@ func TestFetchDefaultCRTPropagatesRootError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := FetchDefaultCRT(context.Background(), fakeRootClient{srv: srv}, "c-abc")
+	_, err := FetchDefaultCRT(t.Context(), fakeRootClient{srv: srv}, "c-abc")
 	require.Error(t, err)
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)

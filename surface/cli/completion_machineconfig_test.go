@@ -160,7 +160,7 @@ func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 
 	d := createMachineConfigDescriptor()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := dispatchSite(ctx, site, d, nil, nil, []string{"digitaloceanconfig", "web-pool", "--set"})
 	assert.Contains(t, got, "backups=")
@@ -187,7 +187,7 @@ func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 
 	d := createMachineConfigDescriptor()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set", Partial: "zzz"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := dispatchSite(ctx, site, d, nil, nil, []string{"digitaloceanconfig", "web-pool", "--set"})
 	assert.Empty(t, got)
@@ -235,7 +235,7 @@ func TestCreateMachineConfigSetFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 

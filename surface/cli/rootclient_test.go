@@ -53,7 +53,7 @@ func TestRootClientSendsBearerAndCA(t *testing.T) {
 
 	rc, err := seedRootConfig(t, srv).Root()
 	require.NoError(t, err)
-	body, err := rc.GetJSON(context.Background(), "/v1-rke2-release/release")
+	body, err := rc.GetJSON(t.Context(), "/v1-rke2-release/release")
 	require.NoError(t, err)
 	assert.Contains(t, string(body), `"ok"`)
 	assert.Equal(t, "Bearer token-abc:secret", gotAuth)
@@ -72,7 +72,7 @@ func TestRootClientRejectsUnknownCA(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "t:s"))
 	rc, err := newClientFactory(dir, store).Root()
 	require.NoError(t, err)
-	_, err = rc.GetJSON(context.Background(), "/x")
+	_, err = rc.GetJSON(t.Context(), "/x")
 	require.Error(t, err, "unknown CA must fail TLS verification, not fall back")
 }
 
@@ -92,7 +92,7 @@ func TestRootClientTimesOut(t *testing.T) {
 	defer restore()
 	rc, err := f.Root()
 	require.NoError(t, err)
-	_, err = rc.GetJSON(context.Background(), "/slow")
+	_, err = rc.GetJSON(t.Context(), "/slow")
 	require.Error(t, err)
 }
 
@@ -113,15 +113,15 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 	require.NoError(t, err)
 	var ce *clierr.Error
 
-	_, err = rc.GetJSON(context.Background(), "/gone")
+	_, err = rc.GetJSON(t.Context(), "/gone")
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 
-	_, err = rc.GetJSON(context.Background(), "/denied")
+	_, err = rc.GetJSON(t.Context(), "/denied")
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
 
-	_, err = rc.GetJSON(context.Background(), "/boom")
+	_, err = rc.GetJSON(t.Context(), "/boom")
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "boom", "generic error carries a body excerpt")
@@ -159,7 +159,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[]}`
 
 	t.Run("canceled provisioning LIST propagates and no registration request follows", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		var regRequests atomic.Int32
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +193,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 	})
 
 	t.Run("canceled registration fetch propagates through the root client", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		// Pass --registration so the fetch is attempted and the cancellation
 		// gate is exercised (without the flag the structural gate prevents the
@@ -285,7 +285,7 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 	// Pass --registration so the fetch is attempted and the timeout path is
 	// exercised (without the flag the structural gate prevents the fetch and
 	// no warning would be issued).
-	res, err := cmd.Execute(context.Background(), argsInput{args: []string{"local"}, bools: map[string]bool{"registration": true}}, nil)
+	res, err := cmd.Execute(t.Context(), argsInput{args: []string{"local"}, bools: map[string]bool{"registration": true}}, nil)
 	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
 	require.Len(t, res.Warnings, 1)

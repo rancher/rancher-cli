@@ -33,7 +33,7 @@ func TestAdaptRunsAndRendersJSON(t *testing.T) {
 		Flags:    GlobalFlags(),
 		Commands: []*ucli.Command{Adapt(reg, pingCmd{})},
 	}
-	err := root.Run(context.Background(), []string{"rancher", "ping", "-o", "json"})
+	err := root.Run(t.Context(), []string{"rancher", "ping", "-o", "json"})
 	require.NoError(t, err)
 
 	var env map[string]any
@@ -107,7 +107,7 @@ func runResolveReadOnly(t *testing.T, argv []string) (bool, []string) {
 			return nil
 		},
 	}
-	require.NoError(t, cmd.Run(context.Background(), argv))
+	require.NoError(t, cmd.Run(t.Context(), argv))
 	return gotActive, gotSources
 }
 
@@ -158,7 +158,7 @@ func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 			return nil
 		},
 	}
-	require.NoError(t, cmd.Run(context.Background(), []string{"x"}))
+	require.NoError(t, cmd.Run(t.Context(), []string{"x"}))
 	assert.True(t, got.ReadOnly)
 	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
 }
@@ -203,7 +203,7 @@ func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
 		cmd := Adapt(runtime.NewRegistry(runtime.MapResolver(provider.NewResolver())), echo)
 		cmd.Writer = &bytes.Buffer{}
 		cmd.ErrWriter = &bytes.Buffer{}
-		err := cmd.Run(context.Background(), []string{"slice-echo",
+		err := cmd.Run(t.Context(), []string{"slice-echo",
 			"--set", "tags=a,b", "--set", "region=nyc3", "--monitoring=false"})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"tags=a,b", "region=nyc3"}, echo.got,
@@ -219,7 +219,7 @@ func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
 		cmd := Adapt(runtime.NewRegistry(runtime.MapResolver(provider.NewResolver())), echo)
 		cmd.Writer = &bytes.Buffer{}
 		cmd.ErrWriter = &bytes.Buffer{}
-		err := cmd.Run(context.Background(), []string{"slice-echo"})
+		err := cmd.Run(t.Context(), []string{"slice-echo"})
 		require.NoError(t, err)
 		assert.Empty(t, echo.got)
 		assert.False(t, echo.setPresent)

@@ -60,10 +60,10 @@ func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 	dir := writeTestConfig(t) // temp dir with config.yaml: one server, current context
 	store := &countingStore{token: "id:secret"}
 	f := newClientFactory(dir, store)
-	if _, err := f.Cluster(context.Background(), "local"); err != nil {
+	if _, err := f.Cluster(t.Context(), "local"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.Cluster(context.Background(), "c-abc"); err != nil {
+	if _, err := f.Cluster(t.Context(), "c-abc"); err != nil {
 		t.Fatal(err)
 	}
 	if store.getCalls != 1 {
@@ -74,7 +74,7 @@ func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 func TestFactoryRejectsEmptyClusterID(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
-	_, err := f.Cluster(context.Background(), "")
+	_, err := f.Cluster(t.Context(), "")
 	var ce *clierr.Error
 	if !errors.As(err, &ce) || ce.Code != clierr.CodeValidation {
 		t.Errorf("empty cluster id: got %v, want VALIDATION error", err)
@@ -97,7 +97,7 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 	for i := range 8 {
 		id := fmt.Sprintf("c-%d", i%3)
 		wg.Go(func() {
-			_, _ = f.Cluster(context.Background(), id)
+			_, _ = f.Cluster(t.Context(), id)
 		})
 	}
 	wg.Wait() // -race is the assertion
@@ -158,7 +158,7 @@ func TestResolveClusterByIDNameAndLocal(t *testing.T) {
 		{"c-abc", "c-abc"},
 		{"prod", "c-abc"},
 	} {
-		got, err := f.ResolveCluster(context.Background(), tc.in)
+		got, err := f.ResolveCluster(t.Context(), tc.in)
 		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
 		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
 	}
@@ -170,7 +170,7 @@ func TestResolveClusterUnknownIsNotFound(t *testing.T) {
 		mgmtClusterObj("c-abc", "prod"),
 		mgmtClusterObj("c-def", "dev"),
 	}})
-	_, err := f.ResolveCluster(context.Background(), "staging")
+	_, err := f.ResolveCluster(t.Context(), "staging")
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -191,7 +191,7 @@ func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 		mgmtClusterObj("c-def", "dup"),
 		mgmtClusterObj("c-solo", "unique"),
 	}})
-	_, err := f.ResolveCluster(context.Background(), "dup")
+	_, err := f.ResolveCluster(t.Context(), "dup")
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -208,7 +208,7 @@ func TestResolveClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 		mgmtClusterObj("c-abc", "foo"),
 		mgmtClusterObj("foo", "bar"),
 	}})
-	_, err := f.ResolveCluster(context.Background(), "foo")
+	_, err := f.ResolveCluster(t.Context(), "foo")
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -222,7 +222,7 @@ func TestResolveClusterMemoizes(t *testing.T) {
 	}}
 	f := resolveFactory(t, client)
 	for range 2 {
-		got, err := f.ResolveCluster(context.Background(), "prod")
+		got, err := f.ResolveCluster(t.Context(), "prod")
 		require.NoError(t, err)
 		assert.Equal(t, "c-abc", got)
 	}
@@ -246,7 +246,7 @@ func TestResolveClusterDistinctNamesShareOneList(t *testing.T) {
 		{"dev", "c-def"},
 		{"staging", "c-ghi"},
 	} {
-		got, err := f.ResolveCluster(context.Background(), tc.in)
+		got, err := f.ResolveCluster(t.Context(), tc.in)
 		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
 		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
 	}

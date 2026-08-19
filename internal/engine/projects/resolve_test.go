@@ -177,7 +177,7 @@ func TestResolveProjectByExactID(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	id, err := ResolveProject(context.Background(), factory, "c-x", "p-1")
+	id, err := ResolveProject(t.Context(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", id)
 }
@@ -197,7 +197,7 @@ func TestResolveProjectForbiddenListFallsBackToGet(t *testing.T) {
 	}
 	factory := stubFactory{c: client}
 
-	id, err := ResolveProject(context.Background(), factory, "local", "demo-web")
+	id, err := ResolveProject(t.Context(), factory, "local", "demo-web")
 	require.NoError(t, err)
 	assert.Equal(t, "demo-web", id)
 }
@@ -213,7 +213,7 @@ func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
 	}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "local", "other")
+	_, err := ResolveProject(t.Context(), factory, "local", "other")
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
@@ -232,7 +232,7 @@ func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
 	}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "local", "typo-web")
+	_, err := ResolveProject(t.Context(), factory, "local", "typo-web")
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
@@ -252,7 +252,7 @@ func TestResolveProjectNonRBACListErrorPropagates(t *testing.T) {
 	}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "local", "p-1")
+	_, err := ResolveProject(t.Context(), factory, "local", "p-1")
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "no fallback on non-RBAC failures")
@@ -265,7 +265,7 @@ func TestResolveProjectByUniqueDisplayName(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	id, err := ResolveProject(context.Background(), factory, "c-x", "web")
+	id, err := ResolveProject(t.Context(), factory, "c-x", "web")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", id)
 	assert.Equal(t, "c-x", client.lastNS, "projects are listed in the cluster-id namespace")
@@ -278,7 +278,7 @@ func TestResolveProjectAmbiguousDisplayName(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "c-x", "web")
+	_, err := ResolveProject(t.Context(), factory, "c-x", "web")
 	require.Error(t, err)
 	cerr, ok := err.(*clierr.Error)
 	require.True(t, ok)
@@ -296,7 +296,7 @@ func TestResolveProjectIDCollidesWithDifferentProjectsDisplayName(t *testing.T) 
 	}}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "c-x", "web")
+	_, err := ResolveProject(t.Context(), factory, "c-x", "web")
 	require.Error(t, err)
 	cerr, ok := err.(*clierr.Error)
 	require.True(t, ok)
@@ -312,7 +312,7 @@ func TestResolveProjectNotFound(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "c-x", "unknown")
+	_, err := ResolveProject(t.Context(), factory, "c-x", "unknown")
 	require.Error(t, err)
 	cerr, ok := err.(*clierr.Error)
 	require.True(t, ok)
@@ -329,7 +329,7 @@ func TestProjectNamespacesListsWithLabelSelector(t *testing.T) {
 		}},
 	}}
 
-	members, err := ProjectNamespaces(context.Background(), client, "p-1")
+	members, err := ProjectNamespaces(t.Context(), client, "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"ns-a": true, "ns-b": true}, members)
 	assert.Equal(t, "field.cattle.io/projectId=p-1", client.lastSelector)
@@ -340,7 +340,7 @@ func TestProjectNamespacesEmptySetIsNotAnError(t *testing.T) {
 	t.Parallel()
 	client := &listClient{lists: map[string]*unstructured.UnstructuredList{}}
 
-	members, err := ProjectNamespaces(context.Background(), client, "p-1")
+	members, err := ProjectNamespaces(t.Context(), client, "p-1")
 	require.NoError(t, err)
 	assert.Empty(t, members)
 }
@@ -360,7 +360,7 @@ func TestBackingNamespaceUsesStatusField(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	ns, statusEmpty, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	ns, statusEmpty, err := BackingNamespace(t.Context(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-abc123", ns)
 	assert.False(t, statusEmpty)
@@ -373,7 +373,7 @@ func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
 	}}
 	factory := stubFactory{c: client}
 
-	ns, statusEmpty, err := BackingNamespace(context.Background(), factory, "c-x", "p-1")
+	ns, statusEmpty, err := BackingNamespace(t.Context(), factory, "c-x", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", ns)
 	assert.True(t, statusEmpty)
@@ -385,7 +385,7 @@ func TestBackingNamespaceNotFoundCurated(t *testing.T) {
 	client := &listClient{getErrs: map[string]error{"c-x/p-gone": kinds.NotFoundCurated(projectKind, "p-gone")}}
 	factory := stubFactory{c: client}
 
-	_, _, err := BackingNamespace(context.Background(), factory, "c-x", "p-gone")
+	_, _, err := BackingNamespace(t.Context(), factory, "c-x", "p-gone")
 	require.Error(t, err)
 
 	var ce *clierr.Error
@@ -402,7 +402,7 @@ func TestBackingNamespaceNotFoundWithHintPassesThrough(t *testing.T) {
 	client := &listClient{getErrs: map[string]error{"c-x/p-gone": alreadyCurated}}
 	factory := stubFactory{c: client}
 
-	_, _, err := BackingNamespace(context.Background(), factory, "c-x", "p-gone")
+	_, _, err := BackingNamespace(t.Context(), factory, "c-x", "p-gone")
 	require.Error(t, err)
 	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
 }
@@ -422,7 +422,7 @@ func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
 	}
 	factory := stubFactory{c: client}
 
-	_, err := ResolveProject(context.Background(), factory, "local", "p-1")
+	_, err := ResolveProject(t.Context(), factory, "local", "p-1")
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "the get's own code survives")

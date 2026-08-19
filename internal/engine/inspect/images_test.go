@@ -189,7 +189,7 @@ func TestImagesSkipsInactivePods(t *testing.T) {
 	}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "img-a", rows[0].Image)
@@ -203,7 +203,7 @@ func TestImagesIncludesTerminatingRunningPod(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "a terminating pod stays included until it leaves the List (IM-14)")
 	assert.Equal(t, "img-t", rows[0].Image)
@@ -218,7 +218,7 @@ func TestImagesCountsEphemeralContainers(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "app-img", rows[0].Image)
@@ -234,7 +234,7 @@ func TestImagesCountIsPerReference(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 2, rows[0].Count, "same image in init and app container is two references (IM-18)")
@@ -250,13 +250,13 @@ func TestImagesMatchFiltersAndORs(t *testing.T) {
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
 
-	rows, err := imagesFor(context.Background(), client, []string{"registry.old.corp/", "/nginx:"})
+	rows, err := imagesFor(t.Context(), client, []string{"registry.old.corp/", "/nginx:"})
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "values OR: old-registry image plus the nginx repo")
 	assert.Equal(t, "registry.corp/web/nginx:1.25", rows[0].Image)
 	assert.Equal(t, "registry.old.corp/legacy/app:1", rows[1].Image)
 
-	rows, err = imagesFor(context.Background(), client, nil)
+	rows, err = imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	assert.Len(t, rows, 3, "no needles matches everything")
 }
@@ -323,7 +323,7 @@ func TestImagesMatchNothingYieldsNonNilEmpty(t *testing.T) {
 	}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, []string{"no-such-ref"})
+	rows, err := imagesFor(t.Context(), client, []string{"no-such-ref"})
 	require.NoError(t, err)
 	require.NotNil(t, rows, "non-nil even when no images match")
 	assert.Len(t, rows, 0)
@@ -333,7 +333,7 @@ func TestImagesEmptyPodListYieldsNonNilEmpty(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{})
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.NotNil(t, rows, "non-nil even for an empty pod list")
 	assert.Len(t, rows, 0)
@@ -348,7 +348,7 @@ func TestImagesEphemeralSharingAppImageCountsTwo(t *testing.T) {
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}}
 	podKind, _ := kinds.Lookup("pod")
 	client := newFakeClient().withList(podKind.GVR, list)
-	rows, err := imagesFor(context.Background(), client, nil)
+	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 2, rows[0].Count, "ephemeral container sharing the app image is a second reference (IM-18)")
@@ -364,7 +364,7 @@ func TestImagesResultZeroValueNilSafe(t *testing.T) {
 func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
-	_, ce := runtime.Run(context.Background(), NewImages(&fakeFactory{client: newFakeClient()}),
+	_, ce := runtime.Run(t.Context(), NewImages(&fakeFactory{client: newFakeClient()}),
 		input{s: map[string]string{"by": "bogus"}},
 		runtime.IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "the pipeline must reject a non-enum --by before Execute")

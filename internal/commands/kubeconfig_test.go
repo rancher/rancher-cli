@@ -55,7 +55,7 @@ func TestKubeconfigEmitsExecSection(t *testing.T) {
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, caPEM)
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "webprod"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "webprod"}}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
 
@@ -81,7 +81,7 @@ func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -113,7 +113,7 @@ func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 	t.Setenv("RANCHER_CLI_URL", "https://staging.example.com")
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 
 	kc, err := clientcmd.Load(res.RawBytes)
@@ -133,7 +133,7 @@ func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) 
 	t.Setenv("RANCHER_CLI_URL", "https://r.example.com")
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 
 	kc, err := clientcmd.Load(res.RawBytes)
@@ -155,7 +155,7 @@ func TestKubeconfigEnvOnlySession(t *testing.T) {
 	dir := t.TempDir() // no config.yaml at all — no stored context, no stored server
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-env"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-env"}}, nil)
 	require.NoError(t, err)
 
 	kc, err := clientcmd.Load(res.RawBytes)
@@ -180,7 +180,7 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https",
 		"the non-https server notice must reach the prompter's stderr writer")
@@ -207,7 +207,7 @@ func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https")
 }
@@ -218,7 +218,7 @@ func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Empty(t, errBuf.String())
 }
@@ -227,7 +227,7 @@ func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(context.Background(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
 	require.NoError(t, err)

@@ -96,7 +96,7 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 		group = ""
 	}
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
-	obj, err := dynCli.Resource(gvr).Namespace(args[1]).Get(context.Background(), args[2], metav1.GetOptions{})
+	obj, err := dynCli.Resource(gvr).Namespace(args[1]).Get(context.Background(), args[2], metav1.GetOptions{}) // testscript command callback: no *testing.T in scope
 	if err != nil {
 		ts.Fatalf("rawget %s %s/%s: %v", args[0], args[1], args[2], err)
 	}
@@ -169,11 +169,11 @@ func cmdSeedObj(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	obj := &unstructured.Unstructured{Object: m}
 	if ns == "" {
-		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // testscript command callback: no *testing.T in scope
 			ts.Fatalf("seedobj: %v", err)
 		}
 	} else {
-		if _, err := dynCli.Resource(gvr).Namespace(ns).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil {
+		if _, err := dynCli.Resource(gvr).Namespace(ns).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // testscript command callback: no *testing.T in scope
 			ts.Fatalf("seedobj: %v", err)
 		}
 	}

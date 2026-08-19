@@ -1,7 +1,6 @@
 package observe
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +23,7 @@ func execBundle(t *testing.T, clients engine.ClusterClientFactory, in input, opt
 	for _, opt := range opts {
 		opt(cmd)
 	}
-	return cmd.Execute(context.Background(), in, nil)
+	return cmd.Execute(t.Context(), in, nil)
 }
 
 func manifestFrom(t *testing.T, path string) bundleManifest {
@@ -215,7 +214,7 @@ func TestCollectFeaturesSerializesFalseValues(t *testing.T) {
 		}},
 	}})
 
-	data, err := collectFeatures(context.Background(), local)
+	data, err := collectFeatures(t.Context(), local)
 	require.NoError(t, err)
 
 	// A dropped key here would be indistinguishable from "collector never

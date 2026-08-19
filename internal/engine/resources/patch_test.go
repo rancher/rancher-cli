@@ -72,7 +72,7 @@ func planPatch(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Effe
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "patch must be a MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
@@ -109,7 +109,7 @@ func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
 	require.Len(t, client.updates, 1, "Plan issues one dry-run update")
 	assert.True(t, client.updates[0].dryRun)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "Deployment", res.Kind)
 	require.Len(t, client.updates, 2, "exec performs the real update")
@@ -133,7 +133,7 @@ func TestPatchMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	}})
 	require.NoError(t, err)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "StatefulSet", res.Kind)
 }
@@ -423,7 +423,7 @@ func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	require.NoError(t, err, "Plan must succeed (dry-run succeeds)")
 	require.NotNil(t, exec)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))

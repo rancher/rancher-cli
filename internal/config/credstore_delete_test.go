@@ -124,13 +124,13 @@ func TestDeleteLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 
-	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "auto")
+	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto")
 	require.NoError(t, err)
 	assert.Contains(t, from, "helper:fake")
 
 	_, gerr := st.GetToken(execRef())
 	assert.ErrorIs(t, gerr, ErrNoToken, "helper credential must be gone")
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "helper record cleared")
 		return nil
 	}))
@@ -147,19 +147,19 @@ func TestDeleteLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 
 	// Helper now fails: delete must error and RETAIN the entry for retry.
 	t.Setenv("FAKEHELPER_MODE", "fail")
-	_, derr := DeleteLoginToken(context.Background(), dir, ref, "exec:fake")
+	_, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
 	require.Error(t, derr)
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the helper record")
 		return nil
 	}))
 
 	// Helper heals: retry deletes and clears.
 	t.Setenv("FAKEHELPER_MODE", "ok")
-	from, derr := DeleteLoginToken(context.Background(), dir, ref, "exec:fake")
+	from, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"))
 		return nil
 	}))
@@ -177,13 +177,13 @@ func TestDeleteSameNameTwoURLsErasesBoth(t *testing.T) {
 
 	// Delete with only the CURRENT URL: the recorded old identity must be
 	// erased too — replayed verbatim from the helper records, not reconstructed.
-	from, derr := DeleteLoginToken(context.Background(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
+	from, derr := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 
 	assert.Empty(t, fakeHelperCreds(t, statePath), "both identities (old and current URL) erased")
 
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "all entries cleared after full success")
 		return nil
 	}))
@@ -207,10 +207,10 @@ func TestDeleteMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	require.NoError(t, st2.SetToken(ref, "id:s"))
 
 	t.Setenv("FAKEHELPER2_MODE", "fail")
-	_, derr := DeleteLoginToken(context.Background(), dir, ref, "auto")
+	_, derr := DeleteLoginToken(t.Context(), dir, ref, "auto")
 	require.Error(t, derr)
 
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		entries := s.forServer("prod")
 		require.Len(t, entries, 1, "successful removal persisted despite the joined error")
 		assert.Equal(t, "fake2", entries[0].Helper)
@@ -227,7 +227,7 @@ func TestDeleteLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	// DeleteLoginToken must error (not silently skip) and must not attempt to
 	// exec anything. The helper-records file is empty, so file/keychain deletes also
 	// report nothing — only the validation error is returned.
-	_, err := DeleteLoginToken(context.Background(), dir, execRef(), "exec:../evil")
+	_, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "../evil", "error must name the invalid helper")
 }
@@ -241,12 +241,12 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	keyring.MockInit()
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		s.add(HelperRecord{Helper: "fake", Name: "prod", CanonicalURL: "https://rancher.example.com"})
 		return nil
 	}))
 
-	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
+	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
 	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
 	// deletion (friction-4 semantics) — the replay and the cleanup below
@@ -254,7 +254,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
 		"the helper saw exactly the recorded identity")
-	require.NoError(t, withHelperRecordsLock(context.Background(), dir, func(s *helperRecords) error {
+	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "leftover record cleared")
 		return nil
 	}))
@@ -271,7 +271,7 @@ func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 
-	from, err := DeleteLoginToken(context.Background(), dir, execRef(), "exec:fake")
+	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:fake")
 	require.NoError(t, err)
 	assert.NotContains(t, from, "helper:fake", "a no-op erase is not a deletion")
 	assert.Empty(t, from)
@@ -294,7 +294,7 @@ func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	require.True(t, locked)
 	defer func() { _ = fl.Unlock() }()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
 		_, derr := DeleteLoginToken(ctx, dir, execRef(), "exec:fake")

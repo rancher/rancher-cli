@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"strings"
 	"testing"
@@ -30,7 +29,7 @@ func runNameLikeCompletion(t *testing.T, words []string, currentWord string) str
 	root.Writer = &out
 	root.ErrWriter = io.Discard
 	runArgv := surfacecli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
-	_ = root.Run(context.Background(), runArgv)
+	_ = root.Run(t.Context(), runArgv)
 	return out.String()
 }
 
@@ -234,7 +233,7 @@ func TestFlagNameCompletionV1ProtocolLeaf(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	_ = root.Run(context.Background(), []string{"rancher", "usage", "--", "--generate-shell-completion"})
+	_ = root.Run(t.Context(), []string{"rancher", "usage", "--", "--generate-shell-completion"})
 	got := out.String()
 
 	// urfave's DefaultCompleteWithFlags (v1 path) reads "--" from parsedArgs and

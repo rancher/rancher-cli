@@ -28,7 +28,7 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 		t.Helper()
 		dir := seedAuthedDir(t)
 		cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir), preflight: pf}
-		return cmd.Execute(context.Background(), args{}, ui.Discard())
+		return cmd.Execute(t.Context(), args{}, ui.Discard())
 	}
 
 	t.Run("success returns an AuthCheck result", func(t *testing.T) {
@@ -72,7 +72,7 @@ func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
 		store:     config.NewFileStore(dir),
 		preflight: func(context.Context, config.Effective) (string, error) { return "v1.31.0", nil },
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data, ok := res.Data.(map[string]any)
@@ -99,7 +99,7 @@ func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
 			},
 			rancherVersion: rv,
 		}
-		return cmd.Execute(context.Background(), args{}, ui.Discard())
+		return cmd.Execute(t.Context(), args{}, ui.Discard())
 	}
 
 	t.Run("above floor: supported true, no warning, both keys present", func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	res, err := NewAuthCheck(dir, store).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewAuthCheck(dir, store).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "AuthCheck", res.Kind)
 }
@@ -243,7 +243,7 @@ func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 			}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings)
 
@@ -279,7 +279,7 @@ func TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived(t *testing.T) {
 			return provider.TokenMetadata{Name: name, Kind: ""}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	token := res.Data.(map[string]any)["token"].(map[string]any)
 	assert.Equal(t, "derived", token["kind"])
@@ -307,7 +307,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 			return provider.TokenMetadata{Name: name}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "env-1", gotName, "the env override, not the store, must drive the token probe")
 	token := res.Data.(map[string]any)["token"].(map[string]any)
@@ -337,7 +337,7 @@ func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "tokens.management.cattle.io is forbidden")
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.False(t, extCalled, "a non-ext token must never reach the ext probe")
 	assert.Nil(t, res.Data.(map[string]any)["token"])
@@ -365,7 +365,7 @@ func TestAuthCheckNoTokenAtAllIsNotLegacy(t *testing.T) {
 			return provider.TokenMetadata{}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.False(t, called, "no token at all must never reach the ext token probe")
 	assert.Nil(t, res.Data.(map[string]any)["token"])
@@ -413,7 +413,7 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 					return provider.TokenMetadata{}, nil
 				},
 			}
-			res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+			res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 			require.NoError(t, err, "an identity-probe failure must never fail the check")
 			data := res.Data.(map[string]any)
 			assert.True(t, data["ok"].(bool), "ok is unaffected by identity degradation")
@@ -462,7 +462,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 					return provider.TokenMetadata{}, tc.err
 				},
 			}
-			res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+			res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 			require.NoError(t, err, "a token-probe failure must never fail the check")
 			data := res.Data.(map[string]any)
 			assert.True(t, data["ok"].(bool), "ok is unaffected by token degradation")
@@ -492,7 +492,7 @@ func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, "tokens.ext.cattle.io \"derived-1\" not found")
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err, "a token-probe failure must never fail the check")
 	data := res.Data.(map[string]any)
 	assert.Nil(t, data["token"])
@@ -519,7 +519,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, "tokens.ext.cattle.io \"derived-1\" not found")
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err, "a token-probe failure must never fail the check")
 	data := res.Data.(map[string]any)
 	assert.Nil(t, data["token"])
@@ -549,7 +549,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 		},
 	}
 	for range 20 {
-		res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+		res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 		require.NoError(t, err)
 		require.Len(t, res.Warnings, 3)
 		assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
@@ -577,7 +577,7 @@ func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 			return provider.TokenMetadata{}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.True(t, data["ok"].(bool))
@@ -607,7 +607,7 @@ func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
 			}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings)
 	assert.Equal(t, "token-nmfmf", gotName)
@@ -639,7 +639,7 @@ func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 			return provider.TokenMetadata{}, clierr.New(clierr.CodeNotFound, `tokens.management.cattle.io "token-stale" not found`)
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Nil(t, res.Data.(map[string]any)["token"])
 	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
@@ -669,7 +669,7 @@ func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
 			return provider.TokenMetadata{}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.False(t, v3Called, "an ext token must never reach the v3 probe")
 	token, ok := res.Data.(map[string]any)["token"].(map[string]any)
@@ -742,7 +742,7 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 		},
 	}
 	var out, errBuf bytes.Buffer
-	_, ce := runtime.Run(context.Background(), cmd, args{},
+	_, ce := runtime.Run(t.Context(), cmd, args{},
 		runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 	require.Nil(t, ce)
 
@@ -771,7 +771,7 @@ func TestAuthCheckDataPayloadUnchanged(t *testing.T) {
 			return provider.TokenMetadata{Name: name, Kind: "session", Provider: "local"}, nil
 		},
 	}
-	res, err := cmd.Execute(context.Background(), args{}, ui.Discard())
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data, ok := res.Data.(map[string]any)
@@ -835,7 +835,7 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 			t.Fatal("preflight must not run when not logged in")
 			return "", nil
 		}}
-	_, err = cmd.Execute(context.Background(), args{}, ui.Discard())
+	_, err = cmd.Execute(t.Context(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)

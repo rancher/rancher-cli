@@ -71,7 +71,7 @@ func planDelete(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Eff
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "delete must be a MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
@@ -92,7 +92,7 @@ func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
 	assert.Equal(t, "c-abc", eff.Cluster)
 	assert.Equal(t, "pods/web", eff.Target)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "PodDelete", res.Kind)
 
@@ -113,7 +113,7 @@ func TestDeleteMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	_, exec, err := planDelete(t, cmd, input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	require.NoError(t, err)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "StatefulSetDelete", res.Kind)
 }
@@ -290,7 +290,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	require.NoError(t, err, "Plan must succeed (dry-run succeeds)")
 	require.NotNil(t, exec)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -315,7 +315,7 @@ func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 		input{args: []string{"t-xxx"}})
 	require.NoError(t, err)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
@@ -364,14 +364,14 @@ func TestWaitStalledScopedToOptInKinds(t *testing.T) {
 
 		// Opt-in kind: aborts immediately.
 		client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
-		_, err := waitFor(context.Background(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "stalled")
 
 		// Non-opt-in kind: keeps polling to the eventual Ready.
 		ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})
 		client2 := &seqClient{objs: []*unstructured.Unstructured{stalledReady, ready}}
-		got, err := waitFor(context.Background(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		got, err := waitFor(t.Context(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
 		require.NoError(t, err, "without the opt-in, Stalled=True must not abort the wait")
 		require.NotNil(t, got)
 	})

@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -56,7 +55,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	skillinstall.SetSource(skillTestSource(t))
 	in := skillInput{strings: map[string]string{"agent": "claude", "scope": "user"}}
 
-	res, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(context.Background(), in, nil)
+	res, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	outs := res.Data.(skillOutcomes)
 	require.Len(t, outs, 1)
@@ -64,7 +63,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	assert.Equal(t, "v1.0.0", outs[0].CLIVersion,
 		"a changed target reports the version that was just installed")
 
-	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
+	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
 	rows := res.Data.(skillOutcomes)
@@ -73,16 +72,16 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 
 	// exit 7 pins the skew case — the e2e harness can only assert nonzero,
 	// so THIS test owns the exact value.
-	res, err = NewSkillStatus("v9.9.9").(skillStatusCmd).Execute(context.Background(), in, nil)
+	res, err = NewSkillStatus("v9.9.9").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 7, res.ExitStatus)
 
-	res, err = NewSkillUninstall("v1.0.0").(skillUninstallCmd).Execute(context.Background(), in, nil)
+	res, err = NewSkillUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	outs = res.Data.(skillOutcomes)
 	assert.Equal(t, "changed", outs[0].Action)
 
-	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
+	res, err = NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus) // absent is neutral
 }
@@ -94,7 +93,7 @@ func TestSkillStatusRequireInstalled(t *testing.T) {
 		strings: map[string]string{"agent": "claude", "scope": "user"},
 		bools:   map[string]bool{"require-installed": true},
 	}
-	res, err := NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
+	res, err := NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 7, res.ExitStatus)
 }
@@ -103,7 +102,7 @@ func TestSkillStatusFreshMachineEmptyReport(t *testing.T) {
 	skillHome(t) // no harness dirs at all
 	skillinstall.SetSource(skillTestSource(t))
 	in := skillInput{strings: map[string]string{}}
-	res, err := NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(context.Background(), in, nil)
+	res, err := NewSkillStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
 	assert.Empty(t, res.Data.(skillOutcomes))
@@ -114,7 +113,7 @@ func TestSkillInstallNothingDetectedIsError(t *testing.T) {
 	skillHome(t)
 	skillinstall.SetSource(skillTestSource(t))
 	in := skillInput{strings: map[string]string{}}
-	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(context.Background(), in, nil)
+	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -132,7 +131,7 @@ func TestSkillInstallBatchPreflightAllOrNothing(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(foreignDir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644))
 
 	in := skillInput{strings: map[string]string{}} // agent=all scope=user
-	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(context.Background(), in, nil)
+	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
 	require.Error(t, err)
 	_, statErr := os.Stat(filepath.Join(home, ".claude", "skills", "rancher"))
 	assert.True(t, os.IsNotExist(statErr), "claude target must be untouched")
@@ -163,7 +162,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	defer skillinstall.SetRenameHookForTest(nil)
 
 	in := skillInput{strings: map[string]string{}} // agent=all → agents+claude (sorted by dir at execution)
-	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(context.Background(), in, nil)
+	_, err := NewSkillInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)

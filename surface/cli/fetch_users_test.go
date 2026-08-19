@@ -39,7 +39,7 @@ func TestFetchUsersUnionAndSystemExclusion(t *testing.T) {
 	t.Parallel()
 	srv, _ := userServer(t)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	got := fetchUsers(context.Background(), srv.Client(), cap)
+	got := fetchUsers(t.Context(), srv.Client(), cap)
 	// Expected: union of name+username for non-system users; sanitize drops
 	// "bad name!"; dedup removes the u-bob/bob duplicate pair; sorted.
 	// u-alice + alice, u-bob + bob (deduped from two rows), u-badname (name ok,
@@ -73,7 +73,7 @@ func TestFetchUsersUsernameUniqueness(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-		got := fetchUsers(context.Background(), srv.Client(), cap)
+		got := fetchUsers(t.Context(), srv.Client(), cap)
 		assert.NotContains(t, got, "dev", "shared username must not be a candidate")
 		assert.Contains(t, got, "u-dev-1")
 		assert.Contains(t, got, "u-dev-2")
@@ -89,7 +89,7 @@ func TestFetchUsersUsernameUniqueness(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-		got := fetchUsers(context.Background(), srv.Client(), cap)
+		got := fetchUsers(t.Context(), srv.Client(), cap)
 		assert.NotContains(t, got, "ops", "username colliding with another user's displayName must not be a candidate")
 		assert.Contains(t, got, "u-ops-1")
 		assert.Contains(t, got, "u-ops-2")
@@ -106,7 +106,7 @@ func TestFetchUsersUsernameUniqueness(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-		got := fetchUsers(context.Background(), srv.Client(), cap)
+		got := fetchUsers(t.Context(), srv.Client(), cap)
 		assert.Contains(t, got, "solo", "self-collision (username==displayName) must not suppress the candidate")
 		assert.Contains(t, got, "u-solo")
 		// "solo" appears exactly once (self-collision does not double-count).
@@ -132,7 +132,7 @@ func TestFetchUsersTokenBoundary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Nil(t, fetchUsers(context.Background(), srv.Client(), tt.cap))
+			assert.Nil(t, fetchUsers(t.Context(), srv.Client(), tt.cap))
 		})
 	}
 	assert.Zero(t, hits.Load(), "token boundary must return nil WITHOUT a request")
@@ -145,14 +145,14 @@ func TestFetchUsersFailEmpty(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	assert.Nil(t, fetchUsers(context.Background(), srv.Client(), cap))
+	assert.Nil(t, fetchUsers(t.Context(), srv.Client(), cap))
 
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{not json`))
 	}))
 	t.Cleanup(srv2.Close)
 	cap2 := TokenCapability{Token: "token-abc:secret", ServerURL: srv2.URL}
-	require.Nil(t, fetchUsers(context.Background(), srv2.Client(), cap2))
+	require.Nil(t, fetchUsers(t.Context(), srv2.Client(), cap2))
 }
 
 func TestFetchUsersTimeout(t *testing.T) {
@@ -163,7 +163,7 @@ func TestFetchUsersTimeout(t *testing.T) {
 	}))
 	t.Cleanup(func() { close(block); srv.Close() })
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 	assert.Nil(t, fetchUsers(ctx, srv.Client(), cap))
 }

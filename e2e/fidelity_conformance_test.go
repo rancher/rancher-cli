@@ -145,7 +145,7 @@ func TestFidelityConformance(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			results, err := fidelity.RunProbe(context.Background(), tgt, p)
+			results, err := fidelity.RunProbe(t.Context(), tgt, p)
 			require.NoError(t, err)
 			got := fidelity.Golden{Observations: results}
 

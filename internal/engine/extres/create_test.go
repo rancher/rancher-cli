@@ -93,7 +93,7 @@ func planToken(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.E
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "create token must be a MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }
 
 func TestCreateTokenBuildsManifestWithMsTTLAndClusterName(t *testing.T) {
@@ -180,7 +180,7 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "TokenCreated", res.Kind)
 	data, ok := res.Data.(map[string]string)

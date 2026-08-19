@@ -28,7 +28,7 @@ func planDeleteUser(t *testing.T, cmd runtime.Command, in runtime.Input) (safety
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "command must be a MutatingCommand")
-	eff, _, err := mc.Plan(context.Background(), in)
+	eff, _, err := mc.Plan(t.Context(), in)
 	return eff, err
 }
 
@@ -268,7 +268,7 @@ func TestDeleteUserCliErrProbeErrorPassesThrough(t *testing.T) {
 func TestDeleteUserCancellation(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // pre-cancel so ctx.Err() is non-nil when the probe fires
 	// Cluster() succeeds (ctxAware removed); cancellation propagates through
 	// the probe's ctx.Err() check after Create returns an error.

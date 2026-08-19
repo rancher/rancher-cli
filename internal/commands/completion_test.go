@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"flag"
 	"io"
 	"os"
@@ -34,7 +33,7 @@ func (f fakeInput) Args() []string          { return f.args }
 func TestCompletionEmitsGoldenScriptPerShell(t *testing.T) {
 	for _, shell := range runtime.ShellCompletionShells() {
 		t.Run(shell, func(t *testing.T) {
-			res, err := NewCompletion().(completionCmd).Execute(context.Background(), fakeInput{args: []string{shell}}, nil)
+			res, err := NewCompletion().(completionCmd).Execute(t.Context(), fakeInput{args: []string{shell}}, nil)
 			require.NoError(t, err)
 			require.NotNil(t, res.RawBytes)
 
@@ -56,7 +55,7 @@ func TestCompletionEmitsGoldenScriptPerShell(t *testing.T) {
 // own Execute no longer validates the shell argument at all.
 func TestCompletionUnknownShellIsValidation(t *testing.T) {
 	t.Parallel()
-	_, ce := runtime.Run(context.Background(), NewCompletion(), fakeInput{args: []string{"powershell-classic"}},
+	_, ce := runtime.Run(t.Context(), NewCompletion(), fakeInput{args: []string{"powershell-classic"}},
 		runtime.IO{Out: io.Discard, Err: io.Discard}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -65,6 +64,6 @@ func TestCompletionUnknownShellIsValidation(t *testing.T) {
 
 func TestCompletionCompleteArgsListsShells(t *testing.T) {
 	t.Parallel()
-	got := NewCompletion().(completionCmd).CompleteArgs(context.Background(), testView{})
+	got := NewCompletion().(completionCmd).CompleteArgs(t.Context(), testView{})
 	assert.Equal(t, runtime.ShellCompletionShells(), got)
 }

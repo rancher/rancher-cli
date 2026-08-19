@@ -3,7 +3,6 @@
 package provider
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -46,7 +45,7 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 
 	repo, err := NewClusterClient(rc)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := t.Context()
 	w := func(name string) *unstructured.Unstructured {
 		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "test.rancher.io/v1", "kind": "Widget",
@@ -86,7 +85,7 @@ func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 
 	repo, err := NewClusterClient(rc)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "test.rancher.io/v1", "kind": "Widget",

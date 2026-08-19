@@ -59,7 +59,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	cmd := NewDeleteTokenCommand(dir, store).(runtime.ReadCommand)
 
 	t.Run("no name and no --all is validation error", func(t *testing.T) {
-		_, err := cmd.Execute(context.Background(), tin{}, ui.Discard())
+		_, err := cmd.Execute(t.Context(), tin{}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -67,7 +67,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}}, ui.Discard())
+		_, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -75,7 +75,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("named delete removes the entry", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
-		_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, ui.Discard())
+		_, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
@@ -83,7 +83,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
-		_, err := cmd.Execute(context.Background(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, ui.Discard())
+		_, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -96,7 +96,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		scoped := config.CacheKey("prod", "r.ex", "c-1")
 		require.NoError(t, store.SetCachedCred("prod", "legacy", time.Now().Add(time.Hour), "", "", ""))
 		require.NoError(t, store.SetCachedCred(scoped, "scoped", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
-		res, err := cmd.Execute(context.Background(), tin{a: []string{"prod"}}, ui.Discard())
+		res, err := cmd.Execute(t.Context(), tin{a: []string{"prod"}}, ui.Discard())
 		require.NoError(t, err)
 		deleted := res.Data.(map[string]any)["deleted"].([]string)
 		assert.ElementsMatch(t, []string{"prod", scoped}, deleted)
@@ -107,7 +107,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 
 	t.Run("unknown name is an idempotent success", func(t *testing.T) {
-		res, err := cmd.Execute(context.Background(), tin{a: []string{"ghost"}}, ui.Discard())
+		res, err := cmd.Execute(t.Context(), tin{a: []string{"ghost"}}, ui.Discard())
 		require.NoError(t, err)
 		deleted := res.Data.(map[string]any)["deleted"].([]string)
 		assert.Empty(t, deleted, "already-deleted / unknown names must be a no-op success")
@@ -117,7 +117,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 func TestBasicAuthNonInteractiveIsAuthError(t *testing.T) {
 	t.Parallel()
 	input := &loginInput{server: "https://test.example.com", authProvider: "localProvider"}
-	_, err := basicAuth(context.Background(), nil, input, ui.Discard())
+	_, err := basicAuth(t.Context(), nil, input, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -139,7 +139,7 @@ func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
 func TestGetTokenServerRequired(t *testing.T) {
 	dir := t.TempDir()
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), tin{}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), tin{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -155,7 +155,7 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", ""))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "prod"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -174,7 +174,7 @@ func TestGetTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r2.example.com", "c-1"), "tok-r2", time.Now().Add(time.Hour), "prod", "https://r2.example.com", "c-1"))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r2.example.com", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -216,7 +216,7 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	// The fast path must miss, causing the full path to fail on the broken
@@ -239,7 +239,7 @@ func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -316,7 +316,7 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -352,7 +352,7 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	// SAML under a non-interactive prompter fast-fails AUTH — the point here
@@ -384,7 +384,7 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -415,7 +415,7 @@ func TestGetTokenCachesMintedExpiry(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -449,7 +449,7 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 
 	var notices bytes.Buffer
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.New(&notices, strings.NewReader(""), true, false))
 	require.NoError(t, err)
@@ -485,7 +485,7 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := tokenCmd{dir: dir, store: store}
-	res, err := cmd.runWithParams(context.Background(), runParams{
+	res, err := cmd.runWithParams(t.Context(), runParams{
 		Server:     srv.URL,
 		Name:       "prod",
 		legacyShim: true,
@@ -530,11 +530,11 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-a"}},
 		ui.Discard())
 	require.NoError(t, err)
-	_, err = cmd.Execute(context.Background(),
+	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-b"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -576,7 +576,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -612,7 +612,7 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "missing"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -660,7 +660,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -681,7 +681,7 @@ func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -705,7 +705,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(key, "warm-tok", time.Now().Add(time.Hour), "legacy:foo", serverID, ""))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -756,7 +756,7 @@ func TestCacheReadErrorNoticedOnce(t *testing.T) {
 		store := &errCacheStore{CredStore: base, cacheErr: errors.New("disk failure")}
 		var notices bytes.Buffer
 		cmd := &tokenCmd{dir: dir, store: store}
-		_, err := cmd.Execute(context.Background(),
+		_, err := cmd.Execute(t.Context(),
 			tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 			ui.New(&notices, strings.NewReader(""), true, false))
 		require.NoError(t, err, "a cache read error must not block the full auth path")
@@ -828,7 +828,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.Error(t, err)
@@ -852,7 +852,7 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 	// config.yaml read is skipped (all three of server/cluster/caIn are
 	// non-empty) — the point of this test is storedCredToken's separate,
 	// unconditional config.Load call.
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{
 			s: map[string]string{
 				"server": "https://r.ex", "cluster": "c-1",
@@ -983,7 +983,7 @@ func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider"}}, &AuthProvider{Type: "pingProvider"}}
-	got, err := selectAuthProvider(context.Background(), ps, "pingProvider", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ps, "pingProvider", ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "pingProvider", got.GetType())
 }
@@ -991,7 +991,7 @@ func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 func TestSelectAuthProviderNotFound(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
-	_, err := selectAuthProvider(context.Background(), ps, "nope", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, "nope", ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -1001,7 +1001,7 @@ func TestSelectAuthProviderNotFound(t *testing.T) {
 func TestSelectAuthProviderSingle(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
-	got, err := selectAuthProvider(context.Background(), ps, "", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ps, "", ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "pingProvider", got.GetType())
 }
@@ -1009,7 +1009,7 @@ func TestSelectAuthProviderSingle(t *testing.T) {
 func TestSelectAuthProviderAmbiguousNoInput(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
-	_, err := selectAuthProvider(context.Background(), ps, "", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, "", ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -1060,7 +1060,7 @@ func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
 
 	dir := t.TempDir()
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -1143,7 +1143,7 @@ func TestGetTokenNoNameWritesCachingDisabledNotice(t *testing.T) {
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}}, p)
+	_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}}, p)
 	require.Error(t, err, "non-interactive local auth should fail")
 	assert.Contains(t, errBuf.String(), "caching disabled", "notice must appear in Err")
 }
@@ -1170,7 +1170,7 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	var ce *clierr.Error
@@ -1205,7 +1205,7 @@ func TestBasicAuthExtTokenResponse(t *testing.T) {
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	require.NoError(t, err)
@@ -1223,7 +1223,7 @@ func TestGetTokenCacheHitExtToken(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", "c-1"), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -1245,7 +1245,7 @@ func TestOAuthDeviceCodeFlowNoInputIsAuthError(t *testing.T) {
 
 	dir := t.TempDir()
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "devicecode"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -1269,7 +1269,7 @@ func TestOAuthDeviceCodeFlowNonTTYAllowed(t *testing.T) {
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
 		p)
 	require.Error(t, err, "device-code will fail on OAuth config/network, but not on the gate")
@@ -1290,7 +1290,7 @@ func TestOAuthAuthCodeFlowNoInputIsAuthError(t *testing.T) {
 
 	dir := t.TempDir()
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "authcode"}},
 		ui.Discard())
 	var ce *clierr.Error
@@ -1318,7 +1318,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "authcode"}},
 		p)
 	require.Error(t, err)
@@ -1346,7 +1346,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 	}))
 	defer rancherSrv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	// openBrowser stub: drives the local callback synchronously (queuing the
@@ -1402,7 +1402,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	}))
 	defer rancherSrv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	// openBrowser stub: never drives the callback — cancels the caller ctx
@@ -1468,7 +1468,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 	}
 	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider"}
 
-	_, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	_, err := oauthAuthCodeAuth(t.Context(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	assert.NotContains(t, string(body), "<script>", "reflected markup must be escaped, got %q", body)
 	assert.NotContains(t, string(body), "<img", "reflected markup must be escaped, got %q", body)
@@ -1535,7 +1535,7 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	var noticeBuf strings.Builder
 	p := ui.New(&noticeBuf, strings.NewReader(""), true, false)
 
-	tok, err := oauthAuthCodeAuth(context.Background(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, p)
+	tok, err := oauthAuthCodeAuth(t.Context(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, p)
 	require.NoError(t, err, "the real redirect must still be processed after a forged wrong-state request")
 	require.NotNil(t, tok)
 	assert.Contains(t, noticeBuf.String(), "invalid state",
@@ -1562,7 +1562,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 	defer srv.Close()
 
 	synctest.Test(t, func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		input := &loginInput{server: srv.URL}
 
 		go func() {
@@ -1592,7 +1592,7 @@ func (blockingReader) Read([]byte) (int, error) { select {} }
 
 func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var errBuf strings.Builder
 	// A blocking reader (not an empty reader): an empty reader hits EOF instantly,
@@ -1623,7 +1623,7 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader(), false, true)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	require.Error(t, err)
@@ -1671,7 +1671,7 @@ func TestGetTokenHostPortWarmCacheHit(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "host:8443", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -1691,7 +1691,7 @@ func TestGetTokenIPv6WarmCacheHit(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(context.Background(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "[::1]:8443", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
@@ -1717,7 +1717,7 @@ func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "malformed --server must not produce a fast-path cache hit")
@@ -1736,7 +1736,7 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "unsupported scheme --server must not produce a fast-path cache hit")
@@ -1782,7 +1782,7 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 	// Empty cache → cold path. --skip-verify bypasses the self-signed cert so
 	// the connection attempt can actually reach the test TLS server.
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{
 			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1"},
 			b: map[string]bool{"skip-verify": true},
@@ -1840,7 +1840,7 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{
 			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1"},
 			b: map[string]bool{"skip-verify": true},
@@ -1867,7 +1867,7 @@ func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// server must be rejected at the resolved-probe validation, not served from cache")
@@ -1890,7 +1890,7 @@ func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T)
 	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "malformed --server must be rejected at the resolved-probe validation, not served from cache")
@@ -1912,7 +1912,7 @@ func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
 	// Readable (empty) config.
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(),
+	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": emptyHost, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "https://:443 must not address a cache entry")
@@ -1947,7 +1947,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 		authProvider:    "localProvider",
 		usernameDefault: "alice",
 	}
-	tok, err := basicAuth(context.Background(), http.DefaultClient, input, p)
+	tok, err := basicAuth(t.Context(), http.DefaultClient, input, p)
 	require.NoError(t, err)
 
 	assert.Contains(t, errBuf.String(), "[alice]", "prompt label must include the default in brackets")
@@ -1979,7 +1979,7 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 	p := ui.New(&errBuf, newLineReader("  bob  ", "secret"), false, true)
 
 	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
-	_, err := basicAuth(context.Background(), http.DefaultClient, input, p)
+	_, err := basicAuth(t.Context(), http.DefaultClient, input, p)
 	require.NoError(t, err)
 	assert.Equal(t, "bob", gjson.GetBytes(gotBody, "username").String(), "padding must be trimmed from the sent username")
 }
@@ -2156,7 +2156,7 @@ func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")}
 	cmd := NewDeleteTokenCommand(dir, store).(runtime.ReadCommand)
 
-	_, err := cmd.Execute(context.Background(), tin{a: []string{"acme/u/c"}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)

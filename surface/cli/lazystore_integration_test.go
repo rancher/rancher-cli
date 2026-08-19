@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,7 +35,7 @@ func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "config", "delete-server", "acme"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "config", "delete-server", "acme"}))
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "delete-server must not write a credstore pin")
@@ -51,7 +50,7 @@ func TestAuthLogoutThroughRootWritesNoPin(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "auth", "logout", "acme"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "auth", "logout", "acme"}))
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "logout must not write a credstore pin")

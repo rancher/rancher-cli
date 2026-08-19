@@ -56,7 +56,7 @@ func TestLivePositionalDeleteProvisioningClusterCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "delete provisioning-cluster"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
@@ -73,7 +73,7 @@ func TestLivePositionalGetProvisioningClusterCandidates(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get provisioning-cluster"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
@@ -91,7 +91,7 @@ func TestLivePositionalProvisioningClusterNamespaceFlagOverride(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get provisioning-cluster"}
 	tail := []string{"--namespace", "fleet-west"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
 
@@ -109,7 +109,7 @@ func TestLivePositionalProvisioningClusterNamespacePathInjection(t *testing.T) {
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get provisioning-cluster"}
 	tail := []string{"--namespace", "a/b"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
 
@@ -131,7 +131,7 @@ func TestLivePositionalProvisioningClusterIDOnlyBoundary(t *testing.T) {
 		{ServerURL: srv.URL}, // empty token: caught by cap.Token=="" in fetchK8sResources
 		{Token: "downstream", IDOnly: true, ServerURL: srv.URL}, // exec-cred-only: caught by IDOnly branch
 	} {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		cancel()
 		assert.Nil(t, got)
@@ -147,7 +147,7 @@ func TestLivePositionalCapiClusterNotCompletable(t *testing.T) {
 	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get capi-cluster"}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
@@ -195,7 +195,7 @@ func TestProvisioningClusterPositionalSiteFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 

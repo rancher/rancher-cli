@@ -1,7 +1,6 @@
 package fidelity
 
 import (
-	"context"
 	"encoding/json"
 	"encoding/pem"
 	"net/http"
@@ -25,7 +24,7 @@ func TestDeleteStandardUserSurfacesLookupFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(context.Background())
+	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 403", "an HTTP lookup failure must never read as already-clean")
 }
@@ -38,7 +37,7 @@ func TestDeleteStandardUserSurfacesMalformed200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(context.Background())
+	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no data array")
 }
@@ -56,7 +55,7 @@ func TestDeleteStandardUserSurfacesDeleteFailure(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(context.Background())
+	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "u-stale")
 	assert.Contains(t, err.Error(), "status 403")
@@ -73,7 +72,7 @@ func TestDoJSONRedactsCredentialBodiesInErrors(t *testing.T) {
 	defer srv.Close()
 
 	tgt := newTestRealTarget(srv)
-	_, _, err := tgt.adminJSON(context.Background(), http.MethodPost, "/v3/tokens", map[string]any{}, http.StatusCreated)
+	_, _, err := tgt.adminJSON(t.Context(), http.MethodPost, "/v3/tokens", map[string]any{}, http.StatusCreated)
 	require.Error(t, err, "status 200 != want 201 must error")
 	assert.NotContains(t, err.Error(), "sentinel-sekrit",
 		"a token minted under an unexpected status is still live; the error must redact it")
@@ -126,13 +125,13 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	defer srv.Close()
 
 	tgt := newTestRealTarget(srv)
-	bearer, err := tgt.Bearer(context.Background(), IdentityStandard)
+	bearer, err := tgt.Bearer(t.Context(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/std-1:sec-1", bearer)
 	assert.Equal(t, []string{"lookup", "delete", "create", "grb", "login"}, order,
 		"the stale user is removed, the new user is created and bound to the baseline role, then logs in")
 
-	again, err := tgt.Bearer(context.Background(), IdentityStandard)
+	again, err := tgt.Bearer(t.Context(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the standard bearer is memoized")
 	assert.Len(t, order, 5, "memoization must not re-provision")
@@ -171,7 +170,7 @@ func TestNewRealTargetFromEnv(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "https://rancher.test", tgt.BaseURL(), "the trailing slash is trimmed")
 		require.NotNil(t, tgt.Client())
-		bearer, err := tgt.Bearer(context.Background(), IdentityAdmin)
+		bearer, err := tgt.Bearer(t.Context(), IdentityAdmin)
 		require.NoError(t, err)
 		assert.Equal(t, "admin-tok", bearer)
 	})
@@ -214,13 +213,13 @@ func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {
 	defer srv.Close()
 
 	tgt := newTestRealTarget(srv)
-	bearer, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	bearer, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/tok-rev:sec-rev", bearer, "the revoked bearer is the minted (now-deleted) credential")
 	assert.Equal(t, token.MintTokensPath+"/tok-rev", deletedPath,
 		"the delete targets the name embedded in the ext bearer, not a metadata.name")
 
-	again, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	again, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the revoked bearer is memoized")
 }
@@ -237,7 +236,7 @@ func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
 	defer srv.Close()
 
 	tgt := newTestRealTarget(srv)
-	_, err := tgt.Bearer(context.Background(), IdentityRevoked)
+	_, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not ext-shaped")
 	assert.NotContains(t, err.Error(), "plain-secret-xyz",
@@ -252,7 +251,7 @@ func TestLoginAcceptsNormanShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bearer, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+	bearer, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 	require.NoError(t, err)
 	assert.Equal(t, "norman-tok", bearer, "the Norman {token} shape is accepted as a fallback")
 }
@@ -266,7 +265,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 		}))
 		defer srv.Close()
-		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "status 401")
 	})
@@ -275,7 +274,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		srv.Close()
-		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 	})
 
@@ -286,7 +285,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"foo": "bar"})
 		}))
 		defer srv.Close()
-		_, err := newTestRealTarget(srv).login(context.Background(), "u", "p")
+		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no token in response")
 	})

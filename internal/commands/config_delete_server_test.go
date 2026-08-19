@@ -50,7 +50,7 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 		return nil, nil, deleteErr
 	}
 
-	_, err = cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	_, err = cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "keychain locked")
 
@@ -68,7 +68,7 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *testing.T) {
 	dir, store := seedDeleteServer(t, "acme", []string{"acme", "other"})
 
-	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "DeletedServer", res.Kind)
 
@@ -96,7 +96,7 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 func TestConfigDeleteServerDoesNotClearCurrentServerWhenDifferentServerDeleted(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "other", []string{"acme", "other"})
 
-	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.False(t, data["currentServerCleared"].(bool), "current server (\"other\") is untouched when a different server is deleted")
@@ -109,7 +109,7 @@ func TestConfigDeleteServerDoesNotClearCurrentServerWhenDifferentServerDeleted(t
 func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "", []string{"acme"})
 
-	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
+	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -124,7 +124,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	dir, store := seedDeleteServer(t, "", []string{"acme"})
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 
-	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, data["deletedCache"])
@@ -144,7 +144,7 @@ func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
 	_, err := NewConfigDeleteServer(dir).(*configDeleteServerCmd).Execute(
-		context.Background(), args{a: []string{"acme"}}, ui.Discard())
+		t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(config.PinPath(dir))
@@ -153,7 +153,7 @@ func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 
 func TestConfigDeleteServerErasesThroughHelper(t *testing.T) {
 	dir, statePath := seedExecLogout(t, "acme", "acme")
-	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(),
+	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 	assert.Empty(t, helperCreds(t, statePath), "helper-held credential erased before config removal")
@@ -166,7 +166,7 @@ func TestConfigDeleteServerErasesThroughHelper(t *testing.T) {
 func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 	dir, statePath := seedExecLogout(t, "acme", "acme")
 	t.Setenv("FAKEHELPER_MODE", "fail") // helper now refuses to erase
-	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(context.Background(),
+	_, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
 	assert.NotEmpty(t, helperCreds(t, statePath), "credential still held by the helper")
@@ -182,7 +182,7 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := testView{srvNames: []string{"acme"}}
-	got := configDeleteServerCmd{}.CompleteArgs(context.Background(), view)
+	got := configDeleteServerCmd{}.CompleteArgs(t.Context(), view)
 	assert.Equal(t, []string{"acme"}, got)
 }
 
@@ -198,7 +198,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
 		return nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
 	}}
-	_, err := cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.NotContains(t, err.Error(), "server config left untouched")
@@ -222,7 +222,7 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 			"locking the credential-helper records (another rancher process may be logging in/out): context deadline exceeded")
 	}
 
-	_, err := cmd.Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	_, err := cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)

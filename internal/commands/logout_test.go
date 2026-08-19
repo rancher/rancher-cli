@@ -41,7 +41,7 @@ func seedLogout(t *testing.T, current string, servers ...string) (string, config
 
 func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "LogoutResult", res.Kind)
 
@@ -65,7 +65,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 
 func TestLogoutByName(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -78,7 +78,7 @@ func TestLogoutByName(t *testing.T) {
 
 func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"nope"}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"nope"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -91,7 +91,7 @@ func TestLogoutUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 
 func TestLogoutAll(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -110,7 +110,7 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
 
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"acme"}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -131,7 +131,7 @@ func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
 
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -159,7 +159,7 @@ func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 	// Orphaned: cached against a host with no matching entry in cfg.Servers.
 	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1"))
 
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -178,7 +178,7 @@ func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 
 func TestLogoutNameAndAllIsValidation(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme")
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{a: []string{"acme"}, b: map[string]bool{"all": true}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -187,7 +187,7 @@ func TestLogoutNameAndAllIsValidation(t *testing.T) {
 
 func TestLogoutNoCurrentServer(t *testing.T) {
 	dir, _ := seedLogout(t, "", "acme") // no current server set
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
@@ -195,7 +195,7 @@ func TestLogoutNoCurrentServer(t *testing.T) {
 
 func TestLogoutCurrentServerMissing(t *testing.T) {
 	dir, _ := seedLogout(t, "ghost", "acme") // CurrentServer points at a name not in Servers
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
@@ -210,7 +210,7 @@ func TestLogoutCurrentServerNotInServersMap(t *testing.T) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
@@ -218,7 +218,7 @@ func TestLogoutCurrentServerNotInServersMap(t *testing.T) {
 
 func TestLogoutExecPolicyReportsHelper(t *testing.T) {
 	dir, statePath := seedExecLogout(t, "acme", "acme")
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
 	assert.Contains(t, df["acme"], "helper:fake")
@@ -227,7 +227,7 @@ func TestLogoutExecPolicyReportsHelper(t *testing.T) {
 
 func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
 	dir, statePath := seedExecLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
@@ -263,7 +263,7 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
 	require.NotEmpty(t, helperCreds(t, statePath), "precondition: helper holds the orphaned credential")
 
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 
@@ -271,7 +271,7 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the deleted orphan under its server name")
 	assert.Empty(t, helperCreds(t, statePath), "the orphaned helper credential must be erased")
 
-	leftovers, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
+	leftovers, err := config.DeleteOrphanedHelperCredentials(t.Context(), dir)
 	require.NoError(t, err)
 	assert.Empty(t, leftovers, "helper records must be fully deleted")
 }
@@ -304,7 +304,7 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	store, err := config.OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 
-	_, err = newLoginCmd(dir, store).Execute(context.Background(),
+	_, err = newLoginCmd(dir, store).Execute(t.Context(),
 		args{s: map[string]string{"server": "https://ghost.ex", "name": "ghost"}, b: map[string]bool{"token-stdin": true}},
 		stdinPrompter("id:secret"))
 	require.Error(t, err, "the config write must fail (symlink refusal)")
@@ -312,12 +312,12 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 
 	// logout --all reads the unchanged config (ghost is absent from it) yet
 	// must still delete the stranded helper credential via provenance.
-	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(),
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
 		args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded helper records")
 
-	leftovers, err := config.DeleteOrphanedHelperCredentials(context.Background(), dir)
+	leftovers, err := config.DeleteOrphanedHelperCredentials(t.Context(), dir)
 	require.NoError(t, err)
 	assert.Empty(t, leftovers)
 }
@@ -335,7 +335,7 @@ func TestLogoutAllClearsDanglingCurrentServer(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "acme"}, "id:sec"))
 
-	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
@@ -385,7 +385,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 // envelope carries currentServerCleared for programs.
 func TestLogoutTextAndCurrentServerClearedReported(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
@@ -401,7 +401,7 @@ func TestLogoutTextAndCurrentServerClearedReported(t *testing.T) {
 // pointer — it was not touched.
 func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(context.Background(), args{a: []string{"other"}}, ui.Discard())
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)

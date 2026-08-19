@@ -184,7 +184,7 @@ func TestSchemaDisclosureSizes(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		require.NoError(t, root.Run(context.Background(), append([]string{"rancher", "--config", dir}, args...)))
+		require.NoError(t, root.Run(t.Context(), append([]string{"rancher", "--config", dir}, args...)))
 		return out.Len()
 	}
 	assert.Less(t, run("schema", "-o", "json"), 20*1024, "bare TOC JSON")
@@ -201,7 +201,7 @@ func TestSchemaManifestGolden(t *testing.T) {
 
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"}))
 
 	var env struct {
 		Data json.RawMessage `json:"data"`
@@ -237,7 +237,7 @@ func TestSchemaTOCGolden(t *testing.T) {
 
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
 
 	var env struct {
 		Data json.RawMessage `json:"data"`
@@ -587,7 +587,7 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 
 	var out bytes.Buffer
 	root.Writer = &out
-	err = root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"})
+	err = root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "-o", "json"})
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -601,7 +601,7 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 
 	// The --all path must carry a non-empty globalFlags array (full manifest, not TOC).
 	out.Reset()
-	err = root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"})
+	err = root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "--all", "-o", "json"})
 	require.NoError(t, err)
 	var m2 map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m2))
@@ -623,7 +623,7 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
 
 	var env struct {
 		Data struct {
@@ -652,7 +652,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	root.Writer = &out
 	root.ErrWriter = &errOut
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "bogus-command-xyz"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "bogus-command-xyz"}))
 	assert.Equal(t, 2, gotCode)
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -661,7 +661,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 
 	gotCode, errOut = 0, bytes.Buffer{}
 	root.ErrWriter = &errOut
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "get", "bogus-kind-xyz"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "get", "bogus-kind-xyz"}))
 	assert.Equal(t, 2, gotCode)
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
@@ -681,7 +681,7 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	root.Writer = &out
 	root.ErrWriter = &errOut
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "version"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "version"}))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -690,7 +690,7 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	// A subgroup miss on the same literal name has no --version flag to
 	// point at (that flag is root-only) — it must get the generic hint.
 	errOut.Reset()
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "get", "version"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "get", "version"}))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -713,7 +713,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	// "cluster" under delete → must hint at provisioning-cluster.
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "cluster", "my-cluster"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "delete", "cluster", "my-cluster"}))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -721,7 +721,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 
 	// "clusters" under delete → same targeted hint.
 	errOut.Reset()
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "clusters", "my-cluster"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "delete", "clusters", "my-cluster"}))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -729,7 +729,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 
 	// unknown token under delete → generic hint, not the cluster-specific one.
 	errOut.Reset()
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "delete", "bogus-kind-xyz"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "delete", "bogus-kind-xyz"}))
 	var env3 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env3))
 	assert.Equal(t, "VALIDATION", env3.Data.Error.Code)
@@ -747,7 +747,7 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	root.ErrWriter = &errOut
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--bogus-flag"})
+	runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "--bogus-flag"})
 	require.Error(t, runErr)
 
 	var env errEnvelope
@@ -770,7 +770,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "-A"})
+		runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "-A"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -787,7 +787,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--all-namespaces"})
+		runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "--all-namespaces"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -804,7 +804,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "get", "pod", "--bogus-flag"})
+		runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "--bogus-flag"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -821,7 +821,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "create", "namespace", "foo", "-A"})
+		runErr := root.Run(t.Context(), []string{"rancher", "create", "namespace", "foo", "-A"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -838,7 +838,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "create", "namespace", "foo", "--bogus-flag"})
+		runErr := root.Run(t.Context(), []string{"rancher", "create", "namespace", "foo", "--bogus-flag"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -855,7 +855,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		root.ErrWriter = &errOut
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-		runErr := root.Run(context.Background(), []string{"rancher", "get", "-A"})
+		runErr := root.Run(t.Context(), []string{"rancher", "get", "-A"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
@@ -877,7 +877,7 @@ func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
 	create := &ucli.Command{Name: "create"}
 	root.Commands = []*ucli.Command{get, create}
 	root.Writer = &bytes.Buffer{}
-	_ = root.Run(context.Background(), []string{"rancher"}) // wires parent pointers via setupDefaults
+	_ = root.Run(t.Context(), []string{"rancher"}) // wires parent pointers via setupDefaults
 
 	err := errors.New("flag provided but not defined: -A")
 	getHint := allNamespacesEntry.hint(usageErrorInput{c: get, err: err})
@@ -907,7 +907,7 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	// the test process; keep the error as a return value instead.
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(context.Background(), []string{"rancher", "get", "cluster", "foo", "-o", "json"})
+	runErr := root.Run(t.Context(), []string{"rancher", "get", "cluster", "foo", "-o", "json"})
 	require.Error(t, runErr)
 
 	stderr := errOut.Bytes()
@@ -936,7 +936,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "schema", "-o", "json"}))
 	var env struct {
 		Data struct {
 			ReadOnly bool `json:"readOnly"`
@@ -946,7 +946,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	assert.False(t, env.Data.ReadOnly, "a corrupt config must degrade to not-read-only, not fail schema")
 
 	out.Reset()
-	require.NoError(t, root.Run(context.Background(), []string{
+	require.NoError(t, root.Run(t.Context(), []string{
 		"rancher", "--config", dir, "get", "--generate-shell-completion",
 	}))
 	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
@@ -973,7 +973,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	os.Args = argv
 	t.Cleanup(func() { os.Args = origArgs })
 
-	require.NoError(t, root.Run(context.Background(), argv))
+	require.NoError(t, root.Run(t.Context(), argv))
 	assert.Contains(t, out.String(), "get")
 	assert.Contains(t, out.String(), "auth")
 }
@@ -1003,7 +1003,7 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	root.Writer = &out
 	root.ErrWriter = &errOut
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "__completion", "bash"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "__completion", "bash"}))
 	assert.Equal(t, 2, gotCode, "an unmatched subcommand name is VALIDATION, exit 2, not urfave's own exit 3")
 
 	var env errEnvelope

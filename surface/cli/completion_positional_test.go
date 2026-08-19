@@ -105,7 +105,7 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 		},
 	}
 	sc := &recordingCompleter{}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := dispatchSite(ctx, CompletionSite{Kind: SitePositional, Index: 0, Partial: "x"}, d, sc, nil, nil)
@@ -142,7 +142,7 @@ func TestCompletionShellPositionalParity(t *testing.T) {
 			{Name: "shell", Type: "string", Required: true, Enum: runtime.ShellCompletionShells()},
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := dispatchSite(ctx, CompletionSite{Kind: SitePositional, Index: 0, Partial: "z"}, d, nil, nil, nil)

@@ -18,7 +18,7 @@ func TestReadCommandContract(t *testing.T) {
 	assert.Equal(t, ReadOnly, c.Describe().CommandType)
 	rc, ok := c.(ReadCommand)
 	require.True(t, ok, "fakeRead must satisfy ReadCommand")
-	res, err := rc.Execute(context.Background(), nil, nil)
+	res, err := rc.Execute(t.Context(), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "WidgetList", res.Kind)
 }
@@ -33,11 +33,11 @@ func TestMutatingCommandContract(t *testing.T) {
 	assert.Equal(t, Mutating, c.Describe().CommandType)
 	mc, ok := c.(MutatingCommand)
 	require.True(t, ok, "fakeMutating must satisfy MutatingCommand")
-	eff, exec, err := mc.Plan(context.Background(), nil)
+	eff, exec, err := mc.Plan(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
 	require.NotNil(t, exec)
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "ScaleResult", res.Kind)
 }

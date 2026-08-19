@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -22,7 +21,7 @@ func TestGetGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "get", "--generate-shell-completion"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "get", "--generate-shell-completion"}))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "pods:")
 	assert.Contains(t, out.String(), "po:")
@@ -44,7 +43,7 @@ func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "get", "--dr", "--generate-shell-completion"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "get", "--dr", "--generate-shell-completion"}))
 	assert.Empty(t, out.String(), "a flag-prefixed current word must not fall through to alias listing")
 }
 
@@ -72,7 +71,7 @@ func TestInspectGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "--config", dir, "inspect", "--generate-shell-completion"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "inspect", "--generate-shell-completion"}))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "po:")
 	assert.Contains(t, out.String(), "deploy:")
@@ -88,7 +87,7 @@ func TestInspectAliasPodDispatchesToPod(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "inspect", "po", "--help"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "inspect", "po", "--help"}))
 	assert.Contains(t, out.String(), "Inspect a pod")
 }
 
@@ -101,7 +100,7 @@ func TestInspectAliasDeployDispatchesToDeployment(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(context.Background(), []string{"rancher", "inspect", "deploy", "--help"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "inspect", "deploy", "--help"}))
 	assert.Contains(t, out.String(), "Inspect a deployment")
 }
 
@@ -144,7 +143,7 @@ func TestSubjectPositionalSiteFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 
@@ -205,7 +204,7 @@ func TestRoleValueSiteFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(context.Background(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
 		return out.String()
 	}
 

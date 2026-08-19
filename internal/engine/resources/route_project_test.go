@@ -89,7 +89,7 @@ func newRouteProjectFixture() (*routeProjectClient, *recFactory) {
 func TestRouteDownstreamNSPlainNamedOpMemberNamespacePasses(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	clusterID, ns, effCluster, scope, err := Route(context.Background(), fac, podKindDownstream(),
+	clusterID, ns, effCluster, scope, err := Route(t.Context(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "p-1"}}, true)
 	require.NoError(t, err)
 	assert.Equal(t, "c-abc", clusterID)
@@ -102,7 +102,7 @@ func TestRouteDownstreamNSPlainNamedOpMemberNamespacePasses(t *testing.T) {
 func TestRouteDownstreamNSPlainNamedOpNonMemberNamespaceRejected(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	_, _, _, _, err := Route(context.Background(), fac, podKindDownstream(),
+	_, _, _, _, err := Route(t.Context(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "namespace": "ns-z", "project": "p-1"}}, true)
 	require.Error(t, err)
 	var ce *clierr.Error
@@ -115,7 +115,7 @@ func TestRouteDownstreamNSPlainNamedOpNonMemberNamespaceRejected(t *testing.T) {
 func TestRouteNamespacePlusProjectWithMemberNamespacePasses(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	_, ns, _, scope, err := Route(context.Background(), fac, podKindDownstream(),
+	_, ns, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	assert.Equal(t, "ns-a", ns)
@@ -125,7 +125,7 @@ func TestRouteNamespacePlusProjectWithMemberNamespacePasses(t *testing.T) {
 func TestRouteDownstreamNSPlainListWithoutNamespaceCarriesMemberSet(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	_, ns, _, scope, err := Route(context.Background(), fac, podKindDownstream(),
+	_, ns, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	assert.Equal(t, "", ns)
@@ -141,7 +141,7 @@ func TestRouteTypedProjectScopesMemberFetch(t *testing.T) {
 		"namespaces": {Items: []unstructured.Unstructured{namespaceItem("ns-a")}},
 	}}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
-	_, _, _, scope, err := Route(context.Background(), fac, podKindDownstream(),
+	_, _, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	require.NotNil(t, scope)
@@ -161,7 +161,7 @@ func TestRouteTypedProjectScopesMemberFetch(t *testing.T) {
 func TestRouteNamespaceKindWithProjectIsNotRejected(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	clusterID, ns, _, scope, err := Route(context.Background(), fac, namespaceKindDownstream(),
+	clusterID, ns, _, scope, err := Route(t.Context(), fac, namespaceKindDownstream(),
 		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
 	require.NoError(t, err)
 	assert.Equal(t, "c-abc", clusterID)

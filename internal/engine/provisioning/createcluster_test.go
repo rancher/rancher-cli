@@ -157,7 +157,7 @@ func planCluster(t *testing.T, cmd runtime.Command, input runtime.Input) (safety
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "create cluster must be a MutatingCommand")
-	return mc.Plan(context.Background(), input)
+	return mc.Plan(t.Context(), input)
 }
 
 func requireValidation(t *testing.T, err error) *clierr.Error {
@@ -832,7 +832,7 @@ func TestCreateClusterPostApplyCreatorIDVerification(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, exec)
 
-			result, err := exec(context.Background())
+			result, err := exec(t.Context())
 			require.NoError(t, err)
 
 			if tc.wantWarning {

@@ -1,7 +1,6 @@
 package rbac
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -47,7 +46,7 @@ func planRevoke(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Eff
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "revoke must be MutatingCommand")
-	return mc.Plan(context.Background(), in)
+	return mc.Plan(t.Context(), in)
 }
 
 func TestRevokeAllRolesAtScope(t *testing.T) {
@@ -84,7 +83,7 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 	// Plan dry-runs every matched delete (prtb-pm and prtb-po, sorted).
 	assert.Equal(t, []bool{true, true}, client.deleteDryRuns)
 
-	res, err := exec(context.Background())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	// deletedNames: [dry-run pm, dry-run po] from Plan, then [real pm, real po] from exec.
 	assert.Equal(t, []string{"prtb-pm", "prtb-po", "prtb-pm", "prtb-po"}, client.deletedNames)
@@ -121,7 +120,7 @@ func TestRevokeSingleRole(t *testing.T) {
 	assert.True(t, eff.ConflictDetection, "single-binding revoke: rv precondition applies")
 	assert.Empty(t, eff.Warnings, "no sequential-deletion warning for a single binding")
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.NoError(t, err)
 	// dry-run (Plan) + real delete (exec) both on prtb-pm only.
 	assert.Equal(t, []string{"prtb-pm", "prtb-pm"}, client.deletedNames)
@@ -152,7 +151,7 @@ func TestRevokeByPrincipalMatchesUserPrincipalName(t *testing.T) {
 
 	assert.Equal(t, "clusterroletemplatebindings/crtb-ghost", eff.Target)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.NoError(t, err)
 	assert.Contains(t, client.deletedNames, "crtb-ghost")
 }
@@ -290,7 +289,7 @@ func TestRevokePartialFailure(t *testing.T) {
 	// Plan dry-runs all three matches.
 	assert.Equal(t, []bool{true, true, true}, client.deleteDryRuns)
 
-	_, execErr := exec(context.Background())
+	_, execErr := exec(t.Context())
 	require.Error(t, execErr)
 
 	var ce *clierr.Error
@@ -372,7 +371,7 @@ func TestRevokeGlobalScope(t *testing.T) {
 	assert.Equal(t, "grb-rv", eff.ResourceVersion)
 	assert.Equal(t, engine.LocalCluster, eff.Cluster)
 
-	_, err = exec(context.Background())
+	_, err = exec(t.Context())
 	require.NoError(t, err)
 
 	// Global scope: namespace is always "".

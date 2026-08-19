@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -21,7 +20,7 @@ func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	t.Parallel()
 	t.Run("no context and no RANCHER_CLI_URL stays NOT_LOGGED_IN", func(t *testing.T) {
 		t.Parallel()
-		_, err := Preflight(context.Background(), config.Effective{})
+		_, err := Preflight(t.Context(), config.Effective{})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
@@ -29,7 +28,7 @@ func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	})
 	t.Run("URL resolved but no token stays AUTH with the login-or-env hint", func(t *testing.T) {
 		t.Parallel()
-		_, err := Preflight(context.Background(), config.Effective{URL: "https://r.ex"})
+		_, err := Preflight(t.Context(), config.Effective{URL: "https://r.ex"})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)

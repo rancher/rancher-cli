@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -29,7 +28,7 @@ func TestGetServersJSONCarriesData(t *testing.T) {
 	dir := t.TempDir()
 	writeServersConfig(t, dir)
 
-	res, err := NewServerLs(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewServerLs(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "ServerList", res.Kind)
 
@@ -50,7 +49,7 @@ func TestGetServersTabular(t *testing.T) {
 	dir := t.TempDir()
 	writeServersConfig(t, dir)
 
-	res, err := NewServerLs(dir).(runtime.ReadCommand).Execute(context.Background(), args{}, ui.Discard())
+	res, err := NewServerLs(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
@@ -67,6 +66,6 @@ func TestGetServersTabular(t *testing.T) {
 func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := testView{srvNames: []string{"acme", "beta"}}
-	got := serverSwitchCmd{}.CompleteArgs(context.Background(), view)
+	got := serverSwitchCmd{}.CompleteArgs(t.Context(), view)
 	assert.Equal(t, []string{"acme", "beta"}, got)
 }

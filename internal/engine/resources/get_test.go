@@ -158,7 +158,7 @@ func execGet(t *testing.T, cmd runtime.Command, in runtime.Input) runtime.Result
 	t.Helper()
 	rc, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok, "get must be a ReadCommand")
-	res, err := rc.Execute(context.Background(), in, nil)
+	res, err := rc.Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	return res
 }
@@ -286,7 +286,7 @@ func TestGetClusterNamedAmbiguousDisplayName(t *testing.T) {
 		"prod": clierr.New(clierr.CodeAmbiguousSelection, "2 clusters have display name \"prod\"").
 			WithCandidates([]clierr.Candidate{{ID: "c-m-abc", Name: "prod"}, {ID: "c-m-def", Name: "prod"}}),
 	}}
-	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"prod"}}, nil)
+	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"prod"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -300,7 +300,7 @@ func TestGetClusterNamedMiss(t *testing.T) {
 		"missing": clierr.New(clierr.CodeNotFound, "cluster not found: \"missing\"").
 			WithCandidates([]clierr.Candidate{{ID: "local", Name: "local"}, {ID: "c-m-abc", Name: "prod"}}),
 	}}
-	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"missing"}}, nil)
+	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"missing"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -350,7 +350,7 @@ func TestGetDownstreamNamespacedNamedRequiresNamespace(t *testing.T) {
 	// get pod web --cluster prod, no --namespace → VALIDATION (named op).
 	byName := NewGet(k, &recFactory{client: &memClient{items: []unstructured.Unstructured{podObj("web")}}, resolve: map[string]string{"prod": "c-abc"}})
 	rc := byName.(runtime.ReadCommand)
-	_, err := rc.Execute(context.Background(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}}, nil)
+	_, err := rc.Execute(t.Context(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -377,7 +377,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	// F3: get by name with an empty --cluster must NOT silently target "local".
 	byName := NewGet(k, &recFactory{client: &memClient{items: []unstructured.Unstructured{projectObj("p-1", "web", "c-abc")}}})
 	rc := byName.(runtime.ReadCommand)
-	_, err := rc.Execute(context.Background(), input{args: []string{"web"}}, nil)
+	_, err := rc.Execute(t.Context(), input{args: []string{"web"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -398,7 +398,7 @@ func TestGetNamedNotFoundCurated(t *testing.T) {
 	k := mustKind(t, "user")
 	client := &memClient{getErr: kinds.NotFoundCurated(k, "u-xxx")}
 	cmd := NewGet(k, &recFactory{client: client})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -416,7 +416,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 		errs: []error{kinds.NotFoundCurated(k, "missing")},
 	}
 	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-	_, err := cmd.Execute(context.Background(), input{
+	_, err := cmd.Execute(t.Context(), input{
 		args: []string{"missing"},
 		b:    map[string]bool{"wait": true},
 	}, nil)
@@ -439,7 +439,7 @@ func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
 		WithHint("token management: auth list-tokens; kubeconfig: the default exec-credential mode")
 	client := &delClient{getErr: alreadyCurated}
 	cmd := NewGet(mustKind(t, "token"), &recFactory{client: client})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"t-xxx"}}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"t-xxx"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -456,7 +456,7 @@ func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
 	rbacErr := clierr.New(clierr.CodeRBAC, "forbidden")
 	client := &delClient{getErr: rbacErr}
 	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
-	_, err := cmd.(runtime.ReadCommand).Execute(context.Background(), input{args: []string{"u-xxx"}}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -543,7 +543,7 @@ func TestRoutePolicyMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			gotCluster, gotNS, _, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			gotCluster, gotNS, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.named)
 			if tt.wantErrCode != "" {
 				var ce *clierr.Error
 				require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
@@ -589,7 +589,7 @@ func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			_, _, _, _, err := Route(context.Background(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			_, _, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.named)
 			require.NoError(t, err, "no --project flag must not reject a non-scopable kind")
 		})
 	}
@@ -626,7 +626,7 @@ func TestGetListRendersRealObjectsThroughOutputRender(t *testing.T) {
 			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
 
 			var buf bytes.Buffer
-			_, ce := runtime.Run(context.Background(), cmd, input{}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			_, ce := runtime.Run(t.Context(), cmd, input{}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 
 			var env struct {
@@ -656,7 +656,7 @@ func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
 			cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
 
 			var buf bytes.Buffer
-			_, ce := runtime.Run(context.Background(), cmd, input{args: []string{"prod"}}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
+			_, ce := runtime.Run(t.Context(), cmd, input{args: []string{"prod"}}, runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 
 			var env struct {
@@ -763,7 +763,7 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 			t.Parallel()
 			cmd, in := newGetFixture(t, obj)
 			var buf bytes.Buffer
-			_, ce := runtime.Run(context.Background(), cmd, in,
+			_, ce := runtime.Run(t.Context(), cmd, in,
 				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 			doc := decodeEnvelopeDyn(t, buf.Bytes(), format)
@@ -779,7 +779,7 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 			t.Parallel()
 			cmd, in := newGetListFixture(t, obj)
 			var buf bytes.Buffer
-			_, ce := runtime.Run(context.Background(), cmd, in,
+			_, ce := runtime.Run(t.Context(), cmd, in,
 				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 			doc := decodeEnvelopeDyn(t, buf.Bytes(), format)
@@ -803,7 +803,7 @@ func TestGetWaitStampsSummary(t *testing.T) {
 			conditionObj("Ready", "True"),
 		}}
 		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-		res, err := cmd.Execute(context.Background(), input{
+		res, err := cmd.Execute(t.Context(), input{
 			args: []string{"c-abc"},
 			b:    map[string]bool{"wait": true},
 		}, nil)
@@ -838,7 +838,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 			k := mustKind(t, "gitrepo")
 			client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
 			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-			res, err := cmd.Execute(context.Background(), input{
+			res, err := cmd.Execute(t.Context(), input{
 				args: []string{"my-repo"},
 				b:    map[string]bool{"wait": true},
 			}, nil)
@@ -855,7 +855,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 			k := mustKind(t, "pod")
 			client := &seqClient{objs: []*unstructured.Unstructured{freshReadyObj()}}
 			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-			res, err := cmd.Execute(context.Background(), input{
+			res, err := cmd.Execute(t.Context(), input{
 				args: []string{"my-pod"},
 				b:    map[string]bool{"wait": true},
 				s:    map[string]string{"namespace": "default", "for": "condition=Ready", "cluster": "local"},
@@ -878,7 +878,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 			k := mustKind(t, "gitrepo")
 			client := &seqClient{objs: []*unstructured.Unstructured{freshStalledObj()}}
 			cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
-			res, err := cmd.Execute(context.Background(), input{
+			res, err := cmd.Execute(t.Context(), input{
 				args: []string{"my-repo"},
 				b:    map[string]bool{"wait": true},
 				s:    map[string]string{"for": "condition=Stalled=True"},
