@@ -329,11 +329,11 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 }
 
 func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
-	var authProviderHits int32
+	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
-			atomic.AddInt32(&authProviderHits, 1)
+			authProviderHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
 		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
@@ -359,16 +359,16 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 	// is that the flow reached the provider dance at all.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits), "a rejected mint must fall through to the interactive flow")
+	assert.Equal(t, int32(1), authProviderHits.Load(), "a rejected mint must fall through to the interactive flow")
 }
 
 // TestGetTokenFallsBackToInteractiveWithNoStoredCredential covers the "no
 // stored credential exists" half of the fallback.
 func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
-	var authProviderHits int32
+	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
-			atomic.AddInt32(&authProviderHits, 1)
+			authProviderHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
 			return
@@ -389,7 +389,7 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 		ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits), "no stored credential must fall through to the interactive flow")
+	assert.Equal(t, int32(1), authProviderHits.Load(), "no stored credential must fall through to the interactive flow")
 }
 
 // TestGetTokenCachesMintedExpiry is the round-2 repro for finding 1: the
@@ -549,11 +549,11 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 // minting — a raw, unresolved display name must never reach spec.clusterName.
 func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var gotCluster, gotAuth string
-	var listHits int32
+	var listHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == clustersPath:
-			atomic.AddInt32(&listHits, 1)
+			listHits.Add(1)
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-m-abc"},"spec":{"displayName":"prod"}}]}`))
@@ -581,7 +581,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "c-m-abc", gotCluster, "the resolved id, not the raw display name, must reach the mint")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits))
+	assert.Equal(t, int32(1), listHits.Load())
 	assert.Equal(t, "Bearer stored-login-token", gotAuth, "cluster resolution uses the stored credential, not a fresh session")
 }
 
@@ -589,14 +589,14 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 // finding 3's "unresolvable → propagate the resolution error" half: an
 // unresolvable --cluster must fail directly, never mint an unscoped token.
 func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
-	var mintHits int32
+	var mintHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case clustersPath:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[]}`))
 		case MintTokensPath:
-			atomic.AddInt32(&mintHits, 1)
+			mintHits.Add(1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -618,7 +618,7 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an unresolvable cluster must never reach the mint call")
+	assert.Equal(t, int32(0), mintHits.Load(), "an unresolvable cluster must never reach the mint call")
 }
 
 // TestGetTokenClusterIDDisplayCollisionIsAmbiguous is the round-4 repro:
@@ -806,11 +806,11 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 // network/TLS failures too) must surface as the real error, never papered
 // over as "interactive login required".
 func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
-	var authProviderHits int32
+	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
-			atomic.AddInt32(&authProviderHits, 1)
+			authProviderHits.Add(1)
 			w.WriteHeader(http.StatusNotFound)
 		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -834,7 +834,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required")
 	assert.Contains(t, err.Error(), "500")
-	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "a real mint failure must not fall through to the interactive flow")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a real mint failure must not fall through to the interactive flow")
 }
 
 // TestGetTokenNoticesUnreadableConfigOnStoredCredPath is the round-2 repro
@@ -1338,9 +1338,9 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 	}))
 	defer idp.Close()
 
-	var rancherHits int32
+	var rancherHits atomic.Int32
 	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&rancherHits, 1)
+		rancherHits.Add(1)
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{}`))
 	}))
@@ -1383,7 +1383,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&rancherHits),
+	assert.Equal(t, int32(0), rancherHits.Load(),
 		"Rancher login must never be reached once the caller context is cancelled")
 }
 
@@ -1394,9 +1394,9 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	// failure or wait for the flow timeout.
 	t.Parallel()
 
-	var rancherHits int32
+	var rancherHits atomic.Int32
 	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&rancherHits, 1)
+		rancherHits.Add(1)
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{}`))
 	}))
@@ -1428,7 +1428,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&rancherHits))
+	assert.Equal(t, int32(0), rancherHits.Load())
 }
 
 // DR-009 repro: the loopback callback used to reflect error/error_description
@@ -1754,10 +1754,10 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 // connection succeeds (via --skip-verify) and the server records the hit (GREEN).
 func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	t.Parallel()
-	var hits int32
+	var hits atomic.Int32
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
-			atomic.AddInt32(&hits, 1)
+			hits.Add(1)
 			// Return a provider so the code advances past provider discovery.
 			// The interactive prompter (ui.Discard, NoInput=true) then fails
 			// with CodeAuth — the point is the server was reached.
@@ -1791,7 +1791,7 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	// Non-interactive localProvider → CodeAuth; the important signal is that
 	// the test server was hit, proving https://addr reached the connection path.
 	require.Error(t, err)
-	assert.Greater(t, atomic.LoadInt32(&hits), int32(0),
+	assert.Greater(t, hits.Load(), int32(0),
 		"normalised https://host:port must reach the connection path, not error on a schemeless URL")
 }
 
@@ -1815,10 +1815,10 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 		t.Skip("IPv6 loopback not available on this host:", lerr)
 	}
 
-	var hits int32
+	var hits atomic.Int32
 	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
-			atomic.AddInt32(&hits, 1)
+			hits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
 			return
@@ -1847,7 +1847,7 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 		},
 		ui.Discard())
 	require.Error(t, err)
-	assert.Greater(t, atomic.LoadInt32(&hits), int32(0),
+	assert.Greater(t, hits.Load(), int32(0),
 		"normalised https://[::1]:port must reach the connection path, not error on a schemeless IPv6 URL")
 }
 

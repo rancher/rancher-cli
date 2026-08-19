@@ -96,10 +96,10 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			useTokenFakeHelper(t, mode)
 
-			var authProviderHits int32
+			var authProviderHits atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/v1-public/authproviders" {
-					atomic.AddInt32(&authProviderHits, 1)
+					authProviderHits.Add(1)
 				}
 				w.WriteHeader(http.StatusNotFound)
 			}))
@@ -118,7 +118,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 				ui.Discard())
 			require.Error(t, err, "a hard helper failure must not be swallowed")
 			assert.Contains(t, err.Error(), "credential helper", "the real helper error must surface")
-			assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits),
+			assert.Equal(t, int32(0), authProviderHits.Load(),
 				"a hard helper failure must not fall through to the interactive flow")
 		})
 	}
@@ -167,10 +167,10 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	useTokenFakeHelper(t, "notfound")
 
-	var authProviderHits int32
+	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1-public/authproviders" {
-			atomic.AddInt32(&authProviderHits, 1)
+			authProviderHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
 			return
@@ -194,6 +194,6 @@ func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	// the flow reached the interactive provider dance at all.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&authProviderHits),
+	assert.Equal(t, int32(1), authProviderHits.Load(),
 		"a clean helper miss must fall through to the interactive flow")
 }
