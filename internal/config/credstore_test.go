@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,9 +47,8 @@ func TestOpenStoreFilePolicy(t *testing.T) {
 
 func TestOpenStoreUnknownPolicyErrors(t *testing.T) {
 	_, err := OpenStore("keyChain", t.TempDir())
-	if err == nil || !strings.Contains(err.Error(), "keychain, file, auto") {
-		t.Fatalf("unknown policy: got %v, want error listing valid values", err)
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "keychain, file, auto")
 }
 
 func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
@@ -474,7 +472,7 @@ func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
 	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrNoToken)
-	assert.Contains(t, err.Error(), "no session bus")
+	assert.ErrorContains(t, err, "no session bus")
 }
 
 // TestKeyringUnreachableGetSurfacesFileStoreFailure: an unreachable
@@ -489,8 +487,8 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no session bus")
-	assert.Contains(t, err.Error(), "file credential store")
+	assert.ErrorContains(t, err, "no session bus")
+	assert.ErrorContains(t, err, "file credential store")
 }
 
 // TestKeyringUnreachableDeleteDeletesFile: delete under an unreachable
@@ -532,7 +530,7 @@ func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 	err := s.SetToken(ServerRef{Name: "prod"}, "oversized-token")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "unreachable")
-	assert.Contains(t, err.Error(), keyring.ErrSetDataTooBig.Error())
+	assert.ErrorContains(t, err, keyring.ErrSetDataTooBig.Error())
 }
 
 // TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
@@ -547,8 +545,8 @@ func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	err := s.SetToken(ServerRef{Name: "prod"}, "new-token")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unreachable")
-	assert.Contains(t, err.Error(), EnvCredentialStore+"=file")
+	assert.ErrorContains(t, err, "unreachable")
+	assert.ErrorContains(t, err, EnvCredentialStore+"=file")
 	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "plaintext credentials.yaml must not be created")
 }

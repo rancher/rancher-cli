@@ -45,7 +45,7 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		err := atomicWriteFile(link, []byte("attack"), 0600)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "refusing to write through symlink")
+		assert.ErrorContains(t, err, "refusing to write through symlink")
 
 		b, err := os.ReadFile(target)
 		require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		err := atomicWriteFile(path, []byte("new"), 0600)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "boom")
+		assert.ErrorContains(t, err, "boom")
 
 		entries, rerr := os.ReadDir(dir)
 		require.NoError(t, rerr)

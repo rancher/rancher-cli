@@ -51,7 +51,7 @@ func TestResolveDownstreamOnlyRejectsLocal(t *testing.T) {
 	_, err := Resolve(t.Context(), factory, target, input{s: map[string]string{engine.FlagCluster: "local"}})
 	require.Error(t, err)
 	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
-	assert.Contains(t, err.Error(), "only runs on a downstream cluster")
+	assert.ErrorContains(t, err, "only runs on a downstream cluster")
 }
 
 func TestResolveLocalOnlyRejectsExplicitDownstreamCluster(t *testing.T) {
@@ -62,7 +62,7 @@ func TestResolveLocalOnlyRejectsExplicitDownstreamCluster(t *testing.T) {
 	_, err := Resolve(t.Context(), factory, target, input{s: map[string]string{engine.FlagCluster: "prod"}})
 	require.Error(t, err)
 	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
-	assert.Contains(t, err.Error(), "local-only target")
+	assert.ErrorContains(t, err, "local-only target")
 }
 
 func TestResolveLocalOnlyAllowsExplicitLocal(t *testing.T) {
@@ -120,8 +120,8 @@ func TestResolveServerFallbackChain(t *testing.T) {
 		_, err := Resolve(t.Context(), factory, target, input{})
 		require.Error(t, err)
 		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
-		assert.Contains(t, err.Error(), "single-node Docker install")
-		assert.Contains(t, err.Error(), "docker logs")
+		assert.ErrorContains(t, err, "single-node Docker install")
+		assert.ErrorContains(t, err, "docker logs")
 	})
 }
 
@@ -182,7 +182,7 @@ func TestResolveKubeAPIAuth(t *testing.T) {
 		_, err := Resolve(t.Context(), factory, target, input{s: map[string]string{engine.FlagCluster: "c-2"}})
 		require.Error(t, err)
 		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
-		assert.Contains(t, err.Error(), "authorized cluster endpoint")
+		assert.ErrorContains(t, err, "authorized cluster endpoint")
 	})
 }
 

@@ -277,7 +277,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 	assert.Contains(t, ce.Message, rke2ReleasePath, "the surfaced error must be rke2's — the deterministic winner, never whichever raced first")
 	assert.NotContains(t, ce.Message, k3sReleasePath, "the unwrapped error must be rke2's alone, not a merged/generic one")
 
-	assert.Contains(t, err.Error(), k3sReleasePath, "the k3s failure must be visible somewhere, not silently dropped")
+	assert.ErrorContains(t, err, k3sReleasePath, "the k3s failure must be visible somewhere, not silently dropped")
 }
 
 // TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure

@@ -89,7 +89,7 @@ func TestHelperRecordsLockBoundedWait(t *testing.T) {
 
 	err := withHelperRecordsLock(t.Context(), dir, func(*helperRecords) error { return nil })
 	require.Error(t, err, "acquisition must give up after the bounded wait")
-	assert.Contains(t, err.Error(), "another rancher process")
+	assert.ErrorContains(t, err, "another rancher process")
 }
 
 func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
@@ -195,7 +195,7 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "token NOT stored")
+	assert.ErrorContains(t, err, "token NOT stored")
 	// The fake helper logs every invocation; no log = never invoked.
 	_, statErr := os.Stat(statePath)
 	assert.True(t, os.IsNotExist(statErr), "helper must never have been invoked")

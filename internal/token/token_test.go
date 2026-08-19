@@ -687,7 +687,7 @@ func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "legacy:")
+	assert.ErrorContains(t, ce, "legacy:")
 }
 
 // TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup verifies that the
@@ -711,7 +711,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce, "must fail with a VALIDATION error")
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "legacy:")
+	assert.ErrorContains(t, ce, "legacy:")
 
 	// The cache entry must be untouched — it was never served.
 	tok, _, cerr := store.GetCachedCred(key)
@@ -833,7 +833,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 		ui.Discard())
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required")
-	assert.Contains(t, err.Error(), "500")
+	assert.ErrorContains(t, err, "500")
 	assert.Equal(t, int32(0), authProviderHits.Load(), "a real mint failure must not fall through to the interactive flow")
 }
 
@@ -1115,7 +1115,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Error(), "--cluster is required")
+		assert.ErrorContains(t, ce, "--cluster is required")
 	})
 
 	t.Run("empty cluster on shim path does not error", func(t *testing.T) {
@@ -1323,7 +1323,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 		p)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required", "non-TTY must bypass the gate")
-	assert.Contains(t, err.Error(), "callback port", "should fail past the gate on the forced port error")
+	assert.ErrorContains(t, err, "callback port", "should fail past the gate on the forced port error")
 }
 
 func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
@@ -1627,7 +1627,7 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "404", "a 404 from /v1-public/authproviders must surface as an error")
+	assert.ErrorContains(t, err, "404", "a 404 from /v1-public/authproviders must surface as an error")
 	mu.Lock()
 	defer mu.Unlock()
 	require.NotEmpty(t, paths)
@@ -1871,7 +1871,7 @@ func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// server must be rejected at the resolved-probe validation, not served from cache")
-	assert.Contains(t, err.Error(), "ftp://host", "error must name the invalid resolved server")
+	assert.ErrorContains(t, err, "ftp://host", "error must name the invalid resolved server")
 }
 
 // TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe is the fifth-re-review
@@ -1894,7 +1894,7 @@ func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T)
 		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "malformed --server must be rejected at the resolved-probe validation, not served from cache")
-	assert.Contains(t, err.Error(), malformed, "error must name the invalid resolved server")
+	assert.ErrorContains(t, err, malformed, "error must name the invalid resolved server")
 }
 
 // TestGetTokenEmptyHostnameServerIsRejected verifies that a --server value with
@@ -1916,7 +1916,7 @@ func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
 		tin{s: map[string]string{"server": emptyHost, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "https://:443 must not address a cache entry")
-	assert.Contains(t, err.Error(), emptyHost, "error must name the invalid resolved server")
+	assert.ErrorContains(t, err, emptyHost, "error must name the invalid resolved server")
 }
 
 // TestBasicAuthUsernameDefault verifies that a non-empty UsernameDefault on
@@ -2132,7 +2132,7 @@ func TestResolveConnNoAmbientRequiresServer(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "--server is required")
+	assert.ErrorContains(t, ce, "--server is required")
 }
 
 // errDeleteCacheStore wraps a CredStore but fails DeleteCachedCred with a

@@ -82,7 +82,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 		})
 		_, err := RancherVersion(t.Context(), effFor(t, srv))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "/rancherversion")
+		assert.ErrorContains(t, err, "/rancherversion")
 	})
 
 	t.Run("valid JSON but no Version field", func(t *testing.T) {
@@ -93,7 +93,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 		})
 		_, err := RancherVersion(t.Context(), effFor(t, srv))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no Version field")
+		assert.ErrorContains(t, err, "no Version field")
 	})
 }
 
@@ -108,7 +108,7 @@ func TestRancherVersionNon200ReturnsError(t *testing.T) {
 
 	_, err := RancherVersion(t.Context(), effFor(t, srv))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "503")
+	assert.ErrorContains(t, err, "503")
 }
 
 // TestRancherVersionUnreachableReturnsError pins the connectivity-failure path:

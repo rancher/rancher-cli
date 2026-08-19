@@ -111,7 +111,7 @@ func TestRenderRejectsUnknownFormat(t *testing.T) {
 			var buf bytes.Buffer
 			err := Render(&buf, format, &Envelope{Data: map[string]string{"name": "w1"}})
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "unsupported output format")
+			assert.ErrorContains(t, err, "unsupported output format")
 			assert.Empty(t, buf.String())
 		})
 	}
@@ -125,7 +125,7 @@ func TestRenderTemplateEmptySource(t *testing.T) {
 	var buf bytes.Buffer
 	err := Render(&buf, TemplatePrefix, &Envelope{Data: map[string]string{"name": "w1"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "empty template source")
+	assert.ErrorContains(t, err, "empty template source")
 	assert.Empty(t, buf.String(), "an empty template source must render nothing")
 }
 
@@ -134,7 +134,7 @@ func TestRenderTemplateInvalidSource(t *testing.T) {
 	var buf bytes.Buffer
 	err := Render(&buf, TemplatePrefix+"{{", &Envelope{Data: map[string]string{"name": "w1"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid template:")
+	assert.ErrorContains(t, err, "invalid template:")
 }
 
 // TestRenderJSONNoHTMLEscape above pins the -o json path. The two below cover
@@ -337,6 +337,6 @@ func TestRenderTableAndNameNeverMarshal(t *testing.T) {
 	buf.Reset()
 	err := Render(&buf, "bogus-format", env)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported output format",
+	assert.ErrorContains(t, err, "unsupported output format",
 		"format error precedes any marshal")
 }

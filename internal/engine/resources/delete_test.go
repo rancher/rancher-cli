@@ -366,7 +366,7 @@ func TestWaitStalledScopedToOptInKinds(t *testing.T) {
 		client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "stalled")
+		assert.ErrorContains(t, err, "stalled")
 
 		// Non-opt-in kind: keeps polling to the eventual Ready.
 		ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})

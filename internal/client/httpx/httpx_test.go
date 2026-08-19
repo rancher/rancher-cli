@@ -89,7 +89,7 @@ func TestNew(t *testing.T) {
 	t.Run("invalid CA cert PEM", func(t *testing.T) {
 		_, err := New(Options{CACert: "not-valid-pem"})
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to append CA certs from PEM")
+		assert.ErrorContains(t, err, "failed to append CA certs from PEM")
 	})
 
 	t.Run("proxy from environment", func(t *testing.T) {
@@ -174,7 +174,7 @@ func TestFunctionalRoundTrip(t *testing.T) {
 
 		_, err = client.Do(req)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "certificate")
+		assert.ErrorContains(t, err, "certificate")
 	})
 }
 

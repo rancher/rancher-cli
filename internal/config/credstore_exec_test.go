@@ -47,7 +47,7 @@ func TestExecStoreHelperFailure(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "deliberate failure", "helper stderr must surface")
+	assert.ErrorContains(t, err, "deliberate failure", "helper stderr must surface")
 	assert.NotErrorIs(t, err, ErrNoToken)
 }
 
@@ -57,7 +57,7 @@ func TestExecStoreGarbageResponse(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "rancher-credential-fake")
+	assert.ErrorContains(t, err, "rancher-credential-fake")
 }
 
 func TestExecStoreMissingBinary(t *testing.T) {
@@ -66,8 +66,8 @@ func TestExecStoreMissingBinary(t *testing.T) {
 	require.NoError(t, err, "construction is lazy; failure surfaces on use")
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `credential helper "rancher-credential-nosuch" not found in PATH`)
-	assert.Contains(t, err.Error(), "CREDENTIAL_HELPERS.md")
+	assert.ErrorContains(t, err, `credential helper "rancher-credential-nosuch" not found in PATH`)
+	assert.ErrorContains(t, err, "CREDENTIAL_HELPERS.md")
 }
 
 func TestExecStoreTimeout(t *testing.T) {
@@ -78,8 +78,8 @@ func TestExecStoreTimeout(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "timed out")
-	assert.Contains(t, err.Error(), "rancher-credential-fake")
+	assert.ErrorContains(t, err, "timed out")
+	assert.ErrorContains(t, err, "rancher-credential-fake")
 }
 
 func TestExecStoreCanonicalWireIdentity(t *testing.T) {
@@ -139,7 +139,7 @@ func TestExecStoreMalformedExpiresAt(t *testing.T) {
 	st := newExecStore("fake", t.TempDir())
 	_, err := st.GetToken(execRef())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "malformed expiresAt")
+	assert.ErrorContains(t, err, "malformed expiresAt")
 	assert.NotErrorIs(t, err, ErrNoToken, "malformed expiry is never a quiet miss")
 }
 
@@ -148,7 +148,7 @@ func TestExecStoreRepeatedlyExpired(t *testing.T) {
 	st := newExecStore("fake", t.TempDir())
 	_, err := st.GetToken(execRef())
 	require.Error(t, err, "one retry then hard error, no loop")
-	assert.Contains(t, err.Error(), "expired")
+	assert.ErrorContains(t, err, "expired")
 }
 
 func TestExecStoreShortLivedToLongLivedTransitionClearsExpiry(t *testing.T) {

@@ -71,7 +71,7 @@ func TestValidateRejectsDuplicateNames(t *testing.T) {
 	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate")
+	assert.ErrorContains(t, err, "duplicate")
 }
 
 func TestValidateRejectsMutatingWithoutBinding(t *testing.T) {
@@ -80,7 +80,7 @@ func TestValidateRejectsMutatingWithoutBinding(t *testing.T) {
 	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no resolver binding")
+	assert.ErrorContains(t, err, "no resolver binding")
 }
 
 func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
@@ -90,14 +90,14 @@ func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
 		reg.Register(fakeRead{d: Descriptor{Name: "x", CommandType: Mutating}})
 		err := reg.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "commandType")
+		assert.ErrorContains(t, err, "commandType")
 	})
 	t.Run("mutating command declared readOnly", func(t *testing.T) {
 		reg := NewRegistry(stubResolver{})
 		reg.Register(fakeMutating{d: Descriptor{Name: "y", CommandType: ReadOnly}})
 		err := reg.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "commandType")
+		assert.ErrorContains(t, err, "commandType")
 	})
 }
 
@@ -199,7 +199,7 @@ func TestValidateSuccessExitCodes(t *testing.T) {
 				return
 			}
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tc.wantErr)
+			assert.ErrorContains(t, err, tc.wantErr)
 		})
 	}
 }

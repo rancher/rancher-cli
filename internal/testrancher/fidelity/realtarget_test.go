@@ -26,7 +26,7 @@ func TestDeleteStandardUserSurfacesLookupFailure(t *testing.T) {
 
 	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "status 403", "an HTTP lookup failure must never read as already-clean")
+	assert.ErrorContains(t, err, "status 403", "an HTTP lookup failure must never read as already-clean")
 }
 
 func TestDeleteStandardUserSurfacesMalformed200(t *testing.T) {
@@ -39,7 +39,7 @@ func TestDeleteStandardUserSurfacesMalformed200(t *testing.T) {
 
 	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no data array")
+	assert.ErrorContains(t, err, "no data array")
 }
 
 func TestDeleteStandardUserSurfacesDeleteFailure(t *testing.T) {
@@ -57,8 +57,8 @@ func TestDeleteStandardUserSurfacesDeleteFailure(t *testing.T) {
 
 	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "u-stale")
-	assert.Contains(t, err.Error(), "status 403")
+	assert.ErrorContains(t, err, "u-stale")
+	assert.ErrorContains(t, err, "status 403")
 }
 
 func TestDoJSONRedactsCredentialBodiesInErrors(t *testing.T) {
@@ -76,7 +76,7 @@ func TestDoJSONRedactsCredentialBodiesInErrors(t *testing.T) {
 	require.Error(t, err, "status 200 != want 201 must error")
 	assert.NotContains(t, err.Error(), "sentinel-sekrit",
 		"a token minted under an unexpected status is still live; the error must redact it")
-	assert.Contains(t, err.Error(), "<secret>", "the redacted shape stays visible for diagnosis")
+	assert.ErrorContains(t, err, "<secret>", "the redacted shape stays visible for diagnosis")
 }
 
 func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
@@ -159,7 +159,7 @@ func TestNewRealTargetFromEnv(t *testing.T) {
 		t.Setenv("E2E_REAL_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
 		_, err := NewRealTargetFromEnv()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no certificates parsed")
+		assert.ErrorContains(t, err, "no certificates parsed")
 	})
 
 	t.Run("success wires the target", func(t *testing.T) {
@@ -238,7 +238,7 @@ func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
 	tgt := newTestRealTarget(srv)
 	_, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not ext-shaped")
+	assert.ErrorContains(t, err, "not ext-shaped")
 	assert.NotContains(t, err.Error(), "plain-secret-xyz",
 		"a mint response bearer of the wrong shape is still a live secret; the error withholds it")
 }
@@ -267,7 +267,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 		defer srv.Close()
 		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "status 401")
+		assert.ErrorContains(t, err, "status 401")
 	})
 
 	t.Run("transport error", func(t *testing.T) {
@@ -287,6 +287,6 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 		defer srv.Close()
 		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no token in response")
+		assert.ErrorContains(t, err, "no token in response")
 	})
 }

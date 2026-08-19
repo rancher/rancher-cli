@@ -182,17 +182,17 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 		h := errBodyVault(t, http.StatusForbidden, "2 errors occurred:\n\t* permission denied\n\t* invalid token\n\n")
 		err := h.Store("https://r.ex", "prod", "tok")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid token", "Vault's own reason must surface")
-		assert.Contains(t, err.Error(), "HTTP 403")
-		assert.Contains(t, err.Error(), "create+update+read", "policy hint stays on 403")
+		assert.ErrorContains(t, err, "invalid token", "Vault's own reason must surface")
+		assert.ErrorContains(t, err, "HTTP 403")
+		assert.ErrorContains(t, err, "create+update+read", "policy hint stays on 403")
 	})
 
 	t.Run("store non-403 carries no policy hint", func(t *testing.T) {
 		h := errBodyVault(t, http.StatusInternalServerError, "internal error")
 		err := h.Store("https://r.ex", "prod", "tok")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "HTTP 500")
-		assert.Contains(t, err.Error(), "internal error")
+		assert.ErrorContains(t, err, "HTTP 500")
+		assert.ErrorContains(t, err, "internal error")
 		assert.NotContains(t, err.Error(), "policy", "a 500 is not a policy problem")
 	})
 
@@ -200,15 +200,15 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 		h := errBodyVault(t, http.StatusForbidden, "permission denied")
 		_, err := h.Erase("https://r.ex", "prod")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "permission denied")
-		assert.Contains(t, err.Error(), "delete", "erase's policy hint names the delete capability")
+		assert.ErrorContains(t, err, "permission denied")
+		assert.ErrorContains(t, err, "delete", "erase's policy hint names the delete capability")
 	})
 
 	t.Run("get non-200 surfaces cause", func(t *testing.T) {
 		h := errBodyVault(t, http.StatusForbidden, "permission denied")
 		_, err := h.Get("https://r.ex", "prod")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "permission denied")
+		assert.ErrorContains(t, err, "permission denied")
 	})
 
 	t.Run("non-JSON body falls back to trimmed raw text", func(t *testing.T) {
@@ -218,7 +218,7 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 		}))
 		err := h.Store("https://r.ex", "prod", "tok")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "upstream broke")
+		assert.ErrorContains(t, err, "upstream broke")
 	})
 
 	t.Run("whitespace-only errors array falls back to the raw body", func(t *testing.T) {
@@ -229,7 +229,7 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 			h := errBodyVault(t, http.StatusForbidden, errs...)
 			err := h.Store("https://r.ex", "prod", "tok")
 			require.Error(t, err, "entries=%q", errs)
-			assert.Contains(t, err.Error(), "errors", "the raw body must surface when the errors array is blank (entries=%q)", errs)
+			assert.ErrorContains(t, err, "errors", "the raw body must surface when the errors array is blank (entries=%q)", errs)
 			assert.NotContains(t, err.Error(), "403: ;", "a fabricated bare-';' reason must never appear (entries=%q)", errs)
 		}
 	})
@@ -238,7 +238,7 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 		h := errBodyVault(t, http.StatusForbidden, "", "invalid token", "  ")
 		err := h.Store("https://r.ex", "prod", "tok")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "HTTP 403: invalid token", "the surviving real entry must be the reason, unpolluted by blanks")
+		assert.ErrorContains(t, err, "HTTP 403: invalid token", "the surviving real entry must be the reason, unpolluted by blanks")
 	})
 }
 

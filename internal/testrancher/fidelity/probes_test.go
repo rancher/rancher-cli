@@ -138,7 +138,7 @@ func TestDeleteFixtureUnresolvedTemplateNeverHitsServer(t *testing.T) {
 
 	err := deleteFixture("f", "/x/{tokname}").Do(t.Context(), tgt, map[string]string{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unresolved")
+	assert.ErrorContains(t, err, "unresolved")
 	assert.False(t, hit, "an unresolved capture must never delete against a synthetic URL")
 }
 
@@ -178,7 +178,7 @@ func TestCreateSecretFixtureNon201Errors(t *testing.T) {
 
 	err := createSecretFixture("e2e-fid-x", `{"kind":"Secret"}`).Do(t.Context(), tgt, map[string]string{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "status 500", "a non-201 create is surfaced with its status")
+	assert.ErrorContains(t, err, "status 500", "a non-201 create is surfaced with its status")
 }
 
 func TestTokenProbesUseTheProductionPathConstant(t *testing.T) {

@@ -148,7 +148,7 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "reserved")
+	assert.ErrorContains(t, ce, "reserved")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

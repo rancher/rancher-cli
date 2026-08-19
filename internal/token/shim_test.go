@@ -303,7 +303,7 @@ func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Error(), "--user")
+	assert.ErrorContains(t, ce, "--user")
 }
 
 // TestLegacyTokenRejectsWhitespaceUser verifies that a whitespace-only --user
@@ -335,7 +335,7 @@ func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce, "server=%q", server)
 		assert.Equal(t, clierr.CodeValidation, ce.Code, "server=%q", server)
-		assert.Contains(t, ce.Error(), "--server", "server=%q", server)
+		assert.ErrorContains(t, ce, "--server", "server=%q", server)
 	}
 }
 

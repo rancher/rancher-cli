@@ -116,7 +116,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 				tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 				ui.Discard())
 			require.Error(t, err, "a hard helper failure must not be swallowed")
-			assert.Contains(t, err.Error(), "credential helper", "the real helper error must surface")
+			assert.ErrorContains(t, err, "credential helper", "the real helper error must surface")
 			assert.Equal(t, int32(0), authProviderHits.Load(),
 				"a hard helper failure must not fall through to the interactive flow")
 		})
@@ -151,7 +151,7 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 		tin{s: map[string]string{"name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// config server must be rejected by post-resolution validation")
-	assert.Contains(t, err.Error(), "ftp://host", "error must name the invalid resolved server")
+	assert.ErrorContains(t, err, "ftp://host", "error must name the invalid resolved server")
 
 	// The state file is created only on helper invocation. If it is absent,
 	// the helper was never called.

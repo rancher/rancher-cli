@@ -435,7 +435,7 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	}}
 	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
-	assert.Contains(t, werr.Error(), "token")
+	assert.ErrorContains(t, werr, "token")
 }
 
 // TestBuildRootWiresProvisioningClusterDelete pins the D-6/R1-1 gotcha for
@@ -576,7 +576,7 @@ func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	}}
 	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
-	assert.Contains(t, werr.Error(), "binding")
+	assert.ErrorContains(t, werr, "binding")
 }
 
 func TestSchemaCommandEndToEnd(t *testing.T) {

@@ -113,7 +113,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	var ce *clierr.Error
 	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Error(), "ext.cattle.io")
+	assert.ErrorContains(t, ce, "ext.cattle.io")
 	assert.Contains(t, ce.Hint, "auth list-tokens")
 
 	// A non-ext group absence carries the generic "not served" hint (not the ext hint).
@@ -364,7 +364,7 @@ func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 	require.Error(t, err)
 	// mapErr turns the k8s NotFound into a CodeNotFound clierr; curateNotFound
 	// then adds the kind-aware message and list hint.
-	assert.Contains(t, err.Error(), "not found")
+	assert.ErrorContains(t, err, "not found")
 }
 
 // TestClientGetCuratesKnownGVRNotFound pins that Get curates a hint-less

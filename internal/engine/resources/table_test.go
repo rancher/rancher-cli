@@ -105,7 +105,7 @@ func TestTableMarshalJSONSingleInvariant(t *testing.T) {
 			env := output.NewEnvelope("Cluster", newTable(k, tt.items, true))
 			err := output.Render(&buf, "json", env)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), fmt.Sprintf("got %d", len(tt.items)))
+			assert.ErrorContains(t, err, fmt.Sprintf("got %d", len(tt.items)))
 		})
 	}
 }

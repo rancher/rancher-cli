@@ -48,7 +48,7 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 			tt.mutate(&p)
 			err := p.Validate()
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }

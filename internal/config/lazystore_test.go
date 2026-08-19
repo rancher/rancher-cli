@@ -63,7 +63,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 
 	_, err := NewLazyStore("", dir)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown credential store "wat"`)
+	assert.ErrorContains(t, err, `unknown credential store "wat"`)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr))
 }

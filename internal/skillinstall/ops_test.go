@@ -94,7 +94,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 
 	_, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "foreign")
+	assert.ErrorContains(t, err, "foreign")
 
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.Error(t, err) // force never authorizes uninstall of foreign
@@ -289,7 +289,7 @@ func TestStagedValidationFailureLeavesTargetUntouched(t *testing.T) {
 	_, err = leases[0].Install("v2.0.0", false)
 	ReleaseAll(leases)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "staged tree failed validation")
+	assert.ErrorContains(t, err, "staged tree failed validation")
 
 	postStageHook = nil
 	v, installed, err := StatusTarget(tg, "v1.0.0")
@@ -317,7 +317,7 @@ func TestStagingPopulationFailureLeavesNoLeftovers(t *testing.T) {
 	_, err = leases[0].Install("v1.0.0", false)
 	ReleaseAll(leases)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "induced population failure")
+	assert.ErrorContains(t, err, "induced population failure")
 
 	entries, err := os.ReadDir(filepath.Dir(tg.Dir))
 	require.NoError(t, err)
@@ -356,7 +356,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 	// a concurrent install in the same lock domain must fail busy
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "another skill operation")
+	assert.ErrorContains(t, err, "another skill operation")
 
 	removed, err := leases[0].Uninstall()
 	ReleaseAll(leases)
@@ -388,7 +388,7 @@ func TestLockKeyCanonicalAcrossSymlinkedParents(t *testing.T) {
 	defer ReleaseAll(leases)
 	_, err = Acquire(lockDir, []Target{tgB}, "install", false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "another skill operation")
+	assert.ErrorContains(t, err, "another skill operation")
 }
 
 // Batch acquire: a busy second target means ZERO targets change.
@@ -405,7 +405,7 @@ func TestAcquireBusySecondTargetChangesNothing(t *testing.T) {
 
 	_, err = Acquire(lockDir, []Target{a, b}, "install", false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "another skill operation")
+	assert.ErrorContains(t, err, "another skill operation")
 	_, statErr := os.Stat(a.Dir)
 	assert.True(t, os.IsNotExist(statErr), "first target must be untouched")
 }

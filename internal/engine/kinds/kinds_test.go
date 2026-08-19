@@ -266,7 +266,7 @@ func TestValidateKindsRejectsEmptyK8sKind(t *testing.T) {
 	k := Kind{Key: "test", Name: "test", K8sKind: ""}
 	err := validateKinds([]Kind{k})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "K8sKind")
+	assert.ErrorContains(t, err, "K8sKind")
 }
 
 // TestUserRowDeletableAndCompletable pins the user kind row's flags: the row
@@ -291,8 +291,8 @@ func TestValidateRejectsBadFirstAlias(t *testing.T) {
 	}
 	err := validateKinds(bad)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Aliases[0]")
-	assert.Contains(t, err.Error(), "foos")
+	assert.ErrorContains(t, err, "Aliases[0]")
+	assert.ErrorContains(t, err, "foos")
 
 	// An alias-less row fails validation.
 	noAlias := []Kind{
@@ -300,7 +300,7 @@ func TestValidateRejectsBadFirstAlias(t *testing.T) {
 	}
 	noAliasErr := validateKinds(noAlias)
 	require.Error(t, noAliasErr)
-	assert.Contains(t, noAliasErr.Error(), "bar")
+	assert.ErrorContains(t, noAliasErr, "bar")
 
 	// The shipped table must pass the invariant.
 	require.NoError(t, Validate())
@@ -466,7 +466,7 @@ func TestValidateGroupResourceUniqueness(t *testing.T) {
 	}
 	err := validateKinds(dup)
 	require.Error(t, err, "duplicate Group+Resource must fail validation")
-	assert.Contains(t, err.Error(), "ByGVR cannot distinguish them")
+	assert.ErrorContains(t, err, "ByGVR cannot distinguish them")
 
 	// The real table must still pass — no current Group+Resource collisions.
 	require.NoError(t, Validate(), "shipped table must validate")

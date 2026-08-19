@@ -233,7 +233,7 @@ func TestCRTPatchRefusalClaim(t *testing.T) {
 	_, _, err := mc.Plan(t.Context(), nil)
 	require.Error(t, err,
 		"REFERENCE.md claims patch clusterregistrationtoken is refused, but Plan accepted — update REFERENCE.md and this test together")
-	assert.Contains(t, err.Error(), "read-only")
+	assert.ErrorContains(t, err, "read-only")
 }
 
 // TestKindClaimsMatchTable pins the kind names REFERENCE.md's prose singles

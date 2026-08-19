@@ -61,7 +61,7 @@ func TestEffectiveSurfacesStoreError(t *testing.T) {
 		t.Parallel()
 		_, err := c.Effective(stubStore{tokenErr: errors.New("keyring: dbus unavailable")})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "credential store:")
+		assert.ErrorContains(t, err, "credential store:")
 	})
 	t.Run("ErrNoToken leaves an empty token and no error", func(t *testing.T) {
 		t.Parallel()

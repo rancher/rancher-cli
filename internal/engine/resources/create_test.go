@@ -134,7 +134,7 @@ func TestCreateResourceUnknownKindRejected(t *testing.T) {
 
 	_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml"}})
 	requireValidation(t, err)
-	assert.Contains(t, err.Error(), "Widget")
+	assert.ErrorContains(t, err, "Widget")
 	assert.Empty(t, fac.clusterCalls, "no client is requested for an unsupported kind")
 }
 
@@ -146,7 +146,7 @@ func TestCreateResourceMultiDocRejected(t *testing.T) {
 
 	_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
 	requireValidation(t, err)
-	assert.Contains(t, err.Error(), "2", "the error names the document count")
+	assert.ErrorContains(t, err, "2", "the error names the document count")
 	assert.Empty(t, fac.clusterCalls)
 }
 

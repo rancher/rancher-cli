@@ -779,8 +779,8 @@ func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 
 		_, _, err := planCluster(t, cmd, ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "dry-run denied by webhook")
-		assert.Contains(t, err.Error(), stampWarningPrefix)
+		assert.ErrorContains(t, err, "dry-run denied by webhook")
+		assert.ErrorContains(t, err, stampWarningPrefix)
 	})
 }
 

@@ -136,7 +136,7 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 
 	err = WithLock(t.Context(), dir, func() error { return nil })
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "another rancher process")
+	assert.ErrorContains(t, err, "another rancher process")
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)

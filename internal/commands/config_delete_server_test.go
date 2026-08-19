@@ -52,7 +52,7 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	_, err = cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "keychain locked")
+	assert.ErrorContains(t, err, "keychain locked")
 
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
