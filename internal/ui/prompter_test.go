@@ -82,13 +82,11 @@ func TestNoticeIsSafeForConcurrentUse(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 200 {
 				p.Notice("concurrent notice")
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

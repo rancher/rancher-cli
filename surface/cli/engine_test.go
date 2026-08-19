@@ -96,11 +96,9 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 8 {
 		id := fmt.Sprintf("c-%d", i%3)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, _ = f.Cluster(context.Background(), id)
-		}()
+		})
 	}
 	wg.Wait() // -race is the assertion
 }

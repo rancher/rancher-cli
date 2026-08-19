@@ -31,13 +31,11 @@ func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			tok, err := l.GetToken(ServerRef{Name: "prod"})
 			assert.NoError(t, err)
 			assert.Equal(t, "tok", tok)
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Equal(t, 1, calls)
