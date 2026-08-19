@@ -84,12 +84,12 @@ func conditionCell(o map[string]any, c kinds.Column) string {
 	}
 }
 
-// pathCell projects a column value from Path/AltPaths/Bool/Default/Join:
-// Path first, then each AltPaths entry, first non-empty string wins. The
-// Bool absent→"false" fallback applies to Path only, preserving the
-// single-path semantics documented on Column.Bool (nodedriver's
-// ACTIVE/BUILTIN). Join renders a string-array Path comma-joined in server
-// order; Default renders when every lookup yields nothing.
+// pathCell projects a column value from Path/AltPaths/Bool/Default/Join.
+// Join renders a string-array Path comma-joined in server order. Otherwise
+// every path — Path first, then each AltPaths entry, in order — is tried
+// through the typed leaf ladder (see ladderCell); the first path with a
+// present leaf wins. When no path yields anything: the Bool marker's
+// absent→"false" fallback applies, then Default, then blank.
 func pathCell(o map[string]any, c kinds.Column) string {
 	if c.Join {
 		if vs, ok, _ := unstructured.NestedStringSlice(o, c.Path...); ok && len(vs) > 0 {
@@ -97,27 +97,46 @@ func pathCell(o map[string]any, c kinds.Column) string {
 		}
 		return c.Default
 	}
-	v, ok, _ := unstructured.NestedString(o, c.Path...)
-	if ok && v != "" {
+	if v, ok := ladderCell(o, c.Path); ok {
 		return v
 	}
 	for _, alt := range c.AltPaths {
-		if av, aok, _ := unstructured.NestedString(o, alt...); aok && av != "" {
-			return av
+		if v, ok := ladderCell(o, alt); ok {
+			return v
 		}
 	}
-	if !ok {
-		if b, bok, _ := unstructured.NestedBool(o, c.Path...); bok {
-			return strconv.FormatBool(b)
-		}
-		if c.Bool {
-			return "false"
-		}
-		if c.Default != "" {
-			return c.Default
-		}
+	if c.Bool {
+		return "false"
 	}
-	return v
+	return c.Default
+}
+
+// ladderCell tries one path through the typed leaf ladder: NestedString →
+// NestedBool → NestedInt64 → NestedFloat64 — the first present leaf renders
+// (string: as-is; bool: strconv.FormatBool; int64: strconv.FormatInt;
+// float64: strconv.FormatFloat with 'g' and the shortest round-trip
+// precision, which may emit exponent form for extreme magnitudes). A leaf
+// that is present as a string but empty is NOT considered present — the
+// caller falls through to the next path, preserving the existing
+// first-non-empty-string-wins contract for AltPaths. A present zero (int64
+// or float64) renders as a real value, "0", never blank.
+func ladderCell(o map[string]any, path []string) (string, bool) {
+	if v, ok, _ := unstructured.NestedString(o, path...); ok {
+		if v == "" {
+			return "", false
+		}
+		return v, true
+	}
+	if b, ok, _ := unstructured.NestedBool(o, path...); ok {
+		return strconv.FormatBool(b), true
+	}
+	if i, ok, _ := unstructured.NestedInt64(o, path...); ok {
+		return strconv.FormatInt(i, 10), true
+	}
+	if f, ok, _ := unstructured.NestedFloat64(o, path...); ok {
+		return strconv.FormatFloat(f, 'g', -1, 64), true
+	}
+	return "", false
 }
 
 // columnString projects one column from one object. validateKinds guarantees

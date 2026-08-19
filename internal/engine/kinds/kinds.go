@@ -452,13 +452,13 @@ var table = []Kind{
 	},
 	{
 		// Feature's interesting fields (spec.value, status.default,
-		// status.dynamic, status.lockedValue) are BOOLS. A merged
-		// effective-value VALUE column (spec.value when set, else
-		// status.default) would need AltPaths to fall through from one bool
-		// field to another — AltPaths only tries unstructured.NestedString,
-		// so it never matches a bool leaf; there is no bool-typed fallback
-		// axis. DEFAULT/DYNAMIC/LOCKED are each a single bool field, so they
-		// ship as their own columns instead of the merged one.
+		// status.dynamic, status.lockedValue) are BOOLS. The table
+		// renderer's typed leaf ladder falls Path/AltPaths through
+		// string/bool/int64/float64 leaves, so a merged effective-value
+		// column (spec.value when set, else status.default) is expressible
+		// as a plain AltPaths row. DEFAULT/DYNAMIC/LOCKED remain their own
+		// columns regardless: each is a single bool field kubectl doesn't
+		// show, not something the merge folds away.
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
@@ -598,9 +598,9 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
-			// STRING leaves only — table Rows renders int64/array paths as ""
-			// (bools render since the nodedriver row's fallback; there is
-			// still no EXPIRED bool column — EXPIRES carries the signal).
+			// USER/KIND/EXPIRES/DESCRIPTION are plain strings on the wire;
+			// there is still no EXPIRED bool column — EXPIRES carries the
+			// signal.
 			{Header: "USER", Path: []string{"spec", "userID"}},
 			{Header: "KIND", Path: []string{"spec", "kind"}},
 			{Header: "EXPIRES", Path: []string{"status", "expiresAt"}},
@@ -617,8 +617,8 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Deprecated},
 		Columns: []Column{
-			// STRING leaves only (see the token entry's note): root-level fields on
-			// the v3 Token type (userId, authProvider, expiresAt, description).
+			// Plain strings, root-level fields on the v3 Token type (userId,
+			// authProvider, expiresAt, description).
 			{Header: "USER", Path: []string{"userId"}},
 			{Header: "AUTH PROVIDER", Path: []string{"authProvider"}},
 			{Header: "EXPIRES", Path: []string{"expiresAt"}},
@@ -640,8 +640,10 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Kubeconfig", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
-			// STRING leaves only (see the token entry's note): TTL (int64) and
-			// CLUSTERS ([]string) would render blank — deliberately omitted.
+			// TTL and TOKENS/CLUSTERS are omitted: the audit couldn't verify
+			// their exact wire paths against a live server — not a renderer
+			// limit. Add them once a verifying environment confirms the
+			// paths (TOKENS/CLUSTERS would be Count-expressible).
 			{Header: "SUMMARY", Path: []string{"status", "summary"}},
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
 		},
