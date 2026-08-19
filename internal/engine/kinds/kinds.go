@@ -771,8 +771,8 @@ func ProjectScopable(k Kind) bool {
 // empty GVR.Version (CAPI) match any version of their group.
 func LookupGVK(apiVersion, kind string) (Kind, bool) {
 	group, version := "", apiVersion
-	if i := strings.Index(apiVersion, "/"); i >= 0 {
-		group, version = apiVersion[:i], apiVersion[i+1:]
+	if before, after, ok := strings.Cut(apiVersion, "/"); ok {
+		group, version = before, after
 	}
 	for _, k := range table {
 		if k.K8sKind != kind || k.GVR.Group != group {

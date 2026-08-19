@@ -97,9 +97,9 @@ func parseVersionKey(raw string) (major, minor, patch, releaseNum int, ok bool) 
 	v := strings.TrimPrefix(raw, "v")
 	semCore := v
 	rel := 0
-	if i := strings.Index(v, "+"); i >= 0 {
-		semCore = v[:i]
-		suffix := v[i+1:]
+	if before, after, ok := strings.Cut(v, "+"); ok {
+		semCore = before
+		suffix := after
 		j := len(suffix)
 		for j > 0 && suffix[j-1] >= '0' && suffix[j-1] <= '9' {
 			j--

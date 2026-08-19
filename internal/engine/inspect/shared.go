@@ -477,8 +477,8 @@ func asOwnerRef(r any) (ownerRef, bool) {
 // with core-group kinds bare (pod/web-1). Kind is lowercased.
 func kindGroupName(apiVersion, kind, name string) string {
 	group := ""
-	if i := strings.Index(apiVersion, "/"); i >= 0 {
-		group = apiVersion[:i]
+	if before, _, ok := strings.Cut(apiVersion, "/"); ok {
+		group = before
 	}
 	k := strings.ToLower(kind)
 	if group != "" {

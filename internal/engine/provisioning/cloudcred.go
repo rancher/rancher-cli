@@ -186,8 +186,8 @@ func driverFromDataKeys(obj *unstructured.Unstructured) string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if idx := strings.Index(k, credentialConfigMarker); idx >= 0 {
-			return k[:idx]
+		if before, _, ok := strings.Cut(k, credentialConfigMarker); ok {
+			return before
 		}
 	}
 	return ""
