@@ -6,6 +6,7 @@ package inspect
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -149,12 +150,7 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 func (f *fakeClient) listed(gvr schema.GroupVersionResource) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, g := range f.listGVRs {
-		if g == gvr {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.listGVRs, gvr)
 }
 
 func (f *fakeClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {

@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -256,11 +257,9 @@ func clearCurrentServer(cfg *config.Config, all bool, targets []string) (bool, e
 		cfg.CurrentServer = ""
 		return true, cfg.Write()
 	}
-	for _, s := range targets {
-		if cfg.CurrentServer == s {
-			cfg.CurrentServer = ""
-			return true, cfg.Write()
-		}
+	if slices.Contains(targets, cfg.CurrentServer) {
+		cfg.CurrentServer = ""
+		return true, cfg.Write()
 	}
 	return false, nil
 }

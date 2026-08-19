@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"sigs.k8s.io/yaml"
@@ -42,10 +43,8 @@ type helperRecords struct {
 }
 
 func (s *helperRecords) add(e HelperRecord) {
-	for _, x := range s.Entries {
-		if x == e {
-			return
-		}
+	if slices.Contains(s.Entries, e) {
+		return
 	}
 	s.Entries = append(s.Entries, e)
 	s.dirty = true

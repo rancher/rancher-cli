@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -254,10 +255,8 @@ func resolveFlagCanonical(s string, flags []runtime.ArgSpec) string {
 		if f.Name == name {
 			return f.Name
 		}
-		for _, a := range f.Aliases {
-			if a == name {
-				return f.Name
-			}
+		if slices.Contains(f.Aliases, name) {
+			return f.Name
 		}
 	}
 	return name
@@ -278,10 +277,8 @@ func flagIsKnown(s string, flags []runtime.ArgSpec) bool {
 		if f.Name == name {
 			return true
 		}
-		for _, a := range f.Aliases {
-			if a == name {
-				return true
-			}
+		if slices.Contains(f.Aliases, name) {
+			return true
 		}
 	}
 	return false

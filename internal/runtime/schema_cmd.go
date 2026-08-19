@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -320,10 +321,8 @@ func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 		if want == k.Name || want == k.Key {
 			return k, true
 		}
-		for _, a := range k.Aliases {
-			if want == a {
-				return k, true
-			}
+		if slices.Contains(k.Aliases, want) {
+			return k, true
 		}
 	}
 	return SchemaKind{}, false

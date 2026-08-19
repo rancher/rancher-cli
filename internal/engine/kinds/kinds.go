@@ -6,6 +6,7 @@ package kinds
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -790,10 +791,8 @@ func Lookup(q string) (Kind, bool) {
 		if q == k.Name || q == k.Key {
 			return k, true
 		}
-		for _, a := range k.Aliases {
-			if q == a {
-				return k, true
-			}
+		if slices.Contains(k.Aliases, q) {
+			return k, true
 		}
 	}
 	return Kind{}, false

@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -345,10 +346,8 @@ func bindingMatchesSubject(b *unstructured.Unstructured, rs ResolvedSubject, sub
 		return true
 	}
 	if aliasPrincipals && up != "" {
-		for _, p := range rs.PrincipalIDs {
-			if up == p {
-				return true
-			}
+		if slices.Contains(rs.PrincipalIDs, up) {
+			return true
 		}
 	}
 	return false

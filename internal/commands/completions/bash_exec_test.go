@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,12 +114,7 @@ func splitLines(s string) []string {
 }
 
 func containsExact(xs []string, want string) bool {
-	for _, x := range xs {
-		if x == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, want)
 }
 
 // TestBashCompletionDoesNotExecuteServerCandidates guards the second

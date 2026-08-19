@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -28,12 +29,7 @@ const candidateCap = 10
 // matching the shared system-principal predicate (engine.IsSystemPrincipal).
 func isSystemUser(u *unstructured.Unstructured) bool {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
-	for _, p := range pids {
-		if engine.IsSystemPrincipal(p) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(pids, engine.IsSystemPrincipal)
 }
 
 // preferredPrincipal picks the principal userPrincipalName is set from
@@ -120,11 +116,8 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 				continue
 			}
 			pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
-			for _, p := range pids {
-				if p == sub.Principal {
-					owners = append(owners, u)
-					break
-				}
+			if slices.Contains(pids, sub.Principal) {
+				owners = append(owners, u)
 			}
 		}
 		switch len(owners) {
@@ -239,12 +232,7 @@ func candidate(u *unstructured.Unstructured) clierr.Candidate {
 
 // principalOwned reports whether principal appears in pids.
 func principalOwned(pids []string, principal string) bool {
-	for _, p := range pids {
-		if p == principal {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pids, principal)
 }
 
 // subjectCandidates builds the candidate slice for a user not-found error.

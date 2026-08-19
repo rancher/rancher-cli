@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -153,10 +154,8 @@ func validateFormat(format string) *clierr.Error {
 	if format == "" {
 		return nil
 	}
-	for _, f := range OutputFormats {
-		if format == f {
-			return nil
-		}
+	if slices.Contains(OutputFormats, format) {
+		return nil
 	}
 	if src, ok := strings.CutPrefix(format, output.TemplatePrefix); ok {
 		if src == "" {
@@ -189,13 +188,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 				WithHint(fmt.Sprintf("provide <%s>", a.Name))
 		}
 		if len(a.Enum) > 0 && i < len(args) && args[i] != "" {
-			ok := false
-			for _, e := range a.Enum {
-				if args[i] == e {
-					ok = true
-					break
-				}
-			}
+			ok := slices.Contains(a.Enum, args[i])
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
 					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], strings.Join(a.Enum, "|"))).
@@ -216,13 +209,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 					if v == "" {
 						continue
 					}
-					ok := false
-					for _, e := range f.Enum {
-						if v == e {
-							ok = true
-							break
-						}
-					}
+					ok := slices.Contains(f.Enum, v)
 					if !ok {
 						return clierr.New(clierr.CodeValidation,
 							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|"))).
@@ -239,13 +226,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 				WithHint(fmt.Sprintf("pass --%s <value>", f.Name))
 		}
 		if len(f.Enum) > 0 && v != "" {
-			ok := false
-			for _, e := range f.Enum {
-				if v == e {
-					ok = true
-					break
-				}
-			}
+			ok := slices.Contains(f.Enum, v)
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
 					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|"))).
@@ -407,12 +388,7 @@ func allowedExitStatus(declared []int, status int) bool {
 	if status == 0 {
 		return true
 	}
-	for _, c := range declared {
-		if c == status {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(declared, status)
 }
 
 // toClierr normalizes any error into a structured *clierr.Error, unwrapping

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -130,12 +131,7 @@ func grIsDryRunDelete(r *http.Request) bool {
 		DryRun []string `json:"dryRun"`
 	}
 	_ = json.Unmarshal(body, &opts)
-	for _, v := range opts.DryRun {
-		if v == "All" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(opts.DryRun, "All")
 }
 
 // diffPaths returns sorted JSON-pointer paths from an Effect.diff.

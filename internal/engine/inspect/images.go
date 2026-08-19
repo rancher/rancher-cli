@@ -2,6 +2,7 @@ package inspect
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -135,12 +136,10 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return runtime.Result{}, err
 	}
 	needles := in.Strings(flagMatch)
-	for _, n := range needles {
-		if n == "" {
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--match value must not be empty").
-				WithHint("pass a non-empty substring, e.g. --match registry.old.corp/")
-		}
+	if slices.Contains(needles, "") {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--match value must not be empty").
+			WithHint("pass a non-empty substring, e.g. --match registry.old.corp/")
 	}
 	by := in.String(flagBy)
 	if by == "" {
