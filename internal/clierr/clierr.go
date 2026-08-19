@@ -116,8 +116,7 @@ func AllCodes() []string {
 // where a wrapper would otherwise flatten a classified error (e.g. a
 // LOCK_TIMEOUT from a store) into the catch-all shape.
 func Wrap(err error, msg string) *Error {
-	var ce *Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*Error](err); ok {
 		return ce.WithMessage(msg)
 	}
 	return New(CodeGeneric, msg).WithCause(err)

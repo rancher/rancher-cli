@@ -220,8 +220,7 @@ func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p r
 		// A typed clierr (from the provider flow, or an invalid menu pick) is
 		// already the right error to surface — the io.EOF/generic mapping
 		// below is for the plain-paste read paths only.
-		var ce *clierr.Error
-		if errors.As(err, &ce) {
+		if _, ok := errors.AsType[*clierr.Error](err); ok {
 			return "", err
 		}
 		if errors.Is(err, io.EOF) {

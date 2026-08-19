@@ -386,8 +386,7 @@ func tokenWarning(err error, supported *bool) string {
 // already reported as >= 2.14 must not also be told it is below the
 // minimum just because this group happens to be absent.
 func degradeWarning(field string, err error) string {
-	var ce *clierr.Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		switch ce.Code {
 		case clierr.CodeRBAC:
 			return fmt.Sprintf("%s metadata unavailable: denied by RBAC", field)

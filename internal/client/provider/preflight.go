@@ -27,8 +27,7 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 		// it through unchanged so `auth status` reports the same code/exit as
 		// every other command for the identical state, instead of relabeling
 		// everything AUTH here.
-		var ce *clierr.Error
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[*clierr.Error](err); ok {
 			return "", ce
 		}
 		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(config.LoginHint)

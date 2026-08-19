@@ -394,8 +394,7 @@ func allowedExitStatus(declared []int, status int) bool {
 // toClierr normalizes any error into a structured *clierr.Error, unwrapping
 // %w-wrapped clierr errors so hint/candidates survive.
 func toClierr(err error) *clierr.Error {
-	var ce *clierr.Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		return ce
 	}
 	return clierr.New(clierr.CodeGeneric, err.Error())

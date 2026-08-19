@@ -204,8 +204,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 // code and retryability on the top-level error.
 func partialFailure(err error, failedName string, deleted, unattempted []string) error {
 	code, msg, retryable := clierr.CodeGeneric, err.Error(), false
-	var ce *clierr.Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		code, msg, retryable = ce.Code, ce.Message, ce.Retryable
 	}
 	if deleted == nil {

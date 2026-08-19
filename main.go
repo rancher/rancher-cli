@@ -38,8 +38,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := root.Run(ctx, surfacecli.SanitizedArgs(os.Args)); err != nil {
-		var ec ucli.ExitCoder
-		if errors.As(err, &ec) {
+		if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
 			os.Exit(ec.ExitCode())
 		}
 		os.Exit(1)

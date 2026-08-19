@@ -399,8 +399,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 			// are always clierr-mapped, so the stamping context must ride
 			// the clierr Hint to survive; the string wrapper remains only
 			// for plain errors (test fakes, unexpected paths).
-			var ce *clierr.Error
-			if errors.As(err, &ce) {
+			if ce, ok := errors.AsType[*clierr.Error](err); ok {
 				if ce.Hint != "" {
 					ce.Hint += "; " + stampWarning
 				} else {
