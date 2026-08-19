@@ -1382,7 +1382,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+	assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load(),
 		"Rancher login must never be reached once the caller context is cancelled")
 }
@@ -1427,7 +1427,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+	assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load())
 }
 
@@ -1575,7 +1575,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 		elapsed := time.Since(start)
 
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, context.Canceled), "error must wrap context.Canceled, got: %v", err)
+		assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 		// Fake time: RSA keygen and scheduling cost zero, so elapsed is the
 		// cancel goroutine's 50ms exactly — anything at or past the tick
 		// means the select waited for the poll instead of the cancellation.
@@ -1601,7 +1601,7 @@ func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	providers := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
 	_, err := selectAuthProvider(ctx, providers, "", p)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled), "cancelled context must return context.Canceled, not AMBIGUOUS_SELECTION")
+	assert.ErrorIs(t, err, context.Canceled, "cancelled context must return context.Canceled, not AMBIGUOUS_SELECTION")
 }
 
 func TestGetAuthProviders404IsError(t *testing.T) {

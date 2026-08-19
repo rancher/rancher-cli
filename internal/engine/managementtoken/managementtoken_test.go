@@ -164,7 +164,7 @@ func TestDeleteGuardGetErrorPropagates(t *testing.T) {
 
 	err := planMutating(t, cmd, stubInput{args: []string{"my-token-abc"}})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, netErr), "original network error must propagate")
+	assert.ErrorIs(t, err, netErr, "original network error must propagate")
 }
 
 // TestDeleteGuardPassesThroughNonSessionToken verifies that a token whose

@@ -3,7 +3,6 @@ package ui
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -62,7 +61,7 @@ func TestPromptHonorsContextCancellation(t *testing.T) {
 	// A reader that would block forever if read synchronously.
 	p := New(&bytes.Buffer{}, blockingReader{}, false, true)
 	_, err := p.Prompt(ctx, "user: ")
-	assert.True(t, errors.Is(err, context.Canceled), "cancelled ctx aborts the read")
+	assert.ErrorIs(t, err, context.Canceled, "cancelled ctx aborts the read")
 }
 
 func TestNoticeWritesToErr(t *testing.T) {
