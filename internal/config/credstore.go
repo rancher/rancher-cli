@@ -84,11 +84,13 @@ type cachedCred struct {
 // the composite storage key; Name/Server/Cluster are the display fields (for a
 // legacy bare entry Name is the raw key and Server/Cluster are empty).
 type CachedCredInfo struct {
-	Key     string    `json:"key"`
-	Name    string    `json:"name"`
-	Server  string    `json:"server,omitempty"`
-	Cluster string    `json:"cluster,omitempty"`
-	Expiry  time.Time `json:"expiry,omitempty"` //nolint:modernize // omitzero would drop zero expiries from stored credential records, a persisted-file format change older binaries read on the alpha upgrade path; deliberate wire decision, not tag cleanup
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Server  string `json:"server,omitempty"`
+	Cluster string `json:"cluster,omitempty"`
+	// A zero Expiry (an entry with no expiry) is omitted from the payload
+	// rather than rendered as the zero timestamp.
+	Expiry time.Time `json:"expiry,omitzero"`
 }
 
 // CacheKey scopes an exec-credential cache entry by server identity and
