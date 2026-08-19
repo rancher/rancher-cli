@@ -431,6 +431,38 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "Locked off", ""}, tab.Rows()[1])
 }
 
+// TestTableRowsRenderCount pins the Count axis: len() of the map/slice at
+// the path, absent → blank, present-but-empty → "0" (a real count, never
+// fabricated).
+func TestTableRowsRenderCount(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{Name: "configmap", Columns: []kinds.Column{
+		{Header: "DATA", Count: []string{"data"}},
+	}}
+	populated := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "cm1"},
+		"data":     map[string]any{"a": "1", "b": "2"},
+	}}
+	empty := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "cm2"},
+		"data":     map[string]any{},
+	}}
+	absent := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "cm3"},
+	}}
+	slice := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "sa1"},
+		"data":     []any{"x", "y", "z"},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{populated, empty, absent, slice}, false)
+	rows := tab.Rows()
+	require.Len(t, rows, 4)
+	assert.Equal(t, []string{"cm1", "2", ""}, rows[0])
+	assert.Equal(t, []string{"cm2", "0", ""}, rows[1])
+	assert.Equal(t, []string{"cm3", "", ""}, rows[2])
+	assert.Equal(t, []string{"sa1", "3", ""}, rows[3])
+}
+
 // TestTableRowsRenderAge pins the AGE built-in: it is the LAST column on
 // every kind table, formatted with duration.HumanDuration since the now()
 // seam, and blank for an absent or unparseable creationTimestamp — never a

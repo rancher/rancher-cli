@@ -68,6 +68,12 @@ type Column struct {
 	// every projection mode above — any column, whatever its axis, may
 	// carry Wide.
 	Wide bool
+	// Count names the path to a map or slice field; the cell renders its
+	// length: absent → blank, present-but-empty → "0" (a real count, never
+	// fabricated). Covers configmap/secret DATA, serviceaccount SECRETS.
+	// Mutually exclusive with Path, AltPaths, Bool, Default, Join, and
+	// Condition — validateKinds enforces.
+	Count []string
 }
 
 // NamespacePolicy decides namespace semantics and flag generation for a
@@ -851,6 +857,9 @@ func validateKinds(ts []Kind) error {
 			}
 			if col.Default != "" && col.Bool {
 				return fmt.Errorf("kind %q column %q sets Default together with Bool (both are absent-fallbacks)", k.Key, col.Header)
+			}
+			if len(col.Count) > 0 && (len(col.Path) > 0 || len(col.AltPaths) > 0 || col.Bool || col.Default != "" || col.Join || col.Condition != "") {
+				return fmt.Errorf("kind %q column %q sets Count together with Path/AltPaths/Bool/Default/Join/Condition", k.Key, col.Header)
 			}
 		}
 		// Plural-first alias invariant: every row must register at least one

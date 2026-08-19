@@ -204,12 +204,33 @@ func ladderCell(o map[string]any, path []string) (string, bool) {
 	return "", false
 }
 
-// columnString projects one column from one object. validateKinds guarantees
-// Condition and Path/AltPaths/Bool are mutually exclusive, so the dispatcher
-// selects exactly one projection mode.
-func columnString(o map[string]any, c kinds.Column) string {
-	if c.Condition != "" {
-		return conditionCell(o, c)
+// countCell renders len() of the map or slice at Count's path: absent →
+// blank, present-but-empty → "0" (a real count, never fabricated).
+func countCell(o map[string]any, c kinds.Column) string {
+	v, ok, _ := unstructured.NestedFieldNoCopy(o, c.Count...)
+	if !ok {
+		return ""
 	}
-	return pathCell(o, c)
+	switch val := v.(type) {
+	case map[string]any:
+		return strconv.Itoa(len(val))
+	case []any:
+		return strconv.Itoa(len(val))
+	default:
+		return ""
+	}
+}
+
+// columnString projects one column from one object. validateKinds guarantees
+// Condition, Count, and Path/AltPaths/Bool/Default/Join are mutually
+// exclusive, so the dispatcher selects exactly one projection mode.
+func columnString(o map[string]any, c kinds.Column) string {
+	switch {
+	case c.Condition != "":
+		return conditionCell(o, c)
+	case len(c.Count) > 0:
+		return countCell(o, c)
+	default:
+		return pathCell(o, c)
+	}
 }

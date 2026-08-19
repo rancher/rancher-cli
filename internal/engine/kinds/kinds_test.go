@@ -494,3 +494,30 @@ func TestValidateRejectsJoinMisuse(t *testing.T) {
 		t.Fatalf("shipped table must validate: %v", err)
 	}
 }
+
+// TestValidateRejectsCountMisuse pins Count's exclusivity: it is mutually
+// exclusive with every other projection axis (Path, AltPaths, Bool,
+// Default, Join, Condition).
+func TestValidateRejectsCountMisuse(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		col  Column
+	}{
+		{"Count with Path", Column{Header: "X", Count: []string{"data"}, Path: []string{"a"}}},
+		{"Count with AltPaths", Column{Header: "X", Count: []string{"data"}, AltPaths: [][]string{{"a"}}}},
+		{"Count with Bool", Column{Header: "X", Count: []string{"data"}, Bool: true}},
+		{"Count with Default", Column{Header: "X", Count: []string{"data"}, Default: "0"}},
+		{"Count with Join", Column{Header: "X", Count: []string{"data"}, Join: true, Path: []string{"a"}}},
+		{"Count with Condition", Column{Header: "X", Count: []string{"data"}, Condition: "Ready"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bad := []Kind{{Key: "a", Name: "foo", Aliases: []string{"foos"}, Columns: []Column{tt.col}}}
+			assert.Error(t, validateKinds(bad))
+		})
+	}
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
+	}
+}
