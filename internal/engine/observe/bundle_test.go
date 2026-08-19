@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -251,10 +250,7 @@ func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
 	fixed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 
 	dir := t.TempDir()
-	origWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	defer func() { _ = os.Chdir(origWD) }()
+	t.Chdir(dir)
 
 	factory := &fakeFactory{local: newFakeClient()}
 	res, err := execBundle(t, factory,

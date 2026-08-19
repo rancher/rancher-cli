@@ -34,6 +34,19 @@ var configLockSem = make(chan struct{}, 1)
 // runs. Nil in production. Set via SetLockHookForTest.
 var lockHeldHook func()
 
+// semWaitHook is a test-only synchronization point, invoked (when non-nil)
+// immediately before a WithLock caller attempts to acquire the in-process
+// semaphore. Lets a test wait for "this goroutine is about to contend for
+// the semaphore" instead of sleeping. Nil in production.
+var semWaitHook func()
+
+// waitForFlockHook is a test-only synchronization point, invoked (when
+// non-nil) immediately before a flock acquisition attempt begins polling.
+// Shared by every waitForFlock caller (the config lock, the token-cache
+// lock, the helper-records lock), so a test can wait for "this goroutine's
+// flock wait has started" instead of sleeping. Nil in production.
+var waitForFlockHook func()
+
 // SetLockWaitTimeoutForTest shortens the lock wait for the current test
 // run; call the returned restore in cleanup. Exported for the same reason
 // as SetLockHookForTest: other packages' tests (internal/commands) pin
@@ -54,6 +67,29 @@ func SetLockHookForTest(fn func()) (restore func()) {
 	old := lockHeldHook
 	lockHeldHook = fn
 	return func() { lockHeldHook = old }
+}
+
+// SetSemWaitHookForTest sets semWaitHook for the current test run; call the
+// returned restore in cleanup.
+//
+// The calling test must not use t.Parallel(): the hook is a package-level
+// seam shared by every WithLock call.
+func SetSemWaitHookForTest(fn func()) (restore func()) {
+	old := semWaitHook
+	semWaitHook = fn
+	return func() { semWaitHook = old }
+}
+
+// SetWaitForFlockHookForTest sets waitForFlockHook for the current test
+// run; call the returned restore in cleanup.
+//
+// The calling test must not use t.Parallel(): the hook is a package-level
+// seam shared by every waitForFlock call (the config lock, the token-cache
+// lock, the helper-records lock).
+func SetWaitForFlockHookForTest(fn func()) (restore func()) {
+	old := waitForFlockHook
+	waitForFlockHook = fn
+	return func() { waitForFlockHook = old }
 }
 
 // WithLock runs fn while holding the config-directory write lock: an

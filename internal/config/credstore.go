@@ -964,10 +964,7 @@ var keyringUsable = func() bool {
 	}
 }
 
-var (
-	keyringUsableOnceGuard sync.Once
-	keyringUsableCached    bool
-)
+var keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 
 // keyringUsableOnce runs keyringUsable at most once per process and caches
 // the result. A CLI invocation is one process: OpenStore's auto-probe and
@@ -977,8 +974,7 @@ var (
 // that exercise it directly (e.g. the timeout test); callers that go through
 // OpenStore/RepinForLogin observe the memoized result.
 func keyringUsableOnce() bool {
-	keyringUsableOnceGuard.Do(func() { keyringUsableCached = keyringUsable() })
-	return keyringUsableCached
+	return keyringUsableOnceFn()
 }
 
 // resetKeyringUsableCache clears keyringUsableOnce's memoized result. Tests
@@ -987,7 +983,7 @@ func keyringUsableOnce() bool {
 // rather than a cached result left over from an earlier test in the same
 // process.
 func resetKeyringUsableCache() {
-	keyringUsableOnceGuard = sync.Once{}
+	keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 }
 
 // ResetKeyringUsableCacheForTest resets the memoized keyring-usability probe
