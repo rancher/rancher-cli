@@ -62,7 +62,12 @@ rancher schema --all -o json        # the complete manifest in one document (bul
 The orientation payload is compact; the full manifest is for bulk extraction.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
-constructing a call. Kind names have kubectl-style aliases (e.g. `get pods`,
+constructing a call. Command and kind names are dashed (`cloud-credential`,
+`machine-config`); when a kind's card lists no create verb, creation is a
+curated command — machine configs are created via
+`create machine-config <kind>`. Search the orientation TOC with short stems;
+do not pull `schema --all` to find a command name.
+Kind names have kubectl-style aliases (e.g. `get pods`,
 `get cm`). `get kubernetes-versions` always marks the newest release per
 distro (`newest`); when the server declares no default version, that marker
 is the only pick-this signal and a warning says so.
