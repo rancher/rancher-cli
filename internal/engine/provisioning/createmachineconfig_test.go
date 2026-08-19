@@ -665,7 +665,6 @@ func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {
 		{"harvesterconfig", "a"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.kind, func(t *testing.T) {
 			t.Parallel()
 			_, err := buildMachineConfig(t, mcInput{

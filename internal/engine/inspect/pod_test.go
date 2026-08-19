@@ -424,7 +424,6 @@ func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
 	}
 
 	for _, format := range []string{"json", "yaml"} {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer

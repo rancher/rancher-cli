@@ -67,7 +67,6 @@ func TestDecodeCRTObjectWrongShape(t *testing.T) {
 		{"missing metadata namespace", `{"metadata":{"name":"default-token"},"status":{}}`},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := DecodeCRTObject("/v1/shape", []byte(tc.body))
@@ -141,7 +140,6 @@ func TestDecodeCRTCollectionEnvelopeInvariant(t *testing.T) {
 		{"object data", `{"data":{}}`},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := DecodeCRTCollection("/v1/coll", []byte(tc.body))
@@ -189,7 +187,6 @@ func TestPlaceholderFieldsReportsEachProtectedField(t *testing.T) {
 		"manifestUrl",
 	}
 	for _, field := range fields {
-		field := field
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			status := splicedStatus("tok-aaa")

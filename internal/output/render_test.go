@@ -164,7 +164,6 @@ func TestEncodeJSONKeepsAngleAndAmpLiteral(t *testing.T) {
 func TestRenderTableFallbackKeepsAngleAndAmpLiteral(t *testing.T) {
 	t.Parallel()
 	for _, format := range []string{"", "table"} {
-		format := format
 		name := format
 		if name == "" {
 			name = "empty"
@@ -269,7 +268,6 @@ func TestRenderTableFallbackStripsManagedFields(t *testing.T) {
 		},
 	}
 	for _, format := range []string{"", "table"} {
-		format := format
 		name := format
 		if name == "" {
 			name = "empty"

@@ -179,7 +179,6 @@ func TestNewGetCRTPlaceholderGuardTable(t *testing.T) {
 		"manifestUrl",
 	}
 	for _, field := range fields {
-		field := field
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			status := splicedStatus("tok-aaa")

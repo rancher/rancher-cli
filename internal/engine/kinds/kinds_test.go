@@ -314,7 +314,6 @@ func TestValidateRejectsBadFirstAlias(t *testing.T) {
 func TestHintTokenResolvesForAllKinds(t *testing.T) {
 	t.Parallel()
 	for _, k := range All() {
-		k := k
 		t.Run(k.Name, func(t *testing.T) {
 			t.Parallel()
 			token := hintToken(k)
@@ -443,7 +442,6 @@ func TestByGVR(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			k, ok := ByGVR(tt.gvr)

@@ -1392,7 +1392,6 @@ func mixedGroupRegistry() *Registry {
 		Name: "get cloud-credential", Usage: "Get a cloud credential", CommandType: ReadOnly,
 	}})
 	for _, k := range ks {
-		k := k
 		reg.Register(fakeRead{d: Descriptor{Name: "get " + k.Name, CommandType: ReadOnly}})
 	}
 	reg.SetKinds(ks)

@@ -119,7 +119,6 @@ func TestParseWaitCondition(t *testing.T) {
 		{"", waitCond{}, true}, // empty is the caller's job to default via kinds.Kind.WaitDefault
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
 			t.Parallel()
 			got, err := parseWaitCondition(tt.expr)

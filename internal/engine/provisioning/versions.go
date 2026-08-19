@@ -389,7 +389,6 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 
 	var g errgroup.Group
 	for i, d := range distroSpecs {
-		i, d := i, d
 		g.Go(func() error {
 			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {

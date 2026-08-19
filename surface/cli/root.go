@@ -96,7 +96,6 @@ func buildEntries() []entry {
 	}
 	ov := kindOverrides()
 	for _, k := range kinds.All() {
-		k := k
 		o := ov[k.Key]
 		entries = append(entries, entry{group: "get", make: func(d runDeps) runtime.Command {
 			if o.get != nil {

@@ -274,7 +274,6 @@ func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 	t.Parallel()
 	formats := []string{"name", "template={{.target}}"}
 	for _, format := range formats {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 			cmd := fakeMutating{
@@ -832,7 +831,6 @@ func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 	t.Parallel()
 	formats := []string{"name", "template={{.name}}"}
 	for _, format := range formats {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 			cmd := fakeRead{

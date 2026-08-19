@@ -32,7 +32,6 @@ func TestCompareVersions(t *testing.T) {
 		{"floor itself unparseable makes the pair unparseable", "2.14", "dev", 0, false},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cmp, ok := compareVersions(tt.a, tt.b)

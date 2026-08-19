@@ -216,7 +216,6 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 		return nil
 	}
 	for _, id := range ids {
-		id := id
 		g.Go(func() error {
 			client, cerr := c.clients.Cluster(gctx, id)
 			if cerr != nil {

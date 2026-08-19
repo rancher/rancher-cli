@@ -540,7 +540,6 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			wantErrCode: clierr.CodeValidation},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
@@ -587,7 +586,6 @@ func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 			flags: map[string]string{"cluster": "prod"}, named: true},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
@@ -702,7 +700,6 @@ func TestPlural(t *testing.T) {
 		{"amazonec2config", "amazonec2configs"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, c.want, kinds.Plural(c.name))
@@ -762,7 +759,6 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 		"data": map[string]any{"foo": "bar"},
 	}}
 	for _, format := range []string{"json", "yaml"} {
-		format := format
 		t.Run("named-"+format, func(t *testing.T) {
 			t.Parallel()
 			cmd, in := newGetFixture(t, obj)
@@ -920,7 +916,6 @@ func TestWaitElapsed(t *testing.T) {
 		{1*time.Hour + 0*time.Minute + 1*time.Second, "1h0m1s", "1h0m1s — zero-minute field retained"},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.comment, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, waitElapsed(tt.elapsed))

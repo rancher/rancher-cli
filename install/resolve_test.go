@@ -562,7 +562,6 @@ func TestGhTokenFallback(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := newStub(t)
@@ -704,7 +703,6 @@ func TestHostnameDerivationForGhToken(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ghLog := filepath.Join(t.TempDir(), "gh.log")
