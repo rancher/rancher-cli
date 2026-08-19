@@ -1,7 +1,6 @@
 package rbac
 
 import (
-	"errors"
 	"sort"
 	"testing"
 
@@ -559,7 +558,7 @@ func TestGrantMissingRole(t *testing.T) {
 		args:    []string{"u-abc"},
 	})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "--role")
 }

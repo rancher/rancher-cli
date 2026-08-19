@@ -34,7 +34,7 @@ func planMutating(t *testing.T, cmd runtime.Command, in runtime.Input) error {
 func requireValidation(t *testing.T, err error) {
 	t.Helper()
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a *clierr.Error, got %v (%T)", err, err)
+	require.ErrorAs(t, err, &ce, "want a *clierr.Error, got %v (%T)", err, err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code, "want VALIDATION error code")
 }
 
@@ -48,7 +48,7 @@ func TestRefusePatchPlanReturnsValidationError(t *testing.T) {
 	require.Error(t, err)
 	requireValidation(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Message, "patch is not supported")
 }
 
@@ -80,7 +80,7 @@ func TestDeleteGuardRefusesSessionToken(t *testing.T) {
 	require.Error(t, err)
 	requireValidation(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Message, "backs the current CLI session")
 	assert.NotContains(t, ce.Hint, "auth logout", "hint must not promise logout revokes the session")
 	assert.Contains(t, ce.Hint, "RANCHER_CLI_TOKEN")
@@ -147,7 +147,7 @@ func TestDeleteGuardGetNotFoundPassesThrough(t *testing.T) {
 	err := planMutating(t, cmd, stubInput{args: []string{"my-token-abc"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a *clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a *clierr.Error, got %v", err)
 	assert.NotEqual(t, clierr.CodeValidation, ce.Code, "NOT_FOUND must not surface as VALIDATION")
 }
 

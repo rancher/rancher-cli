@@ -3,7 +3,6 @@
 package provider
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -110,6 +109,6 @@ func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 	_, err = repo.Update(ctx, widgetGVR, "default", stale, false)
 	require.Error(t, err, "a stale resourceVersion must be rejected")
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }

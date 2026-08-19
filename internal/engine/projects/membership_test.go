@@ -2,7 +2,6 @@ package projects
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -122,7 +121,7 @@ func TestAddNamespaceToDifferentProjectIsValidation(t *testing.T) {
 	_, _, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"team-a"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "p-2")
 	assert.Contains(t, ce.Hint, "remove-namespace")
@@ -169,7 +168,7 @@ func TestRemoveNamespaceFromDifferentProjectIsValidation(t *testing.T) {
 	_, _, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"team-a"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 

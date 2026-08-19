@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -353,7 +352,7 @@ func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"})
 	assert.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
-	assert.False(t, errors.As(err, &ce), "cancellation must not be dressed as a clierr delete failure")
+	assert.NotErrorAs(t, err, &ce, "cancellation must not be dressed as a clierr delete failure")
 
 	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"})
 	require.ErrorAs(t, real, &ce)

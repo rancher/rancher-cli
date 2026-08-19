@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -288,7 +287,7 @@ func TestGetClusterNamedAmbiguousDisplayName(t *testing.T) {
 	}}
 	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"prod"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 	assert.Empty(t, client.getName, "Get must not be called on an ambiguous resolution")
 }
@@ -302,7 +301,7 @@ func TestGetClusterNamedMiss(t *testing.T) {
 	}}
 	_, err := NewGet(mustKind(t, "cluster"), fac).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"missing"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
 }
@@ -352,7 +351,7 @@ func TestGetDownstreamNamespacedNamedRequiresNamespace(t *testing.T) {
 	rc := byName.(runtime.ReadCommand)
 	_, err := rc.Execute(t.Context(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
 	// get pods --cluster prod, no --namespace → lists across all namespaces.
@@ -379,7 +378,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	rc := byName.(runtime.ReadCommand)
 	_, err := rc.Execute(t.Context(), input{args: []string{"web"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
 	// No name + empty --cluster lists across all clusters (namespace "").
@@ -400,7 +399,7 @@ func TestGetNamedNotFoundCurated(t *testing.T) {
 	cmd := NewGet(k, &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "user not found: u-xxx", ce.Message)
 	assert.Equal(t, "list with: rancher get users", ce.Hint)
@@ -421,7 +420,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 		b:    map[string]bool{"wait": true},
 	}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "cluster not found: missing", ce.Message)
 	assert.Equal(t, "list with: rancher get clusters", ce.Hint)
@@ -441,7 +440,7 @@ func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
 	cmd := NewGet(mustKind(t, "token"), &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"t-xxx"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Contains(t, ce.Message, "ext.cattle.io")
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through untouched")
@@ -458,7 +457,7 @@ func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
 	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "forbidden", ce.Message)
 }
@@ -546,7 +545,7 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			gotCluster, gotNS, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.named)
 			if tt.wantErrCode != "" {
 				var ce *clierr.Error
-				require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+				require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 				assert.Equal(t, tt.wantErrCode, ce.Code)
 				return
 			}

@@ -270,7 +270,7 @@ func TestImagesEmptyMatchRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -425,7 +425,7 @@ func TestImagesAllClustersEveryScanFailedIsHardError(t *testing.T) {
 	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "no cluster could be scanned: c-a: forbidden on a; c-b: forbidden on b", ce.Message)
 }
@@ -443,7 +443,7 @@ func TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric(t *testing.T) {
 	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Equal(t, "no cluster could be scanned: c-a: forbidden; c-b: connection refused", ce.Message)
 }

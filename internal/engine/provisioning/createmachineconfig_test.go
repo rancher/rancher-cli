@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -576,7 +575,7 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 	require.NoError(t, err)
 	_, err = exec(t.Context())
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }
 

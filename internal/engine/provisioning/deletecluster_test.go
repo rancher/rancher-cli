@@ -2,7 +2,6 @@ package provisioning
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -100,7 +99,7 @@ func TestDeleteProvisioningClusterRefusesLocal(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, exec)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "refusing to delete the local cluster", ce.Message)
 
@@ -155,7 +154,7 @@ func TestDeleteProvisioningClusterRVPreconditionMirrorsGeneric(t *testing.T) {
 	_, _, err = planDeleteCluster(t, NewDeleteProvisioningCluster(k, fakeFactory{c: failClient}), ccInput{a: []string{"imported-1"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 }
 
@@ -168,7 +167,7 @@ func TestDeleteProvisioningClusterNotFoundSurfacesCleanly(t *testing.T) {
 	_, _, err := planDeleteCluster(t, NewDeleteProvisioningCluster(mustProvisioningClusterKind(t), fakeFactory{c: client}),
 		ccInput{a: []string{"missing"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 

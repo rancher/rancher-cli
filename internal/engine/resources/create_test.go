@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -75,7 +74,7 @@ func planCreate(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Eff
 func requireValidation(t *testing.T, err error) {
 	t.Helper()
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -277,6 +276,6 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	assert.Empty(t, fac.clusterCalls, "no network call should be made when the kind is rejected")
 	// Verify hint references the ext kind path.
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Hint, "create token")
 }

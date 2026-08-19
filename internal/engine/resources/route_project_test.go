@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -106,7 +105,7 @@ func TestRouteDownstreamNSPlainNamedOpNonMemberNamespaceRejected(t *testing.T) {
 		input{s: map[string]string{"cluster": "prod", "namespace": "ns-z", "project": "p-1"}}, true)
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "ns-z")
 	assert.Contains(t, ce.Message, "p-1")

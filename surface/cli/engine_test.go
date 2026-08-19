@@ -172,7 +172,7 @@ func TestResolveClusterUnknownIsNotFound(t *testing.T) {
 	}})
 	_, err := f.ResolveCluster(t.Context(), "staging")
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	var names []string
 	for _, c := range ce.Candidates {
@@ -193,7 +193,7 @@ func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 	}})
 	_, err := f.ResolveCluster(t.Context(), "dup")
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 	require.Len(t, ce.Candidates, 2, "candidates must narrow to the colliders")
 	ids := []string{ce.Candidates[0].ID, ce.Candidates[1].ID}
@@ -210,7 +210,7 @@ func TestResolveClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	}})
 	_, err := f.ResolveCluster(t.Context(), "foo")
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 }
 

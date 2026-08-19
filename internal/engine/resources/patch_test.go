@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -237,7 +236,7 @@ func TestPatchNotFoundCurated(t *testing.T) {
 			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
 		}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "deployment not found: web", ce.Message)
 	assert.Equal(t, "list with: rancher get deployments", ce.Hint)
@@ -255,7 +254,7 @@ func TestPatchNonNotFoundPassesThrough(t *testing.T) {
 			"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
 		}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "forbidden", ce.Message)
 }
@@ -297,7 +296,7 @@ func TestPatchClusterResolvesDisplayName(t *testing.T) {
 		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
 			input{args: []string{"prod"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce))
+		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 		assert.Empty(t, client.getName, "Get must not be called on an ambiguous resolution")
 	})
@@ -311,7 +310,7 @@ func TestPatchClusterResolvesDisplayName(t *testing.T) {
 		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
 			input{args: []string{"missing"}, s: map[string]string{"patch": `[{"op":"replace","path":"/spec/a","value":"y"}]`}})
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce))
+		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotFound, ce.Code)
 		assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
 	})
@@ -426,7 +425,7 @@ func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "deployment not found: web", ce.Message)
 	assert.NotEmpty(t, ce.Hint, "curated exec-phase NOT_FOUND must carry a list hint")

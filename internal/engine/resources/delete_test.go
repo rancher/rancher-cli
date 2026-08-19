@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -135,7 +134,7 @@ func TestDeletePlanDryRunsDeletion(t *testing.T) {
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 }
 
@@ -146,7 +145,7 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 	_, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
@@ -160,7 +159,7 @@ func TestDeleteNotFoundCurated(t *testing.T) {
 	_, _, err := planDelete(t, NewDelete(k, fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
 	assert.Equal(t, "list with: rancher get pods", ce.Hint)
@@ -175,7 +174,7 @@ func TestDeleteNonNotFoundPassesThrough(t *testing.T) {
 	_, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "forbidden", ce.Message)
 }
@@ -194,7 +193,7 @@ func TestDeleteDryRunNotFoundCurated(t *testing.T) {
 	_, _, err := planDelete(t, NewDelete(k, fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
 	assert.Equal(t, "list with: rancher get pods", ce.Hint)
@@ -215,7 +214,7 @@ func TestDeleteDryRunNotFoundWithHintPassesThrough(t *testing.T) {
 	_, _, err := planDelete(t, NewDelete(mustKind(t, "token"), fac),
 		input{args: []string{"t-xxx"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Contains(t, ce.Message, "ext.cattle.io", "already-curated message must pass through")
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
@@ -238,7 +237,7 @@ func TestDeleteDownstreamNamespacedRequiresNamespace(t *testing.T) {
 	cmd := NewDelete(k, &recFactory{client: &delClient{obj: objWithRV("web", "1")}, resolve: map[string]string{"prod": "c-abc"}})
 	_, _, err := planDelete(t, cmd, input{args: []string{"web"}, s: map[string]string{"cluster": "prod"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -260,7 +259,7 @@ func TestDeleteManagementNamespacedRequiresCluster(t *testing.T) {
 	cmd := NewDelete(k, &recFactory{client: &delClient{obj: objWithRV("p1", "1")}})
 	_, _, err := planDelete(t, cmd, input{args: []string{"p1"}})
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
 	// The explicit --cluster path works: client is the local proxy, namespace is
@@ -293,7 +292,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
 	assert.Equal(t, "list with: rancher get pods", ce.Hint)
@@ -318,7 +317,7 @@ func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 	_, err = exec(t.Context())
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Contains(t, ce.Message, "ext.cattle.io", "already-curated message must pass through")
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")

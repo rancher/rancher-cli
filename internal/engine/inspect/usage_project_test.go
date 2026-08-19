@@ -1,7 +1,6 @@
 package inspect
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -177,7 +176,7 @@ func TestUsageByProjectNamespaceMustBeMember(t *testing.T) {
 	}})
 	require.Error(t, err, "--namespace outside --project must be NotMemberError under --by project too")
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "is not in project")
 }

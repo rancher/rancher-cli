@@ -2,7 +2,6 @@ package projects
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -57,7 +56,7 @@ func TestCreateSecretBareWithoutNamespaceIsValidation(t *testing.T) {
 	_, _, err := planMember(t, cmd, memberIn{s: map[string]string{"cluster": "c-x"}, a: []string{"app-secret"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -118,7 +117,7 @@ func TestCreateSecretProjectScopedWithoutProjectIsValidation(t *testing.T) {
 	})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -134,7 +133,7 @@ func TestCreateSecretProjectScopedWithNamespaceIsValidation(t *testing.T) {
 	})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -149,7 +148,7 @@ func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 

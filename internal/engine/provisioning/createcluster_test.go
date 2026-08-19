@@ -164,7 +164,7 @@ func requireValidation(t *testing.T, err error) *clierr.Error {
 	t.Helper()
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	return ce
 }
@@ -762,7 +762,7 @@ func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 		_, _, err := planCluster(t, cmd, ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}})
 		require.Error(t, err)
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce),
+		require.ErrorAs(t, err, &ce,
 			"the clierr must remain extractable — toClierr depends on it")
 		assert.Equal(t, "dry-run denied by webhook", ce.Message)
 		assert.Contains(t, ce.Hint, stampWarningPrefix,

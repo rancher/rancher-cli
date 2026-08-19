@@ -2,7 +2,6 @@ package projects
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -191,7 +190,7 @@ func TestCreateProjectOneQuotaFlagWithoutTheOtherIsValidation(t *testing.T) {
 	}, a: []string{"web"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "together")
 }
@@ -208,7 +207,7 @@ func TestCreateProjectQuotaKeySetMismatchIsValidation(t *testing.T) {
 	}, a: []string{"web"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "limitsMemory")
 }
@@ -225,7 +224,7 @@ func TestCreateProjectQuotaUnknownKeyIsValidation(t *testing.T) {
 	}, a: []string{"web"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "limitsCPU")
 	assert.Contains(t, ce.Hint, "limitsCpu")
@@ -244,7 +243,7 @@ func TestCreateProjectQuotaMalformedPairIsValidation(t *testing.T) {
 		}, a: []string{"web"}})
 		require.Error(t, err, "pair %q", pair)
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce))
+		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	}
 }

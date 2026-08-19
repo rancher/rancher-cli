@@ -194,7 +194,7 @@ func TestUsageProjectUnknownProjectErrors(t *testing.T) {
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": "p-typo"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
@@ -233,7 +233,7 @@ func TestUsageProjectRejectsInvalidLabelValue(t *testing.T) {
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "project": malformed}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	for _, sel := range client.listSelectors {
 		assert.NotContains(t, sel, malformed, "an invalid project value must never reach a List selector")
@@ -252,7 +252,7 @@ func TestUsageNamespaceAndProjectValidatesMembership(t *testing.T) {
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "namespace": "ns2", "project": "p-x"}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "ns2")
 	assert.Contains(t, ce.Message, "p-x")
@@ -306,7 +306,7 @@ func TestUsageByNodeRejectsNamespaceFlag(t *testing.T) {
 	}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
@@ -319,7 +319,7 @@ func TestUsageByNodeRejectsProjectFlag(t *testing.T) {
 	}})
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 

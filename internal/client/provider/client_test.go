@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -84,7 +83,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	_, err := c.List(t.Context(), machines, "fleet-default", "")
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.NotEmpty(t, ce.Hint, "no-preferred-version error must carry an actionable hint")
 	assert.Contains(t, ce.Hint, "rancher schema", "hint must mention rancher schema for requirements")
@@ -111,7 +110,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	_, err := c.List(t.Context(), tokens, "", "")
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce), "want a clierr.Error, got %v", err)
+	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.ErrorContains(t, ce, "ext.cattle.io")
 	assert.Contains(t, ce.Hint, "auth list-tokens")
@@ -119,7 +118,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	// A non-ext group absence carries the generic "not served" hint (not the ext hint).
 	_, err = c.List(t.Context(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "")
 	require.Error(t, err)
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.NotContains(t, ce.Hint, "auth list-tokens", "non-ext group must not carry ext hint")
 	assert.NotEmpty(t, ce.Hint, "non-ext not-served error must carry an actionable hint")
 	assert.Contains(t, ce.Hint, "rancher schema", "non-ext not-served hint must mention rancher schema")
@@ -142,7 +141,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "", "m-1")
 		require.Error(t, err)
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce))
+		require.ErrorAs(t, err, &ce)
 		// resolveVersion's hint is preserved via early return, not curation.
 		assert.NotEmpty(t, ce.Hint, "resolveVersion error must carry hint intact after early return from Get")
 		assert.Contains(t, ce.Hint, "rancher schema", "resolveVersion hint must survive early return unchanged")
@@ -157,7 +156,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "w-1")
 		require.Error(t, err)
 		var ce *clierr.Error
-		require.True(t, errors.As(err, &ce))
+		require.ErrorAs(t, err, &ce)
 		// resolveVersion's hint is preserved via early return, not curation.
 		assert.NotEmpty(t, ce.Hint, "resolveVersion error must carry hint intact after early return from Get")
 		assert.Contains(t, ce.Hint, "rancher schema", "resolveVersion hint must survive early return unchanged")
@@ -178,7 +177,7 @@ func TestCurateNotFoundHintBearingPassesThrough(t *testing.T) {
 	// curated. The hint guard must prevent that rewrite.
 	got := curateNotFound(projectGVR, "p-missing", hinted)
 	var ce *clierr.Error
-	require.True(t, errors.As(got, &ce))
+	require.ErrorAs(t, got, &ce)
 	assert.Equal(t, hinted.Message, ce.Message, "hinted NOT_FOUND message must not be overwritten by curation")
 	assert.Equal(t, hinted.Hint, ce.Hint, "hinted NOT_FOUND hint must not be overwritten by curation")
 }
@@ -375,7 +374,7 @@ func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	_, err := r.Get(t.Context(), projectGVR, "c-x", "p-missing")
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
@@ -395,7 +394,7 @@ func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
 	_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "ns", "x")
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.NotEmpty(t, ce.Hint, "hint-bearing NOT_FOUND must pass through curateNotFound unchanged")
 	assert.NotContains(t, ce.Message, "capi-cluster not found", "resolveVersion diagnostic must not be overwritten by curation")
 }
@@ -418,7 +417,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 	_, err := c.Get(t.Context(), unknownGVR, "", "w-missing")
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Empty(t, ce.Hint, "unknown GVR must not be curated — no hint expected")
 }
@@ -431,7 +430,7 @@ func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	err := r.Delete(t.Context(), projectGVR, "c-x", "p-missing", "", false)
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
@@ -446,7 +445,7 @@ func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	_, err := r.Update(t.Context(), projectGVR, "c-x", obj, false)
 	require.Error(t, err)
 	var ce *clierr.Error
-	require.True(t, errors.As(err, &ce))
+	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
