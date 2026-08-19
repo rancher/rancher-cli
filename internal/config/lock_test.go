@@ -193,9 +193,12 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		defer func() { _ = fl.Unlock() }()
 
 		ctx, cancel := context.WithCancel(t.Context())
+		flockWaiting := make(chan struct{})
+		restore := SetWaitForFlockHookForTest(func() { close(flockWaiting) })
+		defer restore()
 		done := make(chan error, 1)
 		go func() { done <- WithLock(ctx, dir, func() error { return nil }) }()
-		time.Sleep(150 * time.Millisecond) // let the waiter reach TryLockContext
+		<-flockWaiting // let the waiter reach TryLockContext
 		cancel()
 		select {
 		case werr := <-done:
@@ -229,9 +232,12 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		restore()
 
 		ctx, cancel := context.WithCancel(t.Context())
+		semWaiting := make(chan struct{})
+		restoreSemHook := SetSemWaitHookForTest(func() { close(semWaiting) })
+		defer restoreSemHook()
 		waiterDone := make(chan error, 1)
 		go func() { waiterDone <- WithLock(ctx, dir, func() error { return nil }) }()
-		time.Sleep(150 * time.Millisecond) // let the waiter block on the semaphore
+		<-semWaiting // let the waiter reach the semaphore acquisition
 		cancel()
 		select {
 		case werr := <-waiterDone:

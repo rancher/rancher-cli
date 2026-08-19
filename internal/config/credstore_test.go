@@ -869,12 +869,18 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	// The writer holds the flock (mid read-modify-write). Start the wipe —
 	// it must wait for the write-back, then remove everything, so neither
 	// the pre-seeded key-a nor the concurrently written key-b survives.
+	// The hook is set only now, after the writer's own flock wait already
+	// completed above, so it fires for the wipe's wait alone.
+	wipeWaiting := make(chan struct{})
+	restoreFlockHook := SetWaitForFlockHookForTest(func() { close(wipeWaiting) })
+	defer restoreFlockHook()
 	errDel := make(chan error, 1)
 	go func() { errDel <- store2.DeleteAllCachedCreds() }()
 
-	// Let the wipe reach the flock before releasing the writer. (If it gets
-	// there later it still queues behind the writer — same final order.)
-	time.Sleep(100 * time.Millisecond)
+	// Wait until the wipe reaches the flock before releasing the writer, so
+	// the assertions below exercise the queued-behind-writer order
+	// deterministically instead of by chance.
+	<-wipeWaiting
 	close(release)
 
 	require.NoError(t, <-errSet, "SetCachedCred must succeed")

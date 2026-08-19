@@ -295,12 +295,15 @@ func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	defer func() { _ = fl.Unlock() }()
 
 	ctx, cancel := context.WithCancel(t.Context())
+	flockWaiting := make(chan struct{})
+	restore := SetWaitForFlockHookForTest(func() { close(flockWaiting) })
+	defer restore()
 	done := make(chan error, 1)
 	go func() {
 		_, derr := DeleteLoginToken(ctx, dir, execRef(), "exec:fake")
 		done <- derr
 	}()
-	time.Sleep(200 * time.Millisecond) // let the delete reach the records-lock wait
+	<-flockWaiting // let the delete reach the records-lock wait
 	cancel()
 	select {
 	case derr := <-done:

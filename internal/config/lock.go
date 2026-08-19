@@ -113,6 +113,9 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 	waitCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)
 	defer cancel()
 
+	if semWaitHook != nil {
+		semWaitHook()
+	}
 	select {
 	case configLockSem <- struct{}{}:
 	case <-waitCtx.Done():
@@ -180,6 +183,9 @@ func lockWaitError(err error, stage lockWaitStage) error {
 // flock library must never let a caller proceed unlocked, so it is mapped to
 // a wrappable timeout identity here.
 func waitForFlock(ctx context.Context, path string, poll time.Duration) (release func(), err error) {
+	if waitForFlockHook != nil {
+		waitForFlockHook()
+	}
 	fl := flock.New(path)
 	ok, lockErr := fl.TryLockContext(ctx, poll)
 	if lockErr == nil && !ok {
