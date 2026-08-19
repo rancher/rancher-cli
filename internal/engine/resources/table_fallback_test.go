@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -14,9 +15,7 @@ func bindingObj(name string, fields map[string]any) unstructured.Unstructured {
 		"kind":       "ClusterRoleTemplateBinding",
 		"metadata":   map[string]any{"name": name},
 	}
-	for k, v := range fields {
-		obj[k] = v
-	}
+	maps.Copy(obj, fields)
 	return unstructured.Unstructured{Object: obj}
 }
 

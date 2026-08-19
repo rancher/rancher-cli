@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -96,9 +97,7 @@ func crtBodyFixture(t *testing.T, ns, token string, overrides map[string]any) []
 		"token":                      token,
 		"expiresAt":                  "2099-01-01T00:00:00Z",
 	}
-	for k, v := range overrides {
-		status[k] = v
-	}
+	maps.Copy(status, overrides)
 	b, err := json.Marshal(map[string]any{
 		"id":       ns + "/default-token",
 		"metadata": map[string]any{"namespace": ns, "name": "default-token"},

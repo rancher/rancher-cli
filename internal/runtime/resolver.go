@@ -22,9 +22,7 @@ func (m MapResolver) All() map[string]safety.Binding { return maps.Clone(m) }
 // BuildRoot fails on the returned error.
 func ComposeResolvers(a, b Resolver) (Resolver, error) {
 	merged := map[string]safety.Binding{}
-	for op, bind := range a.All() {
-		merged[op] = bind
-	}
+	maps.Copy(merged, a.All())
 	for op, bind := range b.All() {
 		if _, dup := merged[op]; dup {
 			return nil, fmt.Errorf("operation %q resolved by both resolvers", op)

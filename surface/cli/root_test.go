@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -497,9 +498,7 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	require.False(t, nodeKind.Deletable, "node must stay non-deletable for this test to exercise the del-override path")
 
 	overrides := make(map[string]kindOverride, len(orig)+1)
-	for k, v := range orig {
-		overrides[k] = v
-	}
+	maps.Copy(overrides, orig)
 	overrides["node"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
 	kindOverrideTable = overrides
 	t.Cleanup(func() { kindOverrideTable = orig })
@@ -548,9 +547,7 @@ func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 	require.True(t, projectKind.Deletable, "project must stay deletable for this test to exercise the collision-avoidance branch")
 
 	overrides := make(map[string]kindOverride, len(orig)+1)
-	for k, v := range orig {
-		overrides[k] = v
-	}
+	maps.Copy(overrides, orig)
 	overrides["project"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
 	kindOverrideTable = overrides
 	t.Cleanup(func() { kindOverrideTable = orig })

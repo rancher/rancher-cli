@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -175,9 +176,7 @@ func Rendered(cliVersion string) (map[string][]byte, error) {
 		return nil, err
 	}
 	view := map[string][]byte{}
-	for k, v := range files {
-		view[k] = v
-	}
+	maps.Copy(view, files)
 	view[skillFile] = canonical
 	digest, err := DigestTree(view)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -220,9 +221,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		"kind":       k.K8sKind,
 		"metadata":   map[string]any{"name": name, "namespace": k.DefaultNamespace},
 	}}
-	for key, v := range fields {
-		obj.Object[key] = v
-	}
+	maps.Copy(obj.Object, fields)
 	return obj, k, nil
 }
 

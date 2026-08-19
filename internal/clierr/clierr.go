@@ -1,6 +1,9 @@
 package clierr
 
-import "errors"
+import (
+	"errors"
+	"maps"
+)
 
 const (
 	CodeNotLoggedIn          = "NOT_LOGGED_IN"
@@ -73,9 +76,7 @@ func ExitCode(code string) int {
 // manifest's exitCodes field).
 func CodeExits() map[string]int {
 	out := make(map[string]int, len(exitCodes))
-	for code, exit := range exitCodes {
-		out[code] = exit
-	}
+	maps.Copy(out, exitCodes)
 	return out
 }
 

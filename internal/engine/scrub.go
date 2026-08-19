@@ -1,5 +1,7 @@
 package engine
 
+import "maps"
+
 // ScrubPaths returns a shallow copy of obj with every listed path deleted.
 // A path is a []string key sequence addressing object fields; segments are
 // fixed keys and never traverse arrays. The copy is shallow at the top
@@ -17,9 +19,7 @@ func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 		return obj
 	}
 	out := make(map[string]any, len(obj))
-	for k, v := range obj {
-		out[k] = v
-	}
+	maps.Copy(out, obj)
 	deletePaths(out, paths)
 	return out
 }
@@ -51,9 +51,7 @@ func deletePaths(m map[string]any, paths [][]string) {
 		}
 		// Copy the child map before mutating so the original is not touched.
 		copied := make(map[string]any, len(childMap))
-		for k, v := range childMap {
-			copied[k] = v
-		}
+		maps.Copy(copied, childMap)
 		deletePaths(copied, rest)
 		m[head] = copied
 	}

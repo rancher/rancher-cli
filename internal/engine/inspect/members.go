@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -67,12 +68,8 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if w != "" {
 			warnings = append(warnings, w)
 		}
-		for k, v := range d {
-			display[k] = v
-		}
-		for k, v := range c {
-			collided[k] = v
-		}
+		maps.Copy(display, d)
+		maps.Copy(collided, c)
 	}
 
 	if len(groupRefs) > 0 {
@@ -86,12 +83,8 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if w != "" {
 			warnings = append(warnings, w)
 		}
-		for k, v := range d {
-			display[k] = v
-		}
-		for k, v := range c {
-			collided[k] = v
-		}
+		maps.Copy(display, d)
+		maps.Copy(collided, c)
 	}
 
 	for i := range rows {

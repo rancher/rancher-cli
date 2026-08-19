@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,9 +16,7 @@ var userGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version
 
 func memberBinding(fields map[string]any) unstructured.Unstructured {
 	obj := map[string]any{"metadata": map[string]any{"name": "b"}}
-	for k, v := range fields {
-		obj[k] = v
-	}
+	maps.Copy(obj, fields)
 	return unstructured.Unstructured{Object: obj}
 }
 
