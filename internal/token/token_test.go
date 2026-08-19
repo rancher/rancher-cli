@@ -101,7 +101,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		deleted := res.Data.(map[string]any)["deleted"].([]string)
 		assert.ElementsMatch(t, []string{"prod", scoped}, deleted)
 		_, _, gerr := store.GetCachedCred("prod")
-		assert.ErrorIs(t, gerr, config.ErrNoToken)
+		require.ErrorIs(t, gerr, config.ErrNoToken)
 		_, _, gerr = store.GetCachedCred(scoped)
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
@@ -457,7 +457,7 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 	assert.Equal(t, "ext/minted:secret", cred.Status.Token, "the token is still usable for this call")
 
 	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
-	assert.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
+	require.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
 	assert.Contains(t, notices.String(), "not caching")
 }
 
@@ -711,7 +711,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce, "must fail with a VALIDATION error")
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.ErrorContains(t, ce, "legacy:")
+	require.ErrorContains(t, ce, "legacy:")
 
 	// The cache entry must be untouched — it was never served.
 	tok, _, cerr := store.GetCachedCred(key)
@@ -833,7 +833,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 		ui.Discard())
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required")
-	assert.ErrorContains(t, err, "500")
+	require.ErrorContains(t, err, "500")
 	assert.Equal(t, int32(0), authProviderHits.Load(), "a real mint failure must not fall through to the interactive flow")
 }
 
@@ -1382,7 +1382,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
+	require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load(),
 		"Rancher login must never be reached once the caller context is cancelled")
 }
@@ -1427,7 +1427,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
+	require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load())
 }
 
@@ -1575,7 +1575,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 		elapsed := time.Since(start)
 
 		require.Error(t, err)
-		assert.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
+		require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 		// Fake time: RSA keygen and scheduling cost zero, so elapsed is the
 		// cancel goroutine's 50ms exactly — anything at or past the tick
 		// means the select waited for the poll instead of the cancellation.
@@ -1627,7 +1627,7 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "404", "a 404 from /v1-public/authproviders must surface as an error")
+	require.ErrorContains(t, err, "404", "a 404 from /v1-public/authproviders must surface as an error")
 	mu.Lock()
 	defer mu.Unlock()
 	require.NotEmpty(t, paths)

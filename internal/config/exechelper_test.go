@@ -28,7 +28,7 @@ var (
 func buildFakeHelper(t *testing.T) string {
 	t.Helper()
 	fakeHelperOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "fakehelper")
+		dir, err := os.MkdirTemp("", "fakehelper") //nolint:usetesting // shared across the whole test binary via sync.Once; t.TempDir() would bind its lifetime to the first caller's test
 		if err != nil {
 			fakeHelperErr = err
 			return
@@ -92,12 +92,14 @@ func execRef() ServerRef {
 
 // fakeHelperCreds decodes the fake helper's state file credential map.
 func fakeHelperCreds(t *testing.T, statePath string) map[string]string {
+	t.Helper()
 	creds, _ := fakeHelperState(t, statePath)
 	return creds
 }
 
 // fakeHelperLog returns the fake helper's invocation log ("verb url name" lines).
 func fakeHelperLog(t *testing.T, statePath string) []string {
+	t.Helper()
 	_, log := fakeHelperState(t, statePath)
 	return log
 }

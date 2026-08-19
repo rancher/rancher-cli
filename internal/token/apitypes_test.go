@@ -120,7 +120,7 @@ func TestParseLoginResponse(t *testing.T) {
 		}`)
 		_, err := parseLoginResponse(body)
 		require.Error(t, err, "an unrecognized versioned response must not silently look like an empty-token auth failure")
-		assert.ErrorContains(t, err, "ext.cattle.io/v2")
+		require.ErrorContains(t, err, "ext.cattle.io/v2")
 		assert.ErrorContains(t, err, "Token")
 	})
 

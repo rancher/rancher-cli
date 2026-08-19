@@ -33,7 +33,7 @@ func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 	for range 8 {
 		wg.Go(func() {
 			tok, err := l.GetToken(ServerRef{Name: "prod"})
-			assert.NoError(t, err)
+			assert.NoError(t, err) //nolint:testifylint // runs inside wg.Go; require's FailNow must only run on the test's own goroutine
 			assert.Equal(t, "tok", tok)
 		})
 	}
@@ -63,7 +63,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 
 	_, err := NewLazyStore("", dir)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `unknown credential store "wat"`)
+	require.ErrorContains(t, err, `unknown credential store "wat"`)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr))
 }

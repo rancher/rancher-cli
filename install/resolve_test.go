@@ -655,7 +655,7 @@ func TestTagGrammarSharedSource(t *testing.T) {
 	guard, err := filepath.Abs("../scripts/check-release-tag")
 	require.NoError(t, err)
 	for _, tag := range accept {
-		assert.NoErrorf(t, exec.Command("sh", guard, tag).Run(), "guard must accept %s", tag)
+		require.NoErrorf(t, exec.Command("sh", guard, tag).Run(), "guard must accept %s", tag)
 	}
 	for _, tag := range reject {
 		assert.Errorf(t, exec.Command("sh", guard, tag).Run(), "guard must reject %s", tag)

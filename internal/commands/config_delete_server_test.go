@@ -52,7 +52,7 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	_, err = cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "keychain locked")
+	require.ErrorContains(t, err, "keychain locked")
 
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 	assert.Empty(t, cfg.CurrentServer, "current server pointer cleared")
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken, "token deleted")
+	require.ErrorIs(t, err, config.ErrNoToken, "token deleted")
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	require.NoError(t, err, "unrelated server's token kept")
 }
@@ -200,7 +200,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	}}
 	_, err := cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.NotContains(t, err.Error(), "server config left untouched")
 
 	cfgAfter, lerr := config.Load(config.FilePath(dir))

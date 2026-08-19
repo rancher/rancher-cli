@@ -173,7 +173,7 @@ func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
 		cond := waitCond{kind: "state", name: "running"}
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "Pending", "timeout message shows the real phase, not <no state>")
+		require.ErrorContains(t, err, "Pending", "timeout message shows the real phase, not <no state>")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
@@ -212,7 +212,7 @@ func TestWaitForFailsFastOnTransitioningError(t *testing.T) {
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, false)
 		elapsed := time.Since(start)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "quota exceeded")
+		require.ErrorContains(t, err, "quota exceeded")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.False(t, ce.Retryable)
@@ -245,7 +245,7 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
-		assert.ErrorContains(t, err, "provisioning")
+		require.ErrorContains(t, err, "provisioning")
 		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
 	})
 }
@@ -291,7 +291,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
-		assert.ErrorContains(t, err, "no state observed")
+		require.ErrorContains(t, err, "no state observed")
 		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
 	})
 }
@@ -440,7 +440,7 @@ func TestWaitTimeoutConditionMessageSanitized(t *testing.T) {
 		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
+		require.ErrorContains(t, err, "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
 		assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
 		assert.NotContains(t, err.Error(), "\u202e", "bidi override must be stripped")
 	})
@@ -457,7 +457,7 @@ func TestWaitTimeoutConditionWithoutMessageUnchanged(t *testing.T) {
 		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, false)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "Ready=Unknown")
+		require.ErrorContains(t, err, "Ready=Unknown")
 		assert.NotContains(t, err.Error(), "Ready=Unknown (",
 			"an empty condition message must not open a parenthesized suffix")
 	})
@@ -505,7 +505,7 @@ func TestWaitForFailsFastOnStalled(t *testing.T) {
 		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
 		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 5*time.Second, true)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "x stalled: authentication required")
+		require.ErrorContains(t, err, "x stalled: authentication required")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.False(t, ce.Retryable)

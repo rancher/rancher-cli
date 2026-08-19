@@ -136,8 +136,8 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 
 	err = WithLock(t.Context(), dir, func() error { return nil })
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "another rancher process")
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "another rancher process")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
@@ -203,7 +203,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		select {
 		case werr := <-done:
 			require.Error(t, werr)
-			assert.ErrorIs(t, werr, context.Canceled, "cancellation must pass through, not be dressed as a lock timeout")
+			require.ErrorIs(t, werr, context.Canceled, "cancellation must pass through, not be dressed as a lock timeout")
 		case <-time.After(5 * time.Second):
 			t.Fatal("cancellation did not unblock the flock wait")
 		}
@@ -242,7 +242,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 		select {
 		case werr := <-waiterDone:
 			require.Error(t, werr)
-			assert.ErrorIs(t, werr, context.Canceled)
+			require.ErrorIs(t, werr, context.Canceled)
 		case <-time.After(5 * time.Second):
 			t.Fatal("cancellation did not unblock the semaphore wait")
 		}
@@ -260,6 +260,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 // No t.Parallel(): t.Setenv in the second case.
 func TestWithLockPreCanceledContextNeverRunsFn(t *testing.T) {
 	run := func(t *testing.T) {
+		t.Helper()
 		dir := filepath.Join(t.TempDir(), "never-created")
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -269,7 +270,7 @@ func TestWithLockPreCanceledContextNeverRunsFn(t *testing.T) {
 		for range 50 {
 			err := WithLock(ctx, dir, func() error { ran = true; return nil })
 			require.Error(t, err)
-			assert.ErrorIs(t, err, context.Canceled)
+			require.ErrorIs(t, err, context.Canceled)
 		}
 		assert.False(t, ran, "fn must never run under a canceled context")
 		_, statErr := os.Stat(dir)

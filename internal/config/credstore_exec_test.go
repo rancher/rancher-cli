@@ -47,7 +47,7 @@ func TestExecStoreHelperFailure(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "deliberate failure", "helper stderr must surface")
+	require.ErrorContains(t, err, "deliberate failure", "helper stderr must surface")
 	assert.NotErrorIs(t, err, ErrNoToken)
 }
 
@@ -66,7 +66,7 @@ func TestExecStoreMissingBinary(t *testing.T) {
 	require.NoError(t, err, "construction is lazy; failure surfaces on use")
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `credential helper "rancher-credential-nosuch" not found in PATH`)
+	require.ErrorContains(t, err, `credential helper "rancher-credential-nosuch" not found in PATH`)
 	assert.ErrorContains(t, err, "CREDENTIAL_HELPERS.md")
 }
 
@@ -78,7 +78,7 @@ func TestExecStoreTimeout(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "timed out")
+	require.ErrorContains(t, err, "timed out")
 	assert.ErrorContains(t, err, "rancher-credential-fake")
 }
 
@@ -139,7 +139,7 @@ func TestExecStoreMalformedExpiresAt(t *testing.T) {
 	st := newExecStore("fake", t.TempDir())
 	_, err := st.GetToken(execRef())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "malformed expiresAt")
+	require.ErrorContains(t, err, "malformed expiresAt")
 	assert.NotErrorIs(t, err, ErrNoToken, "malformed expiry is never a quiet miss")
 }
 

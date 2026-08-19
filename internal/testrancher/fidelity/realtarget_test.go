@@ -57,7 +57,7 @@ func TestDeleteStandardUserSurfacesDeleteFailure(t *testing.T) {
 
 	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "u-stale")
+	require.ErrorContains(t, err, "u-stale")
 	assert.ErrorContains(t, err, "status 403")
 }
 
@@ -238,7 +238,7 @@ func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
 	tgt := newTestRealTarget(srv)
 	_, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "not ext-shaped")
+	require.ErrorContains(t, err, "not ext-shaped")
 	assert.NotContains(t, err.Error(), "plain-secret-xyz",
 		"a mint response bearer of the wrong shape is still a live secret; the error withholds it")
 }

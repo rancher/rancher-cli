@@ -665,6 +665,7 @@ func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 	t.Parallel()
 	for name, link := range map[string]func(t *testing.T, home, dir string){
 		"absolute target": func(t *testing.T, home, dir string) {
+			t.Helper()
 			require.NoError(t, os.Symlink(
 				filepath.Join(home, ".local", "bin", "rancher"),
 				filepath.Join(dir, "rancher")))
@@ -672,6 +673,7 @@ func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 		// Relative from home/convenience into home/.local/bin — the
 		// ln -s ../bin/rancher style the canonicalization must resolve.
 		"relative target": func(t *testing.T, home, dir string) {
+			t.Helper()
 			require.NoError(t, os.Symlink(
 				filepath.Join("..", ".local", "bin", "rancher"),
 				filepath.Join(dir, "rancher")))
@@ -679,6 +681,7 @@ func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 		// Two hops, both relative — the update-alternatives layout the
 		// chain resolution must follow to the end.
 		"chained target": func(t *testing.T, home, dir string) {
+			t.Helper()
 			require.NoError(t, os.Symlink(
 				filepath.Join("..", ".local", "bin", "rancher"),
 				filepath.Join(dir, "rancher-link")))

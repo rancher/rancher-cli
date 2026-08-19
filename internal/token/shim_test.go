@@ -71,7 +71,7 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 	assert.NotEqual(t, keyAlice, keyBob, "different --user values must produce distinct cache slots")
 
 	_, _, err = store.GetCachedCred(keyAlice)
-	assert.NoError(t, err, "alice's cache slot must be written")
+	require.NoError(t, err, "alice's cache slot must be written")
 
 	_, _, err = store.GetCachedCred(keyBob)
 	assert.NoError(t, err, "bob's cache slot must be written")
@@ -194,7 +194,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	unscopedKey := config.CacheKey("legacy:testcluster", serverID, "")
 	_, _, cerr := store.GetCachedCred(unscopedKey)
-	assert.NoError(t, cerr, "the cache slot must be the unscoped (no cluster) key")
+	require.NoError(t, cerr, "the cache slot must be the unscoped (no cluster) key")
 
 	// The scoped key (with "c-ctx") must be absent — proving the context cluster
 	// was not used.
@@ -377,7 +377,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 	// The padded call should find the canonical key (trimmed first) rather
 	// than writing a new "legacy:  alice" slot.
 	_, _, err = store.GetCachedCred(canonicalKey)
-	assert.NoError(t, err, "canonical key must be present after any invocation")
+	require.NoError(t, err, "canonical key must be present after any invocation")
 
 	// Execute with padded user — must NOT create the padded slot.
 	_, err = cmd.Execute(t.Context(),
@@ -423,7 +423,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 		"test precondition: canonical and padded cluster keys must differ")
 
 	_, _, err = store.GetCachedCred(canonicalKey)
-	assert.NoError(t, err, "canonical key must be present after the first invocation")
+	require.NoError(t, err, "canonical key must be present after the first invocation")
 
 	// Execute with padded cluster — must NOT create a distinct padded slot.
 	_, err = cmd.Execute(t.Context(),

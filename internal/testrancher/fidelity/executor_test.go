@@ -259,8 +259,8 @@ func TestRunProbeJoinsTeardownErrorsWithPrimary(t *testing.T) {
 	}
 	_, err := RunProbe(t.Context(), tgt, p)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "setup boom", "the primary failure survives")
-	assert.ErrorContains(t, err, "clean-a failed", "every teardown failure is reported")
+	require.ErrorContains(t, err, "setup boom", "the primary failure survives")
+	require.ErrorContains(t, err, "clean-a failed", "every teardown failure is reported")
 	assert.ErrorContains(t, err, "clean-b failed", "later teardown failures are not dropped")
 }
 
@@ -312,7 +312,7 @@ func TestDoResilientRetriesIdempotentButNeverPost(t *testing.T) {
 		rt := &resetRoundTripper{failFirst: 1}
 		_, err := doResilient(&http.Client{Transport: rt}, build(http.MethodPost))
 		require.Error(t, err)
-		assert.ErrorIs(t, err, syscall.ECONNRESET)
+		require.ErrorIs(t, err, syscall.ECONNRESET)
 		assert.Equal(t, 1, rt.calls,
 			"a POST reset surfaces after exactly one attempt so a committed mutation is never double-fired")
 	})
@@ -322,7 +322,7 @@ func TestDoResilientRetriesIdempotentButNeverPost(t *testing.T) {
 		rt := &resetRoundTripper{failFirst: 2}
 		_, err := doResilient(&http.Client{Transport: rt}, build(http.MethodGet))
 		require.Error(t, err)
-		assert.ErrorIs(t, err, syscall.ECONNRESET)
+		require.ErrorIs(t, err, syscall.ECONNRESET)
 		assert.Equal(t, 2, rt.calls, "the single retry is exhausted; the second reset is returned")
 	})
 }

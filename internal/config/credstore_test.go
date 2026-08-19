@@ -154,7 +154,7 @@ func TestDeleteAllCachedCredsFlushesFileStore(t *testing.T) {
 	require.NoError(t, s.SetCachedCred("acme/u/c2", "t2", time.Now().Add(time.Hour), "", "", ""))
 	require.NoError(t, s.DeleteAllCachedCreds())
 	_, _, err := s.GetCachedCred("acme/u/c1")
-	assert.ErrorIs(t, err, ErrNoToken)
+	require.ErrorIs(t, err, ErrNoToken)
 	_, _, err = s.GetCachedCred("acme/u/c2")
 	assert.ErrorIs(t, err, ErrNoToken)
 }
@@ -165,7 +165,7 @@ func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", ""))
 
 	tok, _, err := s.GetCachedCred("acme/u/c")
-	assert.ErrorIs(t, err, ErrNoToken)
+	require.ErrorIs(t, err, ErrNoToken)
 	assert.Empty(t, tok)
 
 	m, err := s.readCache()
@@ -349,9 +349,9 @@ func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 	assert.Equal(t, []string{CacheKey("kubeuser", "acme.ex", "c-1")}, deleted)
 
 	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"))
-	assert.ErrorIs(t, err, ErrNoToken, "matching entry must be deleted")
+	require.ErrorIs(t, err, ErrNoToken, "matching entry must be deleted")
 	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"))
-	assert.NoError(t, err, "non-matching entry must be kept")
+	require.NoError(t, err, "non-matching entry must be kept")
 	_, _, err = store.GetCachedCred("legacy-bare")
 	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
 }
@@ -376,7 +376,7 @@ func TestDeleteExecCacheForServerDeletesAllNamesSharingOneHost(t *testing.T) {
 	}, deleted, "both names sharing one host must be deleted together")
 
 	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"))
-	assert.ErrorIs(t, err, ErrNoToken)
+	require.ErrorIs(t, err, ErrNoToken)
 	_, _, err = store.GetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"))
 	assert.ErrorIs(t, err, ErrNoToken)
 }
@@ -424,7 +424,7 @@ func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *t
 	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store deletes")
 	assert.Contains(t, from, "file", "file backend must still be deleted")
 	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
-	assert.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
+	require.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
 	assert.Contains(t, buf.String(), "keychain unreachable", "the unreachable keychain must still be visibly warned about")
 }
 
@@ -471,7 +471,7 @@ func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, ErrNoToken)
+	require.NotErrorIs(t, err, ErrNoToken)
 	assert.ErrorContains(t, err, "no session bus")
 }
 
@@ -487,7 +487,7 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "no session bus")
+	require.ErrorContains(t, err, "no session bus")
 	assert.ErrorContains(t, err, "file credential store")
 }
 
@@ -512,7 +512,7 @@ func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
 	_, err := fs.GetToken(ServerRef{Name: "prod"})
-	assert.ErrorIs(t, err, ErrNoToken)
+	require.ErrorIs(t, err, ErrNoToken)
 	assert.Contains(t, buf.String(), "keychain unreachable")
 	assert.Contains(t, buf.String(), "file store only")
 }
@@ -545,8 +545,8 @@ func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	err := s.SetToken(ServerRef{Name: "prod"}, "new-token")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unreachable")
-	assert.ErrorContains(t, err, EnvCredentialStore+"=file")
+	require.ErrorContains(t, err, "unreachable")
+	require.ErrorContains(t, err, EnvCredentialStore+"=file")
 	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "plaintext credentials.yaml must not be created")
 }
@@ -692,7 +692,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 
 	// Both keys must survive — no lost update.
 	_, _, errA := store1.GetCachedCred("key-a")
-	assert.NoError(t, errA, "key-a must survive after concurrent write")
+	require.NoError(t, errA, "key-a must survive after concurrent write")
 	_, _, errB := store1.GetCachedCred("key-b")
 	assert.NoError(t, errB, "key-b must survive after concurrent write")
 }
@@ -777,11 +777,11 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 
 	// A's effect: key-a must be present.
 	_, _, errGet := store1.GetCachedCred("key-a")
-	assert.NoError(t, errGet, "key-a (SetCachedCred effect) must survive concurrent GetCachedCred prune")
+	require.NoError(t, errGet, "key-a (SetCachedCred effect) must survive concurrent GetCachedCred prune")
 
 	// B's effect: key-b must be pruned.
 	_, _, errGet = store1.GetCachedCred("key-b")
-	assert.ErrorIs(t, errGet, ErrNoToken, "expired key-b must be pruned by GetCachedCred")
+	require.ErrorIs(t, errGet, ErrNoToken, "expired key-b must be pruned by GetCachedCred")
 
 	// Unrelated key-c must be unaffected.
 	_, _, errGet = store1.GetCachedCred("key-c")
@@ -885,7 +885,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	require.NoError(t, <-errDel, "DeleteAllCachedCreds must succeed")
 
 	_, _, err := store1.GetCachedCred("key-a")
-	assert.ErrorIs(t, err, ErrNoToken, "key-a must stay wiped, not be resurrected by the concurrent write-back")
+	require.ErrorIs(t, err, ErrNoToken, "key-a must stay wiped, not be resurrected by the concurrent write-back")
 	_, _, err = store1.GetCachedCred("key-b")
 	assert.ErrorIs(t, err, ErrNoToken, "key-b (written before the wipe acquired the lock) must be wiped too")
 }

@@ -98,7 +98,7 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
 	runErr := root.Run(t.Context(), []string{"rancher", "usage", "--cluster", "my-cluster", "--generate-shell-completion"})
-	assert.NoError(t, runErr, "AC-22: completion must not fail when keyring is unavailable")
+	require.NoError(t, runErr, "AC-22: completion must not fail when keyring is unavailable")
 	assert.Empty(t, stderr.String(), "AC-22: completion must not write to stderr")
 	assert.Equal(t, int32(0), keyringOps.Load(), "AC-22: completion must not contact the keyring")
 	assert.Equal(t, int32(0), hits.Load(), "AC-22: no token → no HTTP requests")
@@ -155,7 +155,7 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))
-	assert.NoError(t, runErr, "AC-23: completion must not exit nonzero")
+	require.NoError(t, runErr, "AC-23: completion must not exit nonzero")
 	assert.Empty(t, stderr.String(), "AC-23: no stderr on any failure path (unreadable creds or unreachable server)")
 }
 
@@ -435,7 +435,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))
-	assert.NoError(t, runErr, "AC-27: completion must not exit nonzero")
+	require.NoError(t, runErr, "AC-27: completion must not exit nonzero")
 	assert.Equal(t, before, hashDir(t, dir), "AC-27: completion must write nothing (no prune-on-read or other writes)")
 }
 

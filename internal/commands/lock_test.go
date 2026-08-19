@@ -169,7 +169,7 @@ func TestLogoutSerializedUnderConfigLock(t *testing.T) {
 	_, ok = cfg.Servers["acme2"]
 	assert.True(t, ok, "server config entry for acme2 must survive logout (only token is deleted)")
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken, "acme token must be deleted by logout")
+	require.ErrorIs(t, err, config.ErrNoToken, "acme token must be deleted by logout")
 	_, err = store.GetToken(config.ServerRef{Name: "acme2"})
 	assert.ErrorIs(t, err, config.ErrNoToken, "acme2 token must be deleted by logout")
 }

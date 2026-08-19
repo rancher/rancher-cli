@@ -51,7 +51,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 	assert.Equal(t, []string{"file"}, df["acme"], "mock keychain is empty, so only the file backend reports a delete")
 
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken)
+	require.ErrorIs(t, err, config.ErrNoToken)
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
 	require.NoError(t, err) // untouched
 
@@ -67,7 +67,7 @@ func TestLogoutByName(t *testing.T) {
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
-	assert.ErrorIs(t, err, config.ErrNoToken)
+	require.ErrorIs(t, err, config.ErrNoToken)
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err) // current untouched
 	cfg, err := config.Load(config.FilePath(dir))
@@ -93,9 +93,9 @@ func TestLogoutAll(t *testing.T) {
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	_, err = store.GetToken(config.ServerRef{Name: "acme"})
-	assert.ErrorIs(t, err, config.ErrNoToken)
+	require.ErrorIs(t, err, config.ErrNoToken)
 	_, err = store.GetToken(config.ServerRef{Name: "other"})
-	assert.ErrorIs(t, err, config.ErrNoToken)
+	require.ErrorIs(t, err, config.ErrNoToken)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, "", cfg.CurrentServer)
@@ -118,7 +118,7 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, deletedCache)
 
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
-	assert.ErrorIs(t, err, config.ErrNoToken, "matching entry deleted")
+	require.ErrorIs(t, err, config.ErrNoToken, "matching entry deleted")
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"))
 	require.NoError(t, err, "non-matching entry kept")
 	_, _, err = store.GetCachedCred("legacy-bare")
@@ -350,7 +350,7 @@ func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	t.Parallel()
 	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
 	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"})
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
 	assert.NotErrorAs(t, err, &ce, "cancellation must not be dressed as a clierr delete failure")
 

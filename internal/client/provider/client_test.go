@@ -112,7 +112,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.ErrorContains(t, ce, "ext.cattle.io")
+	require.ErrorContains(t, ce, "ext.cattle.io")
 	assert.Contains(t, ce.Hint, "auth list-tokens")
 
 	// A non-ext group absence carries the generic "not served" hint (not the ext hint).

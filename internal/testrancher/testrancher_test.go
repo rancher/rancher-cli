@@ -129,7 +129,7 @@ func TestLocalLoginHappyAndReject(t *testing.T) {
 	assert.Equal(t, "ext/fac-token-1:fac-secret-1", tok.Status.BearerToken)
 	assert.NotEmpty(t, tok.Status.ExpiresAt)
 	_, err := time.Parse(time.RFC3339, tok.Status.ExpiresAt)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	resp2, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
 		map[string]string{"type": "localProvider", "username": "e2e-user", "password": "WRONG"}, "")

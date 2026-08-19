@@ -58,6 +58,7 @@ func mutatingDesc() Descriptor { return Descriptor{Name: "clusters scale", Comma
 // unusedExec is a closure that fails the test if invoked; use it where an
 // invariant must reject before execution.
 func unusedExec(t *testing.T) ExecuteFunc {
+	t.Helper()
 	return func(context.Context) (Result, error) {
 		t.Helper()
 		t.Fatal("exec must not be called")

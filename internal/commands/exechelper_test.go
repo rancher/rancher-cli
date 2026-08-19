@@ -26,7 +26,7 @@ var (
 func buildCommandsFakeHelper(t *testing.T) string {
 	t.Helper()
 	cmdFakeHelperOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "fakehelper-commands")
+		dir, err := os.MkdirTemp("", "fakehelper-commands") //nolint:usetesting // shared across the whole test binary via sync.Once; t.TempDir() would bind its lifetime to the first caller's test
 		if err != nil {
 			cmdFakeHelperErr = err
 			return

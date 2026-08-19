@@ -64,7 +64,7 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 		"http delete must remove the http entry and the legacy record")
 
 	_, _, err = fs.GetCachedCred(httpKey)
-	assert.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http delete")
+	require.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http delete")
 
 	tok, _, err := fs.GetCachedCred(httpsKey)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestDeleteLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	assert.Contains(t, from, "helper:fake")
 
 	_, gerr := st.GetToken(execRef())
-	assert.ErrorIs(t, gerr, ErrNoToken, "helper credential must be gone")
+	require.ErrorIs(t, gerr, ErrNoToken, "helper credential must be gone")
 	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "helper record cleared")
 		return nil
@@ -308,7 +308,7 @@ func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	select {
 	case derr := <-done:
 		require.Error(t, derr)
-		assert.ErrorIs(t, derr, context.Canceled, "cancellation must interrupt the records-lock wait")
+		require.ErrorIs(t, derr, context.Canceled, "cancellation must interrupt the records-lock wait")
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancellation did not unblock the records-lock wait")
 	}

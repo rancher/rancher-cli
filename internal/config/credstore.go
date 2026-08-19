@@ -88,7 +88,7 @@ type CachedCredInfo struct {
 	Name    string    `json:"name"`
 	Server  string    `json:"server,omitempty"`
 	Cluster string    `json:"cluster,omitempty"`
-	Expiry  time.Time `json:"expiry,omitempty"`
+	Expiry  time.Time `json:"expiry,omitempty"` //nolint:modernize // omitzero would drop zero expiries from stored credential records, a persisted-file format change older binaries read on the alpha upgrade path; deliberate wire decision, not tag cleanup
 }
 
 // CacheKey scopes an exec-credential cache entry by server identity and

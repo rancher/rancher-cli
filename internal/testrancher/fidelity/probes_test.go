@@ -68,7 +68,7 @@ func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
 	for _, p := range All() {
 		oraclePath := GoldenPath(filepath.Join("testdata", "oracle"), p.Name)
 		_, err := os.Stat(oraclePath)
-		assert.NoError(t, err, "probe %s must have an oracle golden at %s", p.Name, oraclePath)
+		require.NoError(t, err, "probe %s must have an oracle golden at %s", p.Name, oraclePath)
 		if p.FacadeDivergence == "" {
 			continue
 		}
@@ -138,7 +138,7 @@ func TestDeleteFixtureUnresolvedTemplateNeverHitsServer(t *testing.T) {
 
 	err := deleteFixture("f", "/x/{tokname}").Do(t.Context(), tgt, map[string]string{})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unresolved")
+	require.ErrorContains(t, err, "unresolved")
 	assert.False(t, hit, "an unresolved capture must never delete against a synthetic URL")
 }
 

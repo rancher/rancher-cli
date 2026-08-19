@@ -40,7 +40,7 @@ func TestPromptRefusesWhenDisabled(t *testing.T) {
 	t.Parallel()
 	p := New(&bytes.Buffer{}, strings.NewReader("x\n"), true, true)
 	_, err := p.Prompt(t.Context(), "user: ")
-	assert.ErrorIs(t, err, ErrNoInput)
+	require.ErrorIs(t, err, ErrNoInput)
 	_, err = p.PromptSecret(t.Context(), "pw: ")
 	assert.ErrorIs(t, err, ErrNoInput)
 }

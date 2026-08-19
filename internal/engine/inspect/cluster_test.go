@@ -426,7 +426,7 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 			// the fetch, not the gate.
 			res, err := execRead(t, cmd, registrationInput("c-abc"))
 			require.Error(t, err, "%v during the provisioning LIST must propagate, not degrade", ctxErr)
-			assert.ErrorIs(t, err, ctxErr)
+			require.ErrorIs(t, err, ctxErr)
 			assert.Equal(t, "", root.path, "no registration fetch after cancellation")
 			assert.Empty(t, res.Warnings, "cancellation is the command's error, never a section warning")
 		}
@@ -445,7 +445,7 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 			cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 			res, err := execRead(t, cmd, registrationInput("c-abc"))
 			require.Error(t, err, "%v during the registration fetch must propagate, not degrade", ctxErr)
-			assert.ErrorIs(t, err, ctxErr)
+			require.ErrorIs(t, err, ctxErr)
 			assert.Empty(t, res.Warnings, "cancellation is the command's error, never a section warning")
 		}
 	})

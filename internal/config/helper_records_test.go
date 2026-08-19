@@ -122,7 +122,7 @@ func TestExecStoreSetTokenUnsupportedRemovesIntent(t *testing.T) {
 	st, err := OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
-	assert.ErrorIs(t, err, ErrTokenStoreUnsupported)
+	require.ErrorIs(t, err, ErrTokenStoreUnsupported)
 	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		assert.Empty(t, s.forServer("prod"), "unsupported store recorded nothing")
 		return nil
@@ -195,7 +195,7 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 	require.NoError(t, err)
 	err = st.SetToken(execRef(), "id:s")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "token NOT stored")
+	require.ErrorContains(t, err, "token NOT stored")
 	// The fake helper logs every invocation; no log = never invoked.
 	_, statErr := os.Stat(statePath)
 	assert.True(t, os.IsNotExist(statErr), "helper must never have been invoked")

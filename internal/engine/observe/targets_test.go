@@ -120,8 +120,8 @@ func TestResolveServerFallbackChain(t *testing.T) {
 		_, err := Resolve(t.Context(), factory, target, input{})
 		require.Error(t, err)
 		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
-		assert.ErrorContains(t, err, "single-node Docker install")
-		assert.ErrorContains(t, err, "docker logs")
+		require.ErrorContains(t, err, "single-node Docker install")
+		require.ErrorContains(t, err, "docker logs")
 	})
 }
 

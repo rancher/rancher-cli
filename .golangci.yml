@@ -1,0 +1,29 @@
+version: "2"
+
+# Pinned lint policy for the Go modernization sweep (see AGENTS.md's
+# "Modern Go for the pinned toolchain" convention). `default: standard`
+# keeps golangci-lint's built-in default set (errcheck, gosimple, govet,
+# ineffassign, staticcheck, unused); the additions below enforce the
+# sweep's test idioms so a regression is a lint failure, not a future
+# audit.
+linters:
+  default: standard
+  enable:
+    - testifylint
+    - thelper
+    - usetesting
+    - modernize
+  settings:
+    testifylint:
+      disable-all: true
+      enable:
+        - go-require
+        - error-is-as
+        - require-error
+        - contains
+        - formatter
+      # float-compare, encoded-compare, and empty are OFF: the suite has
+      # deliberate exact-contract tests (byte-identical schema/manifest
+      # output, exact float64 JSON counts, pinned compact JSON encoding)
+      # that these checkers would otherwise flag for a "softer" assertion
+      # that would weaken the contract being tested.

@@ -134,7 +134,7 @@ type Config struct {
 	// Completion holds per-machine completion preferences (not user config —
 	// live completion is inherently machine-dependent). Stored inline in
 	// config.yaml for discoverability; see `config set-completion`.
-	Completion CompletionConfig `json:"completion,omitempty"`
+	Completion CompletionConfig `json:"completion,omitempty"` //nolint:modernize // omitzero would drop the empty completion block from config.yaml on write; deliberate wire decision, not tag cleanup
 
 	path string
 }

@@ -88,7 +88,7 @@ func TestNew(t *testing.T) {
 
 	t.Run("invalid CA cert PEM", func(t *testing.T) {
 		_, err := New(Options{CACert: "not-valid-pem"})
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorContains(t, err, "failed to append CA certs from PEM")
 	})
 
@@ -173,7 +173,7 @@ func TestFunctionalRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = client.Do(req)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorContains(t, err, "certificate")
 	})
 }
@@ -205,7 +205,7 @@ func TestDo(t *testing.T) {
 		require.NoError(t, err)
 
 		_, body, err := Do(http.DefaultClient, req)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, body)
 	})
 }

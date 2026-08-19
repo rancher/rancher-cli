@@ -111,7 +111,7 @@ func TestRenderRejectsUnknownFormat(t *testing.T) {
 			var buf bytes.Buffer
 			err := Render(&buf, format, &Envelope{Data: map[string]string{"name": "w1"}})
 			require.Error(t, err)
-			assert.ErrorContains(t, err, "unsupported output format")
+			require.ErrorContains(t, err, "unsupported output format")
 			assert.Empty(t, buf.String())
 		})
 	}
@@ -125,7 +125,7 @@ func TestRenderTemplateEmptySource(t *testing.T) {
 	var buf bytes.Buffer
 	err := Render(&buf, TemplatePrefix, &Envelope{Data: map[string]string{"name": "w1"}})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "empty template source")
+	require.ErrorContains(t, err, "empty template source")
 	assert.Empty(t, buf.String(), "an empty template source must render nothing")
 }
 

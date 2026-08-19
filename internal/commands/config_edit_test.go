@@ -153,7 +153,7 @@ func TestConfigEditReEditDeclinedAbortsPreservingRejectedBuffer(t *testing.T) {
 	_, err := cmd.Execute(t.Context(), args{}, p)
 	require.Error(t, err)
 	require.NotEmpty(t, capturedTemp)
-	assert.ErrorContains(t, err, capturedTemp, "the error must name the preserved buffer's path")
+	require.ErrorContains(t, err, capturedTemp, "the error must name the preserved buffer's path")
 
 	got, err := os.ReadFile(capturedTemp)
 	require.NoError(t, err, "the rejected buffer must still exist at the temp path")
@@ -179,11 +179,11 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	p := &fakePrompter{canPrompt: true}
 	_, err := cmd.Execute(t.Context(), args{}, p)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "symlink")
+	require.ErrorContains(t, err, "symlink")
 
 	matches, _ := filepath.Glob(filepath.Join(dir, ".rancher-config-edit-*"))
 	require.Len(t, matches, 1, "the finished (valid) edit buffer must be preserved at its temp path")
-	assert.ErrorContains(t, err, matches[0], "the error must name the preserved buffer's path")
+	require.ErrorContains(t, err, matches[0], "the error must name the preserved buffer's path")
 
 	got, err := os.ReadFile(matches[0])
 	require.NoError(t, err)
@@ -336,7 +336,7 @@ func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	_, err := cmd.Execute(ctx, args{}, &fakePrompter{canPrompt: true})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled, "cancellation must pass through the write-back path")
+	require.ErrorIs(t, err, context.Canceled, "cancellation must pass through the write-back path")
 	assert.NotContains(t, err.Error(), "writing config failed")
 
 	_, statErr := os.Stat(capturedTemp)
@@ -366,7 +366,7 @@ func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
 	cmd := &configEditCmd{dir: dir, launchEditor: launch}
 	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "check for concurrent changes", "the failing step must be named")
+	require.ErrorContains(t, err, "check for concurrent changes", "the failing step must be named")
 	assert.NotContains(t, err.Error(), "writing config failed")
 }
 

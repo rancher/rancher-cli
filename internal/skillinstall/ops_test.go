@@ -14,6 +14,7 @@ import (
 )
 
 func targetIn(t *testing.T) Target {
+	t.Helper()
 	return Target{Harness: "claude", Scope: ScopeUser,
 		Dir: filepath.Join(t.TempDir(), ".claude", "skills", "rancher")}
 }
@@ -94,7 +95,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 
 	_, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "foreign")
+	require.ErrorContains(t, err, "foreign")
 
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.Error(t, err) // force never authorizes uninstall of foreign
@@ -163,12 +164,12 @@ func TestSymlinkTargetRefused(t *testing.T) {
 
 	for _, force := range []bool{false, true} {
 		_, err := Acquire(testLockDir(link), []Target{link}, "install", force)
-		assert.Error(t, err) // force does not bypass symlink refusal
+		require.Error(t, err) // force does not bypass symlink refusal
 	}
 	_, err := Acquire(testLockDir(link), []Target{link}, "uninstall", false)
-	assert.Error(t, err)
+	require.Error(t, err)
 	_, _, err = StatusTarget(link, "v1.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	v, _, _ := StatusTarget(real, "v1.0.0")
 	assert.Equal(t, VerdictInSync, v) // linked-to installation untouched
 }
@@ -263,7 +264,7 @@ func TestStagingSweepBuckets(t *testing.T) {
 	_, statErr = os.Stat(marked)
 	assert.True(t, os.IsNotExist(statErr), "marker-complete leftover staging entry must be removed")
 	_, statErr = os.Stat(unmarked)
-	assert.NoError(t, statErr, "unmarked non-empty leftover must remain")
+	require.NoError(t, statErr, "unmarked non-empty leftover must remain")
 	_, statErr = os.Stat(strayTmp)
 	assert.True(t, os.IsNotExist(statErr), "stray marker temp file must be removed")
 	_, statErr = os.Stat(strayProbe)
@@ -289,7 +290,7 @@ func TestStagedValidationFailureLeavesTargetUntouched(t *testing.T) {
 	_, err = leases[0].Install("v2.0.0", false)
 	ReleaseAll(leases)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "staged tree failed validation")
+	require.ErrorContains(t, err, "staged tree failed validation")
 
 	postStageHook = nil
 	v, installed, err := StatusTarget(tg, "v1.0.0")
@@ -317,7 +318,7 @@ func TestStagingPopulationFailureLeavesNoLeftovers(t *testing.T) {
 	_, err = leases[0].Install("v1.0.0", false)
 	ReleaseAll(leases)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "induced population failure")
+	require.ErrorContains(t, err, "induced population failure")
 
 	entries, err := os.ReadDir(filepath.Dir(tg.Dir))
 	require.NoError(t, err)
@@ -356,7 +357,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 	// a concurrent install in the same lock domain must fail busy
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "another skill operation")
+	require.ErrorContains(t, err, "another skill operation")
 
 	removed, err := leases[0].Uninstall()
 	ReleaseAll(leases)
@@ -405,7 +406,7 @@ func TestAcquireBusySecondTargetChangesNothing(t *testing.T) {
 
 	_, err = Acquire(lockDir, []Target{a, b}, "install", false)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "another skill operation")
+	require.ErrorContains(t, err, "another skill operation")
 	_, statErr := os.Stat(a.Dir)
 	assert.True(t, os.IsNotExist(statErr), "first target must be untouched")
 }
