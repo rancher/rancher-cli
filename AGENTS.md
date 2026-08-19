@@ -71,6 +71,11 @@ Two gotchas:
   or live fetch) and completion tests in the same change. A suggestion must
   be valid verbatim — never offer a value the command would reject or
   resolve ambiguously.
+- **Modern Go for the pinned toolchain.** `t.Context()` over
+  `context.Background()` in tests, and current stdlib idioms (`slices`,
+  `maps`, `strings.Cut*`/`SplitSeq`, `errors.AsType`, `sync.OnceValue`,
+  `WaitGroup.Go`, and so on) elsewhere. New code is always written to the
+  current idiom — never matched down to a stale one already in the file.
 
 ## Knowledge graph (graphify)
 
