@@ -4,7 +4,7 @@
 
 # VALIDATION: the -o value set is closed — an unknown format is a structured
 # JSON envelope on stderr with a non-zero exit, before the command runs.
-! exec rancher schema -o wide
+! exec rancher schema -o csv
 jsonquery stderr data.error.code VALIDATION
 stderr 'template=<go-template>'
 

@@ -22,8 +22,10 @@ type GlobalFlag struct {
 // OutputFormats is the canonical set of --output / -o literal values;
 // template=<go-template> is additionally accepted. Referenced by GlobalFlags
 // (the schema enum) and, via OutputFormatCompletions, by globalArgSpecs in
-// the surface layer so there is one source of truth.
-var OutputFormats = []string{"table", "json", "yaml", "name"}
+// the surface layer so there is one source of truth. "wide" is presentation,
+// not a scope change: on a payload with no wide-only columns it renders
+// identically to "table" (kubectl's own -o wide contract).
+var OutputFormats = []string{"table", "wide", "json", "yaml", "name"}
 
 // OutputFormatCompletions is what -o <TAB> suggests: the literal formats plus
 // the template form — the bare prefix for discoverability and a seed template
@@ -46,7 +48,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
 		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-stability write"},
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
-		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data"},
+		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "debug logging"},
 		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply"},

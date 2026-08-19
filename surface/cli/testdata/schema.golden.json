@@ -8403,9 +8403,10 @@
     },
     {
       "appliesTo": "all",
-      "desc": "'name' = ids only; template=<go-template> renders a Go template over the JSON view of data",
+      "desc": "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data",
       "enum": [
         "table",
+        "wide",
         "json",
         "yaml",
         "name"

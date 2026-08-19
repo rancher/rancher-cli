@@ -9,8 +9,8 @@ import (
 )
 
 // outputFormatCandidates is the closed -o <TAB> candidate set the root-level
-// tests pin: the four literal formats plus the two template forms.
-var outputFormatCandidates = []string{"table", "json", "yaml", "name", "template=", "template={{.}}"}
+// tests pin: the five literal formats plus the two template forms.
+var outputFormatCandidates = []string{"table", "wide", "json", "yaml", "name", "template=", "template={{.}}"}
 
 // TestRootSpaceFormOutputCompletion: `rancher -o <TAB>` (space form, empty
 // current word) must emit exactly the output-format candidate set — not

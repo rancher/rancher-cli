@@ -859,7 +859,7 @@ func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 func TestRunValidatesOutputFormat(t *testing.T) {
 	t.Parallel()
 
-	valid := []string{"", "table", "json", "yaml", "name", "template={{.foo}}"}
+	valid := []string{"", "table", "wide", "json", "yaml", "name", "template={{.foo}}"}
 	for _, format := range valid {
 		t.Run("valid format="+format, func(t *testing.T) {
 			t.Parallel()
@@ -881,15 +881,15 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 	}{
 		{
 			name:    "unknown value",
-			format:  "wide",
-			message: `--output="wide" is not one of table|json|yaml|name|template=<go-template>`,
-			hint:    "allowed: table, json, yaml, name, template=<go-template>",
+			format:  "csv",
+			message: `--output="csv" is not one of table|wide|json|yaml|name|template=<go-template>`,
+			hint:    "allowed: table, wide, json, yaml, name, template=<go-template>",
 		},
 		{
 			name:    "bare template",
 			format:  "template",
-			message: `--output="template" is not one of table|json|yaml|name|template=<go-template>`,
-			hint:    "allowed: table, json, yaml, name, template=<go-template>",
+			message: `--output="template" is not one of table|wide|json|yaml|name|template=<go-template>`,
+			hint:    "allowed: table, wide, json, yaml, name, template=<go-template>",
 		},
 		{
 			name:    "empty template source",
@@ -939,11 +939,11 @@ func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
 	cmd := refusingPlanMutating{d: mutatingDesc(), t: t}
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{},
-		IO{Out: &out, Err: &errBuf, Format: "wide", Apply: true},
+		IO{Out: &out, Err: &errBuf, Format: "csv", Apply: true},
 		safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, `--output="wide"`)
+	assert.Contains(t, ce.Message, `--output="csv"`)
 }
 
 func TestRenderErrAlwaysJSON(t *testing.T) {

@@ -63,6 +63,11 @@ type Column struct {
 	// "DiskPressure"); the "Not" prefix rendering depends on this.
 	// validateKinds rejects any value whose first rune is not uppercase.
 	Condition string
+	// Wide marks the column secondary: -o table omits it, -o wide includes
+	// it (after every non-Wide column, in declaration order). Orthogonal to
+	// every projection mode above — any column, whatever its axis, may
+	// carry Wide.
+	Wide bool
 }
 
 // NamespacePolicy decides namespace semantics and flag generation for a

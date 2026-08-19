@@ -18,6 +18,15 @@ type Tabular interface {
 	Rows() [][]string
 }
 
+// WideTabular is implemented by payloads that carry extra wide-only columns.
+// Render's "wide" case prefers it and falls back to Tabular, so a payload
+// with no wide columns renders identically under both -o table and -o wide.
+type WideTabular interface {
+	Tabular
+	WideColumns() []string
+	WideRows() [][]string
+}
+
 // TemplatePrefix marks an --output value as Go template source: everything
 // after it is the template. The single source of truth for the prefix — the
 // pipeline's format validation and Render both key off it.
@@ -37,13 +46,16 @@ func renderSource(env *Envelope) (any, error) {
 }
 
 // Render writes env to w in the requested format.
-// format: "" or "table" (user-facing), "json", "yaml", "name" (ids), or
-// "template=<go-template>". Anything else is an error; the pipeline validates
-// the format before the command runs, so hitting it here is defense in depth.
+// format: "" or "table" (user-facing), "wide" (table plus any Wide-marked
+// columns), "json", "yaml", "name" (ids), or "template=<go-template>".
+// Anything else is an error; the pipeline validates the format before the
+// command runs, so hitting it here is defense in depth.
 func Render(w io.Writer, format string, env *Envelope) error {
 	switch format {
 	case "", "table":
 		return renderTable(w, env)
+	case "wide":
+		return renderWide(w, env)
 	case "json":
 		src, err := renderSource(env)
 		if err != nil {
@@ -136,8 +148,33 @@ func renderTable(w io.Writer, env *Envelope) error {
 		}
 		return encodeJSON(w, tree)
 	}
+	return writeTable(w, t.Columns(), t.Rows())
+}
+
+// renderWide is -o wide: it prefers WideTabular's superset columns/rows and
+// falls back to plain Tabular (byte-identical to -o table) for every payload
+// that carries no wide-only columns — presentation, not a scope change.
+func renderWide(w io.Writer, env *Envelope) error {
+	if wt, ok := env.Data.(WideTabular); ok {
+		return writeTable(w, wt.WideColumns(), wt.WideRows())
+	}
+	t, ok := env.Data.(Tabular)
+	if !ok {
+		// Fallback: pretty JSON so wide mode never loses data, same as table.
+		tree, hit, err := scrubbedTree(env.Data)
+		if err != nil {
+			return err
+		}
+		if !hit {
+			return encodeJSON(w, env.Data)
+		}
+		return encodeJSON(w, tree)
+	}
+	return writeTable(w, t.Columns(), t.Rows())
+}
+
+func writeTable(w io.Writer, cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
-	cols := t.Columns()
 	for i, c := range cols {
 		if i > 0 {
 			_, _ = fmt.Fprint(tw, "\t")
@@ -145,7 +182,7 @@ func renderTable(w io.Writer, env *Envelope) error {
 		_, _ = fmt.Fprint(tw, c)
 	}
 	_, _ = fmt.Fprintln(tw)
-	for _, row := range t.Rows() {
+	for _, row := range rows {
 		for i, cell := range row {
 			if i > 0 {
 				_, _ = fmt.Fprint(tw, "\t")

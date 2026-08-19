@@ -60,6 +60,55 @@ func TestRenderNameNoNameColumnIsEmpty(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
+// wideRows is a WideTabular fixture: Columns/Rows are the narrow table view,
+// WideColumns/WideRows add one extra column.
+type wideRows struct{}
+
+func (wideRows) Columns() []string     { return []string{"NAME"} }
+func (wideRows) Rows() [][]string      { return [][]string{{"acme"}} }
+func (wideRows) WideColumns() []string { return []string{"NAME", "URL"} }
+func (wideRows) WideRows() [][]string  { return [][]string{{"acme", "https://a"}} }
+
+var _ WideTabular = wideRows{}
+
+// TestRenderWidePrefersWideTabular pins the superset render and column
+// order: -o wide on a WideTabular payload uses WideColumns/WideRows, not
+// the narrow Columns/Rows.
+func TestRenderWidePrefersWideTabular(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	require.NoError(t, Render(&buf, "wide", NewEnvelope("ServerList", wideRows{})))
+	out := buf.String()
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "URL")
+	assert.Contains(t, out, "acme")
+	assert.Contains(t, out, "https://a")
+}
+
+// TestRenderWideFallsBackToTabularByteIdentical pins the no-wide-columns
+// contract: a plain Tabular payload (no WideTabular) renders byte-identical
+// under -o wide and -o table.
+func TestRenderWideFallsBackToTabularByteIdentical(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("ServerList", namedRows{rows: [][]string{{"acme", "https://a"}}})
+	var wide, table bytes.Buffer
+	require.NoError(t, Render(&wide, "wide", env))
+	require.NoError(t, Render(&table, "table", env))
+	assert.Equal(t, table.String(), wide.String())
+}
+
+// TestRenderWideNonTabularFallsBackToJSON pins the non-Tabular case: -o wide
+// on a payload that is neither WideTabular nor Tabular falls back to the
+// same pretty-JSON rendering -o table uses.
+func TestRenderWideNonTabularFallsBackToJSON(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("X", map[string]string{"a": "b"})
+	var wide, table bytes.Buffer
+	require.NoError(t, Render(&wide, "wide", env))
+	require.NoError(t, Render(&table, "table", env))
+	assert.Equal(t, table.String(), wide.String())
+}
+
 func TestRenderTemplatePreservesIntegerPrecision(t *testing.T) {
 	t.Parallel()
 	type widget struct {
@@ -105,7 +154,7 @@ func TestRenderTemplatePrefixRequired(t *testing.T) {
 
 func TestRenderRejectsUnknownFormat(t *testing.T) {
 	t.Parallel()
-	for _, format := range []string{"wide", "template", "{{.name}}"} {
+	for _, format := range []string{"csv", "template", "{{.name}}"} {
 		t.Run("format="+format, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer

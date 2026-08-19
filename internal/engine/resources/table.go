@@ -8,18 +8,23 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// table projects objects to NAME plus the kind's extra columns for -o table
-// and -o name. It implements output.Tabular AND json.Marshaler: -o json/yaml
-// must see the real object(s), not the table projection, so MarshalJSON
-// bypasses Columns/Rows entirely and emits the underlying object(s).
+// table projects objects to NAME plus the kind's extra columns for -o table,
+// -o wide, and -o name. It implements output.WideTabular (Columns/Rows for
+// -o table filter out Wide-marked columns; WideColumns/WideRows for -o wide
+// return the full set) AND json.Marshaler: -o json/yaml must see the real
+// object(s), not the table projection, so MarshalJSON bypasses
+// Columns/Rows entirely and emits the underlying object(s).
 type table struct {
 	k      kinds.Kind
 	items  []unstructured.Unstructured
 	single bool // true for a named get (one object), false for a list
 }
+
+var _ output.WideTabular = table{}
 
 func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) table {
 	return table{k: k, items: items, single: single}
@@ -45,7 +50,41 @@ func (t table) MarshalJSON() ([]byte, error) {
 	return json.Marshal(objs)
 }
 
+// Columns is the -o table column set: NAME plus every non-Wide column, in
+// declaration order.
 func (t table) Columns() []string {
+	cols := make([]string, 0, len(t.k.Columns)+1)
+	cols = append(cols, "NAME")
+	for _, c := range t.k.Columns {
+		if c.Wide {
+			continue
+		}
+		cols = append(cols, c.Header)
+	}
+	return cols
+}
+
+// Rows is Columns' matching row data.
+func (t table) Rows() [][]string {
+	rows := make([][]string, 0, len(t.items))
+	for i := range t.items {
+		o := t.items[i].Object
+		row := make([]string, 0, len(t.k.Columns)+1)
+		row = append(row, t.items[i].GetName())
+		for _, c := range t.k.Columns {
+			if c.Wide {
+				continue
+			}
+			row = append(row, columnString(o, c))
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// WideColumns is the -o wide column set: NAME plus every column, Wide or
+// not, in declaration order — the output.WideTabular superset.
+func (t table) WideColumns() []string {
 	cols := make([]string, 0, len(t.k.Columns)+1)
 	cols = append(cols, "NAME")
 	for _, c := range t.k.Columns {
@@ -54,7 +93,8 @@ func (t table) Columns() []string {
 	return cols
 }
 
-func (t table) Rows() [][]string {
+// WideRows is WideColumns' matching row data.
+func (t table) WideRows() [][]string {
 	rows := make([][]string, 0, len(t.items))
 	for i := range t.items {
 		o := t.items[i].Object

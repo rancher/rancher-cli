@@ -170,6 +170,7 @@ graph TD
 
     resources --> engine
     resources --> kinds
+    resources --> output
     resources --> projects
     resources --> runtime
     resources --> safety
