@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/duration"
 )
+
+// now is AGE's clock, overridden in tests for a deterministic duration.
+var now = time.Now
 
 // table projects objects to NAME plus the kind's extra columns for -o table,
 // -o wide, and -o name. It implements output.WideTabular (Columns/Rows for
@@ -50,10 +55,10 @@ func (t table) MarshalJSON() ([]byte, error) {
 	return json.Marshal(objs)
 }
 
-// Columns is the -o table column set: NAME plus every non-Wide column, in
-// declaration order.
+// Columns is the -o table column set: NAME plus every non-Wide column, plus
+// AGE last, in declaration order.
 func (t table) Columns() []string {
-	cols := make([]string, 0, len(t.k.Columns)+1)
+	cols := make([]string, 0, len(t.k.Columns)+2)
 	cols = append(cols, "NAME")
 	for _, c := range t.k.Columns {
 		if c.Wide {
@@ -61,6 +66,7 @@ func (t table) Columns() []string {
 		}
 		cols = append(cols, c.Header)
 	}
+	cols = append(cols, "AGE")
 	return cols
 }
 
@@ -69,7 +75,7 @@ func (t table) Rows() [][]string {
 	rows := make([][]string, 0, len(t.items))
 	for i := range t.items {
 		o := t.items[i].Object
-		row := make([]string, 0, len(t.k.Columns)+1)
+		row := make([]string, 0, len(t.k.Columns)+2)
 		row = append(row, t.items[i].GetName())
 		for _, c := range t.k.Columns {
 			if c.Wide {
@@ -77,19 +83,21 @@ func (t table) Rows() [][]string {
 			}
 			row = append(row, columnString(o, c))
 		}
+		row = append(row, ageCell(o))
 		rows = append(rows, row)
 	}
 	return rows
 }
 
 // WideColumns is the -o wide column set: NAME plus every column, Wide or
-// not, in declaration order — the output.WideTabular superset.
+// not, plus AGE last — the output.WideTabular superset.
 func (t table) WideColumns() []string {
-	cols := make([]string, 0, len(t.k.Columns)+1)
+	cols := make([]string, 0, len(t.k.Columns)+2)
 	cols = append(cols, "NAME")
 	for _, c := range t.k.Columns {
 		cols = append(cols, c.Header)
 	}
+	cols = append(cols, "AGE")
 	return cols
 }
 
@@ -98,14 +106,31 @@ func (t table) WideRows() [][]string {
 	rows := make([][]string, 0, len(t.items))
 	for i := range t.items {
 		o := t.items[i].Object
-		row := make([]string, 0, len(t.k.Columns)+1)
+		row := make([]string, 0, len(t.k.Columns)+2)
 		row = append(row, t.items[i].GetName())
 		for _, c := range t.k.Columns {
 			row = append(row, columnString(o, c))
 		}
+		row = append(row, ageCell(o))
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// ageCell renders metadata.creationTimestamp as kubectl's own AGE column
+// does — duration.HumanDuration since now() — built in on every KIND table,
+// like NAME. A missing or unparseable timestamp renders blank: nothing is
+// fabricated, no placeholder.
+func ageCell(o map[string]any) string {
+	ts, ok, _ := unstructured.NestedString(o, "metadata", "creationTimestamp")
+	if !ok || ts == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ""
+	}
+	return duration.HumanDuration(now().Sub(t))
 }
 
 // conditionCell derives the cell from the named status condition: True→type

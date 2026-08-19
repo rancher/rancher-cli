@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -306,6 +307,28 @@ func TestResolveCloudCredentialDriverFromDataKeyPrefix(t *testing.T) {
 			assert.Equal(t, tc.driver, ref.Driver)
 		})
 	}
+}
+
+// TestAgeFromRendersBlankForAbsentTimestamp pins the house deviation from
+// kubectl's own "<unknown>" placeholder: absent metadata.creationTimestamp
+// renders blank, never a placeholder.
+func TestAgeFromRendersBlankForAbsentTimestamp(t *testing.T) {
+	t.Parallel()
+	obj := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "cc-x"}}}
+	assert.Empty(t, ageFrom(obj))
+}
+
+// TestAgeFromUsesHumanDurationFromNowSeam pins the aligned formatter
+// (duration.HumanDuration, not ShortHumanDuration) through the now() seam
+// shared with the kind-table renderer's AGE column.
+func TestAgeFromUsesHumanDurationFromNowSeam(t *testing.T) {
+	// NOT parallel: mutates the package-level now var.
+	restore := now
+	now = func() time.Time { return time.Date(2024, 1, 1, 2, 0, 0, 0, time.UTC) }
+	defer func() { now = restore }()
+
+	obj := secretObj("cc-x", nil, nil) // creationTimestamp "2024-01-01T00:00:00Z"
+	assert.Equal(t, "120m", ageFrom(obj))
 }
 
 func TestNewGetCloudCredentialDescribe(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output"
@@ -62,9 +63,11 @@ func TestTableRowsRenderBoolLeaves(t *testing.T) {
 	}}
 	tab := newTable(k, []unstructured.Unstructured{builtin, inactive, omitted}, false)
 	require.Len(t, tab.Rows(), 3)
-	assert.Equal(t, []string{"w1", "Widget One", "true", "true", "300", ""}, tab.Rows()[0])
-	assert.Equal(t, []string{"w2", "Widget Two", "false", "false", "", ""}, tab.Rows()[1])
-	assert.Equal(t, []string{"w3", "Widget Three", "true", "false", "", ""}, tab.Rows()[2])
+	// AGE is a renderer built-in, always last; none of these fixtures set
+	// metadata.creationTimestamp, so it renders blank.
+	assert.Equal(t, []string{"w1", "Widget One", "true", "true", "300", "", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"w2", "Widget Two", "false", "false", "", "", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"w3", "Widget Three", "true", "false", "", "", ""}, tab.Rows()[2])
 }
 
 // TestPathCellLadder table-drives the typed leaf ladder across every leaf
@@ -361,10 +364,10 @@ func TestTableRowsRenderJoinAndDefault(t *testing.T) {
 	}}
 	tab := newTable(k, []unstructured.Unstructured{seeded, disabled, system, bare}, false)
 	require.Len(t, tab.Rows(), 4)
-	assert.Equal(t, []string{"m-1", "true", "local://m-1"}, tab.Rows()[0])
-	assert.Equal(t, []string{"m-2", "false", "okta_user://abc,local://m-2"}, tab.Rows()[1])
-	assert.Equal(t, []string{"u-1", "true", "system://local,local://u-1"}, tab.Rows()[2])
-	assert.Equal(t, []string{"u-2", "true", ""}, tab.Rows()[3])
+	assert.Equal(t, []string{"m-1", "true", "local://m-1", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"m-2", "false", "okta_user://abc,local://m-2", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"u-1", "true", "system://local,local://u-1", ""}, tab.Rows()[2])
+	assert.Equal(t, []string{"u-2", "true", "", ""}, tab.Rows()[3])
 }
 
 // TestTableRowsRenderSettingProvenance pins Setting's CUSTOMIZED/SOURCE
@@ -392,8 +395,8 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 	}}
 	tab := newTable(k, []unstructured.Unstructured{stock, overridden}, false)
 	require.Len(t, tab.Rows(), 2)
-	assert.Equal(t, []string{"agent-tls-mode", "false", ""}, tab.Rows()[0])
-	assert.Equal(t, []string{"server-url", "true", "env"}, tab.Rows()[1])
+	assert.Equal(t, []string{"agent-tls-mode", "false", "", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"server-url", "true", "env", ""}, tab.Rows()[1])
 }
 
 // TestTableRowsRenderFeatureBoolStatus pins Feature's DEFAULT/DYNAMIC/LOCKED
@@ -424,6 +427,61 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	}}
 	tab := newTable(k, []unstructured.Unstructured{unlocked, locked}, false)
 	require.Len(t, tab.Rows(), 2)
-	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "", "Enable Rancher cluster-autoscaler support"}, tab.Rows()[0])
-	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "Locked off"}, tab.Rows()[1])
+	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "", "Enable Rancher cluster-autoscaler support", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "Locked off", ""}, tab.Rows()[1])
+}
+
+// TestTableRowsRenderAge pins the AGE built-in: it is the LAST column on
+// every kind table, formatted with duration.HumanDuration since the now()
+// seam, and blank for an absent or unparseable creationTimestamp — never a
+// fabricated "0s".
+func TestTableRowsRenderAge(t *testing.T) {
+	restore := now
+	now = func() time.Time { return time.Date(2026, 1, 1, 2, 0, 0, 0, time.UTC) }
+	defer func() { now = restore }()
+
+	k := kinds.Kind{Name: "widget", Columns: []kinds.Column{
+		{Header: "DISPLAY", Path: []string{"spec", "displayName"}},
+	}}
+	aged := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w1", "creationTimestamp": "2026-01-01T00:00:00Z"},
+		"spec":     map[string]any{"displayName": "Widget One"},
+	}}
+	absent := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w2"},
+		"spec":     map[string]any{"displayName": "Widget Two"},
+	}}
+	unparseable := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w3", "creationTimestamp": "not-a-timestamp"},
+		"spec":     map[string]any{"displayName": "Widget Three"},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{aged, absent, unparseable}, false)
+	assert.Equal(t, []string{"NAME", "DISPLAY", "AGE"}, tab.Columns())
+	require.Len(t, tab.Rows(), 3)
+	assert.Equal(t, []string{"w1", "Widget One", "120m"}, tab.Rows()[0])
+	assert.Equal(t, []string{"w2", "Widget Two", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"w3", "Widget Three", ""}, tab.Rows()[2])
+}
+
+// TestTableWideColumnsAndRowsOrder pins the -o wide superset: WideColumns
+// includes every column (Wide or not) in declaration order with AGE last —
+// after the wide columns, not spliced in the middle — while the narrow
+// Columns/Rows omit the Wide-marked columns entirely.
+func TestTableWideColumnsAndRowsOrder(t *testing.T) {
+	t.Parallel()
+	k := kinds.Kind{Name: "widget", Columns: []kinds.Column{
+		{Header: "DISPLAY", Path: []string{"spec", "displayName"}},
+		{Header: "URL", Path: []string{"spec", "url"}, Wide: true},
+	}}
+	obj := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "w1"},
+		"spec":     map[string]any{"displayName": "Widget One", "url": "https://example.com"},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{obj}, false)
+
+	assert.Equal(t, []string{"NAME", "DISPLAY", "AGE"}, tab.Columns())
+	assert.Equal(t, [][]string{{"w1", "Widget One", ""}}, tab.Rows())
+
+	assert.Equal(t, []string{"NAME", "DISPLAY", "URL", "AGE"}, tab.WideColumns())
+	assert.Equal(t, [][]string{{"w1", "Widget One", "https://example.com", ""}}, tab.WideRows())
 }

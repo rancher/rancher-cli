@@ -193,15 +193,23 @@ func driverFromDataKeys(obj *unstructured.Unstructured) string {
 	return ""
 }
 
-// ageFrom renders metadata.creationTimestamp the same way kubectl's own AGE
-// column does; a missing/unparseable timestamp degrades to "<unknown>"
-// rather than a zero-time nonsense value.
+// now is Age's clock, overridden in tests for a deterministic duration —
+// the same seam the kind-table renderer's AGE column uses.
+var now = time.Now
+
+// ageFrom renders metadata.creationTimestamp with duration.HumanDuration —
+// the formatter kubectl's own AGE column uses (translateTimestampSince).
+// A missing/unparseable timestamp renders blank, a deliberate house
+// deviation from kubectl's own "<unknown>" placeholder: no fabricated
+// values, no placeholders. (This function previously used
+// ShortHumanDuration, which is the wrong formatter, and "<unknown>" for
+// absent — neither is kept.)
 func ageFrom(obj *unstructured.Unstructured) string {
 	ts := obj.GetCreationTimestamp()
 	if ts.IsZero() {
-		return "<unknown>"
+		return ""
 	}
-	return duration.ShortHumanDuration(time.Since(ts.Time))
+	return duration.HumanDuration(now().Sub(ts.Time))
 }
 
 // cloudCredRow is one `get cloud-credential` row: the resolved ref plus a

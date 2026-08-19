@@ -36,12 +36,12 @@ func TestColumnAltPathsFirstNonEmptyWins(t *testing.T) {
 		bindingObj("b-none", map[string]any{}),
 	}, false)
 
-	assert.Equal(t, []string{"NAME", "MEMBER"}, tbl.Columns())
+	assert.Equal(t, []string{"NAME", "MEMBER", "AGE"}, tbl.Columns())
 	rows := tbl.Rows()
 	assert.Equal(t, [][]string{
-		{"b-user", "u-alice"},
-		{"b-group", "github_org://8341"},
-		{"b-provisioned", "okta_user://pending"},
-		{"b-none", ""},
+		{"b-user", "u-alice", ""},
+		{"b-group", "github_org://8341", ""},
+		{"b-provisioned", "okta_user://pending", ""},
+		{"b-none", "", ""},
 	}, rows)
 }
