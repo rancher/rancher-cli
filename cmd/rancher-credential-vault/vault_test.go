@@ -27,11 +27,19 @@ type fakeVault struct {
 func newFakeVault() *fakeVault { return &fakeVault{secrets: map[string]map[string]string{}} }
 
 func (f *fakeVault) handler(t *testing.T) http.Handler {
+	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.paths = append(f.paths, r.Method+" "+r.URL.Path)
-		require.Equal(t, "test-token", r.Header.Get("X-Vault-Token"))
+		// assert, never require, inside the handler: require's FailNow only
+		// kills the handler goroutine, leaving the request hanging and the
+		// test failing later with a misleading transport error. Record the
+		// failure and answer with an error status instead.
+		if !assert.Equal(t, "test-token", r.Header.Get("X-Vault-Token")) {
+			http.Error(w, "unexpected token", http.StatusBadRequest)
+			return
+		}
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/v1/secret/data/") && r.Method == http.MethodGet:
 			key := strings.TrimPrefix(r.URL.Path, "/v1/secret/data/")
@@ -50,7 +58,10 @@ func (f *fakeVault) handler(t *testing.T) http.Handler {
 			var body struct {
 				Data map[string]string `json:"data"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			if err := json.NewDecoder(r.Body).Decode(&body); !assert.NoError(t, err) {
+				http.Error(w, "bad body", http.StatusBadRequest)
+				return
+			}
 			f.secrets[key] = body.Data
 		case strings.HasPrefix(r.URL.Path, "/v1/secret/metadata/") && r.Method == http.MethodDelete:
 			key := strings.TrimPrefix(r.URL.Path, "/v1/secret/metadata/")
@@ -63,6 +74,7 @@ func (f *fakeVault) handler(t *testing.T) http.Handler {
 }
 
 func newTestHandler(t *testing.T, fv *fakeVault) *vaultHandler {
+	t.Helper()
 	return newTestHandlerFor(t, fv.handler(t))
 }
 
@@ -70,6 +82,7 @@ func newTestHandler(t *testing.T, fv *fakeVault) *vaultHandler {
 // httptest server; every fixture (fakeVault, errBodyVault, routeVault)
 // funnels through it.
 func newTestHandlerFor(t *testing.T, h http.Handler) *vaultHandler {
+	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return &vaultHandler{addr: srv.URL, token: "test-token", mount: "secret", path: "rancher-cli", client: srv.Client()}
@@ -233,10 +246,14 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 // (e.g. delete allowed, read denied) can be modeled — unlike errBodyVault,
 // which fails every request identically.
 func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *vaultHandler {
+	t.Helper()
 	return newTestHandlerFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Method + " " + strings.SplitN(strings.TrimPrefix(r.URL.Path, "/v1/secret/"), "/", 2)[0]
 		route, ok := routes[key]
-		require.True(t, ok, "unexpected request %s %s", r.Method, r.URL.Path)
+		if !assert.True(t, ok, "unexpected request %s %s", r.Method, r.URL.Path) {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
 		route(w)
 	}))
 }
