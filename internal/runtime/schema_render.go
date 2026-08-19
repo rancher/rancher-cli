@@ -67,15 +67,16 @@ func argSummary(args []ArgSpec) string {
 // type (an enum lists its values), required marker, description, and any
 // backing env vars.
 func flagLine(f ArgSpec) string {
-	name := "--" + f.Name
+	var name strings.Builder
+	name.WriteString("--" + f.Name)
 	for _, a := range f.Aliases {
-		name += "/-" + a
+		name.WriteString("/-" + a)
 	}
 	typ := f.Type
 	if len(f.Enum) > 0 {
 		typ = strings.Join(f.Enum, "|")
 	}
-	line := name + " " + typ
+	line := name.String() + " " + typ
 	if f.Required {
 		line += " (required)"
 	}
@@ -146,14 +147,15 @@ func gateLine(ct CommandType, destructive, stability string) string {
 		// conditional --yes the structured list deliberately omits) is
 		// layered on here, right after --apply.
 		gates := Gates(ct, destructive, stability)
-		g := "gates: " + gates[0]
+		var g strings.Builder
+		g.WriteString("gates: " + gates[0])
 		if destructive == "dependsOnInput" {
-			g += "; --yes when the input is destructive (see description)"
+			g.WriteString("; --yes when the input is destructive (see description)")
 		}
 		for _, f := range gates[1:] {
-			g += " " + f
+			g.WriteString(" " + f)
 		}
-		return g
+		return g.String()
 	default:
 		return "gates: none (read-only)"
 	}
