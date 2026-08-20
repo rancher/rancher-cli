@@ -289,6 +289,11 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 
 ### 10. Role grants and secrets
 
+Held roles are bindings that exist — what `grant`/`revoke` create and delete,
+and what the `inspect project`/`inspect cluster` MEMBERS sections list.
+Nothing in the CLI computes effective permissions yet: never present a held
+role as what a subject can actually do.
+
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` —
   grant a role at project, cluster, or global scope. Subject is a user/group
   name, id, or fully qualified principal. Groups must be passed as a fully
