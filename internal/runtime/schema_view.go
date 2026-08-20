@@ -190,6 +190,10 @@ type kindView struct {
 	kind            SchemaKind
 	readOnly        bool
 	readOnlySources []string
+	// groupHint names the same-name command group when the selector
+	// collides (set by the schema command's resolution, not the
+	// constructor — mirrors cardView.kindHint).
+	groupHint string
 }
 
 func newKindView(m Manifest, k SchemaKind) kindView {
@@ -207,6 +211,9 @@ func newKindView(m Manifest, k SchemaKind) kindView {
 type kindJSON struct {
 	SchemaKind
 	readOnlyJSON
+	// GroupViewHint names the same-name command group when the selector
+	// collides — the reverse of cardJSON.KindViewHint.
+	GroupViewHint string `json:"groupViewHint,omitempty"`
 }
 
 func (v kindView) Columns() []string { return []string{"NAME"} }
@@ -214,7 +221,7 @@ func (v kindView) Columns() []string { return []string{"NAME"} }
 func (v kindView) Rows() [][]string { return [][]string{{v.kind.Name}} }
 
 func (v kindView) MarshalJSON() ([]byte, error) {
-	return json.Marshal(kindJSON{SchemaKind: v.kind, readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources)})
+	return json.Marshal(kindJSON{SchemaKind: v.kind, readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources), GroupViewHint: v.groupHint})
 }
 
 // groupView is a group selection's Result.Data: the group name, desc, bespoke
@@ -230,6 +237,9 @@ type groupView struct {
 	generatedPattern string          // e.g. "get <kind>"; empty when generatedCount == 0
 	readOnly         bool
 	readOnlySources  []string
+	// kindHint names the same-name kind when the selector collides (set
+	// by the schema command's resolution — mirrors cardView.kindHint).
+	kindHint string
 }
 
 // partitionGroup splits g's Commands into bespoke (non-generated) commands
@@ -292,6 +302,9 @@ type groupJSON struct {
 	Desc      string                 `json:"desc,omitempty"`
 	Commands  []tocEntry             `json:"commands"`
 	Generated *groupGeneratedSummary `json:"generated,omitempty"`
+	// KindViewHint names the same-name kind when the selector collides —
+	// the same field the command card carries.
+	KindViewHint string `json:"kindViewHint,omitempty"`
 	readOnlyJSON
 }
 
@@ -313,6 +326,7 @@ func (v groupView) MarshalJSON() ([]byte, error) {
 		Desc:         v.group.Desc,
 		Commands:     entries,
 		Generated:    gen,
+		KindViewHint: v.kindHint,
 		readOnlyJSON: newReadOnlyJSON(v.readOnly, v.readOnlySources),
 	})
 }

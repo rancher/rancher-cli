@@ -105,13 +105,10 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 
 // TestSchemaProjectShadowing pins the deliberate collision between the
 // "project" kind and the "project" group. Resolution order is command →
-// kind → group, so rancher schema project returns the kind card, not the
-// group card. The group desc and its members remain in the manifest and
-// the TOC JSON; see root.go groupDescs for the rationale.
-//
-// (c) see-also on the project kind card was considered and declined: the kind
-// card shape has no natural extension point for group membership, and adding
-// special-case logic for one kind would be fragile.
+// group → kind (revised 2026-08-20: a kind is reachable via --kind, a
+// shadowed group had no disambiguator), so rancher schema project returns
+// the GROUP card carrying the kind-view hint, and --kind returns the kind
+// card carrying the group-view hint.
 func TestSchemaProjectShadowing(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -137,7 +134,7 @@ func TestSchemaProjectShadowing(t *testing.T) {
 	}
 	require.True(t, hasGroup, "project group must exist in the manifest")
 
-	// rancher schema project → kind card (kind wins at tier 2).
+	// rancher schema project → group card (groups win the collision tier).
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out bytes.Buffer
@@ -152,8 +149,20 @@ func TestSchemaProjectShadowing(t *testing.T) {
 	var card map[string]any
 	require.NoError(t, json.Unmarshal(env.Data, &card))
 	assert.Equal(t, "project", card["name"])
-	assert.Contains(t, card, "verbs", "kind card carries verbs; group card does not")
-	assert.NotContains(t, card, "commands", "group card carries commands; kind card does not")
+	assert.Contains(t, card, "commands", "the group card wins the collision")
+	assert.NotContains(t, card, "verbs", "kind card carries verbs; group card does not")
+	assert.Equal(t, "project", card["kindViewHint"], "the group card names the shadowed kind view")
+
+	// rancher schema project --kind → kind card with the reverse hint.
+	out.Reset()
+	require.NoError(t, root.Run(t.Context(),
+		[]string{"rancher", "--config", dir, "schema", "project", "--kind", "-o", "json"}))
+	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+	card = map[string]any{}
+	require.NoError(t, json.Unmarshal(env.Data, &card))
+	assert.Equal(t, "project", card["name"])
+	assert.Contains(t, card, "verbs", "--kind resolves the kind card")
+	assert.Equal(t, "project", card["groupViewHint"], "the kind card names the colliding group view")
 }
 
 // TestSchemaGroupDescsComplete is the conformance guard for groupDescs in
@@ -200,9 +209,9 @@ func TestSchemaCommandGroupField(t *testing.T) {
 //   - A single-token command name shadowing a group name means the group card
 //     for that name is unreachable (command wins at tier 1).
 //   - A kind identifier shadowing a group name means the group card is
-//     unreachable without --kind (kind wins at tier 2).
+//     reachable only via --kind (groups win the collision tier).
 //
-// Currently "project" is the only known collision (kind wins; TestSchemaProject
+// Currently "project" is the only known collision (the GROUP wins; TestSchemaProject
 // Shadowing pins the behavior). Single-token command × group: zero overlaps.
 func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	m, err := buildManifest("v-test")
@@ -212,7 +221,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	// Add an entry here whenever a new deliberate collision is introduced —
 	// the test enforces that every collision is reviewed.
 	knownShadowings := map[string]string{
-		"project": "project kind shadows project group at tier 2 (kind wins); group members remain discoverable via bare TOC and --verb filtering; renaming would churn the TOC layout",
+		"project": "the project group wins the selector (revised 2026-08-20); the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
 	}
 
 	groupNames := map[string]bool{}
@@ -241,5 +250,37 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 				"command %q collides with group %q — command wins at tier 1, group card unreachable; add to knownShadowings with a rationale comment",
 				c.Name, c.Name)
 		}
+	}
+}
+
+// TestSchemaGroupKindCollisionsAreDeliberate guards the schema selector's
+// name space: a command-group name that is also a kind name (or alias) makes
+// the kind reachable only via --kind, so every such collision must be a
+// reviewed decision. "project" is the one deliberate collision today (the
+// group card wins; its kind-view hint points at --kind). A new name here
+// means either rename the group or extend this allowlist on purpose.
+func TestSchemaGroupKindCollisionsAreDeliberate(t *testing.T) {
+	deliberate := map[string]bool{"project": true}
+
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+
+	kindNames := map[string]bool{}
+	for _, k := range m.Kinds {
+		kindNames[k.Name] = true
+		for _, a := range k.Aliases {
+			kindNames[a] = true
+		}
+	}
+	for _, g := range m.Groups {
+		if g.Name == "" {
+			continue
+		}
+		if kindNames[g.Name] && !deliberate[g.Name] {
+			t.Errorf("command group %q collides with a kind name or alias; rename it or extend the deliberate-collision allowlist", g.Name)
+		}
+	}
+	for name := range deliberate {
+		assert.True(t, kindNames[name], "allowlisted collision %q no longer collides — remove it from the allowlist", name)
 	}
 }

@@ -663,14 +663,13 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
 		"skill":  "Install, remove, and inspect agent skills packaged with this CLI.",
 		"create": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
-		// "project" is shadowed at the schema selector tier by the "project" kind
-		// (resolution order: command → kind → group; kind wins at tier 2). The
-		// group desc is set here and is visible in the manifest and the TOC JSON,
-		// but rancher schema project returns the kind card, not the group card.
-		// The group's members — project add-namespace and project remove-namespace
-		// — remain discoverable via the bare TOC and --verb project filtering.
-		// The shadowing is deliberate: renaming the group would churn the TOC
-		// section layout and every agent prompt that references it.
+		// "project" is both a command group and a kind. Resolution order is
+		// command → group → kind (revised 2026-08-20), so rancher schema
+		// project returns THIS group's card carrying a kind-view hint, and
+		// --kind reaches the kind card. The collision is deliberate and
+		// allowlisted (TestSchemaGroupKindCollisionsAreDeliberate): renaming
+		// the group would churn the TOC section layout and every agent
+		// prompt that references it.
 		"project": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
 		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
 		"get":     "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",

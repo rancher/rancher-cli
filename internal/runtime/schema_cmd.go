@@ -167,27 +167,48 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 				text := renderCommandCard(m, c)
 				kindHint := ""
 				if k, collides := lookupKind(m.Kinds, want); collides {
-					text += "kind view: rancher schema " + k.Name + " --kind\n"
-					kindHint = k.Name
+					line, hint := collisionFooter("kind view: rancher schema "+k.Name+" --kind", k.Name)
+					text += line
+					kindHint = hint
 				}
 				return Result{Kind: "Schema", Data: newCardView(m, c, kindHint), Text: text}, nil
 			}
 		}
 	}
-	if k, ok := lookupKind(m.Kinds, want); ok {
-		return Result{Kind: "Schema", Data: newKindView(m, k), Text: renderKindCard(m, k)}, nil
-	}
-	// Resolution order (SE-5/SE-6 extended): group lookup is the THIRD tier —
-	// after command and kind — so a command or kind name always wins a
-	// collision. Named groups only: the unnamed ("") sections are positional
-	// bookmarks, not selectable. The group tier is gated under !asKind: with
-	// --kind set the selector must name a kind; falling through to a group
-	// would contradict "resolve the selector as a kind, not a command".
+	// Resolution order (SE-5/SE-6 revised 2026-08-20): groups sit in the
+	// COMMAND tier — command, then group, then kind — because --kind exists
+	// to reach a shadowed kind, while nothing could reach a group shadowed
+	// by a kind (the "project" collision). Named groups only: the unnamed
+	// ("") sections are positional bookmarks, not selectable. The group
+	// tier is gated under !asKind: with --kind set the selector must name
+	// a kind; falling through to a group would contradict "resolve the
+	// selector as a kind, not a command".
 	if !asKind {
 		if g, ok := lookupGroup(m.Groups, want); ok {
 			gv := newGroupView(m, g)
-			return Result{Kind: "Schema", Data: gv, Text: renderGroupCard(m, gv)}, nil
+			text := renderGroupCard(m, gv)
+			if k, collides := lookupKind(m.Kinds, want); collides {
+				line, hint := collisionFooter("kind view: rancher schema "+k.Name+" --kind", k.Name)
+				text += line
+				gv.kindHint = hint
+			}
+			return Result{Kind: "Schema", Data: gv, Text: text}, nil
 		}
+	}
+	if k, ok := lookupKind(m.Kinds, want); ok {
+		kv := newKindView(m, k)
+		text := renderKindCard(m, k)
+		// The reverse hint: a kind reached while a same-name group exists
+		// names the other view, mirroring the command card's kind-view
+		// hint. The hint carries the GROUP's own name (g.Name), never the
+		// kind's canonical Name — a kind reached via an alias that equals
+		// a group name must not hint a selector that resolves elsewhere.
+		if g, collides := lookupGroup(m.Groups, want); collides {
+			line, hint := collisionFooter("command group: rancher schema "+g.Name, g.Name)
+			text += line
+			kv.groupHint = hint
+		}
+		return Result{Kind: "Schema", Data: kv, Text: text}, nil
 	}
 	return Result{}, unknownSelection(m, want, asKind)
 }
@@ -347,6 +368,14 @@ func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 		}
 	}
 	return out
+}
+
+// collisionFooter builds a collision card's footer line and its JSON hint
+// value in one place, so a card's rendered pointer and machine-readable hint
+// can never drift apart (they once did: a kind card hinted the kind's
+// canonical name where only the group's own name resolves).
+func collisionFooter(line, hint string) (string, string) {
+	return line + "\n", hint
 }
 
 // lookupGroup resolves a positional selector against the manifest's named

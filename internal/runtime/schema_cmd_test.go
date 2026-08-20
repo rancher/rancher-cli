@@ -1260,8 +1260,9 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 }
 
 // TestSchemaGroupResolutionPrecedence covers the resolution-order contract:
-// command match wins over a same-name group; kind match wins over a same-name
-// group. Group lookup is the third tier — after command and kind.
+// command match wins over a same-name group; a GROUP wins over a same-name
+// kind (revised 2026-08-20 — kinds are reachable via --kind, groups have no
+// disambiguator), each collision card naming the other view.
 func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 	t.Parallel()
 
@@ -1281,7 +1282,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		assert.True(t, isCard, "command wins: must resolve to command card, not group card")
 	})
 
-	t.Run("kind wins over same-name group", func(t *testing.T) {
+	t.Run("group wins over same-name kind, with the kind-view hint", func(t *testing.T) {
 		t.Parallel()
 		reg := NewRegistry(stubResolver{})
 		reg.Register(fakeRead{d: Descriptor{
@@ -1298,8 +1299,30 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
-		_, isKind := res.Data.(kindView)
-		assert.True(t, isKind, "kind wins: must resolve to kind card, not group card")
+		gv, isGroup := res.Data.(groupView)
+		assert.True(t, isGroup, "group wins: a kind must not shadow a command group (--kind reaches the kind)")
+		assert.Equal(t, "create", gv.kindHint, "the group card must name the colliding kind view")
+		assert.Contains(t, res.Text, "kind view: rancher schema create --kind")
+	})
+
+	t.Run("--kind reaches the shadowed kind, with the group-view hint", func(t *testing.T) {
+		t.Parallel()
+		reg := NewRegistry(stubResolver{})
+		reg.SetKinds([]SchemaKind{{
+			Name: "create", Key: "create", Resource: "creates",
+			Scope: "management", NamespacePolicy: "none",
+			Verbs: map[string]VerbState{"get": {State: VerbAbsent}},
+		}})
+		reg.SetGroups([]SchemaGroup{
+			{Name: "create", Desc: "Create group", Commands: []string{"create project"}},
+		})
+		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}, flags: map[string]bool{"kind": true}}, nil)
+		require.NoError(t, err)
+		kv, isKind := res.Data.(kindView)
+		assert.True(t, isKind, "--kind must resolve the kind card")
+		assert.Equal(t, "create", kv.groupHint, "the kind card must name the colliding group view")
+		assert.Contains(t, res.Text, "command group: rancher schema create")
 	})
 }
 

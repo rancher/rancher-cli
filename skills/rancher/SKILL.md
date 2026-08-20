@@ -65,8 +65,12 @@ flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Command and kind names are dashed (`cloud-credential`,
 `machine-config`); when a kind's card lists no create verb, creation is a
 curated command — machine configs are created via
-`create machine-config <kind>`. Search the orientation TOC with short stems;
-do not pull `schema --all` to find a command name.
+`create machine-config <kind>`. To find a command or kind by topic, use
+`rancher schema --search <term>` (case-insensitive, spans names, aliases,
+usage, and descriptions); do not pull `schema --all` to find a command
+name. A name that is both a command group and a kind (e.g. `project`)
+resolves to the group card, which names the kind view — pass `--kind`
+for the kind card.
 Kind names have kubectl-style aliases (e.g. `get pods`,
 `get cm`). `get kubernetes-versions` always marks the newest release per
 distro (`newest`); when the server declares no default version, that marker
