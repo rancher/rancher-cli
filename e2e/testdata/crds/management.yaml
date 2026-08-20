@@ -91,6 +91,27 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: userattributes.management.cattle.io
+spec:
+  group: management.cattle.io
+  names: {kind: UserAttribute, listKind: UserAttributeList, plural: userattributes, singular: userattribute}
+  scope: Cluster
+  versions:
+    - name: v3
+      served: true
+      storage: true
+      schema:
+        # UserAttribute is norman-style like User: GroupPrincipals and
+        # LastLogin live directly on the object root, with no json tags on
+        # the real Go type — preserve everything so root-level fields
+        # round-trip like the real API.
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: roletemplates.management.cattle.io
 spec:
   group: management.cattle.io

@@ -1,0 +1,339 @@
+package inspect
+
+import (
+	"context"
+	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"strings"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+func userGVR() (kinds.Kind, kinds.Kind, kinds.Kind, kinds.Kind, kinds.Kind) {
+	uk, _ := kinds.Lookup("user")
+	grb, _ := kinds.Lookup("globalrolebinding")
+	crtb, _ := kinds.Lookup("clusterroletemplatebinding")
+	prtb, _ := kinds.Lookup("projectroletemplatebinding")
+	cluster, _ := kinds.Lookup("cluster")
+	_ = cluster
+	return uk, grb, crtb, prtb, cluster
+}
+
+func testUserObj(id, display, username string, principals ...string) *unstructured.Unstructured {
+	pids := make([]any, len(principals))
+	for i, p := range principals {
+		pids[i] = p
+	}
+	obj := map[string]any{
+		"apiVersion":   "management.cattle.io/v3",
+		"kind":         "User",
+		"metadata":     map[string]any{"name": id, "creationTimestamp": "2026-01-02T03:04:05Z"},
+		"username":     username,
+		"principalIds": pids,
+	}
+	if display != "" {
+		obj["displayName"] = display
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
+
+func newUserCmdFake(c *fakeClient) *userCmd {
+	return &userCmd{clients: &fakeFactory{client: c}}
+}
+
+func TestInspectUserNeverLoggedInVerifiedEmpty(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r, ok := res.Data.(userResult)
+	require.True(t, ok)
+	assert.Equal(t, "u-abc", r.User.ID)
+	require.NotNil(t, r.User.Groups)
+	assert.Empty(t, *r.User.Groups, "never-logged-in user: verified-empty groups, never degraded")
+	assert.Empty(t, r.User.LastLogin)
+	assert.Empty(t, r.Degraded)
+	require.NotNil(t, r.Held.Global)
+	assert.Empty(t, *r.Held.Global)
+	require.NotNil(t, r.Held.Clusters)
+	assert.Empty(t, *r.Held.Clusters)
+	require.NotNil(t, r.Held.Projects)
+	assert.Empty(t, *r.Held.Projects)
+	assert.Contains(t, res.Text, "HELD ROLES")
+	assert.Contains(t, res.Text, "\n  none\n")
+}
+
+func TestInspectUserUnreadableErrors(t *testing.T) {
+	userKind, _, _, _, _ := userGVR()
+	c := newFakeClient().withGetErr(userKind.GVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "no such user"))
+	cmd := newUserCmdFake(c)
+	_, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}
+
+func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	cluster, _ := kinds.Lookup("cluster")
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
+		withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
+		withGetErr(cluster.GVR, "", "c-1", clierr.New(clierr.CodeNotFound, "no display"))
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+	assert.Nil(t, r.Held.Projects, "heldProjects must be omitted, not an empty list")
+	require.NotNil(t, r.Held.Clusters)
+	assert.Len(t, *r.Held.Clusters, 1, "heldClusters stays intact")
+	require.Len(t, r.Degraded, 1)
+	assert.Equal(t, "heldProjects", r.Degraded[0].Section)
+	assert.NotEmpty(t, res.Warnings)
+	assert.Contains(t, res.Text, "PROJECT: unavailable")
+}
+
+func TestInspectUserGroupsForbiddenBlocksAllThreeHeldSections(t *testing.T) {
+	// A direct binding AND an otherwise-matching group binding are both
+	// present; neither may render once groups degrade — held completeness
+	// is unknowable without the user's group principals.
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeRBAC, "forbidden")).
+		withList(grbKind.GVR, listOfGRB(grbObjForTest("grb-1", "u-abc", "local://u-abc", "", "admin"))).
+		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "", "", "okta_group://eng", "cluster-member"))).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+	assert.Nil(t, r.User.Groups)
+	assert.Nil(t, r.Held.Global)
+	assert.Nil(t, r.Held.Clusters)
+	assert.Nil(t, r.Held.Projects)
+	sections := []string{}
+	for _, d := range r.Degraded {
+		sections = append(sections, d.Section)
+	}
+	assert.ElementsMatch(t, []string{"groups", "heldGlobal", "heldClusters", "heldProjects"}, sections)
+	assert.Contains(t, res.Text, "groups: unavailable")
+	assert.Contains(t, res.Text, "lastLogin: unavailable")
+	assert.Contains(t, res.Text, "GLOBAL: unavailable")
+}
+
+func TestInspectUserEnabledTriState(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	tests := []struct {
+		name       string
+		mutate     func(*unstructured.Unstructured)
+		wantNil    bool
+		wantVal    bool
+		wantMarker bool
+	}{
+		{name: "absent means enabled", mutate: func(*unstructured.Unstructured) {}, wantNil: true},
+		{name: "explicit true", mutate: func(u *unstructured.Unstructured) { u.Object["enabled"] = true }, wantVal: true},
+		{name: "explicit false", mutate: func(u *unstructured.Unstructured) { u.Object["enabled"] = false }, wantVal: false, wantMarker: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := testUserObj("u-abc", "Jane", "jane", "local://u-abc")
+			tt.mutate(u)
+			c := newFakeClient().
+				withObject(userKind.GVR, "", "u-abc", u).
+				withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+				withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+				withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+				withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+			cmd := newUserCmdFake(c)
+			res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+			require.NoError(t, err)
+			r := res.Data.(userResult)
+			if tt.wantNil {
+				assert.Nil(t, r.User.Enabled)
+				assert.NotContains(t, res.Text, "[disabled]")
+				return
+			}
+			require.NotNil(t, r.User.Enabled)
+			assert.Equal(t, tt.wantVal, *r.User.Enabled)
+			if tt.wantMarker {
+				assert.Contains(t, res.Text, "[disabled]")
+			} else {
+				assert.NotContains(t, res.Text, "[disabled]")
+			}
+		})
+	}
+}
+
+func TestInspectUserTypedProjectRejected(t *testing.T) {
+	cmd := newUserCmdFake(newFakeClient())
+	_, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}, s: map[string]string{"project": "p-x"}}, nil)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestInspectUserGroupsMultiProviderAndDuplicatePrincipal(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	ua := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "UserAttribute",
+		"metadata":   map[string]any{"name": "u-abc"},
+		"GroupPrincipals": map[string]any{
+			"okta": map[string]any{"Items": []any{
+				map[string]any{"metadata": map[string]any{"name": "okta_group://eng"}, "displayName": "Engineering"},
+			}},
+			"azure": map[string]any{"Items": []any{
+				// Same principal string cached by a second provider: retained
+				// as a distinct row, never merged.
+				map[string]any{"metadata": map[string]any{"name": "okta_group://eng"}, "displayName": "Engineering (azure cache)"},
+			}},
+		},
+		"lastLogin": "2026-08-01T00:00:00Z",
+	}}
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withObject(rbac.UserAttrGVR, "", "u-abc", ua).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+	require.NotNil(t, r.User.Groups)
+	require.Len(t, *r.User.Groups, 2, "duplicate principal under two providers is retained, not merged")
+	assert.Equal(t, "2026-08-01T00:00:00Z", r.User.LastLogin)
+}
+
+func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	cluster, _ := kinds.Lookup("cluster")
+	ctx, cancel := context.WithCancel(t.Context())
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
+		withList(prtbKind.GVR, listOfPRTB(prtbObjForTest("prtb-1", "p-1", "c-1:p-1", "u-abc", "local://u-abc", "", "project-owner")))
+	c.getErrs[objKey{cluster.GVR, "", "c-1"}] = context.Canceled
+	cancel()
+
+	cmd := newUserCmdFake(c)
+	_, err := cmd.Execute(ctx, input{args: []string{"u-abc"}}, nil)
+	require.Error(t, err)
+	assert.False(t, c.listed(prtbKind.GVR), "project enrichment/list must never run once cluster enrichment aborted")
+}
+
+func TestInspectUserNoEffectiveVocabulary(t *testing.T) {
+	cmd := newUserCmdFake(newFakeClient())
+	desc := cmd.Describe()
+	assert.NotContains(t, strings.ToLower(desc.Desc), "effective")
+}
+
+func crtbObjForTest(name, ns, userName, userPrincipal, groupPrincipal, role string) *unstructured.Unstructured {
+	obj := map[string]any{
+		"apiVersion":       "management.cattle.io/v3",
+		"kind":             "ClusterRoleTemplateBinding",
+		"metadata":         map[string]any{"name": name, "namespace": ns},
+		"roleTemplateName": role,
+	}
+	if userName != "" {
+		obj["userName"] = userName
+	}
+	if userPrincipal != "" {
+		obj["userPrincipalName"] = userPrincipal
+	}
+	if groupPrincipal != "" {
+		obj["groupPrincipalName"] = groupPrincipal
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
+
+func prtbObjForTest(name, ns, projectName, userName, userPrincipal, groupPrincipal, role string) *unstructured.Unstructured {
+	u := crtbObjForTest(name, ns, userName, userPrincipal, groupPrincipal, role)
+	u.Object["kind"] = "ProjectRoleTemplateBinding"
+	u.Object["projectName"] = projectName
+	return u
+}
+
+func grbObjForTest(name, userName, userPrincipal, groupPrincipal, globalRole string) *unstructured.Unstructured {
+	obj := map[string]any{
+		"apiVersion":     "management.cattle.io/v3",
+		"kind":           "GlobalRoleBinding",
+		"metadata":       map[string]any{"name": name},
+		"globalRoleName": globalRole,
+	}
+	if userName != "" {
+		obj["userName"] = userName
+	}
+	if userPrincipal != "" {
+		obj["userPrincipalName"] = userPrincipal
+	}
+	if groupPrincipal != "" {
+		obj["groupPrincipalName"] = groupPrincipal
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
+
+func listOfCRTB(items ...*unstructured.Unstructured) *unstructured.UnstructuredList {
+	out := &unstructured.UnstructuredList{}
+	for _, i := range items {
+		out.Items = append(out.Items, *i)
+	}
+	return out
+}
+
+func listOfPRTB(items ...*unstructured.Unstructured) *unstructured.UnstructuredList {
+	return listOfCRTB(items...)
+}
+func listOfGRB(items ...*unstructured.Unstructured) *unstructured.UnstructuredList {
+	return listOfCRTB(items...)
+}
+
+// TestInspectUserMalformedProjectBindingSurfacesWarning pins the composite
+// end of the blank-scope drop: a matched prtb with no projectName never
+// renders (no blank PROJECT heading), and the omission reaches the caller
+// as a named warning — losing the collectHeld wiring must fail here, not
+// only in the rbac unit test.
+func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	project, _ := kinds.Lookup("project")
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(prtbKind.GVR, listOfPRTB(
+			prtbObjForTest("prtb-ok", "p-1", "c-1:p-1", "u-abc", "local://u-abc", "", "project-owner"),
+			prtbObjForTest("prtb-broken", "p-2", "", "u-abc", "local://u-abc", "", "project-member"),
+		)).
+		withGetErr(project.GVR, "c-1", "p-1", clierr.New(clierr.CodeNotFound, "no display"))
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+	require.NotNil(t, r.Held.Projects)
+	require.Len(t, *r.Held.Projects, 1, "only the well-formed project renders")
+	assert.Equal(t, "c-1:p-1", (*r.Held.Projects)[0].Project)
+	assert.Contains(t, res.Warnings, "1 project role binding(s) with no scope id omitted: prtb-broken")
+	assert.NotContains(t, res.Text, "PROJECT \n", "no blank project heading")
+}

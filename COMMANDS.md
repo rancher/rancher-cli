@@ -76,6 +76,7 @@ target for the legacy `server switch` command.
 | `inspect pod <name>` | Composite pod read: describe + recent logs |
 | `inspect deployment <name>` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: project, namespaces, members, quota, usage |
+| `inspect user <id\|username\|displayName\|principal>` | Composite user read: identity, groups, and held roles across scopes — held bindings only, never effective permissions |
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 
@@ -116,6 +117,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 48-kind table: `get <kind>` (48), `patch <kind>`
 (48), `delete <kind>` (30 — 29 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, and `user`, plus a `provisioning-cluster` override) —
-126 generated commands, 168 total together with the fixed commands above. The authoritative, always-current list is
+126 generated commands, 169 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

@@ -84,3 +84,21 @@ func TestLivePositionalPatchUserCandidates(t *testing.T) {
 	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
+
+// TestLivePositionalInspectUserCandidates pins the third inspect positional
+// exception: `inspect user <TAB>` routes through the same "user" kind
+// branch get/patch/delete already use — ids only, system accounts excluded.
+func TestLivePositionalInspectUserCandidates(t *testing.T) {
+	t.Parallel()
+	srv, hits := userServer(t)
+	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+	site := CompletionSite{Kind: SitePositional, Index: 0}
+	d := runtime.Descriptor{Name: "inspect user"}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+
+	assert.Contains(t, got, "u-alice", "user id must be a candidate")
+	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
+	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
+}

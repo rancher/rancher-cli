@@ -251,6 +251,7 @@ outright.
 - `rancher inspect pod <name>` — status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
 - `rancher inspect project <name-or-id>` — project namespaces, workload counts, members, quota, usage
+- `rancher inspect user <id|username|displayName|principal>` — identity, groups, and held roles across scopes; held bindings only, not effective permissions
 - `rancher usage` — capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`
 - `rancher images [--by image|workload] [--match substr]` — active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
 
@@ -290,9 +291,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 ### 10. Role grants and secrets
 
 Held roles are bindings that exist — what `grant`/`revoke` create and delete,
-and what the `inspect project`/`inspect cluster` MEMBERS sections list.
-Nothing in the CLI computes effective permissions yet: never present a held
-role as what a subject can actually do.
+what the `inspect project`/`inspect cluster` MEMBERS sections list, and what
+`inspect user`'s HELD ROLES section enumerates across every scope for one
+subject. Nothing in the CLI computes effective permissions yet: never present
+a held role as what a subject can actually do.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` —
   grant a role at project, cluster, or global scope. Subject is a user/group

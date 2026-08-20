@@ -43,6 +43,7 @@ func NewResolver() map[string]safety.Binding {
 		"inspect pod":             {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"inspect deployment":      {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"inspect project":         {Contract: safety.ContractInternal, Stability: safety.Beta},
+		"inspect user":            {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"get cloud-credential":    {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"get kubernetes-versions": {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"images":                  {Contract: safety.ContractInternal, Stability: safety.Beta},

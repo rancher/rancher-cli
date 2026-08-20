@@ -4692,6 +4692,29 @@
       "usage": "Inspect a project: namespaces, members, quota, and usage"
     },
     {
+      "aliases": [
+        "users"
+      ],
+      "args": [
+        {
+          "desc": "id|username|displayName|principal",
+          "name": "user",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. The user is required and hard-errors when unreadable; every other section degrades. The positional accepts a user id, username, displayName, or a fully qualified user principal (local://…, <provider>_user://…) — the principal form is the one way to name a user unambiguously when ids and display names collide. data.user carries identity (id, username, displayName, enabled, principals, created, system) plus groups: group memberships as last synced by Rancher (refreshed at login), a flat array of {principal, displayName, provider}; unavailable — never an empty list — when the UserAttributes read failed for any reason other than a verified absence (a user who has never logged in has none). data.held.{global,clusters,projects} lists role bindings that EXIST for the user or any of their group principals — HELD roles, never a computed statement of what the user can do. Each row is the shared member shape (principal, displayName, role, binding, system); clusters and projects group rows by scope instance, with a best-effort displayName looked up per entry. Because held completeness depends on the user's group principals, a failed groups read blocks all three held sections too (their completeness would otherwise be unverifiable) — recorded in data.degraded alongside groups.",
+      "group": "inspect",
+      "name": "inspect user",
+      "network": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Inspect a user: identity, groups, and held roles across scopes"
+    },
+    {
       "auth": true,
       "commandType": "local",
       "examples": [
@@ -8520,7 +8543,8 @@
         "inspect cluster",
         "inspect pod",
         "inspect deployment",
-        "inspect project"
+        "inspect project",
+        "inspect user"
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
       "name": "inspect"

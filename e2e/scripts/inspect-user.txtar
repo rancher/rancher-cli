@@ -1,0 +1,83 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed the user fixture and its full held-role footprint: a global role
+# binding, a crtb on the pre-seeded c-test cluster (displayName
+# "testcluster"), and a prtb on a freshly created project. The matching
+# UserAttribute (u-bob, group okta_group://eng) is a harness-global fixture
+# (seedUserAttributeObjects) — UserAttribute has no kind-table row, so
+# `create resource -f` cannot address it.
+exec rancher create resource -f user.yaml --apply --yes
+
+exec rancher create project inspect-user-proj --cluster testcluster --apply
+exec rancher create namespace inspect-user-proj --cluster local --apply
+
+exec rancher grant u-bob --role e2e-global-role --global --apply --yes
+exec rancher grant u-bob --role cluster-member --cluster testcluster --apply --yes
+exec rancher grant u-bob --role project-member --project inspect-user-proj --cluster testcluster --apply --yes
+
+# Full card: identity, groups (from the seeded UserAttribute), and all
+# three held sections populated.
+exec rancher inspect user u-bob
+stdout 'USER'
+stdout 'id: u-bob'
+stdout 'username: bob'
+stdout 'GROUPS'
+stdout 'okta_group://eng'
+stdout 'HELD ROLES'
+stdout 'GLOBAL'
+stdout 'e2e-global-role'
+stdout 'CLUSTER testcluster \(c-test\)'
+stdout 'cluster-member'
+stdout 'PROJECT'
+stdout 'project-member'
+
+exec rancher inspect user u-bob -o json
+jsonquery stdout data.user.id u-bob
+jsonquery stdout data.user.username bob
+jsonquery stdout 'data.user.groups.#' 1
+jsonquery stdout data.user.groups.0.principal okta_group://eng
+jsonquery stdout data.user.groups.0.provider okta
+jsonquery stdout 'data.held.global.#' 1
+jsonquery stdout data.held.global.0.role e2e-global-role
+jsonquery stdout 'data.held.clusters.#' 1
+jsonquery stdout data.held.clusters.0.cluster c-test
+jsonquery stdout data.held.clusters.0.displayName testcluster
+jsonquery stdout data.held.clusters.0.roles.0.role cluster-member
+jsonquery stdout 'data.held.projects.#' 1
+jsonquery stdout data.held.projects.0.roles.0.role project-member
+
+# Resolution by fully qualified principal: same user, same card.
+exec rancher inspect user local://u-bob -o json
+jsonquery stdout data.user.id u-bob
+
+# Resolution by displayName.
+exec rancher inspect user 'Bob Example' -o json
+jsonquery stdout data.user.id u-bob
+
+# Never-logged-in user: no UserAttribute object exists for it — verified
+# empty groups, never a degraded read.
+exec rancher create resource -f user-nologin.yaml --apply --yes
+exec rancher inspect user u-nologin -o json
+jsonquery stdout 'data.user.groups.#' 0
+! jsonquery stdout data.degraded.0.section groups
+
+-- user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-bob
+displayName: Bob Example
+username: bob
+principalIds:
+  - local://u-bob
+
+-- user-nologin.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-nologin
+displayName: Never Logged In
+username: nologin
+principalIds:
+  - local://u-nologin

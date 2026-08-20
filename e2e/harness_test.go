@@ -176,6 +176,7 @@ func TestMain(m *testing.M) {
 	seedCloudCredential()
 	seedRoleObjects()
 	seedUserObjects()
+	seedUserAttributeObjects()
 	seedManagementToken()
 
 	code := m.Run()
@@ -541,6 +542,35 @@ func seedUserObjects() {
 		if _, err := dynCli.Resource(userGVR).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 			panic("seeding user " + u.id + ": " + err.Error())
 		}
+	}
+}
+
+// seedUserAttributeObjects creates a UserAttribute fixture for
+// inspect-user.txtar: UserAttribute carries no kind-table row (it is an
+// enrichment source, not an operator-facing resource — `create resource -f`
+// cannot address it), so it is seeded here directly like the role and user
+// fixtures above. One group principal under one provider is enough for the
+// composite's groups section and its held-bindings group matching to have
+// something to read.
+func seedUserAttributeObjects() {
+	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "UserAttribute",
+		"metadata":   map[string]any{"name": "u-bob"},
+		"GroupPrincipals": map[string]any{
+			"okta": map[string]any{
+				"Items": []any{
+					map[string]any{
+						"metadata":    map[string]any{"name": "okta_group://eng"},
+						"displayName": "Engineering",
+					},
+				},
+			},
+		},
+	}}
+	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+		panic("seeding userattribute u-bob: " + err.Error())
 	}
 }
 

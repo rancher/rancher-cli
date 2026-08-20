@@ -813,6 +813,26 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 			"a genuinely unknown flag must not receive the all-namespaces hint")
 	})
 
+	t.Run("inspect user --cluster fails as an unknown flag", func(t *testing.T) {
+		// inspect user deliberately does NOT declare --cluster (the user
+		// kind is management-scoped, not cluster-scoped) — declaring it
+		// just to reject it would put a dead flag in the schema and
+		// completion. Passing it must fail the same generic way any
+		// undeclared flag does.
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		runErr := root.Run(t.Context(), []string{"rancher", "inspect", "user", "u-abc", "--cluster", "c-x"})
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	})
+
 	t.Run("create namespace -A gets verb-agnostic all-namespaces hint", func(t *testing.T) {
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)

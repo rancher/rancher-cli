@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 168,
+  "commandCount": 169,
   "effectSchema": {
     "actions": [
       "create",
@@ -224,6 +224,10 @@
         {
           "name": "inspect project",
           "usage": "Inspect a project: namespaces, members, quota, and usage"
+        },
+        {
+          "name": "inspect user",
+          "usage": "Inspect a user: identity, groups, and held roles across scopes"
         }
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",

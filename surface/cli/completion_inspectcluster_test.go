@@ -70,8 +70,8 @@ func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
 }
 
 // TestOtherInspectLeavesRetainPositionalDeny pins the retained deny:
-// the exceptions are exactly `inspect cluster` and `inspect project` —
-// pod and deployment stay excluded with zero requests.
+// the exceptions are exactly `inspect cluster`, `inspect project`, and
+// `inspect user` — pod and deployment stay excluded with zero requests.
 func TestOtherInspectLeavesRetainPositionalDeny(t *testing.T) {
 	t.Parallel()
 	srv, hits := managementClusterServer(t)

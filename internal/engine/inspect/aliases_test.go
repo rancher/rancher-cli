@@ -43,3 +43,12 @@ func TestInspectClusterAliasesMatchKindsTable(t *testing.T) {
 	assert.Equal(t, k.Aliases, d.Aliases,
 		"inspect cluster Aliases must equal the kinds table cluster aliases")
 }
+
+func TestInspectUserAliasesMatchKindsTable(t *testing.T) {
+	t.Parallel()
+	k, ok := kinds.Lookup("user")
+	assert.True(t, ok)
+	d := inspect.NewInspectUser(nil).Describe()
+	assert.Equal(t, k.Aliases, d.Aliases,
+		"inspect user Aliases must equal the kinds table user aliases")
+}

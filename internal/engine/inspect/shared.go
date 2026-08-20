@@ -35,6 +35,10 @@ import (
 // such key. Nothing outside this list may be emitted.
 const (
 	sectionClusters        = "clusters"
+	sectionGroups          = "groups"
+	sectionHeldClusters    = "heldClusters"
+	sectionHeldGlobal      = "heldGlobal"
+	sectionHeldProjects    = "heldProjects"
 	sectionLogs            = "logs"
 	sectionMachines        = "machines"
 	sectionMembers         = "members"
@@ -71,6 +75,10 @@ const (
 // format. A command registers the subset its matrix row allows.
 var sectionTargetRules = map[string]targetRule{
 	sectionClusters:        targetToken,
+	sectionGroups:          targetNone,
+	sectionHeldClusters:    targetNone,
+	sectionHeldGlobal:      targetNone,
+	sectionHeldProjects:    targetNone,
 	sectionLogs:            targetToken,
 	sectionMachines:        targetNone,
 	sectionMembers:         targetNone,

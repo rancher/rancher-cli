@@ -582,11 +582,11 @@ func livePositionalCandidates(
 		return fetchUsers(ctx, hc, cap)
 	}
 
-	// Round-2 finding 7: gate on AC-10 verbs (get/patch/delete only), with
-	// two named exceptions — inspect cluster and inspect project. Every other
-	// inspect leaf retains the deny.
+	// Gate on AC-10 verbs (get/patch/delete only), with three named
+	// exceptions — inspect cluster, inspect project, and inspect user.
+	// Every other inspect leaf retains the deny.
 	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException &&
-		d.Name != inspectProjectCompletionException {
+		d.Name != inspectProjectCompletionException && d.Name != inspectUserCompletionException {
 		return nil
 	}
 	k, ok := kindForDescriptor(d)
@@ -838,16 +838,22 @@ func gvrNamespacedPath(k kinds.Kind) string {
 // inspectProjectCompletionException is the second exception (members-ergonomics
 // slice 4): inspect project's positional completes project names via the
 // resolved cluster.
+// inspectUserCompletionException is the third exception: inspect user's
+// positional is a user id, completed by the same "user" kind branch below
+// get/patch/delete already use (case "user"), which excludes system
+// accounts and returns ids only, never ambiguous.
 const (
 	inspectClusterCompletionException = "inspect cluster"
 	inspectProjectCompletionException = "inspect project"
+	inspectUserCompletionException    = "inspect user"
 )
 
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
 // (get, patch, delete). inspect leaves do NOT get live positional
-// completion through this predicate — the two narrow exceptions are
-// inspectClusterCompletionException (IC-3) and inspectProjectCompletionException,
-// both checked by name at the gate; AC-15a adds inspect aliases, not live-name completion.
+// completion through this predicate — the three narrow exceptions are
+// inspectClusterCompletionException (IC-3), inspectProjectCompletionException,
+// and inspectUserCompletionException, each checked by name at the gate;
+// AC-15a adds inspect aliases, not live-name completion.
 func isAC10Verb(descriptorName string) bool {
 	parts := strings.Fields(descriptorName)
 	if len(parts) == 0 {

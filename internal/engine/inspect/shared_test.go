@@ -30,6 +30,8 @@ func TestCompositesRejectProjectScope(t *testing.T) {
 			input{args: []string{"web"}, s: map[string]string{"cluster": "c-abc", "namespace": "default", "project": "p-x"}}},
 		{"images", NewImages(&fakeFactory{}),
 			input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}}},
+		{"inspect user", NewInspectUser(&fakeFactory{}),
+			input{args: []string{"u-abc"}, s: map[string]string{"project": "p-x"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

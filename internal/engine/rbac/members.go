@@ -13,10 +13,62 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// userAttrGVR is the UserAttribute CRD (cluster-scoped, name = user id).
+// GroupPrincipalEntry is one cached group principal from a UserAttribute's
+// GroupPrincipals map: principal id, cached display name, and the provider
+// bucket it came from.
+type GroupPrincipalEntry struct {
+	Principal   string
+	DisplayName string
+	Provider    string
+}
+
+// GroupPrincipalEntries walks one UserAttribute's GroupPrincipals map — the
+// provider-keyed, untagged wire shape (GroupPrincipals.<provider>.Items[]
+// .metadata.name / .displayName; Principal's own fields ARE tagged) — into
+// flat entries ordered (principal, provider). The same principal under two
+// providers is retained as two entries: distinct provider caches, no merge
+// or conflict logic here — callers decide.
+func GroupPrincipalEntries(obj *unstructured.Unstructured) []GroupPrincipalEntry {
+	byProvider, ok, _ := unstructured.NestedMap(obj.Object, "GroupPrincipals")
+	if !ok {
+		return nil
+	}
+	var entries []GroupPrincipalEntry
+	for provider, v := range byProvider {
+		wrap, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		items, ok := wrap["Items"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range items {
+			p, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _, _ := unstructured.NestedString(p, "metadata", "name")
+			if id == "" {
+				continue
+			}
+			display, _, _ := unstructured.NestedString(p, "displayName")
+			entries = append(entries, GroupPrincipalEntry{Principal: id, DisplayName: display, Provider: provider})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Principal != entries[j].Principal {
+			return entries[i].Principal < entries[j].Principal
+		}
+		return entries[i].Provider < entries[j].Provider
+	})
+	return entries
+}
+
+// UserAttrGVR is the UserAttribute CRD (cluster-scoped, name = user id).
 // Not a kinds-table row: it is an enrichment source, not an operator-facing
 // resource.
-var userAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
+var UserAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
 
 // MemberRow is the one shared shape for every derived/composite member or
 // held-role enumeration: inspect project MEMBERS, inspect cluster MEMBERS,
@@ -238,7 +290,7 @@ func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, gr
 	display = map[string]string{}
 	collided = map[string]bool{}
 
-	list, listErr := mgmt.List(ctx, userAttrGVR, "", "")
+	list, listErr := mgmt.List(ctx, UserAttrGVR, "", "")
 	switch {
 	case listErr != nil && lookupCanceled(ctx, listErr):
 		return nil, nil, "", listErr
@@ -247,34 +299,11 @@ func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, gr
 	}
 
 	for i := range list.Items {
-		// Wire shape: UserAttribute's top-level fields carry no json
-		// tags — GroupPrincipals.<provider>.Items[].metadata.name /
-		// .displayName (Principal's own fields ARE tagged).
-		groups, ok, _ := unstructured.NestedMap(list.Items[i].Object, "GroupPrincipals")
-		if !ok {
-			continue
-		}
-		for _, v := range groups {
-			wrap, ok := v.(map[string]any)
-			if !ok {
+		for _, e := range GroupPrincipalEntries(&list.Items[i]) {
+			if e.DisplayName == "" || !groupRefs[e.Principal] {
 				continue
 			}
-			items, ok := wrap["Items"].([]any)
-			if !ok {
-				continue
-			}
-			for _, item := range items {
-				p, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				id, _, _ := unstructured.NestedString(p, "metadata", "name")
-				d, _, _ := unstructured.NestedString(p, "displayName")
-				if id == "" || d == "" || !groupRefs[id] {
-					continue
-				}
-				setGroupResolved(display, collided, id, d)
-			}
+			setGroupResolved(display, collided, e.Principal, e.DisplayName)
 		}
 	}
 	return display, collided, "", nil
