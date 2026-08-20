@@ -1,0 +1,56 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a real user and a system account (principalIds carrying a system://
+# entry) — the CLI reads the management CRD directly, so without the
+# SystemFilter default it would leak what Rancher's own user store hides.
+exec rancher create resource -f real-user.yaml --apply --yes
+exec rancher create resource -f sys-user.yaml --apply --yes
+
+# Default list: the real user is present, the system account is dropped, and
+# the envelope carries the singular hidden-count warning. The server also
+# carries completion-fixture users seeded elsewhere in this suite, so
+# assertions are name-filtered rather than absolute counts.
+exec rancher get users -o json
+jsonquery stdout 'data.#(metadata.name=="u-hsu-real").metadata.name' u-hsu-real
+jsonquery stdout 'data.#(metadata.name=="u-hsu-sys").metadata.name' ''
+jsonquery stdout warnings.0 '1 system account hidden — pass --include-system to show it'
+
+# --include-system: the system account is listed too, no warning.
+exec rancher get users --include-system -o json
+jsonquery stdout 'data.#(metadata.name=="u-hsu-sys").metadata.name' u-hsu-sys
+jsonquery stdout 'warnings.0' ''
+
+# Named get of the system account succeeds with no flag: naming is intent,
+# a deliberate divergence from Norman's by-id 404.
+exec rancher get user u-hsu-sys -o json
+jsonquery stdout data.metadata.name u-hsu-sys
+
+# A typed --include-system on a named get is a VALIDATION no-op rejection.
+! exec rancher get user u-hsu-sys --include-system -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.hint 'drop --include-system; a named get always returns the object'
+
+# Cleanup: leave no fixtures behind for scripts sharing this envtest server.
+exec rancher delete user u-hsu-real --apply --yes
+exec rancher delete user u-hsu-sys --apply --yes
+
+-- real-user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-hsu-real
+displayName: hsurealuser
+username: hsurealuser
+principalIds:
+  - local://u-hsu-real
+
+-- sys-user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-hsu-sys
+displayName: hsusysuser
+username: hsusysuser
+principalIds:
+  - system://c-hsu-abc

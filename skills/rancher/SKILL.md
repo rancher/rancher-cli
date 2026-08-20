@@ -302,6 +302,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   bindings gone. Revoke removes the binding only; an auto-provisioned user
   is removed with `rancher delete user <id> --apply --yes` (destructive,
   cascades role bindings).
+- `rancher get users` hides Rancher's internal system accounts (cluster agent
+  and provisioning accounts) by default, matching what Rancher itself hides;
+  pass `--include-system` to see them. Cluster teardown removes its agent
+  account automatically — never delete a system account by hand.
 - `rancher get roletemplates -o json` — filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or
