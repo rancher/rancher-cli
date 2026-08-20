@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,7 +40,8 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		Desc: degradedContractDesc +
 			"Cluster resolution and the project resolve plus GET are required and hard-error. " +
 			"Degradable sections: namespaces (unavailable — the namespace rows, whose integer counts " +
-			"cannot represent an unknown), members (unavailable — collected independently from the " +
+			"cannot represent an unknown), members (each row reports principal, displayName, role, binding, " +
+			"and system; unavailable — collected independently from the " +
 			"management plane, so downstream failures leave it intact), usage (unavailable — blocked by " +
 			"a downstream-client, membership, or pod-list failure), metrics (unavailable — request and " +
 			"limit totals stay). A membership set that resolves to zero namespaces is a verified-empty " +
@@ -228,10 +230,10 @@ func (c *projectCmd) downstreamSections(ctx context.Context, client engine.Clust
 
 // projectMembers lists the project's prtbs from status.backingNamespace
 // (falling back to the project id namespace when absent), resolves display
-// names via resolveMembers, and degrades a listing failure (typically RBAC)
-// to a warning plus a nil member slice (serializes "members":null — the
-// pre-existing non-omitempty contract; [] means verified empty).
-func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured, sec *sections) ([]projectMember, []string, error) {
+// names via rbac.ResolveMembers, and degrades a listing failure (typically
+// RBAC) to a warning plus a nil member slice (serializes "members":null —
+// the pre-existing non-omitempty contract; [] means verified empty).
+func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured, sec *sections) ([]rbac.MemberRow, []string, error) {
 	backingNS, found, _ := unstructured.NestedString(project.Object, "status", "backingNamespace")
 	if !found || backingNS == "" {
 		backingNS = project.GetName()
@@ -246,13 +248,9 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 		}
 		return nil, nil, nil
 	}
-	resolved, warnings, err := resolveMembers(ctx, mgmtClient, list.Items)
+	rows, warnings, err := rbac.ResolveMembers(ctx, mgmtClient, list.Items)
 	if err != nil {
 		return nil, nil, err
-	}
-	rows := make([]projectMember, 0, len(resolved))
-	for _, m := range resolved {
-		rows = append(rows, projectMember{User: m.Principal, RoleTemplate: m.Role, DisplayName: m.DisplayName, System: m.System})
 	}
 	return rows, warnings, nil
 }
@@ -267,15 +265,6 @@ type projectNamespace struct {
 	Workloads projectWorkloads `json:"workloads"`
 }
 
-type projectMember struct {
-	User         string `json:"user"`
-	RoleTemplate string `json:"roleTemplate"`
-	DisplayName  string `json:"displayName,omitempty"`
-	// System marks Rancher-internal principals (engine.IsSystemPrincipal);
-	// omitted when false so existing entries are byte-identical.
-	System bool `json:"system,omitempty"`
-}
-
 // projectResult is `inspect project`'s payload; the default rendering is the
 // sectioned text card produced by renderProjectText.
 type projectResult struct {
@@ -283,7 +272,7 @@ type projectResult struct {
 	DisplayName   string             `json:"displayName"`
 	Cluster       string             `json:"cluster"`
 	Namespaces    []projectNamespace `json:"namespaces"`
-	Members       []projectMember    `json:"members"`
+	Members       []rbac.MemberRow   `json:"members"`
 	ResourceQuota map[string]any     `json:"resourceQuota"`
 	Usage         *resourceTotals    `json:"usage"`
 	// Degraded names the sections this run could not read in full. Absent
@@ -323,9 +312,9 @@ func renderProjectText(r projectResult) string {
 				suffix = " [system]"
 			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.User), engine.Printable(m.RoleTemplate), suffix)
+				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
 			} else {
-				fmt.Fprintf(&b, "  %s  %s%s\n", engine.Printable(m.User), engine.Printable(m.RoleTemplate), suffix)
+				fmt.Fprintf(&b, "  %s  %s%s\n", engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
 			}
 		}
 	}

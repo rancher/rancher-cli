@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,12 +119,18 @@ func TestInspectProjectAssemblesFullDocument(t *testing.T) {
 	assert.Equal(t, 0, data.Namespaces[1].Workloads.Deployments)
 
 	require.Len(t, data.Members, 2)
-	roleTemplates := map[string]string{}
+	roles := map[string]string{}
+	bindings := map[string]string{}
 	for _, m := range data.Members {
-		roleTemplates[m.User] = m.RoleTemplate
+		roles[m.Principal] = m.Role
+		bindings[m.Principal] = m.Binding
 	}
-	assert.Equal(t, "project-owner", roleTemplates["alice"])
-	assert.Equal(t, "project-member", roleTemplates["bob"])
+	assert.Equal(t, "project-owner", roles["alice"])
+	assert.Equal(t, "project-member", roles["bob"])
+	// binding round-trips the seeded CRD object name (prtbListItem sets
+	// metadata.name to "prtb-"+user).
+	assert.Equal(t, "prtb-alice", bindings["alice"])
+	assert.Equal(t, "prtb-bob", bindings["bob"])
 
 	require.NotNil(t, data.ResourceQuota)
 	require.NotNil(t, data.Usage)
@@ -405,9 +412,9 @@ func TestRenderProjectTextSections(t *testing.T) {
 	r := projectResult{
 		ID: "p-cvrp4", DisplayName: "Default", Cluster: "c-phmj7",
 		Namespaces: []projectNamespace{{Name: "default", Workloads: projectWorkloads{Pods: 3, Deployments: 1}}},
-		Members: []projectMember{
-			{User: "github_org://8341", RoleTemplate: "project-member", DisplayName: "DevOps Team"},
-			{User: "local://u-alice", RoleTemplate: "project-owner", DisplayName: "Alice Ann"},
+		Members: []rbac.MemberRow{
+			{Principal: "github_org://8341", Role: "project-member", DisplayName: "DevOps Team"},
+			{Principal: "local://u-alice", Role: "project-owner", DisplayName: "Alice Ann"},
 		},
 		ResourceQuota: map[string]any{"limit": map[string]any{"pods": "10", "configMaps": "5"}},
 		Usage:         &resourceTotals{CPURequest: "500m", CPULimit: "1", CPUUsage: "250m", MemoryRequest: "1Gi", MemoryLimit: "2Gi"},
@@ -438,7 +445,7 @@ func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 	assert.Contains(t, text, "NAMESPACES\n  none\n")
 	assert.Contains(t, text, "USAGE\n  none (no namespaces)\n")
 
-	r.Members = []projectMember{}
+	r.Members = []rbac.MemberRow{}
 	assert.Contains(t, renderProjectText(r), "MEMBERS\n  none\n")
 
 	// Defensive: Usage nil with non-empty Namespaces renders an explicit
@@ -522,12 +529,12 @@ func TestProjectUsageJSONContract(t *testing.T) {
 
 func TestProjectMemberJSONContract(t *testing.T) {
 	t.Parallel()
-	b, err := json.Marshal(projectMember{User: "local://u-a", RoleTemplate: "project-owner", DisplayName: "A"})
+	b, err := json.Marshal(rbac.MemberRow{Principal: "local://u-a", Role: "project-owner", Binding: "prtb-abc", DisplayName: "A"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"user":"local://u-a","roleTemplate":"project-owner","displayName":"A"}`, string(b))
-	b, err = json.Marshal(projectMember{User: "local://u-a", RoleTemplate: "project-owner"})
+	assert.JSONEq(t, `{"principal":"local://u-a","role":"project-owner","binding":"prtb-abc","displayName":"A"}`, string(b))
+	b, err = json.Marshal(rbac.MemberRow{Principal: "local://u-a", Role: "project-owner", Binding: "prtb-abc"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"user":"local://u-a","roleTemplate":"project-owner"}`, string(b))
+	assert.JSONEq(t, `{"principal":"local://u-a","role":"project-owner","binding":"prtb-abc"}`, string(b))
 }
 
 // TestProjectMembersNullVsEmptyContract pins the WHOLE-payload encoding —
@@ -545,7 +552,7 @@ func TestProjectMembersNullVsEmptyContract(t *testing.T) {
 	assert.Nil(t, raw, "nil members: value must be null")
 
 	// empty slice → key present, empty array.
-	b, err = json.Marshal(projectResult{ID: "p", Members: []projectMember{}})
+	b, err = json.Marshal(projectResult{ID: "p", Members: []rbac.MemberRow{}})
 	require.NoError(t, err)
 	var emptyDoc map[string]any
 	require.NoError(t, json.Unmarshal(b, &emptyDoc))
@@ -558,13 +565,13 @@ func TestProjectMembersNullVsEmptyContract(t *testing.T) {
 
 func TestProjectMemberSystemJSONContract(t *testing.T) {
 	t.Parallel()
-	b, err := json.Marshal(projectMember{User: "system://x", RoleTemplate: "r", System: true})
+	b, err := json.Marshal(rbac.MemberRow{Principal: "system://x", Role: "r", Binding: "prtb-x", System: true})
 	require.NoError(t, err)
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(b, &doc))
 	assert.Equal(t, true, doc["system"])
 
-	b, err = json.Marshal(projectMember{User: "u-alice", RoleTemplate: "r"})
+	b, err = json.Marshal(rbac.MemberRow{Principal: "u-alice", Role: "r", Binding: "prtb-alice"})
 	require.NoError(t, err)
 	doc = nil
 	require.NoError(t, json.Unmarshal(b, &doc))
@@ -662,16 +669,16 @@ func TestRenderProjectTextEscapeStripping(t *testing.T) {
 	t.Parallel()
 	r := projectResult{
 		ID: "p-x", DisplayName: "X", Cluster: "c-x",
-		Members: []projectMember{
-			{User: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", RoleTemplate: "project-member"},
+		Members: []rbac.MemberRow{
+			{Principal: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", Role: "project-member"},
 		},
 	}
 	text := renderProjectText(r)
 	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
 	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
 
-	r.Members = []projectMember{
-		{User: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", RoleTemplate: "project-member"},
+	r.Members = []rbac.MemberRow{
+		{Principal: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", Role: "project-member"},
 	}
 	text = renderProjectText(r)
 	assert.NotContains(t, text, "\u202e", "bidi-override format characters must be stripped")

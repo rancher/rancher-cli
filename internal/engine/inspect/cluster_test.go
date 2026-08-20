@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -891,7 +892,7 @@ func TestClusterMembersTriState(t *testing.T) {
 	assert.False(t, hasMembers, "nil members pointer: key must be absent from the wire")
 
 	// non-nil empty → key present, empty array.
-	empty := []clusterMember{}
+	empty := []rbac.MemberRow{}
 	b, err = json.Marshal(clusterResult{Cluster: clusterIdentity{ID: "c"}, Members: &empty})
 	require.NoError(t, err)
 	var emptyDoc map[string]any
@@ -905,13 +906,13 @@ func TestClusterMembersTriState(t *testing.T) {
 
 func TestClusterMemberSystemJSONContract(t *testing.T) {
 	t.Parallel()
-	b, err := json.Marshal(clusterMember{Principal: "system://x", Role: "r", System: true})
+	b, err := json.Marshal(rbac.MemberRow{Principal: "system://x", Role: "r", Binding: "crtb-x", System: true})
 	require.NoError(t, err)
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(b, &doc))
 	assert.Equal(t, true, doc["system"])
 
-	b, err = json.Marshal(clusterMember{Principal: "local://u-alice", Role: "r"})
+	b, err = json.Marshal(rbac.MemberRow{Principal: "local://u-alice", Role: "r", Binding: "crtb-alice"})
 	require.NoError(t, err)
 	doc = nil
 	require.NoError(t, json.Unmarshal(b, &doc))
@@ -919,9 +920,21 @@ func TestClusterMemberSystemJSONContract(t *testing.T) {
 	assert.False(t, has, "zero System must omit the key")
 }
 
+// TestClusterMemberJSONContract pins the shared memberRow shape: principal,
+// role, and binding are always present; displayName is omitted when blank.
+func TestClusterMemberJSONContract(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(rbac.MemberRow{Principal: "local://u-a", Role: "cluster-owner", Binding: "crtb-abc", DisplayName: "A"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"principal":"local://u-a","role":"cluster-owner","binding":"crtb-abc","displayName":"A"}`, string(b))
+	b, err = json.Marshal(rbac.MemberRow{Principal: "local://u-a", Role: "cluster-owner", Binding: "crtb-abc"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"principal":"local://u-a","role":"cluster-owner","binding":"crtb-abc"}`, string(b))
+}
+
 func TestRenderClusterTextEscapeStripping(t *testing.T) {
 	t.Parallel()
-	members := []clusterMember{
+	members := []rbac.MemberRow{
 		{Principal: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", Role: "cluster-member"},
 	}
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}, Members: &members}
@@ -929,7 +942,7 @@ func TestRenderClusterTextEscapeStripping(t *testing.T) {
 	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
 	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
 
-	bidi := []clusterMember{
+	bidi := []rbac.MemberRow{
 		{Principal: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", Role: "cluster-member"},
 	}
 	r.Members = &bidi
@@ -944,11 +957,11 @@ func TestRenderClusterTextMembersSection(t *testing.T) {
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
 	assert.Contains(t, renderClusterText(r), "MEMBERS\n  members: unavailable\n")
 
-	empty := []clusterMember{}
+	empty := []rbac.MemberRow{}
 	r.Members = &empty
 	assert.Contains(t, renderClusterText(r), "MEMBERS\n  none\n")
 
-	members := []clusterMember{
+	members := []rbac.MemberRow{
 		{Principal: "github_org://8341", DisplayName: "DevOps Team", Role: "cluster-member"},
 		{Principal: "okta_user://never", Role: "cluster-member"},
 	}
@@ -992,6 +1005,27 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 	canceled := newFakeClient().withListErr(crtbKind.GVR, context.Canceled)
 	_, _, err = clusterMembers(ctx, canceled, newSections(ctx, sectionMembers), "c-x")
 	require.Error(t, err, "caller cancellation aborts the command")
+}
+
+// TestClusterMembersBindingRoundTrips pins that the memberRow's binding key
+// equals the seeded CRD object's own name — the join key back to `get
+// crtb`.
+func TestClusterMembersBindingRoundTrips(t *testing.T) {
+	t.Parallel()
+	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
+	seeded := newFakeClient().withListNS(crtbKind.GVR, "c-x", &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{{Object: map[string]any{
+			"metadata":          map[string]any{"name": "crtb-9fjq2"},
+			"userPrincipalName": "local://u-alice",
+			"roleTemplateName":  "cluster-owner",
+		}}},
+	})
+	sec := newSections(t.Context(), sectionMembers)
+	members, _, err := clusterMembers(t.Context(), seeded, sec, "c-x")
+	require.NoError(t, err)
+	require.NotNil(t, members)
+	require.Len(t, *members, 1)
+	assert.Equal(t, "crtb-9fjq2", (*members)[0].Binding)
 }
 
 // TestClusterMachinesLookupTriState pins the LOOKUP → tri-state mapping —
@@ -1551,7 +1585,7 @@ func TestInspectClusterNotFoundWithHintPassesThrough(t *testing.T) {
 func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 	t.Parallel()
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
-	members := []clusterMember{
+	members := []rbac.MemberRow{
 		{Principal: "system://provisioning/fleet-default/imp", Role: "cluster-owner", System: true},
 		{Principal: "okta_user://operator", Role: "cluster-member"},
 	}

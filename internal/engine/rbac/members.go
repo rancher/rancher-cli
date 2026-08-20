@@ -1,7 +1,8 @@
-package inspect
+package rbac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sort"
@@ -17,20 +18,26 @@ import (
 // resource.
 var userAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
 
-// memberRow is the resolver's internal row — each card defines its own
-// serialized projection (project keeps user/roleTemplate; cluster uses
-// principal/displayName/role).
-type memberRow struct {
-	Principal   string
-	DisplayName string
-	Role        string
+// MemberRow is the one shared shape for every derived/composite member or
+// held-role enumeration: inspect project MEMBERS, inspect cluster MEMBERS,
+// a future inspect-user held-roles section, and any future revoke
+// machine-readable "holds" payload. Raw kinds (get crtb/prtb/
+// globalrolebinding) keep their native CRD field names — this shape is for
+// the derived layer only.
+type MemberRow struct {
+	Principal   string `json:"principal"`
+	DisplayName string `json:"displayName,omitempty"`
+	Role        string `json:"role"`
+	// Binding is the CRD object name — the join key back to the raw kind
+	// (and what revoke needs as its input).
+	Binding string `json:"binding"`
 	// System marks Rancher-internal principals — detection is
 	// engine.IsSystemPrincipal (Rancher's system-prefix rule), never the
 	// display name.
-	System bool
+	System bool `json:"system,omitempty"`
 }
 
-// resolveMembers enriches crtb/prtb bindings with display names from two
+// ResolveMembers enriches crtb/prtb bindings with display names from two
 // management-plane LISTs — Users (user display names; EnsureUser sets
 // User.displayName from the provider principal) and UserAttributes (group
 // display names via GroupPrincipals.<provider>.Items[]). No Norman.
@@ -41,11 +48,13 @@ type memberRow struct {
 // rows kept) EXCEPT caller cancellation/deadline, which returns an error
 // (lookupCanceled rule). Duplicate principal ownership and disagreeing
 // cached group names stay unresolved with a warning — never
-// last-listed-wins. Rows sort by (principal, role); collision warnings by
-// principal; source-failure warnings users-before-userattributes.
-func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []unstructured.Unstructured) ([]memberRow, []string, error) {
+// last-listed-wins. Rows sort by (principal, role, binding) — binding
+// distinguishes rows sharing a principal and role, which keeps duplicate
+// out-of-band bindings deterministic; collision warnings by principal;
+// source-failure warnings users-before-userattributes.
+func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []unstructured.Unstructured) ([]MemberRow, []string, error) {
 	if len(bindings) == 0 {
-		return []memberRow{}, nil, nil
+		return []MemberRow{}, nil, nil
 	}
 
 	rows, userRefs, groupRefs := collectPrincipalRefs(bindings)
@@ -109,7 +118,10 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if rows[i].Principal != rows[j].Principal {
 			return rows[i].Principal < rows[j].Principal
 		}
-		return rows[i].Role < rows[j].Role
+		if rows[i].Role != rows[j].Role {
+			return rows[i].Role < rows[j].Role
+		}
+		return rows[i].Binding < rows[j].Binding
 	})
 	return rows, warnings, nil
 }
@@ -126,8 +138,8 @@ func resolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 // userName for operator convenience; inspect cards key on the full principal
 // id because display-name resolution uses principalIds as the join key.
 // See kinds.go for the reciprocal comment.
-func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []memberRow, userRefs map[string]bool, groupRefs map[string]bool) {
-	rows = make([]memberRow, 0, len(bindings))
+func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []MemberRow, userRefs map[string]bool, groupRefs map[string]bool) {
+	rows = make([]MemberRow, 0, len(bindings))
 	userRefs = map[string]bool{}
 	groupRefs = map[string]bool{}
 
@@ -153,7 +165,12 @@ func collectPrincipalRefs(bindings []unstructured.Unstructured) (rows []memberRo
 				userRefs[userName] = true
 			}
 		}
-		rows = append(rows, memberRow{Principal: principal, Role: role, System: engine.IsSystemPrincipal(principal)})
+		rows = append(rows, MemberRow{
+			Principal: principal,
+			Role:      role,
+			Binding:   bindings[i].GetName(),
+			System:    engine.IsSystemPrincipal(principal),
+		})
 	}
 	return rows, userRefs, groupRefs
 }
@@ -278,4 +295,14 @@ func setGroupResolved(display map[string]string, collided map[string]bool, id, d
 		return
 	}
 	display[id] = d
+}
+
+// lookupCanceled reports whether a failed optional lookup was aborted
+// because the CALLER's context was canceled or its deadline expired —
+// mirrors internal/engine/inspect's own lookupCanceled (the two packages
+// share no common leaf to hang one copy from). A caller abort must
+// propagate as the command's error, never continue issuing requests behind
+// a warning.
+func lookupCanceled(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil
 }

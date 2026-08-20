@@ -181,6 +181,7 @@ graph TD
     inspect --> output
     inspect --> projects
     inspect --> provisioning
+    inspect --> rbac
     inspect --> resources
     inspect --> runtime
     inspect --> clierr
