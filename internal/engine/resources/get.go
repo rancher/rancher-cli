@@ -48,13 +48,23 @@ func NewGet(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
 }
 
 func (c getCmd) Describe() runtime.Descriptor {
+	flags := getFlags(c.k)
+	var desc string
+	if c.k.SystemFilter != nil {
+		flags = append(flags, runtime.ArgSpec{Name: flagIncludeSystem, Type: "bool",
+			Desc: "include " + kinds.Plural(c.k.SystemFilter.Label) + " (hidden by default)"})
+		desc = kinds.Plural(c.k.Name) + " hide " + kinds.Plural(c.k.SystemFilter.Label) +
+			" by default; pass --include-system to show them. Naming a " + c.k.Name +
+			" always returns it, hidden or not."
+	}
 	return runtime.Descriptor{
 		Name:         "get " + c.k.Name,
 		Aliases:      c.k.Aliases,
 		Usage:        "List " + kinds.Plural(c.k.Name) + " or show one",
+		Desc:         desc,
 		CommandType:  runtime.ReadOnly,
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:        getFlags(c.k),
+		Flags:        flags,
 		Network:      true,
 		Auth:         true,
 		ProjectScope: kinds.ProjectScopable(c.k),
@@ -117,6 +127,11 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	timeoutStr := in.String(flagTimeout)
 	named := hasName(in)
 
+	if named && c.k.SystemFilter != nil && in.IsSet(flagIncludeSystem) {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--include-system does not apply to a named "+c.k.Name).
+			WithHint("drop --include-system; a named get always returns the object")
+	}
 	if !wait && (forExpr != "" || timeoutStr != "") {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait").
 			WithHint("pass --wait")

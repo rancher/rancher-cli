@@ -90,15 +90,16 @@ func (f *recFactory) ResolveCluster(_ context.Context, s string) (string, error)
 }
 
 type input struct {
-	args []string
-	s    map[string]string
-	b    map[string]bool
+	args  []string
+	s     map[string]string
+	b     map[string]bool
+	isSet map[string]bool
 }
 
 func (i input) String(k string) string  { return i.s[k] }
 func (i input) Bool(k string) bool      { return i.b[k] }
 func (i input) Strings(string) []string { return nil }
-func (i input) IsSet(string) bool       { return false }
+func (i input) IsSet(k string) bool     { return i.isSet[k] }
 func (i input) Args() []string          { return i.args }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {
@@ -1044,4 +1045,71 @@ func TestGetUserNamedSystemAccountSucceeds(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, tbl.items, 1)
 	assert.Equal(t, "u-sys", tbl.items[0].GetName())
+}
+
+// TestGetUserNamedIncludeSystemRejected pins the typed no-op rejection: a
+// named get with --include-system is a VALIDATION error with a directive
+// hint, matching the repo's --project/--for typed no-op precedent.
+func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
+	t.Parallel()
+	cmd, ok := NewGet(mustKind(t, "user"), &recFactory{client: &memClient{}}).(runtime.ReadCommand)
+	require.True(t, ok)
+	_, err := cmd.Execute(t.Context(), input{
+		args:  []string{"u-alice"},
+		b:     map[string]bool{flagIncludeSystem: true},
+		isSet: map[string]bool{flagIncludeSystem: true},
+	}, nil)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Hint, "drop --include-system")
+}
+
+// TestGetUserNamedIncludeSystemFalseRejected pins the IsSet seam: an
+// explicit --include-system=false on a named get is still a typed no-op and
+// must be rejected the same as --include-system=true (MC-5a tri-state).
+func TestGetUserNamedIncludeSystemFalseRejected(t *testing.T) {
+	t.Parallel()
+	cmd, ok := NewGet(mustKind(t, "user"), &recFactory{client: &memClient{}}).(runtime.ReadCommand)
+	require.True(t, ok)
+	_, err := cmd.Execute(t.Context(), input{
+		args:  []string{"u-alice"},
+		b:     map[string]bool{flagIncludeSystem: false},
+		isSet: map[string]bool{flagIncludeSystem: true},
+	}, nil)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter pins the
+// no-silent-no-op rule: --include-system is not generated at all for a kind
+// without SystemFilter, so a get pods Descriptor must not carry the flag.
+func TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter(t *testing.T) {
+	t.Parallel()
+	cmd := NewGet(mustKind(t, "pod"), &recFactory{})
+	d := cmd.Describe()
+	for _, f := range d.Flags {
+		assert.NotEqual(t, flagIncludeSystem, f.Name, "get pod must not carry --include-system")
+	}
+}
+
+// TestGetUsersDescribeCarriesIncludeSystemFlag pins the generation site: a
+// SystemFilter kind's Describe carries --include-system and a synthesized
+// Desc documenting default hiding, the flag, and the named-get divergence.
+func TestGetUsersDescribeCarriesIncludeSystemFlag(t *testing.T) {
+	t.Parallel()
+	cmd := NewGet(mustKind(t, "user"), &recFactory{})
+	d := cmd.Describe()
+	var found bool
+	for _, f := range d.Flags {
+		if f.Name == flagIncludeSystem {
+			found = true
+			assert.Equal(t, "bool", f.Type)
+		}
+	}
+	assert.True(t, found, "get user must carry --include-system")
+	assert.NotEmpty(t, d.Desc, "get user must synthesize a Desc documenting the SystemFilter behavior")
 }

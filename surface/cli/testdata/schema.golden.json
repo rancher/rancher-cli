@@ -4379,6 +4379,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
+      "desc": "users hide system accounts by default; pass --include-system to show them. Naming a user always returns it, hidden or not.",
       "flags": [
         {
           "desc": "wait for the resource to reach --for before returning",
@@ -4394,6 +4395,11 @@
           "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
+        },
+        {
+          "desc": "include system accounts (hidden by default)",
+          "name": "include-system",
+          "type": "bool"
         }
       ],
       "group": "get",

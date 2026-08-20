@@ -420,3 +420,23 @@ func TestImagesByFlagValueCompletion(t *testing.T) {
 	got = runNameLikeCompletion(t, []string{"images", "--match"}, "")
 	assert.Empty(t, extractTokens(got), "images --match <TAB> is free text, no suggestions (IM-23)")
 }
+
+// TestFlagNameCompletionIncludeSystem pins the no-silent-no-op generation
+// site: --include-system is offered on `get users` (SystemFilter kind), but
+// absent on `get pods` (no SystemFilter) and on `delete user` (the shared
+// getFlags core, reused by delete/patch, must never carry it).
+func TestFlagNameCompletionIncludeSystem(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get", "users"}, "--")
+	assert.Contains(t, extractTokens(got), "--include-system", "get users --<TAB> must offer --include-system")
+
+	got = runNameLikeCompletion(t, []string{"get", "pods"}, "--")
+	assert.NotContains(t, extractTokens(got), "--include-system", "get pods --<TAB> must not offer --include-system")
+
+	got = runNameLikeCompletion(t, []string{"delete", "user"}, "--")
+	assert.NotContains(t, extractTokens(got), "--include-system", "delete user --<TAB> must not offer --include-system")
+}
