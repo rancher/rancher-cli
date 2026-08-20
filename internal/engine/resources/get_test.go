@@ -921,3 +921,127 @@ func TestWaitElapsed(t *testing.T) {
 		})
 	}
 }
+
+// userObj builds a user fixture whose principalIds is exactly the given
+// slice — nil sets the field to a JSON null, not an absent key; use
+// userObjNoPrincipals for a genuinely absent field.
+func userObj(name string, principals []any) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata":     map[string]any{"name": name},
+		"principalIds": principals,
+	}}
+}
+
+func userObjNoPrincipals(name string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
+}
+
+func userObjNonArrayPrincipals(name string, val any) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata":     map[string]any{"name": name},
+		"principalIds": val,
+	}}
+}
+
+// TestIsSystemManagedBoundaryFixtures pins the per-element predicate exactly
+// against Rancher's user-store prefix "system://" — the design's boundary
+// set: near-miss prefixes, non-string elements, mixed arrays (pinning the
+// per-element fail-open cast), non-array fields, and an absent field.
+func TestIsSystemManagedBoundaryFixtures(t *testing.T) {
+	t.Parallel()
+	f := &kinds.PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://", Label: "system account"}
+	tests := []struct {
+		name string
+		obj  unstructured.Unstructured
+		want bool
+	}{
+		{"agent account", userObj("u-1", []any{"system://c-abc"}), true},
+		{"provisioning account", userObj("u-2", []any{"system://provisioning/fleet-default/c-abc"}), true},
+		{"real local user", userObj("u-3", []any{"local://u-3"}), false},
+		{"provider user", userObj("u-4", []any{"okta_user://u-4"}), false},
+		{"multiple principals, system not first", userObj("u-5", []any{"local://u-5", "system://c-abc"}), true},
+		{"empty principalIds", userObj("u-6", []any{}), false},
+		{"absent field", userObjNoPrincipals("u-7"), false},
+		{"nil principalIds", userObj("u-8", nil), false},
+		{"near-miss: system:serviceaccount", userObj("u-9", []any{"system:serviceaccount:kube-system:default"}), false},
+		{"near-miss: xsystem://", userObj("u-10", []any{"xsystem://c-abc"}), false},
+		{"empty-string element", userObj("u-11", []any{""}), false},
+		{"only non-string elements", userObj("u-12", []any{float64(42)}), false},
+		{"mixed array: non-string then system", userObj("u-13", []any{float64(42), "system://c-abc"}), true},
+		{"non-array field", userObjNonArrayPrincipals("u-14", "system://c-abc"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, isSystemManaged(tt.obj, f))
+		})
+	}
+}
+
+func TestSystemHiddenWarningWording(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "1 system account hidden — pass --include-system to show it", systemHiddenWarning(1, "system account"))
+	assert.Equal(t, "4 system accounts hidden — pass --include-system to show them", systemHiddenWarning(4, "system account"))
+}
+
+// TestGetUsersHidesSystemAccountsByDefault covers the LIST default: a system
+// account is dropped before rendering and a singular warning is stamped;
+// a real user survives.
+func TestGetUsersHidesSystemAccountsByDefault(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{
+		userObj("u-alice", []any{"local://u-alice"}),
+		userObj("u-sys", []any{"system://local"}),
+	}}
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	res := execGet(t, cmd, input{})
+	tbl, ok := res.Data.(table)
+	require.True(t, ok)
+	require.Len(t, tbl.items, 1)
+	assert.Equal(t, "u-alice", tbl.items[0].GetName())
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, "1 system account hidden — pass --include-system to show it", res.Warnings[0])
+}
+
+// TestGetUsersIncludeSystemShowsAll covers --include-system: every object is
+// listed and no warning is stamped.
+func TestGetUsersIncludeSystemShowsAll(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{
+		userObj("u-alice", []any{"local://u-alice"}),
+		userObj("u-sys", []any{"system://local"}),
+	}}
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	res := execGet(t, cmd, input{b: map[string]bool{flagIncludeSystem: true}})
+	tbl, ok := res.Data.(table)
+	require.True(t, ok)
+	assert.Len(t, tbl.items, 2)
+	assert.Empty(t, res.Warnings)
+}
+
+// TestGetUsersNoWarningWhenNothingHidden covers the absent-warning case: no
+// system accounts present, no warning stamped even though the filter runs.
+func TestGetUsersNoWarningWhenNothingHidden(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{userObj("u-alice", []any{"local://u-alice"})}}
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	res := execGet(t, cmd, input{})
+	tbl, ok := res.Data.(table)
+	require.True(t, ok)
+	assert.Len(t, tbl.items, 1)
+	assert.Empty(t, res.Warnings)
+}
+
+// TestGetUserNamedSystemAccountSucceeds pins the deliberate divergence from
+// Norman: naming a system account is intent, so a named get returns it with
+// no flag at all.
+func TestGetUserNamedSystemAccountSucceeds(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{userObj("u-sys", []any{"system://local"})}}
+	cmd := NewGet(mustKind(t, "user"), &recFactory{client: client})
+	res := execGet(t, cmd, input{args: []string{"u-sys"}})
+	tbl, ok := res.Data.(table)
+	require.True(t, ok)
+	require.Len(t, tbl.items, 1)
+	assert.Equal(t, "u-sys", tbl.items[0].GetName())
+}

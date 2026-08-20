@@ -5,6 +5,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -27,6 +28,9 @@ const (
 	flagWait      = "wait"
 	flagFor       = "for"
 	flagTimeout   = "timeout"
+	// flagIncludeSystem is generated only on kinds with a SystemFilter (get
+	// path only; delete/patch reuse getFlags and must never see it).
+	flagIncludeSystem = "include-system"
 )
 
 const defaultWaitTimeout = 120 * time.Second
@@ -202,7 +206,66 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		}
 		items = filtered
 	}
-	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false)}, nil
+	var warnings []string
+	if c.k.SystemFilter != nil && !in.Bool(flagIncludeSystem) {
+		var hidden int
+		items, hidden = hideSystemManaged(items, c.k.SystemFilter)
+		if hidden > 0 {
+			warnings = append(warnings, systemHiddenWarning(hidden, c.k.SystemFilter.Label))
+		}
+	}
+	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false), Warnings: warnings}, nil
+}
+
+// hideSystemManaged drops objects matching f, returning the kept objects and
+// the count hidden. Matching is per element (isSystemManaged): a non-string
+// element is skipped, never fatal, matching Rancher's own transformer.
+func hideSystemManaged(items []unstructured.Unstructured, f *kinds.PrefixFilter) ([]unstructured.Unstructured, int) {
+	kept := make([]unstructured.Unstructured, 0, len(items))
+	hidden := 0
+	for _, item := range items {
+		if isSystemManaged(item, f) {
+			hidden++
+			continue
+		}
+		kept = append(kept, item)
+	}
+	return kept, hidden
+}
+
+// isSystemManaged reports whether any element of the string array at f.Path
+// has f.Prefix. A non-array or absent field is never hidden; each element is
+// string-asserted independently, and a non-string element is skipped rather
+// than disqualifying the whole array — Rancher's user-store transformer casts
+// each principalIds element the same way and continues past failed casts.
+func isSystemManaged(obj unstructured.Unstructured, f *kinds.PrefixFilter) bool {
+	val, found, err := unstructured.NestedFieldNoCopy(obj.Object, f.Path...)
+	if err != nil || !found {
+		return false
+	}
+	arr, ok := val.([]any)
+	if !ok {
+		return false
+	}
+	for _, elem := range arr {
+		s, ok := elem.(string)
+		if ok && strings.HasPrefix(s, f.Prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// systemHiddenWarning renders the announced-filtering warning, pluralized
+// from Label with no literal "(s)": "1 system account hidden — pass
+// --include-system to show it" / "4 system accounts hidden — pass
+// --include-system to show them".
+func systemHiddenWarning(count int, label string) string {
+	noun, pronoun := label, "it"
+	if count != 1 {
+		noun, pronoun = kinds.Plural(label), "them"
+	}
+	return fmt.Sprintf("%d %s hidden — pass --include-system to show %s", count, noun, pronoun)
 }
 
 // waitElapsed renders the wait summary's elapsed display: Go's

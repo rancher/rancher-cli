@@ -158,6 +158,25 @@ type Kind struct {
 	// through a higher-level command that handles key generation, lifecycle
 	// derivation, or other invariants that a raw manifest write cannot satisfy.
 	NoCreateViaManifest string
+	// SystemFilter, when set, marks objects matching it as system-managed:
+	// LIST hides them by default (announced via a warning and reversible
+	// with the generated --include-system flag); a NAMED get always
+	// returns the object, and a typed --include-system on a named get is
+	// rejected as VALIDATION, never silently ignored.
+	// Matching: any element of the string array at Path has Prefix.
+	// Independent of the Columns axes: it filters rows, not cells.
+	SystemFilter *PrefixFilter
+}
+
+// PrefixFilter marks objects whose string-array field at Path carries an
+// element with the given Prefix as system-managed. Matching is PER ELEMENT:
+// each element is string-asserted independently and a non-string element is
+// skipped, never fatal — matching Rancher's own transformer, which casts
+// each principalIds element independently and continues past failed casts.
+type PrefixFilter struct {
+	Path   []string // string-array field, e.g. principalIds
+	Prefix string   // e.g. "system://"
+	Label  string   // singular noun for warnings/desc, e.g. "system account"
 }
 
 // Plural returns the English plural of a lowercase kind name. Sibilant endings
@@ -540,6 +559,15 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
 		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: true, Completable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		// The Norman v3 user store hides any user whose principalIds carry a
+		// system:// entry from every API response (user_store.go, "filter
+		// system users out of the api") — this row reads the management CRD
+		// directly and would otherwise leak what the product hides.
+		// Deliberately NARROWER than engine.IsSystemPrincipal ("system:"):
+		// that predicate carries RBAC subject semantics; this one mirrors
+		// the user store's exact system:// check, so the two differing is
+		// intent, not drift.
+		SystemFilter: &PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://", Label: "system account"},
 		// PRINCIPALS renders every principal raw, comma-joined in server
 		// order (local://m-x, system://local, okta_user://…): the auth
 		// provider and the system-account marker exactly as the server
@@ -926,6 +954,20 @@ func validateKinds(ts []Kind) error {
 			}
 			if len(col.Count) > 0 && (len(col.Path) > 0 || len(col.AltPaths) > 0 || col.Bool || col.Default != "" || col.Join || col.Condition != "") {
 				return fmt.Errorf("kind %q column %q sets Count together with Path/AltPaths/Bool/Default/Join/Condition", k.Key, col.Header)
+			}
+		}
+		if k.SystemFilter != nil {
+			if len(k.SystemFilter.Path) == 0 {
+				return fmt.Errorf("kind %q SystemFilter has an empty Path", k.Key)
+			}
+			if slices.Contains(k.SystemFilter.Path, "") {
+				return fmt.Errorf("kind %q SystemFilter Path has an empty segment", k.Key)
+			}
+			if k.SystemFilter.Prefix == "" {
+				return fmt.Errorf("kind %q SystemFilter has an empty Prefix", k.Key)
+			}
+			if k.SystemFilter.Label == "" {
+				return fmt.Errorf("kind %q SystemFilter has an empty Label", k.Key)
 			}
 		}
 		// Plural-first alias invariant: every row must register at least one

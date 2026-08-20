@@ -521,3 +521,29 @@ func TestValidateRejectsCountMisuse(t *testing.T) {
 		t.Fatalf("shipped table must validate: %v", err)
 	}
 }
+
+// TestValidateRejectsSystemFilterMisuse pins SystemFilter's three required
+// fields: a non-empty Path with no empty segment, a non-empty Prefix, and a
+// non-empty Label — independent of the Columns axes.
+func TestValidateRejectsSystemFilterMisuse(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		sf   PrefixFilter
+	}{
+		{"empty Path", PrefixFilter{Prefix: "system://", Label: "system account"}},
+		{"empty Path segment", PrefixFilter{Path: []string{""}, Prefix: "system://", Label: "system account"}},
+		{"empty Prefix", PrefixFilter{Path: []string{"principalIds"}, Label: "system account"}},
+		{"empty Label", PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sf := tt.sf
+			bad := []Kind{{Key: "a", Name: "foo", Aliases: []string{"foos"}, SystemFilter: &sf}}
+			assert.Error(t, validateKinds(bad))
+		})
+	}
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
+	}
+}
