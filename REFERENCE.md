@@ -203,8 +203,8 @@ The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 ## Project scope (--project)
 
 The global `--project <id-or-name>` flag scopes Downstream namespaced kinds
-(`get`/`delete`/`patch`, plus `usage`) to one project's member namespaces:
-a bare list is filtered to member namespaces; a named op or mutation
+(`get`/`delete`/`patch`, plus `usage`) to one project's project namespaces:
+a bare list is filtered to project namespaces; a named op or mutation
 validates the target namespace's membership before touching the server.
 `get namespaces --project <p>` is the one special case — it lists namespaces
 by the membership label server-side rather than filtering client-side.

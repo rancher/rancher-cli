@@ -585,7 +585,7 @@
       "network": true,
       "stability": "beta",
       "toolset": "core",
-      "usage": "Create a namespace, optionally as a project member"
+      "usage": "Create a namespace, optionally inside a project"
     },
     {
       "args": [
@@ -7891,7 +7891,7 @@
       "network": true,
       "stability": "stable",
       "toolset": "core",
-      "usage": "Revoke a user's or group's role binding(s) at project, cluster, or global scope"
+      "usage": "Revoke a subject's role(s) at project, cluster, or global scope"
     },
     {
       "args": [
@@ -8204,7 +8204,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns member-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the project and namespace maps with --by project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable — requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
+      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns project-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the project and namespace maps with --by project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable — requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -8512,7 +8512,7 @@
         "project add-namespace",
         "project remove-namespace"
       ],
-      "desc": "Manage project membership: add or remove downstream namespaces from a Rancher project.",
+      "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
       "name": "project"
     },
     {

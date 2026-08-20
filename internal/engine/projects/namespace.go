@@ -27,7 +27,7 @@ func NewCreateNamespace(clients engine.ClusterClientFactory) runtime.Command {
 func (createNamespaceCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "create namespace",
-		Usage:       "Create a namespace, optionally as a project member",
+		Usage:       "Create a namespace, optionally inside a project",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{

@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,7 @@ import (
 
 func memberBinding(name string, fields map[string]any) unstructured.Unstructured {
 	obj := map[string]any{"metadata": map[string]any{"name": name}}
-	for k, v := range fields {
-		obj[k] = v
-	}
+	maps.Copy(obj, fields)
 	return unstructured.Unstructured{Object: obj}
 }
 

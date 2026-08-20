@@ -670,7 +670,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// — remain discoverable via the bare TOC and --verb project filtering.
 		// The shadowing is deliberate: renaming the group would churn the TOC
 		// section layout and every agent prompt that references it.
-		"project": "Manage project membership: add or remove downstream namespaces from a Rancher project.",
+		"project": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
 		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
 		"get":     "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
 		"patch":   "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",

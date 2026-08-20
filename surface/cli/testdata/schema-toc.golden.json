@@ -163,7 +163,7 @@
         },
         {
           "name": "create namespace",
-          "usage": "Create a namespace, optionally as a project member"
+          "usage": "Create a namespace, optionally inside a project"
         },
         {
           "name": "create secret",
@@ -204,7 +204,7 @@
           "usage": "Remove a namespace from a project"
         }
       ],
-      "desc": "Manage project membership: add or remove downstream namespaces from a Rancher project.",
+      "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
       "name": "project"
     },
     {
@@ -255,7 +255,7 @@
         },
         {
           "name": "revoke",
-          "usage": "Revoke a user's or group's role binding(s) at project, cluster, or global scope"
+          "usage": "Revoke a subject's role(s) at project, cluster, or global scope"
         },
         {
           "name": "token",

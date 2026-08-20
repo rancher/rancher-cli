@@ -39,9 +39,9 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 		Usage: "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods",
 		Desc: "Groups results by --by (namespace|project|node|pod). " +
 			"--namespace, --project, and --node are filters that narrow every grouping: " +
-			"--node keeps only pods scheduled on that node; --namespace with --project requires a member namespace. " +
+			"--node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. " +
 			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
-			"--project without --by returns member-namespace rows (namespace grouping filtered to the project). " +
+			"--project without --by returns project-namespace rows (namespace grouping filtered to the project). " +
 			"--by project --project X returns a single project bucket. " +
 			degradedContractDesc +
 			"Required collectors hard-error: cluster resolution and the pod list always; project " +
@@ -145,7 +145,7 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	case namespace != "" && projectID != "":
 		if !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
-				"pass a member namespace, or omit --namespace to scope the whole project")
+				"pass a project namespace, or omit --namespace to scope the whole project")
 		}
 		namespaces = []string{namespace}
 		l, lerr := client.List(ctx, podKind.GVR, namespace, "")

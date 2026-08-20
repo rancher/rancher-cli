@@ -119,7 +119,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// --project must name a member namespace.
 	if namespace != "" && filterID != "" && nsByProject[namespace] != filterID {
 		return runtime.Result{}, projects.NotMemberError(namespace, filterID,
-			"pass a member namespace, or omit --namespace to scope the whole project")
+			"pass a project namespace, or omit --namespace to scope the whole project")
 	}
 
 	// An ownership map the caller was authorized to read, showing the named

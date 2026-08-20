@@ -49,7 +49,7 @@ target for the legacy `server switch` command.
 | Command | Purpose |
 |---|---|
 | `create project <name>` | Create a project, optionally with a resource quota — dry-run/apply |
-| `create namespace <name>` | Create a namespace, optionally a project member from birth — dry-run/apply |
+| `create namespace <name>` | Create a namespace, optionally inside a project from birth — dry-run/apply |
 | `create secret <name>` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace — dry-run/apply |
 | `create resource -f <file\|->` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
 | `create token` | Create a server-side derived token (`ext.Token`), shown once — sensitive; dry-run/apply --yes |

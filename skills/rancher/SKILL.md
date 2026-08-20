@@ -250,7 +250,7 @@ outright.
 
 - `rancher inspect pod <name>` — status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` — rollout + its pods (selector-scoped)
-- `rancher inspect project <name-or-id>` — member namespaces, workload counts, members, quota, usage
+- `rancher inspect project <name-or-id>` — project namespaces, workload counts, members, quota, usage
 - `rancher usage` — capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`
 - `rancher images [--by image|workload] [--match substr]` — active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
 
@@ -316,7 +316,7 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   an ordinary namespaced secret without hand-rolling base64.
 - `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` —
   writes into the project's backing namespace for Rancher to propagate into
-  every member namespace; a `warnings` entry means propagation isn't
+  every project namespace; a `warnings` entry means propagation isn't
   guaranteed on this server (requires Rancher >= 2.14, the supported
   minimum) and it won't propagate.
 
@@ -327,9 +327,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   cluster or project is persisted or ambient. Fleet kinds default to the
   `fleet-default` workspace.
 - **Project scope (`--project`):** `--project <id-or-name>` scopes Downstream
-  namespaced kinds (`get`/`delete`/`patch`, plus `usage`) to a project's member
-  namespaces — a list filters to members, a named op or mutation validates
-  membership first. `get namespaces --project <p>` is the membership listing
+  namespaced kinds (`get`/`delete`/`patch`, plus `usage`) to a project's
+  project namespaces — a list filters to members, a named op or mutation
+  validates membership first. `get namespaces --project <p>` is the membership listing
   (server-side label selector). Every other kind family and the non-project
   composites (`inspect pod`/`deployment`, `top node`, `images`) reject a
   non-empty `--project` with `VALIDATION` — it is never a silent no-op.

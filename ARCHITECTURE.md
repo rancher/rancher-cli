@@ -52,7 +52,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
-| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and member-namespace lookup. |
+| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and project-namespace lookup. |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded — deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
@@ -476,7 +476,7 @@ from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 **Scope is explicit and per-invocation.** Config holds servers and a
 `currentServer` pointer only. No cluster or project is ever persisted or ambient.
 `--cluster` routes to a downstream cluster (required wherever routing is needed);
-`--project` filters Downstream namespaced kinds to a project's member namespaces.
+`--project` filters Downstream namespaced kinds to a project's project namespaces.
 Defaults may never filter or place — a missing scope flag either widens the operation
 or is a `VALIDATION` error, never a silent ambient fallback.
 
