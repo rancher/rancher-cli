@@ -167,14 +167,17 @@ func TestInspectUserEnabledTriState(t *testing.T) {
 			r := res.Data.(userResult)
 			if tt.wantNil {
 				assert.Nil(t, r.User.Enabled)
+				assert.Contains(t, res.Text, "enabled: true", "the card states the effective value even when the wire omits the field")
 				assert.NotContains(t, res.Text, "[disabled]")
 				return
 			}
 			require.NotNil(t, r.User.Enabled)
 			assert.Equal(t, tt.wantVal, *r.User.Enabled)
 			if tt.wantMarker {
+				assert.Contains(t, res.Text, "enabled: false")
 				assert.Contains(t, res.Text, "[disabled]")
 			} else {
+				assert.Contains(t, res.Text, "enabled: true")
 				assert.NotContains(t, res.Text, "[disabled]")
 			}
 		})
@@ -221,6 +224,102 @@ func TestInspectUserGroupsMultiProviderAndDuplicatePrincipal(t *testing.T) {
 	require.NotNil(t, r.User.Groups)
 	require.Len(t, *r.User.Groups, 2, "duplicate principal under two providers is retained, not merged")
 	assert.Equal(t, "2026-08-01T00:00:00Z", r.User.LastLogin)
+}
+
+// TestInspectUserAttributesAllFields exercises every user-facing
+// UserAttribute field on one read and asserts the text card distributes
+// them by meaning: lastLogin/disableAfter/deleteAfter/extra in the USER
+// block, lastRefresh/needsRefresh in GROUPS.
+func TestInspectUserAttributesAllFields(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	ua := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "UserAttribute",
+		"metadata":   map[string]any{"name": "u-abc"},
+		"GroupPrincipals": map[string]any{
+			"okta": map[string]any{"Items": []any{
+				map[string]any{"metadata": map[string]any{"name": "okta_group://eng"}, "displayName": "Engineering"},
+			}},
+		},
+		"lastLogin":    "2026-08-01T00:00:00Z",
+		"LastRefresh":  "2026-08-02T00:00:00Z",
+		"NeedsRefresh": false,
+		"disableAfter": "720h0m0s",
+		"deleteAfter":  "1440h0m0s",
+		"ExtraByProvider": map[string]any{
+			"okta": map[string]any{
+				"principalid": []any{"okta_user://jane@example.com"},
+				"username":    []any{"jane@example.com"},
+			},
+			"local": map[string]any{
+				"principalid": []any{"local://u-abc"},
+				"username":    []any{"jane"},
+			},
+		},
+	}}
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withObject(rbac.UserAttrGVR, "", "u-abc", ua).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+
+	assert.Equal(t, "2026-08-01T00:00:00Z", r.User.LastLogin)
+	assert.Equal(t, "2026-08-02T00:00:00Z", r.User.LastRefresh)
+	require.NotNil(t, r.User.NeedsRefresh)
+	assert.False(t, *r.User.NeedsRefresh)
+	assert.Equal(t, "720h0m0s", r.User.DisableAfter)
+	assert.Equal(t, "1440h0m0s", r.User.DeleteAfter)
+	require.Contains(t, r.User.Extra, "okta")
+	assert.Equal(t, []string{"jane@example.com"}, r.User.Extra["okta"]["username"])
+	require.Contains(t, r.User.Extra, "local")
+	assert.Equal(t, []string{"local://u-abc"}, r.User.Extra["local"]["principalid"])
+
+	userBlock, rest, found := strings.Cut(res.Text, "\nGROUPS\n")
+	require.True(t, found)
+	groupsBlock, _, _ := strings.Cut(rest, "\nHELD ROLES\n")
+	assert.Contains(t, userBlock, "lastLogin: 2026-08-01T00:00:00Z")
+	assert.Contains(t, userBlock, "disableAfter: 720h0m0s")
+	assert.Contains(t, userBlock, "deleteAfter: 1440h0m0s")
+	assert.Contains(t, userBlock, "extra[local]: principalid=local://u-abc  username=jane")
+	assert.Contains(t, userBlock, "extra[okta]: principalid=okta_user://jane@example.com  username=jane@example.com")
+	assert.Contains(t, groupsBlock, "lastRefresh: 2026-08-02T00:00:00Z")
+	assert.Contains(t, groupsBlock, "needsRefresh: false")
+	assert.NotContains(t, groupsBlock, "lastLogin", "lastLogin renders in the USER block, never GROUPS")
+}
+
+// TestInspectUserAttributesAbsentStayAbsent asserts a never-logged-in
+// user (verified-empty UserAttributes) omits every attribute field on the
+// wire and prints none of them.
+func TestInspectUserAttributesAbsentStayAbsent(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	c := newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+
+	cmd := newUserCmdFake(c)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+	r := res.Data.(userResult)
+	assert.Empty(t, r.User.LastRefresh)
+	assert.Nil(t, r.User.NeedsRefresh)
+	assert.Empty(t, r.User.DisableAfter)
+	assert.Empty(t, r.User.DeleteAfter)
+	assert.Nil(t, r.User.Extra)
+	assert.NotContains(t, res.Text, "lastRefresh")
+	assert.NotContains(t, res.Text, "needsRefresh")
+	assert.NotContains(t, res.Text, "disableAfter")
+	assert.NotContains(t, res.Text, "deleteAfter")
+	assert.NotContains(t, res.Text, "extra[")
+	assert.NotContains(t, res.Text, "unavailable")
 }
 
 func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *testing.T) {

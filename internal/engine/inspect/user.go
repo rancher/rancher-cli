@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -51,10 +52,15 @@ func (c *userCmd) Describe() runtime.Descriptor {
 			"principal (local://…, <provider>_user://…) — the principal form is the one way to name " +
 			"a user unambiguously when ids and display names collide. " +
 			"data.user carries identity (id, username, displayName, enabled, principals, created, " +
-			"system) plus groups: group memberships as last synced by Rancher (refreshed at login), " +
-			"a flat array of {principal, displayName, provider}; unavailable — never an empty list — " +
-			"when the UserAttributes read failed for any reason other than a verified absence (a user " +
-			"who has never logged in has none). " +
+			"system) plus everything Rancher records per user in UserAttributes: groups (memberships " +
+			"as last synced by Rancher, refreshed at login, a flat array of {principal, displayName, " +
+			"provider}), lastLogin, lastRefresh and needsRefresh (the group-sync cache's own state), " +
+			"disableAfter and deleteAfter (per-user inactivity overrides), and extra (per-provider " +
+			"audit extras, [provider][key] -> values; Rancher writes principalid and username today). " +
+			"All of them share one fate: when the UserAttributes read failed for any reason other " +
+			"than a verified absence (a user who has never logged in has none), every one is omitted " +
+			"from the wire — never an empty list — with the failure recorded in data.degraded; an " +
+			"omitted optional field on a healthy read simply is not set. " +
 			"data.held.{global,clusters,projects} lists role bindings that EXIST for the user or any " +
 			"of their group principals — HELD roles, never a computed statement of what the user can " +
 			"do. Each row is the shared member shape (principal, displayName, role, binding, system); " +
@@ -91,19 +97,17 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 
 	sec := newSections(ctx, sectionGroups, sectionHeldGlobal, sectionHeldClusters, sectionHeldProjects)
 
-	groups, groupPrincipals, lastLogin, blocked, err := userAttributes(ctx, mgmt, sec, rs.UserID)
+	groupPrincipals, blocked, err := userAttributes(ctx, mgmt, sec, rs.UserID, &identity)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	identity.Groups = groups
-	identity.LastLogin = lastLogin
 
 	var held heldResult
 	var extraWarnings []string
 	if !blocked {
 		var heldWarnings []string
 		held, heldWarnings, err = collectHeld(ctx, mgmt, sec, rs.UserID, rs.PrincipalIDs, groupPrincipals,
-			heldDisplayNames(identity, rs.UserID, rs.PrincipalIDs, groups))
+			heldDisplayNames(identity, rs.UserID, rs.PrincipalIDs, identity.Groups))
 		if err != nil {
 			return runtime.Result{}, err
 		}
@@ -122,46 +126,100 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 }
 
 // userAttributes reads the UserAttribute GET-BY-ID (never a list) and
-// returns the groups section, the flat group-principal set the held
-// collectors match against, lastLogin, and whether the held sections are
-// blocked. NotFound is a verified-empty user (never logged in): groups is
-// a non-nil empty slice, lastLogin stays absent, held collectors run
-// normally. Any other failure degrades groups (nil, omitted from the
-// wire) AND blocks all three held collectors — their completeness is
-// unknowable without the user's group principals, so a direct-only result
-// would misrepresent a group-held-only user as verified-complete.
-func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string) (groups *[]userGroup, groupPrincipals []string, lastLogin string, blocked bool, err error) {
+// fills identity's UserAttribute-sourced fields in place — one field
+// list, no copy step to keep in sync. It returns the flat
+// group-principal set the held collectors match against and whether
+// the held sections are blocked. NotFound is a verified-empty user
+// (never logged in): groups is a non-nil empty slice, every other
+// field stays absent, held collectors run normally. Any other failure
+// degrades groups (nil, omitted from the wire) AND blocks all three
+// held collectors — their completeness is unknowable without the
+// user's group principals, so a direct-only result would misrepresent
+// a group-held-only user as verified-complete.
+func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, identity *userIdentity) (groupPrincipals []string, blocked bool, err error) {
 	obj, gerr := mgmt.Get(ctx, rbac.UserAttrGVR, "", userID)
 	switch {
 	case gerr != nil && clierr.IsNotFound(gerr):
 		empty := []userGroup{}
-		return &empty, nil, "", false, nil
+		identity.Groups = &empty
+		return nil, false, nil
 	case gerr != nil:
 		if herr := sec.Unavailable(sectionGroups, gerr); herr != nil {
-			return nil, nil, "", false, herr
+			return nil, false, herr
 		}
 		if herr := sec.Blocked(sectionHeldGlobal, sectionGroups, gerr); herr != nil {
-			return nil, nil, "", false, herr
+			return nil, false, herr
 		}
 		if herr := sec.Blocked(sectionHeldClusters, sectionGroups, gerr); herr != nil {
-			return nil, nil, "", false, herr
+			return nil, false, herr
 		}
 		if herr := sec.Blocked(sectionHeldProjects, sectionGroups, gerr); herr != nil {
-			return nil, nil, "", false, herr
+			return nil, false, herr
 		}
-		return nil, nil, "", true, nil
+		return nil, true, nil
 	default:
 		rows := parseUserAttributeGroups(obj)
 		principals := make([]string, len(rows))
 		for i, r := range rows {
 			principals[i] = r.Principal
 		}
-		// LastLogin is the one wire-relevant UserAttribute field WITH a
-		// json tag (lastLogin) — its untagged siblings (GroupPrincipals,
-		// UserName) serialize under their Go field names.
-		last, _, _ := unstructured.NestedString(obj.Object, "lastLogin")
-		return &rows, principals, last, false, nil
+		// lastLogin, disableAfter, and deleteAfter carry json tags on the
+		// UserAttribute type; the untagged siblings (GroupPrincipals,
+		// LastRefresh, NeedsRefresh, ExtraByProvider, UserName) serialize
+		// under their Go field names — verified against a live server.
+		identity.Groups = &rows
+		identity.LastLogin, _, _ = unstructured.NestedString(obj.Object, "lastLogin")
+		identity.LastRefresh, _, _ = unstructured.NestedString(obj.Object, "LastRefresh")
+		if v, found, _ := unstructured.NestedBool(obj.Object, "NeedsRefresh"); found {
+			identity.NeedsRefresh = &v
+		}
+		identity.DisableAfter, _, _ = unstructured.NestedString(obj.Object, "disableAfter")
+		identity.DeleteAfter, _, _ = unstructured.NestedString(obj.Object, "deleteAfter")
+		identity.Extra = parseUserAttributeExtra(obj)
+		return principals, false, nil
 	}
+}
+
+// parseUserAttributeExtra maps ExtraByProvider — per-provider audit
+// extras, [provider → [key → values]] — dropping non-conforming leaves
+// rather than failing the read. Rancher writes exactly two inner keys
+// today (principalid, username); the map is passed through as-is so a
+// future key surfaces without a CLI change.
+func parseUserAttributeExtra(obj *unstructured.Unstructured) map[string]map[string][]string {
+	raw, found, _ := unstructured.NestedMap(obj.Object, "ExtraByProvider")
+	if !found || len(raw) == 0 {
+		return nil
+	}
+	out := map[string]map[string][]string{}
+	for provider, v := range raw {
+		inner, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		for key, lv := range inner {
+			list, ok := lv.([]any)
+			if !ok {
+				continue
+			}
+			values := make([]string, 0, len(list))
+			for _, item := range list {
+				if s, ok := item.(string); ok {
+					values = append(values, s)
+				}
+			}
+			if len(values) == 0 {
+				continue
+			}
+			if out[provider] == nil {
+				out[provider] = map[string][]string{}
+			}
+			out[provider][key] = values
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // parseUserAttributeGroups maps the shared rbac walk of GroupPrincipals
@@ -317,8 +375,8 @@ func projectDisplayName(ctx context.Context, mgmt engine.ClusterClient, clusterI
 
 // userIdentityFrom reads exactly what the User CRD exposes at its root
 // (norman-style: no spec/status nesting). Enabled preserves the raw
-// presence/absence distinction as an omitempty *bool: absent (nil) and
-// explicit true both mean enabled and look identical in the text card;
+// presence/absence distinction as an omitempty *bool on the wire; the
+// text card always states the effective value (absent means enabled);
 // only explicit false renders the disabled marker. System is the
 // user-store hide-system predicate (system:// principal), deliberately
 // narrower than the RBAC-facing engine.IsSystemPrincipal.
@@ -352,20 +410,28 @@ type userGroup struct {
 	Provider    string `json:"provider"`
 }
 
-// userIdentity is data.user. Groups and LastLogin come from the same
-// UserAttributes collector and share its tri-state: Groups nil (omitted)
-// means degraded, in which case LastLogin is also omitted — never a
-// fabricated absence.
+// userIdentity is data.user. Groups and every field after it come from
+// the same UserAttributes collector and share its tri-state: Groups nil
+// (omitted) means degraded, in which case the rest are also omitted —
+// never a fabricated absence. LastRefresh/NeedsRefresh describe the
+// group-sync cache; DisableAfter/DeleteAfter are per-user inactivity
+// overrides; Extra is Rancher's per-provider audit extras
+// ([provider → [key → values]], principalid and username today).
 type userIdentity struct {
-	ID          string       `json:"id"`
-	Username    string       `json:"username"`
-	DisplayName string       `json:"displayName,omitempty"`
-	Enabled     *bool        `json:"enabled,omitempty"`
-	Principals  []string     `json:"principals"`
-	Created     string       `json:"created"`
-	System      bool         `json:"system,omitempty"`
-	Groups      *[]userGroup `json:"groups,omitempty"`
-	LastLogin   string       `json:"lastLogin,omitempty"`
+	ID           string                         `json:"id"`
+	Username     string                         `json:"username"`
+	DisplayName  string                         `json:"displayName,omitempty"`
+	Enabled      *bool                          `json:"enabled,omitempty"`
+	Principals   []string                       `json:"principals"`
+	Created      string                         `json:"created"`
+	System       bool                           `json:"system,omitempty"`
+	Groups       *[]userGroup                   `json:"groups,omitempty"`
+	LastLogin    string                         `json:"lastLogin,omitempty"`
+	LastRefresh  string                         `json:"lastRefresh,omitempty"`
+	NeedsRefresh *bool                          `json:"needsRefresh,omitempty"`
+	DisableAfter string                         `json:"disableAfter,omitempty"`
+	DeleteAfter  string                         `json:"deleteAfter,omitempty"`
+	Extra        map[string]map[string][]string `json:"extra,omitempty"`
 }
 
 // heldCluster and heldProject are one scope-instance entry: the stable
@@ -424,11 +490,36 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 	}
 	fmt.Fprintf(b, "%s\n  id: %s\n  username: %s\n  displayName: %s\n",
 		header, u.ID, engine.Printable(u.Username), engine.Printable(u.DisplayName))
-	if u.Enabled != nil {
-		fmt.Fprintf(b, "  enabled: %t\n", *u.Enabled)
-	}
+	// Text always states the effective value: an absent wire field means
+	// enabled in Rancher, and the card should say so rather than stay
+	// silent. The wire keeps the raw presence/absence tri-state.
+	fmt.Fprintf(b, "  enabled: %t\n", u.Enabled == nil || *u.Enabled)
 	fmt.Fprintf(b, "  principals: %s\n  created: %s\n",
 		engine.Printable(strings.Join(u.Principals, ", ")), u.Created)
+	switch {
+	case u.Groups == nil:
+		// The UserAttribute read degraded: lastLogin is unknown, never
+		// silently absent. The optional siblings (disableAfter,
+		// deleteAfter, extra) are usually unset even on a healthy read,
+		// so no unavailable marker distinguishes anything for them.
+		b.WriteString("  lastLogin: unavailable\n")
+	case u.LastLogin != "":
+		fmt.Fprintf(b, "  lastLogin: %s\n", u.LastLogin)
+	}
+	if u.DisableAfter != "" {
+		fmt.Fprintf(b, "  disableAfter: %s\n", engine.Printable(u.DisableAfter))
+	}
+	if u.DeleteAfter != "" {
+		fmt.Fprintf(b, "  deleteAfter: %s\n", engine.Printable(u.DeleteAfter))
+	}
+	for _, provider := range slices.Sorted(maps.Keys(u.Extra)) {
+		inner := u.Extra[provider]
+		pairs := make([]string, 0, len(inner))
+		for _, key := range slices.Sorted(maps.Keys(inner)) {
+			pairs = append(pairs, fmt.Sprintf("%s=%s", key, strings.Join(inner[key], ",")))
+		}
+		fmt.Fprintf(b, "  extra[%s]: %s\n", engine.Printable(provider), engine.Printable(strings.Join(pairs, "  ")))
+	}
 }
 
 func renderUserGroups(b *strings.Builder, u userIdentity) {
@@ -436,7 +527,6 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 	switch {
 	case u.Groups == nil:
 		b.WriteString("  groups: unavailable\n")
-		b.WriteString("  lastLogin: unavailable\n")
 		return
 	case len(*u.Groups) == 0:
 		b.WriteString("  none\n")
@@ -449,8 +539,11 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 			}
 		}
 	}
-	if u.LastLogin != "" {
-		fmt.Fprintf(b, "  lastLogin: %s\n", u.LastLogin)
+	if u.LastRefresh != "" {
+		fmt.Fprintf(b, "  lastRefresh: %s\n", engine.Printable(u.LastRefresh))
+	}
+	if u.NeedsRefresh != nil {
+		fmt.Fprintf(b, "  needsRefresh: %t\n", *u.NeedsRefresh)
 	}
 }
 
