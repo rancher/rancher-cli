@@ -556,6 +556,12 @@ var table = []Kind{
 			{Header: "DEFAULT", Path: []string{"status", "default"}},
 			{Header: "DYNAMIC", Path: []string{"status", "dynamic"}},
 			{Header: "LOCKED", Path: []string{"status", "lockedValue"}},
+			// PRIME-ONLY renders the wire's status.prime — the feature's
+			// classification, never server-edition detection (a
+			// prime-classified feature reads effective-false on BOTH
+			// community and Prime-with-it-disabled). No Bool: an older
+			// server's absent field renders blank (unknown), never false.
+			{Header: "PRIME-ONLY", Path: []string{"status", "prime"}},
 			{Header: "DESCRIPTION", Path: []string{"status", "description"}},
 		},
 	},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -439,9 +440,38 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	}}
 	tab := newTable(k, []unstructured.Unstructured{unlocked, locked, overridden}, false)
 	require.Len(t, tab.Rows(), 3)
-	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "true", "", "Enable Rancher cluster-autoscaler support", ""}, tab.Rows()[0])
-	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "false", "Locked off", ""}, tab.Rows()[1])
-	assert.Equal(t, []string{"explicitly-off", "false", "true", "true", "", "Explicitly disabled despite a true default", ""}, tab.Rows()[2])
+	assert.Equal(t, []string{"cluster-autoscaling", "true", "true", "true", "", "", "Enable Rancher cluster-autoscaler support", ""}, tab.Rows()[0])
+	assert.Equal(t, []string{"some-locked-feature", "false", "false", "false", "false", "", "Locked off", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"explicitly-off", "false", "true", "true", "", "", "Explicitly disabled despite a true default", ""}, tab.Rows()[2])
+}
+
+// TestTableRowsRenderFeaturePrimeOnlyColumn pins PRIME-ONLY: it renders the
+// wire's status.prime classification (true/false), and blank — never
+// "false" — when an older server omits the field, matching the design's
+// "absent is not false" rule.
+func TestTableRowsRenderFeaturePrimeOnlyColumn(t *testing.T) {
+	t.Parallel()
+	k, ok := kinds.Lookup("feature")
+	require.True(t, ok)
+	primeTrue := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "cluster-autoscaling"},
+		"status":   map[string]any{"default": false, "prime": true},
+	}}
+	primeFalse := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "some-feature"},
+		"status":   map[string]any{"default": true, "prime": false},
+	}}
+	primeAbsent := unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "older-server-feature"},
+		"status":   map[string]any{"default": true},
+	}}
+	tab := newTable(k, []unstructured.Unstructured{primeTrue, primeFalse, primeAbsent}, false)
+	require.Len(t, tab.Rows(), 3)
+	primeOnlyIdx := slices.Index(tab.Columns(), "PRIME-ONLY")
+	require.GreaterOrEqual(t, primeOnlyIdx, 0)
+	assert.Equal(t, "true", tab.Rows()[0][primeOnlyIdx])
+	assert.Equal(t, "false", tab.Rows()[1][primeOnlyIdx])
+	assert.Equal(t, "", tab.Rows()[2][primeOnlyIdx], "absent status.prime must render blank, never false")
 }
 
 // TestTableRowsRenderCount pins the Count axis: len() of the map/slice at

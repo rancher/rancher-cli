@@ -31,6 +31,12 @@ exec rancher delete kubeconfig ext-kinds-kubeconfig --apply --yes
 exec rancher get features -o json
 jsonquery stdout 'data.#' 0
 
+# PRIME-ONLY renders the wire's status.prime classification, never
+# server-edition detection; the column header must appear even on an empty
+# list (community-fixture envtest never sets status.prime).
+exec rancher get features
+stdout PRIME-ONLY
+
 -- token.yaml --
 apiVersion: ext.cattle.io/v1
 kind: Token
