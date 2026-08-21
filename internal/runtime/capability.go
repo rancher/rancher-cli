@@ -31,6 +31,12 @@ const (
 	CapabilityUnknown
 )
 
+// PrimeSentence is the exact wording every rendered surface uses to project
+// a Prime requirement: the command card's appended sentence and, via the
+// surface adapters, the normal --help Description. One string, never
+// separately worded per surface.
+const PrimeSentence = "Requires Rancher Prime."
+
 // CapabilityDecision is one Check call's result, carrying the detail fields
 // a PRIME_REQUIRED error's Details needs.
 type CapabilityDecision struct {

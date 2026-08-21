@@ -106,6 +106,10 @@ type SchemaCommand struct {
 	Stability        string      `json:"stability,omitempty"`
 	ProjectScope     bool        `json:"projectScope,omitempty"`
 	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
+	// Prime is a projection of Descriptor.Capability: true when the command
+	// requires Rancher Prime. Never separately authored — the source of
+	// truth is the requirement itself.
+	Prime bool `json:"prime,omitempty"`
 	// Gates lists the flags this command unconditionally requires before it
 	// executes a mutation: --apply for every mutating command, --yes when
 	// destructive is "true", --allow-deprecated on a deprecated binding.
@@ -143,19 +147,22 @@ type VerbState struct {
 // kind table and its overrides) and handed to the registry at BuildRoot —
 // runtime owns the DTO, not its construction.
 type SchemaKind struct {
-	Name             string               `json:"name"`
-	Aliases          []string             `json:"aliases,omitempty"`
-	Key              string               `json:"key"`
-	Group            string               `json:"group,omitempty"`
-	Version          string               `json:"version,omitempty"`
-	Resource         string               `json:"resource"`
-	Scope            string               `json:"scope"`
-	NamespacePolicy  string               `json:"namespacePolicy"`
-	DefaultNamespace string               `json:"defaultNamespace,omitempty"`
-	Sensitive        bool                 `json:"sensitive,omitempty"`
-	Completable      bool                 `json:"completable,omitempty"`
-	WaitDefault      string               `json:"waitDefault,omitempty"`
-	Verbs            map[string]VerbState `json:"verbs"`
+	Name             string   `json:"name"`
+	Aliases          []string `json:"aliases,omitempty"`
+	Key              string   `json:"key"`
+	Group            string   `json:"group,omitempty"`
+	Version          string   `json:"version,omitempty"`
+	Resource         string   `json:"resource"`
+	Scope            string   `json:"scope"`
+	NamespacePolicy  string   `json:"namespacePolicy"`
+	DefaultNamespace string   `json:"defaultNamespace,omitempty"`
+	Sensitive        bool     `json:"sensitive,omitempty"`
+	Completable      bool     `json:"completable,omitempty"`
+	WaitDefault      string   `json:"waitDefault,omitempty"`
+	// Prime is a projection of kinds.Kind.Capability: true when the kind
+	// requires Rancher Prime.
+	Prime bool                 `json:"prime,omitempty"`
+	Verbs map[string]VerbState `json:"verbs"`
 }
 
 // EffectField is one field of the Effect preview (name + JSON type).
@@ -382,6 +389,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			Destructive: d.Destructive, Toolset: toolset, Network: d.Network, Auth: d.Auth,
 			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
+			Prime:            d.Capability.Tier == CapabilityPrime,
 		}
 		if b, ok := reg.resolver.Resolve(d.Name); ok {
 			sc.Contract = string(b.Contract)

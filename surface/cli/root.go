@@ -258,6 +258,7 @@ func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime
 			Sensitive:        k.Sensitive,
 			Completable:      k.Completable,
 			WaitDefault:      k.WaitDefault,
+			Prime:            k.Capability.Tier == runtime.CapabilityPrime,
 			Verbs:            verbs,
 		})
 	}

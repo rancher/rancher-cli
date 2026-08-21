@@ -23,6 +23,9 @@ func renderCommandCard(m Manifest, c SchemaCommand) string {
 		b.WriteString("  " + c.Usage + "\n")
 	}
 	b.WriteString(readOnlyLine(m))
+	if c.Prime {
+		b.WriteString(PrimeSentence + "\n")
+	}
 	if len(c.Flags) > 0 {
 		b.WriteString("\nflags:\n")
 		for _, f := range c.Flags {
@@ -222,6 +225,9 @@ func renderKindCard(m Manifest, k SchemaKind) string {
 	if k.Completable {
 		traits = append(traits, "completable")
 	}
+	if k.Prime {
+		traits = append(traits, "prime")
+	}
 	if len(traits) > 0 {
 		b.WriteString("traits: " + strings.Join(traits, " · ") + "\n")
 	}
@@ -399,12 +405,19 @@ func renderFilteredTOC(m Manifest, f schemaFilters) string {
 }
 
 // tocLine renders one TOC entry: `name — usage`, or the bare name when the
-// command carries no usage line.
+// command carries no usage line. A Prime requirement appends a "[prime]"
+// marker to the name, before the usage separator — the bare and filtered
+// TOCs, and the group card, all render through this one function, so the
+// marker cannot appear in one and not the others.
 func tocLine(c SchemaCommand) string {
-	if c.Usage == "" {
-		return c.Name
+	name := c.Name
+	if c.Prime {
+		name += " [prime]"
 	}
-	return c.Name + " — " + c.Usage
+	if c.Usage == "" {
+		return name
+	}
+	return name + " — " + c.Usage
 }
 
 // countGenerated counts how many commands in cmds appear in the generated

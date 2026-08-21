@@ -115,6 +115,19 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
+// TestSchemaCommandCardPrimeSentence pins the command card's one appended
+// sentence for a Prime requirement, and its absence for an ordinary command.
+func TestSchemaCommandCardPrimeSentence(t *testing.T) {
+	t.Parallel()
+	c := SchemaCommand{Name: "get widget", Usage: "List widgets or show one", CommandType: ReadOnly, Prime: true}
+	lines := strings.Split(renderCommandCard(cardManifest(), c), "\n")
+	assert.Contains(t, lines, PrimeSentence)
+
+	ordinary := SchemaCommand{Name: "get pod", Usage: "List pods or show one", CommandType: ReadOnly}
+	lines = strings.Split(renderCommandCard(cardManifest(), ordinary), "\n")
+	assert.NotContains(t, lines, PrimeSentence)
+}
+
 func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 	t.Parallel()
 	c := SchemaCommand{
@@ -221,6 +234,20 @@ func TestSchemaKindCardFields(t *testing.T) {
 	assert.Equal(t, "  get: available (internal · beta)", lines[verbsAt+1])
 	assert.Equal(t, "  patch: available (internal · beta)", lines[verbsAt+2])
 	assert.Equal(t, "  delete: not available — controller-owned; delete the owning source object", lines[verbsAt+3])
+}
+
+// TestSchemaKindCardPrimeTrait pins the kind card's "prime" trait, appended
+// alongside sensitive/completable — a projection of SchemaKind.Prime, never
+// a separately authored string.
+func TestSchemaKindCardPrimeTrait(t *testing.T) {
+	t.Parallel()
+	k := SchemaKind{
+		Name: "widget", Key: "widget", Resource: "widgets",
+		Scope: "management", NamespacePolicy: "none", Prime: true,
+		Verbs: map[string]VerbState{"get": {State: VerbAvailable}, "patch": {State: VerbAvailable}, "delete": {State: VerbAbsent}},
+	}
+	lines := strings.Split(renderKindCard(Manifest{}, k), "\n")
+	assert.Contains(t, lines, "traits: prime")
 }
 
 // TestSchemaKindCardOmitsEmptyFields pins the card for a minimal kind: no
@@ -391,6 +418,33 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 // in the rendered line (name or usage) carries no fragment; an alias match
 // names the full alias form; a desc match shows the surrounding fragment with
 // ellipses.
+// TestTocLinePrimeMarker pins the "[prime]" marker tocLine appends before
+// the usage separator — the single function feeding the bare TOC, the
+// filtered TOC, and group cards, so the marker cannot appear in one and not
+// the others.
+func TestTocLinePrimeMarker(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "get widget [prime] — List widgets",
+		tocLine(SchemaCommand{Name: "get widget", Usage: "List widgets", Prime: true}))
+	assert.Equal(t, "get widget [prime]",
+		tocLine(SchemaCommand{Name: "get widget", Prime: true}))
+	assert.Equal(t, "get pod — List pods",
+		tocLine(SchemaCommand{Name: "get pod", Usage: "List pods"}))
+}
+
+// TestSchemaFilteredTOCCarriesPrimeMarker proves the filtered/search TOC
+// (SE-10/SE-11) projects the same marker as the bare TOC, since both render
+// through tocLine.
+func TestSchemaFilteredTOCCarriesPrimeMarker(t *testing.T) {
+	t.Parallel()
+	m := Manifest{
+		Commands: []SchemaCommand{{Name: "get widget", Usage: "List widgets", Prime: true}},
+		Groups:   []SchemaGroup{{Name: "get", Commands: []string{"get widget"}}},
+	}
+	text := renderFilteredTOC(m, schemaFilters{})
+	assert.Contains(t, text, "get widget [prime] — List widgets")
+}
+
 func TestSchemaSearchFragment(t *testing.T) {
 	t.Parallel()
 	c := SchemaCommand{

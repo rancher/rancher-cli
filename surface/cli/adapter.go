@@ -168,11 +168,12 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
 	cmd := &ucli.Command{
-		Name:      leafName(d.Name),
-		Aliases:   d.Aliases,
-		Usage:     d.Usage,
-		ArgsUsage: argsUsage(d.Args),
-		Flags:     flagsFor(d),
+		Name:        leafName(d.Name),
+		Aliases:     d.Aliases,
+		Usage:       d.Usage,
+		Description: primeDescription(d),
+		ArgsUsage:   argsUsage(d.Args),
+		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
 		// comma-splitting would tear a value like `--set tags=a,b` into two
 		// entries (MC-6a). Only slice/map flags read this; single-value
@@ -199,6 +200,18 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 	}
 	installShellComplete(rc, cmd)
 	return cmd
+}
+
+// primeDescription is the normal `--help` marker seam: urfave's own default
+// help template renders a command's Description in a DESCRIPTION: block
+// (Usage feeds every other consumer — the TOC, the manifest, the command
+// card's usage line — and must never carry the marker). "" leaves urfave's
+// DESCRIPTION: block absent, exactly as for every non-Prime command today.
+func primeDescription(d runtime.Descriptor) string {
+	if d.Capability.Tier == runtime.CapabilityPrime {
+		return runtime.PrimeSentence
+	}
+	return ""
 }
 
 // installShellComplete installs the universal completion callback on cmd for

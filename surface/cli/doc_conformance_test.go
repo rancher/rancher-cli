@@ -279,20 +279,76 @@ func TestKindClaimsMatchTable(t *testing.T) {
 	}
 }
 
-// commandRows extracts the command name from each row of COMMANDS.md's
-// Commands table: the first cell's leading backtick-quoted string, cut at
-// the first token that starts an argument or flag (<, [, -, or (). Command
-// names may be multi-word ("project add-namespace", "create resource").
-func commandRows(t *testing.T) []string {
+// primeMarker is COMMANDS.md's exact per-row label for a Prime-only
+// command's Purpose cell — the same runtime.PrimeSentence every other
+// rendered surface (command card, --help) uses, so the label cannot drift
+// into its own wording.
+const primeMarker = runtime.PrimeSentence
+
+// primeCommandNames returns the set of manifest command names that require
+// Rancher Prime, for TestCommandsTablePrimeLabels.
+func primeCommandNames(t *testing.T) map[string]bool {
 	t.Helper()
-	var names []string
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	out := map[string]bool{}
+	for _, c := range m.Commands {
+		if c.Prime {
+			out[c.Name] = true
+		}
+	}
+	return out
+}
+
+// TestCommandsTablePrimeLabels pins COMMANDS.md's per-row Prime label to the
+// manifest, both ways: every Prime command's row carries the label, and no
+// row carries the label without a matching Prime command. No command
+// declares a requirement yet, so this currently pins the empty case; it
+// gates the first Prime command COMMANDS.md ever documents.
+func TestCommandsTablePrimeLabels(t *testing.T) {
+	t.Parallel()
+	primeNames := primeCommandNames(t)
+
+	labeled := map[string]bool{}
+	for _, row := range commandRows(t) {
+		if strings.Contains(row.rest, primeMarker) {
+			labeled[row.name] = true
+		}
+	}
+
+	for name := range primeNames {
+		assert.True(t, labeled[name],
+			"command %q requires Rancher Prime but its COMMANDS.md row carries no %q label", name, primeMarker)
+	}
+	for name := range labeled {
+		assert.True(t, primeNames[name],
+			"COMMANDS.md row %q carries the %q label but the manifest does not mark it Prime", name, primeMarker)
+	}
+}
+
+// commandTableRow is one parsed row of COMMANDS.md's Commands table: the
+// command name from the first cell, and the rest of the row after the
+// closing backtick (the Purpose cell, carrying any Prime label).
+type commandTableRow struct {
+	name string
+	rest string
+}
+
+// commandRows parses each row of COMMANDS.md's Commands table — the ONE
+// parser every table-conformance test shares. The name is the first cell's
+// leading backtick-quoted string, cut at the first token that starts an
+// argument or flag (<, [, -, or (). Command names may be multi-word
+// ("project add-namespace", "create resource").
+func commandRows(t *testing.T) []commandTableRow {
+	t.Helper()
+	var rows []commandTableRow
 	for line := range strings.SplitSeq(anchoredBlock(t, "COMMANDS.md", tableAnchor), "\n") {
 		line = strings.TrimSpace(line)
 		cell, isRow := strings.CutPrefix(line, "| `")
 		if !isRow {
 			continue // header, separator, or non-table line
 		}
-		quoted, _, closed := strings.Cut(cell, "`")
+		quoted, rest, closed := strings.Cut(cell, "`")
 		require.True(t, closed, "unterminated backtick in Commands table row %q", line)
 		var name []string
 		for tok := range strings.FieldsSeq(quoted) {
@@ -302,10 +358,10 @@ func commandRows(t *testing.T) []string {
 			name = append(name, tok)
 		}
 		require.NotEmpty(t, name, "no command name found in Commands table row %q", line)
-		names = append(names, strings.Join(name, " "))
+		rows = append(rows, commandTableRow{name: strings.Join(name, " "), rest: rest})
 	}
-	require.NotEmpty(t, names, "the conformance:commands-table block contains no table rows")
-	return names
+	require.NotEmpty(t, rows, "the conformance:commands-table block contains no table rows")
+	return rows
 }
 
 // TestCommandsTableMatchesManifest pins COMMANDS.md's Commands table to the
@@ -316,8 +372,8 @@ func TestCommandsTableMatchesManifest(t *testing.T) {
 	_, _, fixed, manifest := deriveSurface(t)
 
 	rows := map[string]bool{}
-	for _, name := range commandRows(t) {
-		rows[name] = true
+	for _, row := range commandRows(t) {
+		rows[row.name] = true
 	}
 
 	var missing []string

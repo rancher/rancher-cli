@@ -41,6 +41,71 @@ func TestAdaptRunsAndRendersJSON(t *testing.T) {
 	assert.Equal(t, "Pong", env["kind"])
 }
 
+type primePingCmd struct{}
+
+func (primePingCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{Name: "primeping", CommandType: runtime.Local,
+		Capability: runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}}
+}
+func (primePingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
+	return runtime.Result{Kind: "Pong"}, nil
+}
+
+// TestPrimeDescriptionMarksHelpWithoutTouchingUsage pins the normal --help
+// seam: a Prime requirement sets urfave's Description field (rendered in the
+// DESCRIPTION: block by urfave's own default help template) and leaves Usage
+// (which feeds the TOC, the manifest, and the command card's usage line)
+// untouched.
+func TestPrimeDescriptionMarksHelpWithoutTouchingUsage(t *testing.T) {
+	t.Parallel()
+	d := runtime.Descriptor{Name: "get widget", Usage: "List widgets",
+		Capability: runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}}
+	assert.Equal(t, runtime.PrimeSentence, primeDescription(d))
+	assert.Equal(t, "List widgets", d.Usage, "primeDescription must never mutate Usage")
+
+	assert.Empty(t, primeDescription(runtime.Descriptor{Name: "get pod"}), "an ordinary command gets no Description")
+}
+
+// TestAdaptedPrimeCommandShowsHelpMarker proves the marker actually reaches
+// urfave's rendered --help output for an Adapt-wired command.
+func TestAdaptedPrimeCommandShowsHelpMarker(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
+	root := &ucli.Command{
+		Name:     "rancher",
+		Writer:   &out,
+		Flags:    GlobalFlags(),
+		Commands: []*ucli.Command{Adapt(reg, primePingCmd{})},
+	}
+	err := root.Run(t.Context(), []string{"rancher", "primeping", "--help"})
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), runtime.PrimeSentence)
+}
+
+// TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker closes the loop the
+// runtime unit test opens: Adapt() never wires IO.Capability, so actually
+// EXECUTING a requirement-bearing command through the bare path must hit the
+// pipeline's loud mis-wiring error — never silently proceed.
+func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
+	t.Parallel()
+	var out, errOut bytes.Buffer
+	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
+	root := &ucli.Command{
+		Name:      "rancher",
+		Writer:    &out,
+		ErrWriter: &errOut,
+		Flags:     GlobalFlags(),
+		Commands:  []*ucli.Command{Adapt(reg, primePingCmd{})},
+		// The default handler os.Exits the test binary on the error path.
+		ExitErrHandler: func(context.Context, *ucli.Command, error) {},
+	}
+	err := root.Run(t.Context(), []string{"rancher", "primeping"})
+	require.Error(t, err)
+	assert.Contains(t, errOut.String(), "no capability checker is wired")
+	assert.NotContains(t, out.String(), `"Pong"`, "execution must never reach the command")
+}
+
 // TestArgsUsageRendersRequiredAndOptionalArgs pins PS-9's helper: required
 // Args render "<name>", optional Args render "[name]", space-joined in
 // declared order — the SAME Descriptor.Args the manifest publishes, so help
