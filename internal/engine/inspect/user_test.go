@@ -64,13 +64,13 @@ func TestInspectUserNeverLoggedInVerifiedEmpty(t *testing.T) {
 	assert.Empty(t, *r.User.Groups, "never-logged-in user: verified-empty groups, never degraded")
 	assert.Empty(t, r.User.LastLogin)
 	assert.Empty(t, r.Degraded)
-	require.NotNil(t, r.Held.Global)
-	assert.Empty(t, *r.Held.Global)
-	require.NotNil(t, r.Held.Clusters)
-	assert.Empty(t, *r.Held.Clusters)
-	require.NotNil(t, r.Held.Projects)
-	assert.Empty(t, *r.Held.Projects)
-	assert.Contains(t, res.Text, "HELD ROLES")
+	require.NotNil(t, r.Roles.Global)
+	assert.Empty(t, *r.Roles.Global)
+	require.NotNil(t, r.Roles.Clusters)
+	assert.Empty(t, *r.Roles.Clusters)
+	require.NotNil(t, r.Roles.Projects)
+	assert.Empty(t, *r.Roles.Projects)
+	assert.Contains(t, res.Text, "ROLES")
 	assert.Contains(t, res.Text, "\n  none\n")
 }
 
@@ -99,11 +99,11 @@ func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
 	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
 	require.NoError(t, err)
 	r := res.Data.(userResult)
-	assert.Nil(t, r.Held.Projects, "heldProjects must be omitted, not an empty list")
-	require.NotNil(t, r.Held.Clusters)
-	assert.Len(t, *r.Held.Clusters, 1, "heldClusters stays intact")
+	assert.Nil(t, r.Roles.Projects, "rolesProjects must be omitted, not an empty list")
+	require.NotNil(t, r.Roles.Clusters)
+	assert.Len(t, *r.Roles.Clusters, 1, "rolesClusters stays intact")
 	require.Len(t, r.Degraded, 1)
-	assert.Equal(t, "heldProjects", r.Degraded[0].Section)
+	assert.Equal(t, "rolesProjects", r.Degraded[0].Section)
 	assert.NotEmpty(t, res.Warnings)
 	assert.Contains(t, res.Text, "PROJECT: unavailable")
 }
@@ -125,14 +125,14 @@ func TestInspectUserGroupsForbiddenBlocksAllThreeHeldSections(t *testing.T) {
 	require.NoError(t, err)
 	r := res.Data.(userResult)
 	assert.Nil(t, r.User.Groups)
-	assert.Nil(t, r.Held.Global)
-	assert.Nil(t, r.Held.Clusters)
-	assert.Nil(t, r.Held.Projects)
+	assert.Nil(t, r.Roles.Global)
+	assert.Nil(t, r.Roles.Clusters)
+	assert.Nil(t, r.Roles.Projects)
 	sections := []string{}
 	for _, d := range r.Degraded {
 		sections = append(sections, d.Section)
 	}
-	assert.ElementsMatch(t, []string{"groups", "heldGlobal", "heldClusters", "heldProjects"}, sections)
+	assert.ElementsMatch(t, []string{"groups", "rolesGlobal", "rolesClusters", "rolesProjects"}, sections)
 	assert.Contains(t, res.Text, "groups: unavailable")
 	assert.Contains(t, res.Text, "lastLogin: unavailable")
 	assert.Contains(t, res.Text, "GLOBAL: unavailable")
@@ -282,7 +282,7 @@ func TestInspectUserAttributesAllFields(t *testing.T) {
 
 	userBlock, rest, found := strings.Cut(res.Text, "\nGROUPS\n")
 	require.True(t, found)
-	groupsBlock, _, _ := strings.Cut(rest, "\nHELD ROLES\n")
+	groupsBlock, _, _ := strings.Cut(rest, "\nROLES\n")
 	assert.Contains(t, userBlock, "lastLogin: 2026-08-01T00:00:00Z")
 	assert.Contains(t, userBlock, "disableAfter: 720h0m0s")
 	assert.Contains(t, userBlock, "deleteAfter: 1440h0m0s")
@@ -341,10 +341,17 @@ func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *t
 	assert.False(t, c.listed(prtbKind.GVR), "project enrichment/list must never run once cluster enrichment aborted")
 }
 
+// TestInspectUserNoEffectiveVocabulary asserts the retired vocabulary
+// stays retired: roles are facts about bindings, permissions are the
+// server's answer — neither "effective" nor the old "held" qualifier
+// may reappear in the command's user-facing strings.
 func TestInspectUserNoEffectiveVocabulary(t *testing.T) {
 	cmd := newUserCmdFake(newFakeClient())
 	desc := cmd.Describe()
-	assert.NotContains(t, strings.ToLower(desc.Desc), "effective")
+	for _, banned := range []string{"effective", "held"} {
+		assert.NotContains(t, strings.ToLower(desc.Desc), banned)
+		assert.NotContains(t, strings.ToLower(desc.Usage), banned)
+	}
 }
 
 func crtbObjForTest(name, ns, userName, userPrincipal, groupPrincipal, role string) *unstructured.Unstructured {
@@ -410,7 +417,7 @@ func listOfGRB(items ...*unstructured.Unstructured) *unstructured.UnstructuredLi
 // TestInspectUserMalformedProjectBindingSurfacesWarning pins the composite
 // end of the blank-scope drop: a matched prtb with no projectName never
 // renders (no blank PROJECT heading), and the omission reaches the caller
-// as a named warning — losing the collectHeld wiring must fail here, not
+// as a named warning — losing the collectRoles wiring must fail here, not
 // only in the rbac unit test.
 func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
@@ -430,9 +437,9 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
 	require.NoError(t, err)
 	r := res.Data.(userResult)
-	require.NotNil(t, r.Held.Projects)
-	require.Len(t, *r.Held.Projects, 1, "only the well-formed project renders")
-	assert.Equal(t, "c-1:p-1", (*r.Held.Projects)[0].Project)
+	require.NotNil(t, r.Roles.Projects)
+	require.Len(t, *r.Roles.Projects, 1, "only the well-formed project renders")
+	assert.Equal(t, "c-1:p-1", (*r.Roles.Projects)[0].Project)
 	assert.Contains(t, res.Warnings, "1 project role binding(s) with no scope id omitted: prtb-broken")
 	assert.NotContains(t, res.Text, "PROJECT \n", "no blank project heading")
 }

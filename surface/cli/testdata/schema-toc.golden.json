@@ -227,7 +227,7 @@
         },
         {
           "name": "inspect user",
-          "usage": "Inspect a user: identity, groups, and held roles across scopes"
+          "usage": "Inspect a user: identity, groups, and roles across scopes"
         }
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",

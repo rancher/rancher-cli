@@ -335,13 +335,13 @@ display names resolved from Users/UserAttributes; the members section
 degrades independently to a warning.
 
 `inspect user <id|username|displayName|principal>` answers who a user is
-and what roles they HOLD everywhere — never what they can actually do
-(that is effective access, which no command in this CLI computes today).
-Identity, group memberships (as last synced by Rancher, refreshed at
-login), and held roles at global/cluster/project scope are joined into
-one document; a failed group-memberships read blocks the held sections
-too, since held completeness cannot be verified without knowing the
-user's groups.
+and what roles they hold everywhere — never what they can actually do
+(that is a permissions question, answered only by the server; no command
+in this CLI computes it). Identity, group memberships (as last synced by
+Rancher, refreshed at login), and roles at global/cluster/project scope
+are joined into one document; a failed group-memberships read blocks the
+role sections too, since their completeness cannot be verified without
+knowing the user's groups.
 
 ## Access management
 

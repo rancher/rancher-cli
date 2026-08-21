@@ -76,7 +76,7 @@ target for the legacy `server switch` command.
 | `inspect pod <name>` | Composite pod read: describe + recent logs |
 | `inspect deployment <name>` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: project, namespaces, members, quota, usage |
-| `inspect user <id\|username\|displayName\|principal>` | Composite user read: identity, groups, and held roles across scopes — held bindings only, never effective permissions |
+| `inspect user <id\|username\|displayName\|principal>` | Composite user read: identity, groups, and roles across scopes — bindings that exist only, never permissions |
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 

@@ -34,8 +34,8 @@ type userCmd struct {
 
 // NewInspectUser builds `inspect user <user>`: one document answering who a
 // user is and what roles they hold everywhere — never what they can
-// actually do (that is effective access, out of scope here and everywhere
-// else in this CLI today).
+// actually do (that is a permissions question, answered only by the server,
+// out of scope here and everywhere else in this CLI today).
 func NewInspectUser(clients engine.ClusterClientFactory) runtime.Command {
 	return &userCmd{clients: clients}
 }
@@ -45,7 +45,7 @@ func (c *userCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:    "inspect user",
 		Aliases: k.Aliases,
-		Usage:   "Inspect a user: identity, groups, and held roles across scopes",
+		Usage:   "Inspect a user: identity, groups, and roles across scopes",
 		Desc: degradedContractDesc +
 			"The user is required and hard-errors when unreadable; every other section degrades. " +
 			"The positional accepts a user id, username, displayName, or a fully qualified user " +
@@ -61,13 +61,15 @@ func (c *userCmd) Describe() runtime.Descriptor {
 			"than a verified absence (a user who has never logged in has none), every one is omitted " +
 			"from the wire — never an empty list — with the failure recorded in data.degraded; an " +
 			"omitted optional field on a healthy read simply is not set. " +
-			"data.held.{global,clusters,projects} lists role bindings that EXIST for the user or any " +
-			"of their group principals — HELD roles, never a computed statement of what the user can " +
-			"do. Each row is the shared member shape (principal, displayName, role, binding, system); " +
-			"clusters and projects group rows by scope instance, with a best-effort displayName looked " +
-			"up per entry. Because held completeness depends on the user's group principals, a failed " +
-			"groups read blocks all three held sections too (their completeness would otherwise be " +
-			"unverifiable) — recorded in data.degraded alongside groups.",
+			"data.roles.{global,clusters,projects} lists role bindings that EXIST for the user or any " +
+			"of their group principals. Roles are facts about bindings — never a computed statement " +
+			"of what the user can do (that is a permissions question, answered only by the server, " +
+			"and this command never asks it). Each row is the shared member shape (principal, " +
+			"displayName, role, binding, system); clusters and projects group rows by scope instance, " +
+			"with a best-effort displayName looked up per entry. Because the completeness of the role " +
+			"sections depends on the user's group principals, a failed groups read blocks all three " +
+			"too (their completeness would otherwise be unverifiable) — recorded in data.degraded " +
+			"alongside groups.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|displayName|principal"}},
 		Network:     true,
@@ -95,28 +97,28 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}
 	identity := userIdentityFrom(obj)
 
-	sec := newSections(ctx, sectionGroups, sectionHeldGlobal, sectionHeldClusters, sectionHeldProjects)
+	sec := newSections(ctx, sectionGroups, sectionRolesGlobal, sectionRolesClusters, sectionRolesProjects)
 
 	groupPrincipals, blocked, err := userAttributes(ctx, mgmt, sec, rs.UserID, &identity)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
-	var held heldResult
+	var roles rolesResult
 	var extraWarnings []string
 	if !blocked {
-		var heldWarnings []string
-		held, heldWarnings, err = collectHeld(ctx, mgmt, sec, rs.UserID, rs.PrincipalIDs, groupPrincipals,
-			heldDisplayNames(identity, rs.UserID, rs.PrincipalIDs, identity.Groups))
+		var roleWarnings []string
+		roles, roleWarnings, err = collectRoles(ctx, mgmt, sec, rs.UserID, rs.PrincipalIDs, groupPrincipals,
+			roleDisplayNames(identity, rs.UserID, rs.PrincipalIDs, identity.Groups))
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		extraWarnings = heldWarnings
+		extraWarnings = roleWarnings
 	}
 
 	degraded, warnings := sec.Finalize()
 	warnings = append(warnings, extraWarnings...)
-	result := userResult{User: identity, Held: held, Degraded: degraded}
+	result := userResult{User: identity, Roles: roles, Degraded: degraded}
 	return runtime.Result{
 		Kind:     "UserInspection",
 		Data:     result,
@@ -128,12 +130,12 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 // userAttributes reads the UserAttribute GET-BY-ID (never a list) and
 // fills identity's UserAttribute-sourced fields in place — one field
 // list, no copy step to keep in sync. It returns the flat
-// group-principal set the held collectors match against and whether
-// the held sections are blocked. NotFound is a verified-empty user
+// group-principal set the role collectors match against and whether
+// the role sections are blocked. NotFound is a verified-empty user
 // (never logged in): groups is a non-nil empty slice, every other
-// field stays absent, held collectors run normally. Any other failure
+// field stays absent, role collectors run normally. Any other failure
 // degrades groups (nil, omitted from the wire) AND blocks all three
-// held collectors — their completeness is unknowable without the
+// role collectors — their completeness is unknowable without the
 // user's group principals, so a direct-only result would misrepresent
 // a group-held-only user as verified-complete.
 func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, identity *userIdentity) (groupPrincipals []string, blocked bool, err error) {
@@ -147,13 +149,13 @@ func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *section
 		if herr := sec.Unavailable(sectionGroups, gerr); herr != nil {
 			return nil, false, herr
 		}
-		if herr := sec.Blocked(sectionHeldGlobal, sectionGroups, gerr); herr != nil {
+		if herr := sec.Blocked(sectionRolesGlobal, sectionGroups, gerr); herr != nil {
 			return nil, false, herr
 		}
-		if herr := sec.Blocked(sectionHeldClusters, sectionGroups, gerr); herr != nil {
+		if herr := sec.Blocked(sectionRolesClusters, sectionGroups, gerr); herr != nil {
 			return nil, false, herr
 		}
-		if herr := sec.Blocked(sectionHeldProjects, sectionGroups, gerr); herr != nil {
+		if herr := sec.Blocked(sectionRolesProjects, sectionGroups, gerr); herr != nil {
 			return nil, false, herr
 		}
 		return nil, true, nil
@@ -247,12 +249,12 @@ func droppedScopeWarning(scope string, bindings []string) []string {
 		len(bindings), scope, strings.Join(bindings, ", "))}
 }
 
-// heldDisplayNames builds the enrichment map heldRow consumes: the user's
+// roleDisplayNames builds the enrichment map heldRow consumes: the user's
 // own display name for every own-identity principal (and the id itself),
 // and each group principal's cached display name — blanked when two
 // provider caches disagree, never chosen arbitrarily (the same
 // blank-on-disagreement rule ResolveMembers applies).
-func heldDisplayNames(identity userIdentity, userID string, principalIDs []string, groups *[]userGroup) map[string]string {
+func roleDisplayNames(identity userIdentity, userID string, principalIDs []string, groups *[]userGroup) map[string]string {
 	names := map[string]string{}
 	if identity.DisplayName != "" {
 		names[userID] = identity.DisplayName
@@ -279,65 +281,65 @@ func heldDisplayNames(identity userIdentity, userID string, principalIDs []strin
 	return names
 }
 
-// collectHeld runs the three held-binding collectors sequentially — global,
+// collectRoles runs the three binding collectors sequentially — global,
 // then clusters (with per-entry displayName enrichment), then projects
 // (same enrichment) — so a caller cancellation during either enrichment
 // aborts before the next collector issues a single request. Each collector
 // degrades independently on its own list failure.
-func collectHeld(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, principalIDs, groupPrincipals []string, displayNames map[string]string) (heldResult, []string, error) {
-	var held heldResult
+func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, principalIDs, groupPrincipals []string, displayNames map[string]string) (rolesResult, []string, error) {
+	var roles rolesResult
 	var warnings []string
 
 	globalRows, err := rbac.HeldGlobalBindings(ctx, mgmt, userID, principalIDs, groupPrincipals, displayNames)
 	switch {
 	case err != nil:
-		if herr := sec.Unavailable(sectionHeldGlobal, err); herr != nil {
-			return heldResult{}, nil, herr
+		if herr := sec.Unavailable(sectionRolesGlobal, err); herr != nil {
+			return rolesResult{}, nil, herr
 		}
 	default:
-		held.Global = &globalRows
+		roles.Global = &globalRows
 	}
 
 	clusterGroups, droppedClusters, err := rbac.HeldClusterBindings(ctx, mgmt, userID, principalIDs, groupPrincipals, displayNames)
 	warnings = append(warnings, droppedScopeWarning("cluster", droppedClusters)...)
 	switch {
 	case err != nil:
-		if herr := sec.Unavailable(sectionHeldClusters, err); herr != nil {
-			return heldResult{}, nil, herr
+		if herr := sec.Unavailable(sectionRolesClusters, err); herr != nil {
+			return rolesResult{}, nil, herr
 		}
 	default:
-		entries := make([]heldCluster, 0, len(clusterGroups))
+		entries := make([]rolesCluster, 0, len(clusterGroups))
 		for _, g := range clusterGroups {
 			displayName, derr := clusterDisplayName(ctx, mgmt, g.ID)
 			if derr != nil {
-				return heldResult{}, nil, derr
+				return rolesResult{}, nil, derr
 			}
-			entries = append(entries, heldCluster{Cluster: g.ID, DisplayName: displayName, Roles: g.Rows})
+			entries = append(entries, rolesCluster{Cluster: g.ID, DisplayName: displayName, Roles: g.Rows})
 		}
-		held.Clusters = &entries
+		roles.Clusters = &entries
 	}
 
 	projectGroups, droppedProjects, err := rbac.HeldProjectBindings(ctx, mgmt, userID, principalIDs, groupPrincipals, displayNames)
 	warnings = append(warnings, droppedScopeWarning("project", droppedProjects)...)
 	switch {
 	case err != nil:
-		if herr := sec.Unavailable(sectionHeldProjects, err); herr != nil {
-			return heldResult{}, nil, herr
+		if herr := sec.Unavailable(sectionRolesProjects, err); herr != nil {
+			return rolesResult{}, nil, herr
 		}
 	default:
-		entries := make([]heldProject, 0, len(projectGroups))
+		entries := make([]rolesProject, 0, len(projectGroups))
 		for _, g := range projectGroups {
 			clusterID, projectID, _ := strings.Cut(g.ID, ":")
 			displayName, derr := projectDisplayName(ctx, mgmt, clusterID, projectID)
 			if derr != nil {
-				return heldResult{}, nil, derr
+				return rolesResult{}, nil, derr
 			}
-			entries = append(entries, heldProject{Project: g.ID, DisplayName: displayName, Roles: g.Rows})
+			entries = append(entries, rolesProject{Project: g.ID, DisplayName: displayName, Roles: g.Rows})
 		}
-		held.Projects = &entries
+		roles.Projects = &entries
 	}
 
-	return held, warnings, nil
+	return roles, warnings, nil
 }
 
 // clusterDisplayName is a best-effort per-entry GET: an id is never
@@ -434,39 +436,39 @@ type userIdentity struct {
 	Extra        map[string]map[string][]string `json:"extra,omitempty"`
 }
 
-// heldCluster and heldProject are one scope-instance entry: the stable
+// rolesCluster and rolesProject are one scope-instance entry: the stable
 // scope id is never replaced by DisplayName, only accompanied by it.
-type heldCluster struct {
+type rolesCluster struct {
 	Cluster     string           `json:"cluster"`
 	DisplayName string           `json:"displayName,omitempty"`
 	Roles       []rbac.MemberRow `json:"roles"`
 }
 
-type heldProject struct {
+type rolesProject struct {
 	Project     string           `json:"project"`
 	DisplayName string           `json:"displayName,omitempty"`
 	Roles       []rbac.MemberRow `json:"roles"`
 }
 
-// heldResult is data.held. Each field is nil (omitted) exactly when its
+// rolesResult is data.roles. Each field is nil (omitted) exactly when its
 // collector failed or was blocked by a failed groups read; a non-nil
 // pointer to an empty slice is a verified-empty section.
-type heldResult struct {
+type rolesResult struct {
 	Global   *[]rbac.MemberRow `json:"global,omitempty"`
-	Clusters *[]heldCluster    `json:"clusters,omitempty"`
-	Projects *[]heldProject    `json:"projects,omitempty"`
+	Clusters *[]rolesCluster   `json:"clusters,omitempty"`
+	Projects *[]rolesProject   `json:"projects,omitempty"`
 }
 
 // userResult is `inspect user`'s payload; the default rendering is
 // renderUserText.
 type userResult struct {
 	User     userIdentity     `json:"user"`
-	Held     heldResult       `json:"held"`
+	Roles    rolesResult      `json:"roles"`
 	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
 // renderUserText is the default rendering: an IDENTITY block, a GROUPS
-// block, then a tri-state HELD ROLES block per collector.
+// block, then a tri-state ROLES block per collector.
 // renderUserText receives the RESOLVE-TIME own-identity set — the same
 // snapshot heldRow classified against — never a set rebuilt from the
 // identity section's own, later Get: two reads of the same user can
@@ -476,7 +478,7 @@ func renderUserText(r userResult, own map[string]bool) string {
 	var b strings.Builder
 	renderUserIdentity(&b, r.User)
 	renderUserGroups(&b, r.User)
-	renderHeldRoles(&b, r, own)
+	renderRoles(&b, r, own)
 	return b.String()
 }
 
@@ -547,45 +549,45 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 	}
 }
 
-func renderHeldRoles(b *strings.Builder, r userResult, own map[string]bool) {
-	b.WriteString("\nHELD ROLES\n")
-	allKnown := r.Held.Global != nil && r.Held.Clusters != nil && r.Held.Projects != nil
-	allEmpty := allKnown && len(*r.Held.Global) == 0 && len(*r.Held.Clusters) == 0 && len(*r.Held.Projects) == 0
+func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
+	b.WriteString("\nROLES\n")
+	allKnown := r.Roles.Global != nil && r.Roles.Clusters != nil && r.Roles.Projects != nil
+	allEmpty := allKnown && len(*r.Roles.Global) == 0 && len(*r.Roles.Clusters) == 0 && len(*r.Roles.Projects) == 0
 	if allEmpty {
 		b.WriteString("  none\n")
 		return
 	}
 
 	switch {
-	case r.Held.Global == nil:
+	case r.Roles.Global == nil:
 		b.WriteString("  GLOBAL: unavailable\n")
-	case len(*r.Held.Global) > 0:
+	case len(*r.Roles.Global) > 0:
 		b.WriteString("  GLOBAL\n")
-		for _, row := range *r.Held.Global {
-			renderHeldRow(b, row, own)
+		for _, row := range *r.Roles.Global {
+			renderRoleRow(b, row, own)
 		}
 	}
 
-	switch r.Held.Clusters {
+	switch r.Roles.Clusters {
 	case nil:
 		b.WriteString("  CLUSTER: unavailable\n")
 	default:
-		for _, entry := range *r.Held.Clusters {
+		for _, entry := range *r.Roles.Clusters {
 			fmt.Fprintf(b, "  CLUSTER %s\n", scopeLabel(entry.Cluster, entry.DisplayName))
 			for _, row := range entry.Roles {
-				renderHeldRow(b, row, own)
+				renderRoleRow(b, row, own)
 			}
 		}
 	}
 
-	switch r.Held.Projects {
+	switch r.Roles.Projects {
 	case nil:
 		b.WriteString("  PROJECT: unavailable\n")
 	default:
-		for _, entry := range *r.Held.Projects {
+		for _, entry := range *r.Roles.Projects {
 			fmt.Fprintf(b, "  PROJECT %s\n", scopeLabel(entry.Project, entry.DisplayName))
 			for _, row := range entry.Roles {
-				renderHeldRow(b, row, own)
+				renderRoleRow(b, row, own)
 			}
 		}
 	}
@@ -600,12 +602,12 @@ func scopeLabel(id, displayName string) string {
 	return fmt.Sprintf("%s (%s)", engine.Printable(displayName), engine.Printable(id))
 }
 
-// renderHeldRow prints one memberRow. The parenthetical names the holding
+// renderRoleRow prints one memberRow. The parenthetical names the holding
 // principal only when it is a GROUP's — a direct row's principal is
 // already the user's own and would otherwise state the obvious (or, for
 // the empty-principalIds fallback row, misleadingly show the user's own
 // id as if it were a separate holder).
-func renderHeldRow(b *strings.Builder, row rbac.MemberRow, own map[string]bool) {
+func renderRoleRow(b *strings.Builder, row rbac.MemberRow, own map[string]bool) {
 	suffix := ""
 	if row.System {
 		suffix = " [system]"

@@ -36,9 +36,9 @@ import (
 const (
 	sectionClusters        = "clusters"
 	sectionGroups          = "groups"
-	sectionHeldClusters    = "heldClusters"
-	sectionHeldGlobal      = "heldGlobal"
-	sectionHeldProjects    = "heldProjects"
+	sectionRolesClusters   = "rolesClusters"
+	sectionRolesGlobal     = "rolesGlobal"
+	sectionRolesProjects   = "rolesProjects"
 	sectionLogs            = "logs"
 	sectionMachines        = "machines"
 	sectionMembers         = "members"
@@ -76,9 +76,9 @@ const (
 var sectionTargetRules = map[string]targetRule{
 	sectionClusters:        targetToken,
 	sectionGroups:          targetNone,
-	sectionHeldClusters:    targetNone,
-	sectionHeldGlobal:      targetNone,
-	sectionHeldProjects:    targetNone,
+	sectionRolesClusters:   targetNone,
+	sectionRolesGlobal:     targetNone,
+	sectionRolesProjects:   targetNone,
 	sectionLogs:            targetToken,
 	sectionMachines:        targetNone,
 	sectionMembers:         targetNone,
