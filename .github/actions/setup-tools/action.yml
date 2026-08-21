@@ -1,8 +1,10 @@
 name: setup-tools
 description: >-
-  Install the pinned golangci-lint (sumdb-verified via go install) and the
-  shells the completion tests exercise, and expose GOPATH/bin to later steps.
-  Shared by ci and release so the two pipelines cannot drift.
+  Install the pinned golangci-lint (sumdb-verified via go install), the
+  pinned shellcheck (checksum-verified binary; the runner image's own copy
+  is older and disagrees with current versions on trap-invoked functions),
+  and the shells the completion tests exercise, and expose GOPATH/bin to
+  later steps. Shared by ci and release so the two pipelines cannot drift.
 
 runs:
   using: composite
@@ -20,3 +22,19 @@ runs:
         "$(go env GOPATH)/bin/golangci-lint" version
         sudo apt-get update
         sudo apt-get install -y fish zsh
+    - name: Install pinned shellcheck
+      shell: bash
+      # The runner image ships an older shellcheck whose reachability
+      # heuristic flags trap-invoked functions (SC2317); the gate must run
+      # the same version developers run, so the shell verdict cannot depend
+      # on which machine checks it. GOPATH/bin (prepended above) shadows the
+      # image's /usr/bin/shellcheck for every later step.
+      run: |
+        SHELLCHECK_VERSION=v0.11.0
+        SHELLCHECK_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        curl -sSfL -o /tmp/shellcheck.tar.xz \
+          "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+        echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.tar.xz" | sha256sum -c -
+        tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+        install -m 0755 "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "$(go env GOPATH)/bin/shellcheck"
+        shellcheck --version
