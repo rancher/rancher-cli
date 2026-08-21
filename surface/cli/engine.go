@@ -404,6 +404,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				}
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
+				io.Capability = newCapabilityChecker(f)
 				cmd = make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version, sessionNamer: f})
 			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)

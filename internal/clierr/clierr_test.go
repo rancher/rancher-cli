@@ -22,6 +22,7 @@ func TestExitCodeMapping(t *testing.T) {
 		CodeRBAC:                 6,
 		CodeGeneric:              1,
 		CodeNotLoggedIn:          2,
+		CodePrimeRequired:        9,
 	}
 	for code, want := range cases {
 		t.Run(code, func(t *testing.T) {
@@ -52,12 +53,24 @@ func TestAllCodesNonEmpty(t *testing.T) {
 
 // TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
-// been removed. The count pins the full enum: 10 originals plus LOCK_TIMEOUT.
+// been removed. The count pins the full enum: 10 originals plus
+// LOCK_TIMEOUT and PRIME_REQUIRED.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 11)
+	assert.Len(t, codes, 12)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
+	assert.Contains(t, codes, CodePrimeRequired)
+}
+
+// TestPrimeRequiredDisjointFromSuccessExits pins exit 9's explicit
+// assignment: 7 is a successful `skill status` result and 8 is
+// LOCK_TIMEOUT, so PRIME_REQUIRED ("next free slot") must be 9, and must
+// never collide with a successful status (0 or 7).
+func TestPrimeRequiredDisjointFromSuccessExits(t *testing.T) {
+	exit := ExitCode(CodePrimeRequired)
+	assert.Equal(t, 9, exit)
+	assert.NotContains(t, []int{0, 7}, exit)
 }
 
 func TestErrorDetailsSerialization(t *testing.T) {

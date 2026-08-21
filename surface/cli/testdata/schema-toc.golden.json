@@ -57,6 +57,7 @@
     "LOCK_TIMEOUT": 8,
     "NOT_FOUND": 4,
     "NOT_LOGGED_IN": 2,
+    "PRIME_REQUIRED": 9,
     "RBAC": 6,
     "VALIDATION": 2
   },

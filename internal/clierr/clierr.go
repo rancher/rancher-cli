@@ -17,7 +17,21 @@ const (
 	CodeRBAC                 = "RBAC"
 	CodeValidation           = "VALIDATION"
 	CodeGeneric              = "GENERIC"
+	CodePrimeRequired        = "PRIME_REQUIRED"
 )
+
+// LearnMorePrimeURL is the one stable, product-owned destination a
+// PRIME_REQUIRED hint points at. Product owns the redirect target; the CLI
+// never embeds a campaign-specific link.
+const LearnMorePrimeURL = "https://www.rancher.com/products/rancher-prime"
+
+// PrimeRequiredDetails is PRIME_REQUIRED's structured details payload: the
+// detector key and the server the check ran against, so an agent gets a
+// stable machine shape rather than prose parsing.
+type PrimeRequiredDetails struct {
+	Feature string `json:"feature"`
+	Server  string `json:"server"`
+}
 
 // exitCodes maps a code to its process exit status.
 var exitCodes = map[string]int{
@@ -32,8 +46,9 @@ var exitCodes = map[string]int{
 	CodeRBAC:                 6,
 	// 7 is not an error exit: `skill status` claims it as a success status
 	// (drift detected), and SuccessExitCodes must stay disjoint from this map.
-	CodeLockTimeout: 8,
-	CodeGeneric:     1,
+	CodeLockTimeout:   8,
+	CodePrimeRequired: 9,
+	CodeGeneric:       1,
 }
 
 // Candidate is a selectable option returned with AMBIGUOUS_SELECTION.
@@ -105,7 +120,7 @@ func AllCodes() []string {
 	return []string{
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
-		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodeGeneric,
+		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeGeneric,
 	}
 }
 

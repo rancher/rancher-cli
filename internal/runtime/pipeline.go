@@ -44,6 +44,14 @@ type IO struct {
 	// stamping after a successful Plan. AdaptEngine wires the factory's
 	// Identity; other adapters leave it nil.
 	ServerIdentity func() (string, error)
+
+	// Capability is the invocation-scoped capability checker, wired by
+	// adaptEntry's non-bare branch. Run invokes it only when the resolved
+	// command's Descriptor carries a CapabilityRequirement — ordinary
+	// commands pay nothing, and adapters that never serve requirement-
+	// bearing commands may leave it nil. A requirement-bearing command
+	// reaching Run with a nil checker is mis-wiring and fails loudly.
+	Capability CapabilityChecker
 }
 
 // Run executes one command through the single middleware path. b is the
@@ -70,6 +78,17 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 
 	if ce := validateInput(d, in); ce != nil {
 		return 0, renderErr(streams, ce)
+	}
+
+	// Capability detection is a mandatory stage for any command carrying a
+	// requirement — commands never opt in or out — and runs after
+	// server/credential resolution but before any resource access (reads)
+	// or the server-side dry-run Plan (mutations), so a Prime-backed kind
+	// that may not exist on a community server never gets to 404 first.
+	if d.Capability.IsSet() {
+		if ce := checkCapability(ctx, d, streams); ce != nil {
+			return 0, renderErr(streams, ce)
+		}
 	}
 
 	switch c := cmd.(type) {
@@ -235,6 +254,37 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		}
 	}
 	return nil
+}
+
+// checkCapability runs the capability stage for a command whose Descriptor
+// carries a requirement. A nil streams.Capability here is harness
+// mis-wiring, not signal unavailability: only unknown SIGNALS may fall
+// through (the unknown-never-blocks rule); a requirement-bearing command
+// registered without a checker would otherwise silently skip a mandatory
+// stage forever, so it fails loudly instead. CapabilityProceed and
+// CapabilityUnknown both fall through to the target request unchanged;
+// CapabilityDisabled reuses the existing VALIDATION taxonomy; only
+// CapabilityPrimeRequired returns the structured PRIME_REQUIRED error.
+func checkCapability(ctx context.Context, d Descriptor, streams IO) *clierr.Error {
+	if streams.Capability == nil {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s declares a capability requirement but no capability checker is wired", d.Name)).
+			WithHint("register the command through the standard server-command path")
+	}
+	dec := streams.Capability.Check(ctx, d.Capability)
+	switch dec.Outcome {
+	case CapabilityDisabled:
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("%s is disabled", d.Capability.Feature)).
+			WithHint(fmt.Sprintf("enable feature %s", d.Capability.Feature))
+	case CapabilityPrimeRequired:
+		return clierr.New(clierr.CodePrimeRequired,
+			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime", d.Name)).
+			WithHint("this capability requires Rancher Prime — " + clierr.LearnMorePrimeURL).
+			WithDetails(clierr.PrimeRequiredDetails{Feature: d.Capability.Feature, Server: dec.Server})
+	default: // CapabilityProceed, CapabilityUnknown
+		return nil
+	}
 }
 
 // missingFlags computes the confirmation flags absent for this Effect and binding.
