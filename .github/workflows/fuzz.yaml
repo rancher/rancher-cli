@@ -1,0 +1,48 @@
+name: fuzz
+
+# Wire-input fuzzing: real fuzz budgets (FUZZTIME=5m/target) are too slow and
+# too corpus-flaky for PRs — a weekly scheduled run plus workflow_dispatch
+# surfaces regressions without gating merges (e2e-real precedent).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    # Five targets, each with an ~8-minute outer watchdog envelope (5m fuzz +
+    # 1m minimization + 2m allowance) = ~40 minutes, plus checkout/setup/
+    # self-test/script overhead and failure-artifact upload. 60 minutes keeps
+    # a comfortable margin so the job timeout never preempts a per-target
+    # watchdog's distinct hang diagnosis.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Watchdog self-test
+        run: ./scripts/fuzz --selftest
+      # Enforces a seed-only start even if setup-go restored an older
+      # generated corpus, WITHOUT discarding the restored build cache: an
+      # isolated GOCACHE was tried and rejected (it forces a cold compile of
+      # the Kubernetes-heavy dependency graph every run, blowing the fixed
+      # 120s startup allowance). go clean -fuzzcache removes only the
+      # coverage-expanding fuzz entries under the normal GOCACHE.
+      - name: Clean generated fuzz corpus
+        run: go clean -fuzzcache
+      - name: Run fuzz targets
+        env:
+          FUZZTIME: 5m
+        run: ./scripts/fuzz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: fuzz-crashers
+          path: "**/testdata/fuzz/**"
