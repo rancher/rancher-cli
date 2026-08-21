@@ -63,6 +63,15 @@ type clientFactory struct {
 	rootOnce sync.Once
 	root     engine.RootClient
 	rootErr  error
+
+	// serverInfoOnce memoizes the /rancherversion version+edition read
+	// exactly once per invocation (f is itself the per-invocation instance):
+	// the capability detector and any future consumer sharing this factory
+	// issue at most one GET regardless of how many times ServerInfo is
+	// called.
+	serverInfoOnce sync.Once
+	serverInfo     provider.ServerInfo
+	serverInfoErr  error
 }
 
 func newClientFactory(dir string, store config.CredStore) *clientFactory {
@@ -183,6 +192,22 @@ func excerpt(b []byte, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// ServerInfo resolves the memoized /rancherversion version+edition for this
+// invocation, fetching at most once (RF-1, mirroring Root's rootOnce): the
+// unauthenticated config.Effective-built HTTP path RancherVersion uses
+// today, never engine.RootClientFactory.
+func (f *clientFactory) ServerInfo(ctx context.Context) (provider.ServerInfo, error) {
+	f.serverInfoOnce.Do(func() {
+		eff, err := f.resolve()
+		if err != nil {
+			f.serverInfoErr = err
+			return
+		}
+		f.serverInfo, f.serverInfoErr = provider.GetServerInfo(ctx, eff)
+	})
+	return f.serverInfo, f.serverInfoErr
 }
 
 func (f *clientFactory) Identity() (string, error) {

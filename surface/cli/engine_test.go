@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -69,6 +72,47 @@ func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 	if store.getCalls != 1 {
 		t.Errorf("credential read per invocation = %d, want 1", store.getCalls)
 	}
+}
+
+// TestFactoryServerInfoFetchesOnce pins the shared invocation-scoped probe:
+// ServerInfo hits /rancherversion at most once per clientFactory (per
+// invocation) no matter how many times it is called, and a second,
+// independent clientFactory (a second invocation) fetches again — no
+// cross-invocation caching.
+func TestFactoryServerInfoFetchesOnce(t *testing.T) {
+	t.Parallel()
+	var hits int
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0","RancherPrime":"true"}`))
+	}))
+	defer srv.Close()
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentServer: "acme",
+		Servers:       map[string]config.Server{"acme": {URL: srv.URL, CA: string(certPEM)}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	store := &countingStore{token: "id:secret"}
+
+	f := newClientFactory(dir, store)
+	info1, err := f.ServerInfo(t.Context())
+	require.NoError(t, err)
+	info2, err := f.ServerInfo(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, info1, info2)
+	assert.Equal(t, 1, hits, "ServerInfo must fetch /rancherversion at most once per invocation")
+
+	// A second clientFactory stands in for a second invocation: no
+	// cross-invocation cache.
+	f2 := newClientFactory(dir, store)
+	_, err = f2.ServerInfo(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 2, hits, "a new invocation must fetch again — no cross-invocation caching")
 }
 
 func TestFactoryRejectsEmptyClusterID(t *testing.T) {

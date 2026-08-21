@@ -151,6 +151,51 @@ func TestRancherVersionPathValuedCA(t *testing.T) {
 	assert.Equal(t, "v2.15.0", got)
 }
 
+// TestGetServerInfoDecodesEdition pins RancherPrime's string-wire decode
+// (not a JSON boolean): "true"/"false" (any case/whitespace) decode to their
+// Edition; absent or garbage decode to EditionUnknown — never treated as
+// community.
+func TestGetServerInfoDecodesEdition(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want Edition
+	}{
+		{"true", `{"Version":"v2.15.0","RancherPrime":"true"}`, EditionPrime},
+		{"false", `{"Version":"v2.15.0","RancherPrime":"false"}`, EditionCommunity},
+		{"mixed case and padding", `{"Version":"v2.15.0","RancherPrime":" True "}`, EditionPrime},
+		{"absent", `{"Version":"v2.15.0"}`, EditionUnknown},
+		{"garbage", `{"Version":"v2.15.0","RancherPrime":"yes"}`, EditionUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			})
+			info, err := GetServerInfo(t.Context(), effFor(t, srv))
+			require.NoError(t, err)
+			assert.Equal(t, "v2.15.0", info.Version)
+			assert.Equal(t, tc.want, info.Edition)
+		})
+	}
+}
+
+// TestGetServerInfoPropagatesReadErrors pins that GetServerInfo shares
+// RancherVersion's classified-failure behavior (malformed body, non-200,
+// unreachable) rather than swallowing it into EditionUnknown — the
+// capability detector's caller decides how to fold a probe error.
+func TestGetServerInfoPropagatesReadErrors(t *testing.T) {
+	t.Parallel()
+	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	_, err := GetServerInfo(t.Context(), effFor(t, srv))
+	require.Error(t, err)
+}
+
 // TestRancherVersionTrailingSlashURL pins that a trailing slash in eff.URL
 // (set via RANCHER_CLI_URL env, which bypasses canonicalization) is trimmed
 // before appending "/rancherversion", so the probe does not send a double-
