@@ -302,6 +302,14 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
 			}
 		}
+		if req := d.Capability; req.IsSet() {
+			if req.Tier != CapabilityPrime {
+				return fmt.Errorf("command %q: unknown capability tier %q", d.Name, req.Tier)
+			}
+			if req.Feature == "" {
+				return fmt.Errorf("command %q: capability tier %q requires a detector Feature key", d.Name, req.Tier)
+			}
+		}
 		if codes := d.SuccessExitCodes; len(codes) > 0 {
 			errExits := map[int]bool{}
 			for _, e := range clierr.CodeExits() {

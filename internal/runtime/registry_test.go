@@ -111,6 +111,34 @@ func (f fakeBoth) Plan(context.Context, Input) (safety.Effect, ExecuteFunc, erro
 	return safety.Effect{}, nil, nil
 }
 
+func TestValidateRejectsUnknownCapabilityTier(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: "bogus", Feature: "widget-feature"}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unknown capability tier")
+}
+
+func TestValidateRejectsPrimeWithoutDetectorKey(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityPrime}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "detector Feature key")
+}
+
+func TestValidatePassesWellFormedCapability(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature"}}})
+	assert.NoError(t, reg.Validate())
+}
+
 func TestValidateRejectsDualInterface(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"do thing": {}})

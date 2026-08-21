@@ -333,6 +333,17 @@ func TestGetDescribeNilFactory(t *testing.T) {
 	assert.Equal(t, []string{"pods", "po"}, d.Aliases)
 }
 
+// TestGetDescribeInheritsCapability pins the requirement-inheritance rule: a
+// kind row's Capability flows unchanged into the generated get command's
+// Descriptor — one source, never a separately authored value.
+func TestGetDescribeInheritsCapability(t *testing.T) {
+	t.Parallel()
+	req := runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}
+	k := kinds.Kind{Name: "widget", Aliases: []string{"widgets"}, Capability: req}
+	d := NewGet(k, nil).Describe()
+	assert.Equal(t, req, d.Capability)
+}
+
 func TestGetPodTargetsResolvedCluster(t *testing.T) {
 	t.Parallel()
 	client := &memClient{items: []unstructured.Unstructured{podObj("web")}}

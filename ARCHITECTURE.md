@@ -167,6 +167,7 @@ graph TD
 
     kinds --> clierr
     kinds --> safety
+    kinds --> runtime
 
     resources --> engine
     resources --> kinds

@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -166,6 +167,10 @@ type Kind struct {
 	// Matching: any element of the string array at Path has Prefix.
 	// Independent of the Columns axes: it filters rows, not cells.
 	SystemFilter *PrefixFilter
+	// Capability is this kind's capability requirement (the zero value means
+	// none). Declared once here; get/patch/delete each copy it into their own
+	// Descriptor so the manifest, help, and runtime pipeline cannot drift.
+	Capability runtime.CapabilityRequirement
 }
 
 // PrefixFilter marks objects whose string-array field at Path carries an

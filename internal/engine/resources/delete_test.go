@@ -387,3 +387,14 @@ func TestWaitFlagWiredFromKindRow(t *testing.T) {
 		assert.False(t, mustKind(t, name).WaitFailsOnStalled, name)
 	}
 }
+
+// TestDeleteDescribeInheritsCapability pins the requirement-inheritance
+// rule: a kind row's Capability flows unchanged into the generated delete
+// command's Descriptor.
+func TestDeleteDescribeInheritsCapability(t *testing.T) {
+	t.Parallel()
+	req := runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}
+	k := kinds.Kind{Name: "widget", Aliases: []string{"widgets"}, Deletable: true, Capability: req}
+	d := NewDelete(k, nil).Describe()
+	assert.Equal(t, req, d.Capability)
+}

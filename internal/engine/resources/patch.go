@@ -62,6 +62,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Network:      true,
 		Auth:         true,
 		ProjectScope: kinds.ProjectScopable(c.k),
+		Capability:   c.k.Capability,
 	}
 }
 

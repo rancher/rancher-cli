@@ -430,3 +430,14 @@ func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "deployment not found: web", ce.Message)
 	assert.NotEmpty(t, ce.Hint, "curated exec-phase NOT_FOUND must carry a list hint")
 }
+
+// TestPatchDescribeInheritsCapability pins the requirement-inheritance rule:
+// a kind row's Capability flows unchanged into the generated patch command's
+// Descriptor.
+func TestPatchDescribeInheritsCapability(t *testing.T) {
+	t.Parallel()
+	req := runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}
+	k := kinds.Kind{Name: "widget", Aliases: []string{"widgets"}, Capability: req}
+	d := NewPatch(k, nil, nil).Describe()
+	assert.Equal(t, req, d.Capability)
+}

@@ -15,6 +15,33 @@ const (
 	Local    CommandType = "local"    // local config/creds; may call server; no Plan/gates
 )
 
+// CapabilityTier is the enum of gated capability tiers a command or kind may
+// require. One value exists today; a future tier is added here, never as a
+// second boolean. The enum is an extension POINT, not a claim of shared
+// machinery: today's detector, outcomes, and error shape are deliberately
+// Prime-specific, and a second tier brings its own decide function, outcome,
+// and pipeline branch — the type exists so that addition is type-checked.
+type CapabilityTier string
+
+// CapabilityPrime is the only capability tier today: the command requires a
+// Rancher Prime-licensed server.
+const CapabilityPrime CapabilityTier = "prime"
+
+// CapabilityRequirement is the single structured value a Prime-backed kind
+// row or a bespoke command's Descriptor declares once. Every generated verb
+// derives it from the kind row; the manifest's prime marker, help wording,
+// and COMMANDS.md label are all projections of this value, never separately
+// authored booleans. The zero value means no requirement.
+type CapabilityRequirement struct {
+	Tier CapabilityTier
+	// Feature is the detector key: the v3 Feature resource name the runtime
+	// checker probes. Required whenever Tier is set.
+	Feature string
+}
+
+// IsSet reports whether a capability requirement is declared at all.
+func (r CapabilityRequirement) IsSet() bool { return r.Tier != "" }
+
 // ArgSpec describes a positional/named argument for the schema manifest.
 type ArgSpec struct {
 	Name     string   `json:"name"`
@@ -50,6 +77,11 @@ type Descriptor struct {
 	// true for generated per-kind commands whose kind is
 	// kinds.ProjectScopable; false (the zero value) for every fixed command.
 	ProjectScope bool `json:"projectScope,omitempty"`
+	// Capability is the command's capability requirement, if any (the zero
+	// value means none). Generated verbs copy this from their kind row; a
+	// bespoke command declares it here directly. Registry.Validate rejects a
+	// set Tier with no detector Feature key and an unknown Tier value.
+	Capability CapabilityRequirement
 	// SuccessExitCodes declares every exit status a SUCCESSFUL result may
 	// carry. Empty means {0}. When declared it must contain 0 exactly once;
 	// additional values must be positive, unique, and disjoint from the
