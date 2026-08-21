@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Runs every wire-input fuzz target sequentially (Go allows one -fuzz
+# pattern per invocation), each under an external wall-clock watchdog.
+#
+# The Go fuzzer has no per-input hang timeout (go#48157) and the test
+# binary's own -timeout is INERT during the fuzz phase (verified on
+# go1.26.5: a hanging input runs to fuzztime and exits green). Detection is
+# therefore this external watchdog, not -timeout.
+#
+# Budget model, four named parts — never one blob:
+#   FUZZTIME (the actual fuzzing) + fuzzminimizetime (explicit, below) +
+#   a fixed startup/shutdown allowance (cold compile, baseline-corpus
+#   replay, worker teardown) = the outer watchdog deadline. A failure found
+#   at the end of the fuzz budget still gets its full minimization and its
+#   testdata write before any kill.
+FUZZTIME="${FUZZTIME:-30s}"
+MINIMIZETIME=60  # seconds; passed to go test as -fuzzminimizetime
+ALLOWANCE=120    # seconds; cold compile + baseline replay + teardown
+
+# FUZZTIME grammar is deliberately restricted to <integer>(s|m): Go accepts
+# fuller durations ("1h30s") and an iteration count ("1000x"), but the
+# watchdog deadline below is plain shell arithmetic and cannot parse those.
+if ! [[ "${FUZZTIME}" =~ ^[0-9]+[sm]$ ]]; then
+  echo "error: FUZZTIME must match <integer>(s|m) (e.g. 30s, 5m); got '${FUZZTIME}'" >&2
+  exit 1
+fi
+
+fuzz_seconds() {
+  # 10#: force decimal — a leading-zero value ("08s") passes the regex but
+  # would otherwise be parsed as octal by shell arithmetic and rejected
+  # with an internal diagnostic instead of a validation error.
+  local n="${FUZZTIME%[sm]}"
+  case "${FUZZTIME}" in
+    *s) echo "$(( 10#$n ))" ;;
+    *m) echo "$(( 10#$n * 60 ))" ;;
+  esac
+}
+
+# run_with_watchdog label deadline_seconds cmd...
+#
+# Runs cmd under Bash job control: `set -m` inside the subshell puts the
+# background job in its OWN process group with PGID == its PID (verified on
+# stock Darwin Bash — no setsid, which Darwin does not ship). If cmd is
+# still running at deadline_seconds, the watchdog negative-PID-kills the
+# whole group (TERM, then KILL after a short grace) and the run is reported
+# as a distinct, timeout-specific failure (exit 124, a
+# "watchdog: ... exceeded ...s" message) — never conflated with an ordinary
+# go test property failure, whose real exit status is preserved. An EXIT
+# trap reaps both the command and the watchdog's own sleep on every path.
+run_with_watchdog() {
+  local label="$1" deadline="$2"
+  shift 2
+  local killed_flag status
+  killed_flag="$(mktemp)"
+  rm -f "${killed_flag}"
+
+  status=0
+  (
+    set -m
+
+    # Capture-and-reassert $?: an EXIT trap's own commands (the kills below)
+    # would otherwise silently overwrite the subshell's real exit status
+    # with their own (e.g. "no such process" once the target already
+    # exited) — a bash trap-status gotcha, not exercised by bash -n/-x
+    # inspection alone.
+    # shellcheck disable=SC2329 # invoked indirectly via `trap ... EXIT` below
+    # Every kill below targets a process (group) that may already be gone —
+    # under errexit, a failing kill is a command failure like any other and
+    # would abort the trap (or the main body) before its cleanup finished.
+    reap_and_reexit() {
+      local ec=$?
+      kill -- "-${cmd_pid}" 2>/dev/null || true
+      # Group-kill, never bare-PID: the watchdog is a subshell whose
+      # deadline `sleep` is a CHILD in the same process group — killing
+      # only the subshell PID orphans the sleep to PID 1 for up to the
+      # full deadline (and can keep CI step pipes alive after exit).
+      kill -- "-${watchdog_pid}" 2>/dev/null || true
+      exit "${ec}"
+    }
+
+    "$@" &
+    cmd_pid=$!
+
+    (
+      sleep "${deadline}"
+      : >"${killed_flag}"
+      kill -TERM -- "-${cmd_pid}" 2>/dev/null || true
+      sleep 5
+      kill -KILL -- "-${cmd_pid}" 2>/dev/null || true
+    ) &
+    watchdog_pid=$!
+    if [ -n "${WATCHDOG_PID_FILE:-}" ]; then
+      echo "${watchdog_pid}" >"${WATCHDOG_PID_FILE}"
+    fi
+
+    trap reap_and_reexit EXIT
+
+    cmd_status=0
+    wait "${cmd_pid}" || cmd_status=$?
+    kill -- "-${watchdog_pid}" 2>/dev/null || true
+    wait "${watchdog_pid}" 2>/dev/null || true
+    exit "${cmd_status}"
+  ) || status=$?
+
+  if [ -f "${killed_flag}" ]; then
+    rm -f "${killed_flag}"
+    echo "watchdog: ${label} exceeded ${deadline}s" >&2
+    return 124
+  fi
+  rm -f "${killed_flag}"
+  return "${status}"
+}
+
+TARGETS=(
+  "FuzzOwnerTargetRoundTrip|./internal/engine/inspect"
+  "FuzzCanonicalServerURL|./credhelper"
+  "FuzzParseArgTail|./surface/cli"
+  "FuzzConfigLoad|./internal/config"
+  "FuzzScrubPaths|./internal/engine"
+)
+
+run_fuzz_target() {
+  local name="$1" pkg="$2"
+  local deadline=$(( $(fuzz_seconds) + MINIMIZETIME + ALLOWANCE ))
+  echo "==> ${name} (${pkg}) fuzztime=${FUZZTIME} fuzzminimizetime=${MINIMIZETIME}s deadline=${deadline}s"
+  run_with_watchdog "${name}" "${deadline}" \
+    go test -run '^$' -fuzz "^${name}\$" -fuzztime "${FUZZTIME}" -fuzzminimizetime "${MINIMIZETIME}s" "${pkg}"
+}
+
+# selftest exercises the watchdog mechanism itself with dummy commands,
+# asserting its three distinct outcomes: ordinary success, an ordinary
+# failure (real exit status preserved), and a hanging PROCESS TREE (proving
+# group-kill, not just single-PID kill).
+selftest() {
+  # Each case also proves the watchdog timer's whole process GROUP is
+  # gone afterward — a bare-PID kill would leave the deadline sleep
+  # orphaned to PID 1 while the case itself still reported success.
+  WATCHDOG_PID_FILE="$(mktemp)"
+
+  assert_watchdog_reaped() {
+    local label="$1" wd
+    wd="$(cat "${WATCHDOG_PID_FILE}")"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if ! kill -0 -- "-${wd}" 2>/dev/null; then
+        return 0
+      fi
+      sleep 0.2
+    done
+    echo "selftest FAILED: ${label} left watchdog group ${wd} running (orphaned timer)" >&2
+    return 1
+  }
+
+  echo "==> selftest: success case"
+  if ! run_with_watchdog "selftest-success" 5 bash -c 'exit 0'; then
+    echo "selftest FAILED: success case did not return 0" >&2
+    return 1
+  fi
+  assert_watchdog_reaped "success case" || return 1
+
+  echo "==> selftest: ordinary failure case (real status preserved)"
+  status=0
+  run_with_watchdog "selftest-failure" 5 bash -c 'exit 7' || status=$?
+  if [ "${status}" -ne 7 ]; then
+    echo "selftest FAILED: failure case returned ${status}, want 7" >&2
+    return 1
+  fi
+  assert_watchdog_reaped "failure case" || return 1
+
+  echo "==> selftest: hanging process tree (group-kill, distinct status)"
+  status=0
+  run_with_watchdog "selftest-hang" 2 bash -c 'sleep 100 & wait' || status=$?
+  if [ "${status}" -ne 124 ]; then
+    echo "selftest FAILED: hang case returned ${status}, want 124" >&2
+    return 1
+  fi
+  assert_watchdog_reaped "hang case" || return 1
+
+  rm -f "${WATCHDOG_PID_FILE}"
+  echo "==> selftest: all three outcomes distinct, correct, and reaped"
+}
+
+if [ "${1:-}" = "--selftest" ]; then
+  selftest
+  exit $?
+fi
+
+for t in "${TARGETS[@]}"; do
+  run_fuzz_target "${t%%|*}" "${t#*|}"
+done
