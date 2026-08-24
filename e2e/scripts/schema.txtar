@@ -21,7 +21,7 @@ jsonquery schema.json 'data.commands.#' 169
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
-jsonquery schema.json 'data.errorCodes.#' 12
+jsonquery schema.json 'data.errorCodes.#' 13
 
 # --all conflicts with narrowing
 ! exec rancher schema get pod --all -o json

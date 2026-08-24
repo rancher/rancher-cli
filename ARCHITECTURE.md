@@ -63,6 +63,7 @@ what drifted the previous revision of this doc).
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery clients) aimed at the Rancher k8s proxy endpoint. |
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows, by `internal/client/provider`'s unauthenticated `/rancherversion` probe, and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
+| `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, and picks the candidate trust anchor from the chain the failed handshake itself already observed — no separate probe dial. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
@@ -102,6 +103,7 @@ graph TD
     provider["internal/client/provider"]
     kube["internal/client/kube"]
     httpx["internal/client/httpx"]
+    tlstrust["internal/client/tlstrust"]
     output["internal/output"]
     clierr["internal/clierr"]
     ui["internal/ui"]
@@ -144,6 +146,7 @@ graph TD
     commands --> token
     commands --> kube
     commands --> httpx
+    commands --> tlstrust
     commands --> clierr
     commands --> skillinstall
 
@@ -243,6 +246,8 @@ graph TD
 
     kube --> config
     kube --> clierr
+
+    tlstrust --> clierr
 
     config --> clierr
     config --> credhelper

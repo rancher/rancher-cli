@@ -59,6 +59,7 @@
     "NOT_LOGGED_IN": 2,
     "PRIME_REQUIRED": 9,
     "RBAC": 6,
+    "TLS_TRUST": 10,
     "VALIDATION": 2
   },
   "groups": [

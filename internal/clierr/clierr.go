@@ -18,6 +18,7 @@ const (
 	CodeValidation           = "VALIDATION"
 	CodeGeneric              = "GENERIC"
 	CodePrimeRequired        = "PRIME_REQUIRED"
+	CodeTLSTrust             = "TLS_TRUST"
 )
 
 // LearnMorePrimeURL is the one stable, product-owned destination a
@@ -48,6 +49,7 @@ var exitCodes = map[string]int{
 	// (drift detected), and SuccessExitCodes must stay disjoint from this map.
 	CodeLockTimeout:   8,
 	CodePrimeRequired: 9,
+	CodeTLSTrust:      10,
 	CodeGeneric:       1,
 }
 
@@ -120,7 +122,7 @@ func AllCodes() []string {
 	return []string{
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
-		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeGeneric,
+		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust, CodeGeneric,
 	}
 }
 

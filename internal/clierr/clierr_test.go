@@ -23,6 +23,7 @@ func TestExitCodeMapping(t *testing.T) {
 		CodeGeneric:              1,
 		CodeNotLoggedIn:          2,
 		CodePrimeRequired:        9,
+		CodeTLSTrust:             10,
 	}
 	for code, want := range cases {
 		t.Run(code, func(t *testing.T) {
@@ -54,13 +55,14 @@ func TestAllCodesNonEmpty(t *testing.T) {
 // TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count pins the full enum: 10 originals plus
-// LOCK_TIMEOUT and PRIME_REQUIRED.
+// LOCK_TIMEOUT, PRIME_REQUIRED, and TLS_TRUST.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 12)
+	assert.Len(t, codes, 13)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
+	assert.Contains(t, codes, CodeTLSTrust)
 }
 
 // TestPrimeRequiredDisjointFromSuccessExits pins exit 9's explicit
