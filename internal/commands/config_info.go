@@ -16,7 +16,7 @@ type configInfoCmd struct{ dir string }
 // (env > config > default auto), with the auto-probe pin when one exists.
 // This is the one place that answers "which credential store am I actually
 // using": an env-supplied store never persists into config.yaml, so neither
-// the file nor `config get-servers` can reveal it (vault-helper live
+// the file nor `config list-servers` can reveal it (vault-helper live
 // exercise, S-05). dir carries the same flag > env > XDG resolution every
 // config command receives from resolveDeps.
 func NewConfigInfo(dir string) runtime.Command { return &configInfoCmd{dir: dir} }

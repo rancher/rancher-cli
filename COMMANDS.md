@@ -32,7 +32,7 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `config get-servers` | List configured servers |
+| `config list-servers` | List configured servers |
 | `config use-server [name]` | Switch the current server |
 | `config delete-server <name>` | Remove a server and its stored credentials — does NOT revoke the server-side token |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |

@@ -34,11 +34,11 @@ func (s serverList) Rows() [][]string {
 
 type serverLsCmd struct{ dir string }
 
-// NewServerLs builds `config get-servers` (local).
+// NewServerLs builds `config list-servers` (local).
 func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
 
 func (serverLsCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "config get-servers", Usage: "List configured servers", CommandType: runtime.Local}
+	return runtime.Descriptor{Name: "config list-servers", Usage: "List configured servers", CommandType: runtime.Local}
 }
 func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	cfg, err := config.Load(config.FilePath(s.dir))

@@ -19,7 +19,7 @@ cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config path -o json
 jsonquery stdout data.exists true
 
-exec rancher config get-servers -o json
+exec rancher config list-servers -o json
 jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.name acme
 
@@ -38,7 +38,7 @@ exec rancher config delete-server acme -o json
 jsonquery stdout data.server acme
 jsonquery stdout data.currentServerCleared true
 
-exec rancher config get-servers -o json
+exec rancher config list-servers -o json
 jsonquery stdout 'data.#' 0
 
 exec rancher config status -o json

@@ -107,7 +107,7 @@
     {
       "commands": [
         {
-          "name": "config get-servers",
+          "name": "config list-servers",
           "usage": "List configured servers"
         },
         {

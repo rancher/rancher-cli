@@ -23,7 +23,7 @@ stderr 'keychain unavailable; credentials will be stored in plaintext'
 exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
 grep '^file$' $RANCHER_CLI_CONFIG_DIR/credstore-pin
 
-exec rancher config get-servers
+exec rancher config list-servers
 stdout 'NAME'
 stdout 'e2e'
 ! stderr 'keychain unavailable'

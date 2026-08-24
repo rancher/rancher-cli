@@ -260,7 +260,7 @@
       "auth": false,
       "commandType": "local",
       "group": "config",
-      "name": "config get-servers",
+      "name": "config list-servers",
       "network": false,
       "toolset": "core",
       "usage": "List configured servers"
@@ -8498,7 +8498,7 @@
     },
     {
       "commands": [
-        "config get-servers",
+        "config list-servers",
         "config use-server",
         "config delete-server",
         "config path",

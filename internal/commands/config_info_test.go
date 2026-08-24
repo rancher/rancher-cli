@@ -158,7 +158,7 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 
 // TestConfigInfoEffectiveStoreSources pins the env > config > default
 // resolution the command exists to make visible (vault-helper exercise
-// S-05: an env-supplied store is invisible in config.yaml and get-servers).
+// S-05: an env-supplied store is invisible in config.yaml and list-servers).
 // No t.Parallel(): t.Setenv.
 func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 	t.Run("env wins and is named as the source", func(t *testing.T) {
