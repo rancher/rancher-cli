@@ -345,7 +345,10 @@ func TestLoginStripsUserinfoAndQuery(t *testing.T) {
 	assert.Equal(t, "https://rancher.ex", cfg.Servers["acme"].URL)
 }
 
-func TestLoginDefaultName(t *testing.T) {
+// TestLoginDefaultNameIsHost makes sure a nameless login names its entry
+// after the canonical host, so two nameless logins to different servers
+// never share (and silently replace) one entry.
+func TestLoginDefaultNameIsHost(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
@@ -353,7 +356,240 @@ func TestLoginDefaultName(t *testing.T) {
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "https://r.ex", cfg.Servers["default"].URL)
+	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL)
+	assert.Equal(t, "r.ex", cfg.CurrentServer)
+}
+
+// TestLoginNamelessLoginsToDistinctServersKeepBothEntries pins the clobber
+// fix: the second nameless login must not replace the first server's entry
+// (the old literal-"default" behavior lost it).
+func TestLoginNamelessLoginsToDistinctServersKeepBothEntries(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	first := args{s: map[string]string{"server": "https://one.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	second := args{s: map[string]string{"server": "https://two.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://one.ex", cfg.Servers["one.ex"].URL)
+	assert.Equal(t, "https://two.ex", cfg.Servers["two.ex"].URL)
+	assert.Equal(t, "two.ex", cfg.CurrentServer)
+}
+
+// TestLoginNamelessReloginReusesExistingNamedEntry: a nameless re-login to a
+// URL that already has a user-named entry refreshes that entry in place —
+// never a host-named duplicate of the same server.
+func TestLoginNamelessReloginReusesExistingNamedEntry(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	named := args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), named, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://r.ex", cfg.Servers["prod"].URL)
+	assert.NotContains(t, cfg.Servers, "r.ex", "no host-named duplicate of an already-named server")
+	assert.Equal(t, "prod", cfg.CurrentServer)
+}
+
+// TestLoginNamelessReuseIsSpellingInsensitive: a stored URL that is not
+// byte-identical to a fresh canonicalization (hand-edited config, an entry
+// from before canonicalization) still matches — the reuse comparison is
+// config.SameServerURL, never ==.
+func TestLoginNamelessReuseIsSpellingInsensitive(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	named := args{s: map[string]string{"server": "https://Rancher.EX", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), named, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	// Force a non-canonical stored spelling, as a hand edit would.
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers["prod"] = config.Server{URL: "https://Rancher.EX"}
+	require.NoError(t, cfg.Write())
+
+	nameless := args{s: map[string]string{"server": "https://rancher.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.NotContains(t, cfg.Servers, "rancher.ex", "no duplicate entry for a differently spelled same server")
+	assert.Equal(t, "prod", cfg.CurrentServer)
+}
+
+// TestLoginSameHostDifferentSchemeGetsDistinctEntries: http://X and
+// https://X are different server identities — the derived-name ladder gives
+// the second one a scheme-prefixed entry instead of refusing or clobbering.
+func TestLoginSameHostDifferentSchemeGetsDistinctEntries(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	first := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	second := args{s: map[string]string{"server": "http://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL)
+	assert.Equal(t, "http://r.ex", cfg.Servers["http-r.ex"].URL)
+}
+
+// TestLoginDerivedNameSkipsLegacyReservedPrefix: a host literally named
+// legacy with a port would derive an entry name inside the legacy shim's
+// reserved "legacy:" cache-slot namespace; the ladder skips to the
+// scheme-prefixed candidate instead.
+func TestLoginDerivedNameSkipsLegacyReservedPrefix(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	in := args{s: map[string]string{"server": "https://legacy:8443"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.NotContains(t, cfg.Servers, "legacy:8443")
+	assert.Equal(t, "https://legacy:8443", cfg.Servers["https-legacy:8443"].URL)
+}
+
+// TestLoginNamelessReuseSkipsLegacyReservedEntry: a hand-edited entry inside
+// the legacy shim's reserved namespace is never reused even when its URL
+// matches — the login lands on a safe derived name and leaves the reserved
+// key untouched.
+func TestLoginNamelessReuseSkipsLegacyReservedEntry(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers[config.LegacyCachePrefix+"8443"] = config.Server{URL: "https://legacy:8443"}
+	require.NoError(t, cfg.Write())
+
+	in := args{s: map[string]string{"server": "https://legacy:8443"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://legacy:8443", cfg.Servers["https-legacy:8443"].URL, "login lands on the safe derived name")
+	assert.Equal(t, "https://legacy:8443", cfg.Servers[config.LegacyCachePrefix+"8443"].URL, "the reserved hand-edited entry is untouched")
+	assert.Equal(t, "https-legacy:8443", cfg.CurrentServer)
+}
+
+// TestLoginReloginPreservesStoredCA: a re-login that reuses an entry (token
+// expiry is the everyday case) must never erase the CA the entry was
+// verified with; only an explicit --cacert replaces it.
+func TestLoginReloginPreservesStoredCA(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	withCA := args{s: map[string]string{"server": "https://r.ex", "name": "prod", "cacert": "-----BEGIN CERTIFICATE-----fake"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), withCA, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+
+	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----fake", cfg.Servers["prod"].CA, "a nameless re-login must not erase the stored CA")
+
+	replace := args{s: map[string]string{"server": "https://r.ex", "cacert": "-----BEGIN CERTIFICATE-----new"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), replace, stdinPrompter("id3:sec3\n"))
+	require.NoError(t, err)
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----new", cfg.Servers["prod"].CA, "an explicit --cacert replaces the stored CA")
+}
+
+// TestLoginVersionProbeUsesPersistedCA: the post-login version probe must
+// dial with the CA the entry was persisted with — on a nameless re-login
+// that preserves a stored CA, the raw --cacert flag is empty and would build
+// a system-roots client that fails against the custom-CA server.
+func TestLoginVersionProbeUsesPersistedCA(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	var probeCA string
+	cmd := &loginCmd{
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		rancherVersion: func(_ context.Context, eff config.Effective) (string, error) {
+			probeCA = eff.CA
+			return "v2.20.0", nil
+		},
+	}
+	withCA := args{s: map[string]string{"server": "https://r.ex", "name": "prod", "cacert": "-----BEGIN CERTIFICATE-----fake"}, b: map[string]bool{"token-stdin": true}}
+	_, err := cmd.Execute(t.Context(), withCA, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	require.Equal(t, "-----BEGIN CERTIFICATE-----fake", probeCA)
+
+	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = cmd.Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----fake", probeCA,
+		"the probe must use the preserved stored CA, never the empty --cacert flag")
+}
+
+// TestLoginNameCollisionHintNamesTheEntry: the refusal hint must be
+// copy-paste valid — auth logout takes the entry NAME positionally and has
+// no --server flag.
+func TestLoginNameCollisionHintNamesTheEntry(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Hint, "rancher auth logout prod")
+	assert.NotContains(t, ce.Hint, "--server", "auth logout has no --server flag; the hint must be valid verbatim")
+}
+
+// TestLoginNameCollisionRefusesBeforeAuthentication: the refusal fires
+// before any token is read or auth flow launched — with an empty stdin the
+// collision message (not a missing-token error) must come back, proving the
+// pre-auth check ordered first.
+func TestLoginNameCollisionRefusesBeforeAuthentication(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter(""))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Message, `"prod" already points at`, "the collision refusal must precede token reading")
+}
+
+// TestLoginNameCollisionWithDifferentURLRefuses: an explicit --name that
+// matches an entry pointing at a DIFFERENT server is a structured refusal,
+// never an overwrite.
+func TestLoginNameCollisionWithDifferentURLRefuses(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
+	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, `"prod" already points at https://one.ex`)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://one.ex", cfg.Servers["prod"].URL, "the existing entry is untouched")
+	assert.Equal(t, "prod", cfg.CurrentServer)
 }
 
 func TestLoginEmptyPromptToken(t *testing.T) {

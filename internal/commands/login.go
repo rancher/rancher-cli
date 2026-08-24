@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -45,7 +46,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Required: true, Desc: "Rancher server `url` (scheme required)"},
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
-			{Name: "name", Type: "string", Desc: "`name` for the saved server entry"},
+			{Name: "name", Type: "string", Desc: "`name` for the saved server entry; defaults to the existing entry for this URL, else the server's host"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
@@ -90,6 +91,17 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "invalid server URL: "+server)
 	}
 
+	// Read-only collision precheck BEFORE any interactive/network auth: a
+	// conflicting --name must not launch an OAuth/SAML flow or mint a token
+	// that can never be stored. Advisory only — the same decision repeats
+	// authoritatively under the write lock; a load error here is ignored
+	// (the locked path surfaces it).
+	if cfg, lerr := config.Load(config.FilePath(l.dir)); lerr == nil {
+		if _, ce := resolveServerEntryName(cfg.Servers, in.String("name"), serverURL); ce != nil {
+			return runtime.Result{}, ce
+		}
+	}
+
 	// Auth is outside the lock: interactive/network flows must not hold the
 	// config write lock while waiting for user input or a network response —
 	// that would starve every concurrent command.
@@ -105,21 +117,40 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	}
 
 	name := in.String("name")
-	if name == "" {
-		name = "default"
-	}
 
 	// Load → decide → write under the config write lock. The store is
 	// resolved from the policy read HERE, not from the dependency-resolution
 	// snapshot, which can predate a concurrent policy change
 	// (config-write-lock plan, review issue 2).
 	var warnings []string
+	// effectiveCA escapes the closure: the version probe below must use the
+	// CA the entry was actually persisted with (a nameless re-login
+	// preserves the stored CA), never the raw --cacert flag, which is empty
+	// exactly in that everyday case.
+	var effectiveCA string
 	if err := config.WithLock(ctx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
 		if err != nil {
 			return err
 		}
-		cfg.Servers[name] = config.Server{URL: serverURL, CA: in.String("cacert")}
+		// The authoritative naming/collision decision, under the write
+		// lock. A read-only twin ran before authentication (below, in
+		// Execute) so a doomed login never launches an auth flow; state
+		// may have changed since, so this one decides.
+		resolved, ce := resolveServerEntryName(cfg.Servers, name, serverURL)
+		if ce != nil {
+			return ce
+		}
+		name = resolved
+		// Only an explicit --cacert replaces a stored CA: a re-login that
+		// reuses an entry (token expiry is the everyday case) must never
+		// erase the CA the entry was verified with.
+		ca := in.String("cacert")
+		if existing, ok := cfg.Servers[name]; ok && ca == "" {
+			ca = existing.CA
+		}
+		effectiveCA = ca
+		cfg.Servers[name] = config.Server{URL: serverURL, CA: ca}
 		cfg.CurrentServer = name
 
 		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
@@ -163,7 +194,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		"server": name, "url": serverURL,
 	}}
 	res.Warnings = warnings
-	versionEff := config.Effective{ServerName: name, URL: serverURL, CA: in.String("cacert"), Token: token}
+	versionEff := config.Effective{ServerName: name, URL: serverURL, CA: effectiveCA, Token: token}
 	if warning := l.warnBelowMinVersion(ctx, versionEff); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
 	}
@@ -258,4 +289,58 @@ func promptForToken(ctx context.Context, server string, in runtime.Input, p runt
 		return "", clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
 			WithHint("re-run and answer 1 or 2")
 	}
+}
+
+// resolveServerEntryName decides which entry a login writes to.
+// Explicit name: allowed when the entry is absent or already points at
+// the same canonical server (config.SameServerURL — stored spellings
+// are not guaranteed byte-identical to a fresh canonicalization); a
+// different server is a refusal, never an overwrite. Nameless: reuse
+// the lexicographically first entry with the same canonical URL (a
+// user-chosen name is never shadowed by a derived duplicate), else the
+// first free derived candidate — host[:port], then scheme-host[:port]
+// (http://X and https://X are different server identities and need
+// different entries) — skipping any candidate the legacy shim's
+// reserved "legacy:" name prefix would claim (a host literally named
+// legacy with a port would collide with its cache-slot namespace).
+func resolveServerEntryName(servers map[string]config.Server, explicit, serverURL string) (string, *clierr.Error) {
+	refusal := func(name, existingURL string) *clierr.Error {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server entry %q already points at %s", name, existingURL)).
+			WithHint(fmt.Sprintf("pick another name (--name), or remove the entry first: rancher auth logout %s", name))
+	}
+	if explicit != "" {
+		if existing, ok := servers[explicit]; ok && !config.SameServerURL(existing.URL, serverURL) {
+			return "", refusal(explicit, existing.URL)
+		}
+		return explicit, nil
+	}
+	match := ""
+	for entryName, s := range servers {
+		// A hand-edited entry inside the legacy shim's reserved namespace
+		// is never reused — the CLI must not write into it even when its
+		// URL matches (the derive ladder and the explicit --name check
+		// enforce the same guard on their paths).
+		if config.IsLegacyCacheSlot(entryName) {
+			continue
+		}
+		if config.SameServerURL(s.URL, serverURL) && (match == "" || entryName < match) {
+			match = entryName
+		}
+	}
+	if match != "" {
+		return match, nil
+	}
+	scheme, host, _ := strings.Cut(serverURL, "://")
+	for _, candidate := range []string{host, scheme + "-" + host} {
+		if config.IsLegacyCacheSlot(candidate) {
+			continue
+		}
+		if _, taken := servers[candidate]; !taken {
+			return candidate, nil
+		}
+	}
+	return "", clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("cannot derive an entry name for %s", serverURL)).
+		WithHint("pass --name <name>")
 }

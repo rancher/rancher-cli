@@ -122,7 +122,7 @@
           "type": "bool"
         },
         {
-          "desc": "`name` for the saved server entry",
+          "desc": "`name` for the saved server entry; defaults to the existing entry for this URL, else the server's host",
           "name": "name",
           "type": "string"
         },
