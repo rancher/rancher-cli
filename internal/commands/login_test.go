@@ -549,8 +549,9 @@ func TestLoginNameCollisionHintNamesTheEntry(t *testing.T) {
 	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Hint, "rancher auth logout prod")
-	assert.NotContains(t, ce.Hint, "--server", "auth logout has no --server flag; the hint must be valid verbatim")
+	assert.Contains(t, ce.Hint, "rancher config delete-server prod",
+		"delete-server removes the entry; auth logout only clears credentials and would leave the collision in place")
+	assert.NotContains(t, ce.Hint, "--server", "the hint must be valid verbatim")
 }
 
 // TestLoginNameCollisionRefusesBeforeAuthentication: the refusal fires

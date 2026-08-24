@@ -307,7 +307,7 @@ func resolveServerEntryName(servers map[string]config.Server, explicit, serverUR
 	refusal := func(name, existingURL string) *clierr.Error {
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("server entry %q already points at %s", name, existingURL)).
-			WithHint(fmt.Sprintf("pick another name (--name), or remove the entry first: rancher auth logout %s", name))
+			WithHint(fmt.Sprintf("pick another name (--name), or delete the entry first: rancher config delete-server %s", name))
 	}
 	if explicit != "" {
 		if existing, ok := servers[explicit]; ok && !config.SameServerURL(existing.URL, serverURL) {
