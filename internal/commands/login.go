@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -28,6 +30,18 @@ type loginCmd struct {
 	// than writing directly to stderr. Replaces the removed store field (the
 	// dependency-resolution store snapshot this race was about).
 	newStore func(policy, dir string) (config.CredStore, string, error)
+	// tlsPreflight verifies the server's certificate against caPEM (or
+	// system roots when caPEM is empty) before any credential or config is
+	// persisted — the every-https-login-path check that closes the gap
+	// where a token-stdin/pasted-token login made no network call at all
+	// before writing an entry (the only unconditional post-login request,
+	// warnBelowMinVersion, degrades every connection failure to a warning).
+	// nil is a valid, deliberately inert value: tests that do not exercise
+	// TLS behavior leave it unset and Execute skips the check, the same
+	// nil-is-inert convention rancherVersion already uses. NewLogin always
+	// wires the real check; only NewLogin's production wiring result can
+	// reach a real server.
+	tlsPreflight func(ctx context.Context, serverURL, caPEM string) (string, error)
 }
 
 // NewLogin builds the `auth login` command (local). The store is resolved
@@ -35,7 +49,43 @@ type loginCmd struct {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, rancherVersion: provider.RancherVersion}
+	return &loginCmd{
+		dir: dir, newStore: config.OpenStoreWithNotice, rancherVersion: provider.RancherVersion,
+		tlsPreflight: tlsPreflightDefault,
+	}
+}
+
+// tlsPreflightDefault performs the every-https-path TLS preflight: an
+// unauthenticated GET against the same /rancherversion endpoint the PS-8
+// version probe uses, built with caPEM as the trusted root (system roots
+// when empty). Only the TLS handshake matters here — any response status
+// proves the certificate verified. A classified certificate-verification
+// failure returns tlstrust's structured TLS_TRUST error. Every other
+// failure (DNS, connection refused, timeout — the server is unreachable for
+// reasons that have nothing to do with certificate trust) is deliberately
+// NOT surfaced as a login failure here: that stays the existing warn-only
+// posture the post-login version probe already has for an unreachable
+// server, unchanged by this preflight. This narrows the check to exactly
+// the gap the design targets (an untrusted certificate silently accepted)
+// rather than making login stricter about plain connectivity than it has
+// ever been.
+func tlsPreflightDefault(ctx context.Context, serverURL, caPEM string) (string, error) {
+	// One primitive owns the GET /rancherversion round trip (request
+	// construction, CA resolution, timeout, non-200 and malformed-body
+	// handling): provider.RancherVersion — the preflight only adds the
+	// TLS-failure classification on top. A certificate failure returns the
+	// structured TLS_TRUST error; every other failure (DNS, refused,
+	// timeout, non-JSON body) keeps the existing warn-only posture for an
+	// unreachable server. The version comes back on success so the
+	// post-login floor check never re-fetches the same endpoint.
+	v, err := provider.RancherVersion(ctx, config.Effective{URL: serverURL, CA: caPEM})
+	if err != nil {
+		if ce := tlstrust.Classify(err, config.ServerHost(serverURL), time.Now()); ce != nil {
+			return "", ce
+		}
+		return "", nil
+	}
+	return v, nil
 }
 
 func (loginCmd) Describe() runtime.Descriptor {
@@ -91,21 +141,83 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "invalid server URL: "+server)
 	}
 
-	// Read-only collision precheck BEFORE any interactive/network auth: a
-	// conflicting --name must not launch an OAuth/SAML flow or mint a token
-	// that can never be stored. Advisory only — the same decision repeats
-	// authoritatively under the write lock; a load error here is ignored
-	// (the locked path surfaces it).
-	if cfg, lerr := config.Load(config.FilePath(l.dir)); lerr == nil {
-		if _, ce := resolveServerEntryName(cfg.Servers, in.String("name"), serverURL); ce != nil {
-			return runtime.Result{}, ce
+	// Read-only collision precheck + CA-selector resolution, both advisory,
+	// BEFORE any interactive/network auth: a conflicting --name must not
+	// launch an OAuth/SAML flow or mint a token that can never be stored,
+	// and provider auth below must dial with the CA this login would
+	// actually persist with (explicit --cacert, else the entry the naming
+	// algorithm would select's stored CA), never silently fall back to
+	// system roots. Both decisions repeat authoritatively under the write
+	// lock and are compared against this plan there; a load error here is
+	// fatal — this read feeds the trust decision.
+	preCfg, lerr := config.Load(config.FilePath(l.dir))
+	if lerr != nil {
+		// This read now feeds the TRUST decision (which stored CA backs the
+		// preflight and provider auth) — a failed load must never silently
+		// collapse to system roots for a server with a stored custom CA.
+		return runtime.Result{}, clierr.New(clierr.CodeGeneric, "reading config: "+lerr.Error())
+	}
+	servers := preCfg.Servers
+	planName, ce := resolveServerEntryName(servers, in.String("name"), serverURL)
+	if ce != nil {
+		return runtime.Result{}, ce
+	}
+	_, planExisted := servers[planName]
+	caSelector := in.String("cacert")
+	explicitCA := caSelector != ""
+	if !explicitCA && planExisted {
+		caSelector = servers[planName].CA
+	}
+	// CA resolution matters only for https: an http server never verifies
+	// a certificate, and a stale stored CA file must not break an http (or
+	// any) login that never touches TLS. The SELECTOR is still persisted
+	// unchanged either way.
+	isHTTPS := strings.HasPrefix(serverURL, "https://")
+	var caPEM string
+	var raerr error
+	if isHTTPS {
+		caPEM, raerr = config.ResolveCA(caSelector)
+	}
+	if raerr != nil {
+		if explicitCA {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+raerr.Error())
 		}
+		// A missing/unreadable STORED path fails before any handshake — no
+		// unknown-authority classification is possible, so this is a hard
+		// local error naming the entry, never a silent system-roots
+		// fallback and never a guided-trust state machine in v1.
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("reading stored CA for server entry %q: %s", planName, raerr.Error())).
+			WithHint(fmt.Sprintf("restore the file, or remove the entry and log in again with --cacert: rancher config delete-server %s", planName))
+	}
+
+	// The every-https-login-path TLS preflight runs BEFORE any
+	// authentication flow: the provider flow MINTS a live server-side
+	// token, and a preflight failing after that mint would orphan it (no
+	// local record, never revoked). Token paths gain the same check —
+	// without it they make no verified network call at all before
+	// persisting, so a self-signed server could "log in successfully" and
+	// store an entry nothing can ever use. A successful preflight also
+	// returns the server's version, saving the post-login floor probe a
+	// second round trip to the same endpoint.
+	var preflightVersion string
+	preflightRan := false
+	if isHTTPS && l.tlsPreflight != nil {
+		v, perr := l.tlsPreflight(ctx, serverURL, caPEM)
+		if perr != nil {
+			return runtime.Result{}, perr
+		}
+		preflightVersion = v
+		preflightRan = true
 	}
 
 	// Auth is outside the lock: interactive/network flows must not hold the
 	// config write lock while waiting for user input or a network response —
-	// that would starve every concurrent command.
-	token, err := resolveLoginToken(ctx, serverURL, in, p)
+	// that would starve every concurrent command. caPEM is resolved ONCE
+	// above and threaded through unchanged from here on — the provider flow
+	// must verify against the same snapshot the preflight checked, never
+	// rediscover trust independently by re-reading a path.
+	token, err := resolveLoginToken(ctx, serverURL, caPEM, in, p)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -133,24 +245,65 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		if err != nil {
 			return err
 		}
-		// The authoritative naming/collision decision, under the write
-		// lock. A read-only twin ran before authentication (below, in
-		// Execute) so a doomed login never launches an auth flow; state
-		// may have changed since, so this one decides.
+		// The authoritative naming decision, under the write lock,
+		// COMPARED AGAINST THE PRE-AUTH PLAN — authentication ran against
+		// planName's CA, so a drifted selection (a concurrent writer
+		// inserting an earlier alias) or drifted trust state (the selected
+		// entry's CA replaced or the entry deleted) must conflict, never
+		// be silently adopted: the credentials were verified under a
+		// different trust target.
 		resolved, ce := resolveServerEntryName(cfg.Servers, name, serverURL)
 		if ce != nil {
 			return ce
 		}
-		name = resolved
-		// Only an explicit --cacert replaces a stored CA: a re-login that
-		// reuses an entry (token expiry is the everyday case) must never
-		// erase the CA the entry was verified with.
-		ca := in.String("cacert")
-		if existing, ok := cfg.Servers[name]; ok && ca == "" {
-			ca = existing.CA
+		if resolved != planName {
+			return clierr.New(clierr.CodeConflict,
+				fmt.Sprintf("server entries changed during login: planned to write %q, would now write %q", planName, resolved)).
+				WithHint("re-run the login")
 		}
-		effectiveCA = ca
-		cfg.Servers[name] = config.Server{URL: serverURL, CA: ca}
+		// Existence drift conflicts on BOTH edges: a concurrently DELETED
+		// entry must never be silently resurrected with the CA snapshotted
+		// before the deletion (the explicit --name path resolves to the
+		// same name whether or not the entry exists, so the name check
+		// alone cannot catch it), and an entry APPEARING under the planned
+		// name means authentication ran under trust that is not the
+		// entry's.
+		existing, nowExists := cfg.Servers[resolved]
+		if nowExists != planExisted {
+			return clierr.New(clierr.CodeConflict,
+				fmt.Sprintf("server entry %q was %s during login", resolved,
+					map[bool]string{true: "created", false: "deleted"}[nowExists])).
+				WithHint("re-run the login")
+		}
+		if !explicitCA && nowExists && existing.CA != caSelector {
+			return clierr.New(clierr.CodeConflict,
+				fmt.Sprintf("stored CA for server entry %q changed during login", resolved)).
+				WithHint("re-run the login")
+		}
+		// Selector string matching is not enough for a PATH-valued CA:
+		// its file content can rotate under the unchanged path while the
+		// login is in flight, silently swapping the trust the next command
+		// will read for the trust this login was verified under — compare
+		// the resolved BYTES against the pre-auth snapshot, for the
+		// EXPLICIT --cacert path exactly as for a stored one (an inline
+		// PEM selector resolves to itself and can never conflict; an
+		// unresolvable path = the file vanished mid-login, the same
+		// conflict).
+		if isHTTPS && caSelector != "" {
+			nowPEM, rerr := config.ResolveCA(caSelector)
+			if rerr != nil || nowPEM != caPEM {
+				return clierr.New(clierr.CodeConflict,
+					fmt.Sprintf("CA content for server entry %q changed during login", resolved)).
+					WithHint("re-run the login")
+			}
+		}
+		name = resolved
+		// The persisted CA is exactly the selector authentication was
+		// verified under (explicit --cacert, else the planned entry's
+		// stored CA) — one precedence decision, made pre-auth, never
+		// re-derived here.
+		effectiveCA = caSelector
+		cfg.Servers[name] = config.Server{URL: serverURL, CA: caSelector}
 		cfg.CurrentServer = name
 
 		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
@@ -195,7 +348,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	}}
 	res.Warnings = warnings
 	versionEff := config.Effective{ServerName: name, URL: serverURL, CA: effectiveCA, Token: token}
-	if warning := l.warnBelowMinVersion(ctx, versionEff); warning != "" {
+	if warning := l.warnBelowMinVersion(ctx, versionEff, preflightVersion, preflightRan); warning != "" {
 		res.Warnings = append(res.Warnings, warning)
 	}
 	return res, nil
@@ -207,7 +360,19 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // unrecognized body — is folded into the same "cannot determine" posture as
 // an unparseable value (a dev/head build): this probe never turns a
 // successful login into a failure.
-func (l loginCmd) warnBelowMinVersion(ctx context.Context, eff config.Effective) string {
+func (l loginCmd) warnBelowMinVersion(ctx context.Context, eff config.Effective, known string, alreadyChecked bool) string {
+	// known is the version the TLS preflight already fetched from the same
+	// endpoint. When the preflight RAN and got no version (unreachable, or
+	// a 200 whose body is not the expected JSON), a second round trip to
+	// the identical endpoint would only reproduce the same outcome — skip
+	// it and report unknown directly.
+	if known != "" {
+		_, warning := config.EvalMinVersionSupport(known)
+		return warning
+	}
+	if alreadyChecked {
+		return config.UnknownServerVersionWarning
+	}
 	if l.rancherVersion == nil {
 		return config.UnknownServerVersionWarning
 	}
@@ -219,7 +384,7 @@ func (l loginCmd) warnBelowMinVersion(ctx context.Context, eff config.Effective)
 	return warning
 }
 
-func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
+func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
 	if in.Bool("token-stdin") {
 		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
 			return "", clierr.New(clierr.CodeValidation,
@@ -242,7 +407,7 @@ func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p r
 	// already runs its OAuth device-code/auth-code flows headlessly. Without
 	// an explicit provider, the paste-or-provider menu itself needs a TTY.
 	case p.CanPrompt() || in.String("auth-provider") != "":
-		tok, err = promptForToken(ctx, server, in, p)
+		tok, err = promptForToken(ctx, server, caPEM, in, p)
 	default:
 		return "", clierr.New(clierr.CodeValidation, "token required").
 			WithHint("pipe it via --token-stdin, or run in a terminal")
@@ -271,9 +436,9 @@ func resolveLoginToken(ctx context.Context, server string, in runtime.Input, p r
 // promptForToken offers the paste-or-provider choice (EXT-R-8): --auth-provider
 // or --auth-flow already signal provider intent and skip straight to it,
 // mirroring get-token's own explicit-flag shortcut past its provider menu.
-func promptForToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
+func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
 	if in.String("auth-provider") != "" || in.String("auth-flow") != "" {
-		return resolveProviderLoginToken(ctx, server, in, p)
+		return resolveProviderLoginToken(ctx, server, caPEM, in, p)
 	}
 	p.Notice("1) paste an API token\n2) sign in via an identity provider")
 	choice, err := p.Prompt(ctx, "Select [1]: ")
@@ -284,7 +449,7 @@ func promptForToken(ctx context.Context, server string, in runtime.Input, p runt
 	case "", "1":
 		return p.PromptSecret(ctx, "Enter token (id:secret): ")
 	case "2":
-		return resolveProviderLoginToken(ctx, server, in, p)
+		return resolveProviderLoginToken(ctx, server, caPEM, in, p)
 	default:
 		return "", clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
 			WithHint("re-run and answer 1 or 2")

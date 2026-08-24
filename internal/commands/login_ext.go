@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
@@ -29,12 +31,14 @@ const v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 // best-effort once D exists. On an older Rancher with no ext.cattle.io
 // group, the mint 404s and this falls back to returning S itself (legacy
 // semantics), with a notice explaining why.
-func resolveProviderLoginToken(ctx context.Context, server string, in runtime.Input, p runtime.Prompter) (string, error) {
-	// Login has no --skip-verify flag; CA comes from --cacert only.
-	caPEM, err := config.ResolveCA(in.String("cacert"))
-	if err != nil {
-		return "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
-	}
+//
+// caPEM is the CA snapshot Execute already resolved (explicit --cacert, else
+// the entry the naming algorithm would select's stored CA) — resolved once,
+// before any request in the login operation, so this never rediscovers
+// trust independently by re-reading a path or ignoring a stored CA the way
+// a bare config.ResolveCA(in.String("cacert")) would on a same-server
+// re-login with no --cacert flag.
+func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
 	client, err := httpx.New(httpx.Options{CACert: caPEM})
 	if err != nil {
 		return "", err
@@ -55,6 +59,9 @@ func resolveProviderLoginToken(ctx context.Context, server string, in runtime.In
 		AuthFlow:     in.String("auth-flow"),
 	}, p)
 	if err != nil {
+		if ce := tlstrust.ClassifyForHost(err, config.ServerHost(server), time.Now()); ce != nil {
+			return "", ce
+		}
 		return "", err
 	}
 	s := strings.TrimSpace(sessionToken.Token)
