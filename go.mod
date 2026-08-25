@@ -14,7 +14,7 @@ require (
 	github.com/gofrs/flock v0.13.0
 	github.com/rogpeppe/go-internal v1.16.0
 	github.com/sirupsen/logrus v1.9.4
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.19.0
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/zalando/go-keyring v0.2.8
@@ -61,7 +61,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
