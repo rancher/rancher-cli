@@ -106,6 +106,10 @@ type loginInput struct {
 //     (never-expiring on the legacy path); the native path refuses to.
 //   - legacy cache slots: a config.LegacyCachePrefix Name passes
 //     runWithParams's reservation guard; every other caller is blocked.
+//
+// SkipVerify disables TLS verification. Only the legacy token shim sets it —
+// Rancher-generated kubeconfigs pass --skip-verify verbatim. The native
+// surface has no skip-verify flag anywhere; pin the CA instead.
 type runParams struct {
 	Server, Name, Cluster, AuthProvider, AuthFlow, CACert string
 	SkipVerify                                            bool
@@ -140,7 +144,6 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
-			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
 		},
 		Network: true,
 		Auth:    true,
@@ -190,7 +193,6 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		AuthProvider:  in.String("auth-provider"),
 		AuthFlow:      in.String("auth-flow"),
 		CACert:        in.String("cacert"),
-		SkipVerify:    in.Bool("skip-verify"),
 		ProbedKey:     flagKey,
 		ProbedNoticed: noticed,
 	}, p)
@@ -491,7 +493,6 @@ type LoginRequest struct {
 	ClusterID    string
 	AuthProvider string
 	AuthFlow     string
-	SkipVerify   bool
 }
 
 // Login runs the identity-provider dance (provider discovery/selection, then
@@ -504,7 +505,6 @@ func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime
 		clusterID:    req.ClusterID,
 		authProvider: req.AuthProvider,
 		authFlow:     req.AuthFlow,
-		skipVerify:   req.SkipVerify,
 	}
 	return loginAndGenerateCred(ctx, client, input, p)
 }

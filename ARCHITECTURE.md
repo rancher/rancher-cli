@@ -456,8 +456,10 @@ advisory locking — while the process-level semaphore still serializes in-proce
 polls the auth-token URL every 10s up to 15 min, and decrypts the returned token with
 RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code by default, or PKCE auth-code
 with a `127.0.0.1` callback). All of this HTTP goes through
-`internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts;
-`--skip-verify` on `auth get-token` sets `InsecureSkipVerify` for that client only.
+`internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts.
+The native surface has no skip-verify flag; only the legacy `rancher token` shim's
+`--skip-verify` (kept for Rancher-generated kubeconfigs that pass it verbatim) sets
+`InsecureSkipVerify`, for that client only.
 `get-token`'s stored-credential fast path resolves a `--cluster` display
 name to its id the same way `get`/`patch` do, sharing
 `internal/engine/projects.MatchByIDOrDisplay`'s id-or-display collision

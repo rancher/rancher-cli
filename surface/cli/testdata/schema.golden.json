@@ -78,11 +78,6 @@
           ],
           "name": "cacert",
           "type": "string"
-        },
-        {
-          "desc": "skip TLS verification (insecure)",
-          "name": "skip-verify",
-          "type": "bool"
         }
       ],
       "group": "auth",

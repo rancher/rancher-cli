@@ -455,7 +455,7 @@ instead) also work after a binary swap — the compatibility shim delegates to
 the same machinery. Flags: `--server`,
 `--cluster` (required), `--name` (cache slot, keyed per name+server+cluster; omitted = no
 caching), `--cacert`,
-`--auth-provider`, `--auth-flow`, `--skip-verify`. When `--server` or `--cacert` are
+`--auth-provider`, `--auth-flow`. When `--server` or `--cacert` are
 omitted, they fall back to the current server in config. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows; long-poll flows can
 be canceled with Ctrl-C. List cached credentials with `rancher auth list-tokens`.
@@ -470,3 +470,11 @@ keychain-unlock prompt — CI and other non-interactive runs should use
 Server connections verify TLS against the configured CA (`--cacert` /
 `RANCHER_CLI_CACERT`) or the system trust store by default — verification is never
 disabled implicitly. HTTP(S) proxies are honored from the environment.
+
+There is no skip-verify flag anywhere in the native surface, ever: a
+self-signed or private-CA server is used by pinning its CA (`--cacert` or the
+stored server entry's CA), never by turning verification off. The one
+exception is the legacy `rancher token` shim, whose `--skip-verify` exists
+only because Rancher-generated kubeconfigs pass it verbatim — legacy
+compatibility, not an endorsement; kubeconfigs produced by this CLI never
+emit it.

@@ -3,10 +3,17 @@ package token
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +45,34 @@ func (t tin) String(k string) string  { return t.s[k] }
 func (t tin) Bool(k string) bool      { return t.b[k] }
 func (t tin) Strings(string) []string { return nil }
 func (t tin) IsSet(string) bool       { return false }
-func (t tin) Args() []string          { return t.a }
+
+// selfSignedCAPEM returns a freshly generated self-signed certificate as PEM,
+// for tests that need a --cacert value httpx.New accepts without any server
+// ever being reached.
+func selfSignedCAPEM(t *testing.T) string {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "token-test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+// serverCAPEM returns srv's own presented certificate as PEM, for use as
+// --cacert so a test can reach an httptest TLS server with verification ON.
+func serverCAPEM(srv *httptest.Server) string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+}
+func (t tin) Args() []string { return t.a }
 
 func TestExecCredentialJSONShape(t *testing.T) {
 	cred := newExecCredential("kubeconfig-u-abc:xyz", time.Time{})
@@ -847,19 +881,17 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 
 	var notices bytes.Buffer
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	// --cluster and a (garbage but unparsed, since --skip-verify bypasses
-	// CA loading) --cacert are set explicitly so resolveConn's OWN
-	// config.yaml read is skipped (all three of server/cluster/caIn are
-	// non-empty) — the point of this test is storedCredToken's separate,
-	// unconditional config.Load call.
+	// --cluster and a valid (httpx.New parses it into a cert pool) --cacert
+	// are set explicitly so resolveConn's OWN config.yaml read is skipped
+	// (all three of server/cluster/caIn are non-empty) — the point of this
+	// test is storedCredToken's separate, unconditional config.Load call.
 	_, err := cmd.Execute(t.Context(),
 		tin{
 			s: map[string]string{
 				"server": "https://r.ex", "cluster": "c-1",
-				"cacert": "-----BEGIN CERTIFICATE-----\nMIICertData\n-----END CERTIFICATE-----\n",
+				"cacert": selfSignedCAPEM(t),
 				"name":   "prod",
 			},
-			b: map[string]bool{"skip-verify": true},
 		},
 		ui.New(&notices, strings.NewReader(""), true, false))
 	require.Error(t, err, "no stored credential and no reachable interactive provider — some error is expected")
@@ -1751,7 +1783,8 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 // passes it to http.NewRequestWithContext; the Go HTTP client rejects a
 // schemeless URL with "unsupported protocol scheme", the TLS server is never
 // contacted, and the hits assertion fails (RED). With normalisation the TLS
-// connection succeeds (via --skip-verify) and the server records the hit (GREEN).
+// connection succeeds (--cacert pins the server's own certificate) and the
+// server records the hit (GREEN).
 func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	t.Parallel()
 	var hits atomic.Int32
@@ -1780,12 +1813,11 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	// Empty cache → cold path. --skip-verify bypasses the self-signed cert so
+	// Empty cache → cold path. --cacert pins the test server's certificate so
 	// the connection attempt can actually reach the test TLS server.
 	_, err := cmd.Execute(t.Context(),
 		tin{
-			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1"},
-			b: map[string]bool{"skip-verify": true},
+			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1", "cacert": serverCAPEM(srv)},
 		},
 		ui.Discard())
 	// Non-interactive localProvider → CodeAuth; the important signal is that
@@ -1806,7 +1838,8 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 // http.NewRequestWithContext; the Go HTTP client rejects it with "first path
 // segment in URL cannot contain colon", the TLS server is never contacted, and
 // the hits assertion fails (RED). With normalisation the TLS dial succeeds
-// (via --skip-verify) and the server records the hit (GREEN).
+// (--cacert pins the server's own certificate) and the server records the hit
+// (GREEN).
 func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	t.Parallel()
 
@@ -1842,8 +1875,7 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{
-			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1"},
-			b: map[string]bool{"skip-verify": true},
+			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1", "cacert": serverCAPEM(srv)},
 		},
 		ui.Discard())
 	require.Error(t, err)
