@@ -23,6 +23,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"net"
 	"net/url"
 	"time"
 
@@ -83,7 +84,7 @@ func ClassifyForHost(err error, host string, now time.Time) *clierr.Error {
 }
 
 func Classify(err error, host string, now time.Time) *clierr.Error {
-	kind, chain, offending, ok := classifyKind(err, now)
+	kind, chain, offending, ok := classifyKind(err, host, now)
 	if !ok {
 		return nil
 	}
@@ -139,20 +140,44 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 // failure) or when the underlying handshake failed before any certificate
 // could be parsed (chain is empty; Details will carry a Kind with no
 // metadata — the nullable-details case).
-func classifyKind(err error, now time.Time) (kind Kind, chain []*x509.Certificate, offending *x509.Certificate, ok bool) {
+//
+// When the verification error carries none of the typed x509 errors, the
+// failure came from a platform verifier (the system-roots path on macOS and
+// Windows hands verification to the OS, which reports failures as bare
+// strings — Go's own verifier is used only when a custom root pool is set).
+// Classification must not depend on platform error strings, so the captured
+// chain is reclassified from evidence the chain itself carries (see
+// reclassifyUntyped). Without this, the most common first-contact case — a
+// self-signed Rancher server dialed with system roots on macOS — lands in
+// invalidChain with a contact-the-operator hint instead of unknownAuthority
+// with the --cacert hint.
+func classifyKind(err error, host string, now time.Time) (kind Kind, chain []*x509.Certificate, offending *x509.Certificate, ok bool) {
 	cve, found := errors.AsType[*tls.CertificateVerificationError](err)
 	if !found {
 		return "", nil, nil, false
 	}
 	chain = cve.UnverifiedCertificates
 
-	if hostErr, isHost := errors.AsType[x509.HostnameError](cve.Err); isHost {
-		return KindHostnameMismatch, chain, hostErr.Certificate, true
+	if kind, offending, ok = classifyVerifyError(cve.Err, chain, now); ok {
+		return kind, chain, offending, true
 	}
-	if authErr, isAuth := errors.AsType[x509.UnknownAuthorityError](cve.Err); isAuth {
-		return KindUnknownAuthority, chain, authErr.Cert, true
+	if kind, offending, ok = reclassifyUntyped(chain, host, now); ok {
+		return kind, chain, offending, true
 	}
-	if invalidErr, isInvalid := errors.AsType[x509.CertificateInvalidError](cve.Err); isInvalid && invalidErr.Reason == x509.Expired {
+	return KindInvalidChain, chain, nil, true
+}
+
+// classifyVerifyError maps a typed x509 verification error to its Kind and
+// the certificate the verifier flagged. ok is false when verr carries none
+// of the typed x509 errors (a platform verifier's untyped failure).
+func classifyVerifyError(verr error, chain []*x509.Certificate, now time.Time) (Kind, *x509.Certificate, bool) {
+	if hostErr, isHost := errors.AsType[x509.HostnameError](verr); isHost {
+		return KindHostnameMismatch, hostErr.Certificate, true
+	}
+	if authErr, isAuth := errors.AsType[x509.UnknownAuthorityError](verr); isAuth {
+		return KindUnknownAuthority, authErr.Cert, true
+	}
+	if invalidErr, isInvalid := errors.AsType[x509.CertificateInvalidError](verr); isInvalid && invalidErr.Reason == x509.Expired {
 		// x509 uses one Reason for both directions; disambiguate on the
 		// certificate the verifier actually flagged — a not-yet-valid
 		// INTERMEDIATE alongside a currently-valid leaf must not read as
@@ -162,14 +187,72 @@ func classifyKind(err error, now time.Time) (kind Kind, chain []*x509.Certificat
 			flagged = chain[0]
 		}
 		if flagged != nil && now.Before(flagged.NotBefore) {
-			return KindNotYetValid, chain, flagged, true
+			return KindNotYetValid, flagged, true
 		}
-		return KindExpired, chain, flagged, true
+		return KindExpired, flagged, true
 	}
-	if invalidErr, isInvalid := errors.AsType[x509.CertificateInvalidError](cve.Err); isInvalid {
-		return KindInvalidChain, chain, invalidErr.Cert, true
+	if invalidErr, isInvalid := errors.AsType[x509.CertificateInvalidError](verr); isInvalid {
+		return KindInvalidChain, invalidErr.Cert, true
 	}
-	return KindInvalidChain, chain, nil, true
+	return "", nil, false
+}
+
+// reclassifyUntyped classifies a platform verifier's untyped failure from
+// the captured chain alone. Re-verifying against the system pool is NOT an
+// option: on macOS a pool returned by x509.SystemCertPool routes Verify
+// straight back to the platform verifier — the same untyped error, a loop.
+// System roots are not enumerable there, so the checks are ones the chain
+// itself can answer, in the typed verifier's own precedence order:
+//
+//  1. validity window of every considered certificate (expired/notYetValid);
+//  2. the leaf's hostname match (hostnameMismatch);
+//  3. everything else is unknownAuthority, mirroring Go's own taxonomy:
+//     Go's verifier reports EVERY unresolvable path — self-signed leaf,
+//     leaf whose issuer was not presented, private CA — as
+//     x509.UnknownAuthorityError, and reserves its invalid-chain reasons
+//     for typed CertificateInvalidError values the platform path never
+//     produces. The pinnable candidate is CandidateAnchor's business, as
+//     on the typed path. The deliberate edge: a PUBLICLY-chained server
+//     the platform distrusts for platform-only reasons (revoked root, CT
+//     policy) also lands here, and the --cacert remedy is mechanically
+//     real for it too — a pinned pool uses Go's verifier — while the
+//     fingerprint in the details supports the out-of-band check before
+//     anyone pins anything.
+//
+// ok=false only for an empty chain (nothing to reason from), keeping the
+// nullable-details invalidChain fallback. Window checks consult only the
+// anchor path — the signature-valid route from the leaf — never the raw
+// presented chain: a server can bundle an unrelated stale certificate (an
+// old expired root, a leftover intermediate), and blaming its dates would
+// misread an unknown-authority failure as "expired" with a renew-it hint
+// that fixes nothing. The path walk carries CandidateAnchor's cap; the
+// chain is attacker-controlled.
+func reclassifyUntyped(chain []*x509.Certificate, host string, now time.Time) (Kind, *x509.Certificate, bool) {
+	if len(chain) == 0 {
+		return "", nil, false
+	}
+	for _, c := range anchorPath(chain) {
+		if now.After(c.NotAfter) {
+			return KindExpired, c, true
+		}
+		if now.Before(c.NotBefore) {
+			return KindNotYetValid, c, true
+		}
+	}
+	// host may carry a port (ClassifyForHost matches url.Error hosts, which
+	// keep theirs); VerifyHostname wants the bare name. An empty host skips
+	// the check, matching a Classify caller that has none.
+	dnsName := host
+	if h, _, serr := net.SplitHostPort(host); serr == nil {
+		dnsName = h
+	}
+	leaf := chain[0]
+	if dnsName != "" {
+		if herr := leaf.VerifyHostname(dnsName); herr != nil {
+			return KindHostnameMismatch, leaf, true
+		}
+	}
+	return KindUnknownAuthority, leaf, true
 }
 
 // CandidateAnchor returns the highest certificate of a contiguous,
@@ -187,6 +270,19 @@ func classifyKind(err error, now time.Time) (kind Kind, chain []*x509.Certificat
 const maxConsideredCerts = 16
 
 func CandidateAnchor(chain []*x509.Certificate) *x509.Certificate {
+	path := anchorPath(chain)
+	if len(path) == 0 {
+		return nil
+	}
+	return path[len(path)-1]
+}
+
+// anchorPath returns the contiguous signature-valid path CandidateAnchor
+// walks, from the observed leaf up to the candidate anchor inclusive. The
+// path — not the raw presented chain — is what evidence-based reasoning may
+// consult: certificates outside it were presented but play no verified role,
+// so attributing a failure to one of them would blame a bystander.
+func anchorPath(chain []*x509.Certificate) []*x509.Certificate {
 	if len(chain) == 0 {
 		return nil
 	}
@@ -194,17 +290,17 @@ func CandidateAnchor(chain []*x509.Certificate) *x509.Certificate {
 		chain = chain[:maxConsideredCerts]
 	}
 	current := chain[0]
-	best := current
+	path := []*x509.Certificate{current}
 	used := make([]bool, len(chain))
 	used[0] = true
 	for {
 		idx := findIssuer(current, chain, used)
 		if idx < 0 {
-			return best
+			return path
 		}
 		used[idx] = true
 		current = chain[idx]
-		best = current
+		path = append(path, current)
 	}
 }
 
