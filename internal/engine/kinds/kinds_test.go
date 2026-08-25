@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -487,6 +488,33 @@ func TestValidateRejectsJoinMisuse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			bad := []Kind{{Key: "a", Name: "foo", Aliases: []string{"foos"}, Columns: []Column{tt.col}}}
+			assert.Error(t, validateKinds(bad))
+		})
+	}
+	if err := Validate(); err != nil {
+		t.Fatalf("shipped table must validate: %v", err)
+	}
+}
+
+// TestValidateRejectsMalformedCapability pins the shared full-shape
+// validator at the kind-table boundary — the counterpart of
+// runtime's Registry.Validate tests — for all three malformations: set but
+// unknown tier, a known tier with an empty Feature, and Feature set with no
+// Tier (the half-set value that would otherwise read as absent under
+// IsSet and vanish from every gate).
+func TestValidateRejectsMalformedCapability(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		cap  runtime.CapabilityRequirement
+	}{
+		{"unknown tier", runtime.CapabilityRequirement{Tier: "bogus", Feature: "widget-feature"}},
+		{"known tier empty feature", runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime}},
+		{"feature no tier", runtime.CapabilityRequirement{Feature: "widget-feature"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bad := []Kind{{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Capability: tt.cap}}
 			assert.Error(t, validateKinds(bad))
 		})
 	}

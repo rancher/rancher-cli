@@ -941,6 +941,9 @@ func validateKinds(ts []Kind) error {
 	// always takes precedence over a later kind's defect of a different type.
 	seen := map[string]string{}
 	for _, k := range ts {
+		if ce := runtime.ValidCapabilityShape(k.Capability, k.Name); ce != nil {
+			return ce
+		}
 		for _, id := range append([]string{k.Name, k.Key}, k.Aliases...) {
 			if prev, dup := seen[id]; dup && prev != k.Key {
 				return fmt.Errorf("kind identifier %q claimed by both %q and %q", id, prev, k.Key)

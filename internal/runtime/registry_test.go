@@ -139,6 +139,42 @@ func TestValidatePassesWellFormedCapability(t *testing.T) {
 	assert.NoError(t, reg.Validate())
 }
 
+// TestValidateRejectsFeatureWithoutTier pins the full-shape validator at the
+// registry boundary: a half-set value ({Feature set, Tier ""}) reads as
+// absent under IsSet and would otherwise vanish from every gate — it must
+// be a startup rejection instead.
+func TestValidateRejectsFeatureWithoutTier(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Feature: "widget-feature"}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "no Tier")
+}
+
+// fakeReadWithResolver is a ReadCommand that also implements
+// CapabilityResolver — used to pin the registry's mutual-exclusion rule.
+type fakeReadWithResolver struct{ fakeRead }
+
+func (f fakeReadWithResolver) ResolveCapability(context.Context, Input) (CapabilityRequirement, error) {
+	return CapabilityRequirement{}, nil
+}
+
+// TestValidateRejectsStaticCapabilityAndResolverTogether pins the
+// mutual-exclusion rule: a static requirement and CapabilityResolver on the
+// same command are two sources for one value — the resolver would be dead
+// code that silently loses to static-wins, so it is a startup rejection.
+func TestValidateRejectsStaticCapabilityAndResolverTogether(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeReadWithResolver{fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature"}}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "mutually exclusive")
+}
+
 func TestValidateRejectsDualInterface(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"do thing": {}})

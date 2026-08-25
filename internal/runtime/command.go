@@ -42,6 +42,18 @@ type CapabilityRequirement struct {
 // IsSet reports whether a capability requirement is declared at all.
 func (r CapabilityRequirement) IsSet() bool { return r.Tier != "" }
 
+// CapabilityResolver is implemented by a command whose capability
+// requirement depends on the invocation input (create resource -f: the
+// manifest names the kind). Run calls it after validateInput and before
+// Plan/Execute, only when the static descriptor carries no requirement. A
+// zero return means no requirement applies to this invocation.
+//
+// Unrelated to Resolver, the existing op→binding resolver; prose says
+// "capability resolver" for this interface to keep the two apart.
+type CapabilityResolver interface {
+	ResolveCapability(ctx context.Context, in Input) (CapabilityRequirement, error)
+}
+
 // ArgSpec describes a positional/named argument for the schema manifest.
 type ArgSpec struct {
 	Name     string   `json:"name"`

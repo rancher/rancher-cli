@@ -85,8 +85,31 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	// server/credential resolution but before any resource access (reads)
 	// or the server-side dry-run Plan (mutations), so a Prime-backed kind
 	// that may not exist on a community server never gets to 404 first.
-	if d.Capability.IsSet() {
-		if ce := checkCapability(ctx, d, streams); ce != nil {
+	//
+	// The static descriptor value is validated BEFORE its IsSet use: IsSet
+	// (Tier != "") cannot see a half-set value, so validating after it
+	// fails open — only a fully valid zero value selects the resolver.
+	if ce := ValidCapabilityShape(d.Capability, d.Name); ce != nil {
+		return 0, renderErr(streams, ce)
+	}
+	req := d.Capability
+	if !req.IsSet() {
+		if r, ok := cmd.(CapabilityResolver); ok {
+			var err error
+			req, err = r.ResolveCapability(ctx, in)
+			if err != nil {
+				return 0, renderErr(streams, toClierr(err))
+			}
+			// Then the resolver's return — an arbitrary runtime value
+			// startup validation never saw. A malformed value is a command
+			// bug, stopped before the checker and Plan/Execute.
+			if ce := ValidCapabilityShape(req, d.Name); ce != nil {
+				return 0, renderErr(streams, ce)
+			}
+		}
+	}
+	if req.IsSet() {
+		if ce := checkCapability(ctx, d, req, streams); ce != nil {
 			return 0, renderErr(streams, ce)
 		}
 	}
@@ -256,33 +279,68 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 	return nil
 }
 
-// checkCapability runs the capability stage for a command whose Descriptor
-// carries a requirement. A nil streams.Capability here is harness
-// mis-wiring, not signal unavailability: only unknown SIGNALS may fall
-// through (the unknown-never-blocks rule); a requirement-bearing command
-// registered without a checker would otherwise silently skip a mandatory
-// stage forever, so it fails loudly instead. CapabilityProceed and
+// checkCapability runs the capability stage for a command whose resolved
+// requirement (static or deferred) is set. A nil streams.Capability here is
+// harness mis-wiring, not signal unavailability: only unknown SIGNALS may
+// fall through (the unknown-never-blocks rule); a requirement-bearing
+// command registered without a checker would otherwise silently skip a
+// mandatory stage forever, so it fails loudly instead. CapabilityProceed and
 // CapabilityUnknown both fall through to the target request unchanged;
 // CapabilityDisabled reuses the existing VALIDATION taxonomy; only
 // CapabilityPrimeRequired returns the structured PRIME_REQUIRED error.
-func checkCapability(ctx context.Context, d Descriptor, streams IO) *clierr.Error {
+// Identifiers, identical for static and resolver-supplied requirements:
+// the PRIME_REQUIRED message names the command (d.Name — for generated
+// verbs that carries the kind; for create resource it names the command, a
+// reviewed acceptance until the capability Name identifier lands) and its
+// details.feature carries req.Feature, the machine-readable identifier.
+// The Disabled message names req.Feature directly ("<feature> is
+// disabled") and carries no details — the remedy is the feature flag, not
+// an entitlement, so the feature name IS the message.
+func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequirement, streams IO) *clierr.Error {
 	if streams.Capability == nil {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("%s declares a capability requirement but no capability checker is wired", d.Name)).
 			WithHint("register the command through the standard server-command path")
 	}
-	dec := streams.Capability.Check(ctx, d.Capability)
+	dec := streams.Capability.Check(ctx, req)
 	switch dec.Outcome {
 	case CapabilityDisabled:
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is disabled", d.Capability.Feature)).
-			WithHint(fmt.Sprintf("enable feature %s", d.Capability.Feature))
+			fmt.Sprintf("%s is disabled", req.Feature)).
+			WithHint(fmt.Sprintf("enable feature %s", req.Feature))
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
 			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime", d.Name)).
 			WithHint("this capability requires Rancher Prime — " + clierr.LearnMorePrimeURL).
-			WithDetails(clierr.PrimeRequiredDetails{Feature: d.Capability.Feature, Server: dec.Server})
+			WithDetails(clierr.PrimeRequiredDetails{Feature: req.Feature, Server: dec.Server})
 	default: // CapabilityProceed, CapabilityUnknown
+		return nil
+	}
+}
+
+// ValidCapabilityShape reports the malformation in req as a CodeGeneric
+// error, or nil when req is valid: the complete zero value, or a known Tier
+// with a non-empty Feature. It does not hide behind IsSet (Tier != "") — a
+// half-set value ({Feature set, Tier ""}) would otherwise read as absent and
+// skip every gate that keys on IsSet, including the coverage rule's
+// Capability-bearing filter. Shared by Registry.Validate, kinds'
+// validateKinds, and both pipeline boundaries in Run, so a malformed value
+// is rejected identically wherever it can appear. name identifies the owning
+// command or kind in the message.
+func ValidCapabilityShape(req CapabilityRequirement, name string) *clierr.Error {
+	switch {
+	case req.Tier == "" && req.Feature == "":
+		return nil
+	case req.Tier == "":
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: capability requirement has Feature %q with no Tier", name, req.Feature))
+	case req.Tier != CapabilityPrime:
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: unknown capability tier %q", name, req.Tier))
+	case req.Feature == "":
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: capability tier %q requires a detector Feature key", name, req.Tier))
+	default:
 		return nil
 	}
 }

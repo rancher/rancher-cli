@@ -309,12 +309,15 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
 			}
 		}
-		if req := d.Capability; req.IsSet() {
-			if req.Tier != CapabilityPrime {
-				return fmt.Errorf("command %q: unknown capability tier %q", d.Name, req.Tier)
-			}
-			if req.Feature == "" {
-				return fmt.Errorf("command %q: capability tier %q requires a detector Feature key", d.Name, req.Tier)
+		// Validate's contract is plain errors (every other failure here is
+		// fmt.Errorf); unwrap the shared validator's structured error to its
+		// message rather than leaking one *clierr.Error through this seam.
+		if ce := ValidCapabilityShape(d.Capability, d.Name); ce != nil {
+			return fmt.Errorf("%s", ce.Message)
+		}
+		if d.Capability.IsSet() {
+			if _, ok := c.(CapabilityResolver); ok {
+				return fmt.Errorf("command %q: static capability requirement and CapabilityResolver are mutually exclusive", d.Name)
 			}
 		}
 		if codes := d.SuccessExitCodes; len(codes) > 0 {
