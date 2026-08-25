@@ -8,6 +8,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -22,18 +23,39 @@ import (
 type createCmd struct {
 	clients engine.ClusterClientFactory
 	src     engine.FileSource
+	// lookupGVK resolves a manifest's apiVersion+kind to a table row.
+	// Defaults to kinds.LookupGVK; production wiring never overrides it —
+	// test-only injection lets resolver-mechanics tests prove behavior
+	// against a synthetic Capability-bearing row without a way to register
+	// one in the closed-world kinds table.
+	lookupGVK func(apiVersion, kind string) (kinds.Kind, bool)
+
+	// parseOnce memoizes the manifest parse to exactly one read per
+	// invocation: ResolveCapability and Plan both need the unmarshaled
+	// object and its resolved kind row, and -f - reads stdin, which is
+	// single-shot. parsePath is the filename the memo was primed with —
+	// both callers read it from the same Input in the same invocation, so
+	// a mismatch is a command-bug, never a re-read.
+	parseOnce sync.Once
+	parsePath string
+	parseObj  *unstructured.Unstructured
+	parseKind kinds.Kind
+	parseErr  error
 }
 
 // NewCreate builds `create resource -f <file>` (mutating): it reads a single
 // manifest document, resolves its apiVersion+kind to a table row (closed-world
 // — an un-tabled kind is a VALIDATION error), reconciles the manifest's
 // namespace with the routing flags per the kind's NamespacePolicy, and previews
-// the create through the shared PlanCreate.
+// the create through the shared PlanCreate. It also implements
+// runtime.CapabilityResolver: the resolved kind row's requirement is what
+// gates create-via-manifest, since the command's own Descriptor is
+// kind-independent.
 func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
-	return &createCmd{clients: clients, src: src}
+	return &createCmd{clients: clients, src: src, lookupGVK: kinds.LookupGVK}
 }
 
-func (createCmd) Describe() runtime.Descriptor {
+func (*createCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "create resource",
 		Usage:       "Create a resource from a manifest file",
@@ -74,34 +96,27 @@ func (o overrideInput) String(name string) string {
 	return o.Input.String(name)
 }
 
-func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	path := in.String(flagFilename)
-	b, err := c.src.Read(path)
+// ResolveCapability implements runtime.CapabilityResolver: it runs the same
+// parse Plan runs (shared via parseManifest's memo) and returns the resolved
+// kind row's capability requirement. A NoCreateViaManifest row returns the
+// zero requirement: Plan's existing refusal below stands and fires exactly
+// as today, without spending a network probe on a kind that cannot be
+// created via manifest regardless of server edition.
+func (c *createCmd) ResolveCapability(_ context.Context, in runtime.Input) (runtime.CapabilityRequirement, error) {
+	_, k, err := c.parseManifest(in)
 	if err != nil {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cannot read manifest %q: %v", path, err)).
-			WithHint("pass -f <file> or -f - for stdin")
+		return runtime.CapabilityRequirement{}, err
 	}
-	n, derr := countDocs(b)
-	if derr != nil {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "invalid manifest: "+derr.Error())
+	if k.NoCreateViaManifest != "" {
+		return runtime.CapabilityRequirement{}, nil
 	}
-	if n != 1 {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("manifest must contain exactly one document, found %d", n)).
-			WithHint("split a multi-document manifest into separate invocations")
-	}
-	var m map[string]any
-	if err := yaml.Unmarshal(b, &m); err != nil {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "invalid manifest: "+err.Error())
-	}
-	obj := &unstructured.Unstructured{Object: m}
+	return k.Capability, nil
+}
 
-	k, ok := kinds.LookupGVK(obj.GetAPIVersion(), obj.GetKind())
-	if !ok {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("unsupported resource %s/%s", obj.GetAPIVersion(), obj.GetKind())).
-			WithHint("supported kinds: " + supportedKinds())
+func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	obj, k, err := c.parseManifest(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
 	}
 	if k.NoCreateViaManifest != "" {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
@@ -133,11 +148,67 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	return eff, exec, nil
 }
 
+// parseManifest returns the memoized parse of the manifest named by the
+// filename flag, reading and resolving it at most once per invocation
+// regardless of how many callers (ResolveCapability, Plan) ask. A mismatch
+// between the path this memo was primed with and the path a later caller
+// asks about is a command bug, not a re-read — both callers read the same
+// Input in the same invocation, so they cannot legitimately disagree.
+func (c *createCmd) parseManifest(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
+	path := in.String(flagFilename)
+	c.parseOnce.Do(func() {
+		c.parsePath = path
+		c.parseObj, c.parseKind, c.parseErr = c.readAndResolve(path)
+	})
+	if path != c.parsePath {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: create resource parsed manifest %q but is now asked about %q", c.parsePath, path))
+	}
+	return c.parseObj, c.parseKind, c.parseErr
+}
+
+// readAndResolve performs the manifest parse itself: read, enforce the
+// exactly-one-document rule, unmarshal, and resolve the kind via the
+// injected lookup. Every error here is one of the manifest-shape VALIDATION
+// errors Plan has always produced — they now surface one stage earlier (from
+// the capability stage, via ResolveCapability) when that runs first, but the
+// rendered envelope is byte-identical.
+func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kinds.Kind, error) {
+	b, err := c.src.Read(path)
+	if err != nil {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("cannot read manifest %q: %v", path, err)).
+			WithHint("pass -f <file> or -f - for stdin")
+	}
+	n, derr := countDocs(b)
+	if derr != nil {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "invalid manifest: "+derr.Error())
+	}
+	if n != 1 {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("manifest must contain exactly one document, found %d", n)).
+			WithHint("split a multi-document manifest into separate invocations")
+	}
+	var m map[string]any
+	if err := yaml.Unmarshal(b, &m); err != nil {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "invalid manifest: "+err.Error())
+	}
+	obj := &unstructured.Unstructured{Object: m}
+
+	k, ok := c.lookupGVK(obj.GetAPIVersion(), obj.GetKind())
+	if !ok {
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("unsupported resource %s/%s", obj.GetAPIVersion(), obj.GetKind())).
+			WithHint("supported kinds: " + supportedKinds())
+	}
+	return obj, k, nil
+}
+
 // reconcile applies the kind's NamespacePolicy to the manifest namespace and
 // the routing flags, returning the overrides Route should see. A conflict
 // between the manifest and an explicit flag is a VALIDATION error — flags fill
 // gaps, they never silently override the manifest.
-func (c createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input, manifestNS string) (map[string]string, error) {
+func (c *createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input, manifestNS string) (map[string]string, error) {
 	overrides := map[string]string{}
 	switch k.Policy {
 	case kinds.NSCluster:
