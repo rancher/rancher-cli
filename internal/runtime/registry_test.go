@@ -175,6 +175,38 @@ func TestValidateRejectsStaticCapabilityAndResolverTogether(t *testing.T) {
 	assert.ErrorContains(t, err, "mutually exclusive")
 }
 
+// TestSchemaPrimeCommandProjection is the marker-wording fixture pin: with
+// no production command carrying a requirement yet, a test-registered prime
+// command pins the manifest fields (prime + learnMore ride together,
+// projected from the one product-owned URL constant) and the EXACT
+// classification sentence — the static surfaces state a product-tier
+// classification, never a per-server "requires" claim, so an accidental
+// rewording fails here rather than shipping unnoticed.
+func TestSchemaPrimeCommandProjection(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature"}}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get plain", CommandType: ReadOnly}})
+
+	byName := map[string]SchemaCommand{}
+	for _, c := range reg.Schema("v-test", "2.14").Commands {
+		byName[c.Name] = c
+	}
+	prime := byName["get widget"]
+	assert.True(t, prime.Prime)
+	assert.Equal(t, clierr.LearnMorePrimeURL, prime.LearnMore,
+		"learnMore rides beside prime, projected from the single constant")
+	plain := byName["get plain"]
+	assert.False(t, plain.Prime)
+	assert.Empty(t, plain.LearnMore, "learnMore must be absent without the prime marker")
+
+	assert.Equal(t,
+		"A Rancher Prime capability; availability is decided by the connected server.",
+		PrimeSentence,
+		"classification wording is a reviewed contract; change it deliberately or not at all")
+}
+
 func TestValidateRejectsDualInterface(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"do thing": {}})

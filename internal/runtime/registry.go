@@ -107,9 +107,16 @@ type SchemaCommand struct {
 	ProjectScope     bool        `json:"projectScope,omitempty"`
 	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
 	// Prime is a projection of Descriptor.Capability: true when the command
-	// requires Rancher Prime. Never separately authored — the source of
+	// carries the Rancher Prime capability classification (a product-tier
+	// marker; whether the connected server gates it is decided at run
+	// time). Never separately authored — the source of
 	// truth is the requirement itself.
 	Prime bool `json:"prime,omitempty"`
+	// LearnMore rides beside Prime for the planning moment of the nudge
+	// contract: agents reading the manifest get the one stable,
+	// product-owned URL without parsing prose. Projected from
+	// clierr.LearnMorePrimeURL, present exactly when Prime is.
+	LearnMore string `json:"learnMore,omitempty"`
 	// Gates lists the flags this command unconditionally requires before it
 	// executes a mutation: --apply for every mutating command, --yes when
 	// destructive is "true", --allow-deprecated on a deprecated binding.
@@ -160,7 +167,8 @@ type SchemaKind struct {
 	Completable      bool     `json:"completable,omitempty"`
 	WaitDefault      string   `json:"waitDefault,omitempty"`
 	// Prime is a projection of kinds.Kind.Capability: true when the kind
-	// requires Rancher Prime.
+	// carries the Rancher Prime capability classification (product-tier
+	// marker; the connected server decides availability at run time).
 	Prime bool                 `json:"prime,omitempty"`
 	Verbs map[string]VerbState `json:"verbs"`
 }
@@ -393,6 +401,9 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
 			Prime:            d.Capability.Tier == CapabilityPrime,
+		}
+		if sc.Prime {
+			sc.LearnMore = clierr.LearnMorePrimeURL
 		}
 		if b, ok := reg.resolver.Resolve(d.Name); ok {
 			sc.Contract = string(b.Contract)

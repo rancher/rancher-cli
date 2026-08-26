@@ -32,10 +32,14 @@ const (
 )
 
 // PrimeSentence is the exact wording every rendered surface uses to project
-// a Prime requirement: the command card's appended sentence and, via the
-// surface adapters, the normal --help Description. One string, never
-// separately worded per surface.
-const PrimeSentence = "Requires Rancher Prime."
+// a Prime marker: the command card's appended sentence and, via the surface
+// adapters, the normal --help Description. One string, never separately
+// worded per surface. The wording is a PRODUCT-TIER CLASSIFICATION, not a
+// per-server requirement claim: a capability can be community-usable on one
+// supported server version and Prime-gated on the next, so a static surface
+// must never assert "requires" — only the runtime PRIME_REQUIRED error does
+// that, backed by the detector's affirmative per-server evidence.
+const PrimeSentence = "A Rancher Prime capability; availability is decided by the connected server."
 
 // CapabilityDecision is one Check call's result, carrying the detail fields
 // a PRIME_REQUIRED error's Details needs.
