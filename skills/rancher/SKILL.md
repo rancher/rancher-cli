@@ -96,6 +96,55 @@ template over the JSON view of `data` (same shape as `-o json`). Anything
 else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
 output across all formats.
 
+A list's `data` is a bare array — never `.items` — regardless of kind. Real
+`get clusters -o json` output, trimmed to one cluster and the fields that
+matter for triage:
+
+```json
+{
+  "apiVersion": "cli.rancher.io/v1",
+  "kind": "ClusterList",
+  "data": [
+    {
+      "apiVersion": "management.cattle.io/v3",
+      "kind": "Cluster",
+      "metadata": { "name": "local", "resourceVersion": "3769" },
+      "spec": { "displayName": "local", "internal": true },
+      "status": {
+        "conditions": [{ "type": "Ready", "status": "True" }],
+        "version": { "gitVersion": "v1.35.5+k3s1" }
+      }
+    }
+  ]
+}
+```
+
+`data[].metadata.name` is the id; `data[].spec.displayName` is the name shown
+in tables. `get pods -o json` follows the same shape, trimmed here to the
+fields most triage reads need:
+
+```json
+{
+  "apiVersion": "cli.rancher.io/v1",
+  "kind": "PodList",
+  "data": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "rancher-webhook-65fcbccf9f-8ckhj",
+        "namespace": "cattle-system",
+        "labels": { "app": "rancher-webhook" }
+      },
+      "status": {
+        "phase": "Running",
+        "containerStatuses": [{ "name": "rancher-webhook", "ready": true }]
+      }
+    }
+  ]
+}
+```
+
 ### 4. Mutation safety loop — never skip
 
 Every server mutation goes through the same gate:
@@ -275,12 +324,34 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 
 ### 9. Observability & support
 
-- `rancher logs <target> [--cluster <c>] [--since 1h] [--tail 500]` — curated,
+- `rancher logs <target> [--cluster <c>] [--tail 200] [--since <dur>]
+  [--previous] [--container <name>] [--timestamps]` — curated,
   verified-location logs for `server`, `agent`, `fleet-agent`,
-  `kube-api-auth`, or `webhook`; multi-pod targets merge with
-  `[pod/container]` prefixes. A missing target degrades to an honest
-  `NOT_FOUND` (a single-node Docker install's server logs live in `docker
-  logs <container>`; a non-ACE cluster has no `kube-api-auth`).
+  `kube-api-auth`, or `webhook`. Multi-pod targets merge every matched
+  pod/container into one `[pod/container]`-prefixed body; `--tail` defaults
+  to 200 lines, `--since` takes a duration (`30m`, `2h`), `--previous` reads
+  the last-terminated container instance, and `--container` narrows a
+  multi-container pod. A missing target degrades to an honest `NOT_FOUND`
+  (a single-node Docker install's server logs live in `docker logs
+  <container>`; a non-ACE cluster has no `kube-api-auth`). Triage example:
+  `rancher logs server --since 1h --timestamps`. Real `-o json` shape:
+
+  ```json
+  {
+    "apiVersion": "cli.rancher.io/v1",
+    "kind": "TargetLogs",
+    "data": {
+      "pods": ["rancher-webhook-65fcbccf9f-8ckhj"],
+      "entries": [
+        {
+          "pod": "rancher-webhook-65fcbccf9f-8ckhj",
+          "container": "rancher-webhook",
+          "line": "2026-08-26T19:23:33.127639464Z time=\"2026-08-26T19:23:33Z\" level=info msg=\"...\"\n"
+        }
+      ]
+    }
+  }
+  ```
 - `rancher support-bundle -f bundle.tar.gz [--targets ...] [--clusters ...]` —
   packs every curated target's logs plus cluster/node state, events, and an
   allowlisted settings/features/schema snapshot into one tar.gz;
