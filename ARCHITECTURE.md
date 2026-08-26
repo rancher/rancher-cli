@@ -266,16 +266,35 @@ graph TD
 ## Command pipeline
 
 Every command runs through `runtime.Run`, which type-switches on the command interface.
+Before that switch, every command — read or mutating — passes through stages the switch
+never sees: `validateFormat` (closes the `-o` value set) → read-only refusal for
+`Mutating` commands → `--dry-run` applicability → `validateInput` → the **capability
+stage**.
+
+**Capability stage (static or deferred).** A command's capability requirement (e.g.
+"requires Rancher Prime") is either declared statically on its `Descriptor` — every
+generated verb copies it from the kind row — or, when the static value is absent,
+resolved from the invocation input by an optional `CapabilityResolver` the command
+implements. `create resource -f` is the one resolver today: its Descriptor is
+kind-independent, and the manifest names the kind only after Plan would otherwise
+resolve it, so the static stage alone would silently un-gate a Prime-backed kind reached
+through a manifest. Whichever value is in play, `Run` validates it in full (not merely
+`IsSet`) before use — a half-set value (`{Feature, no Tier}`) is a startup/command-bug
+rejection, never silently read as absent — then runs the SAME check against it: before
+any resource access (reads) or the server-side dry-run `Plan` issues (mutations), so a
+Prime-backed kind that may not exist on a community server never gets to 404 first. A
+static requirement always wins; a command cannot carry both a static requirement and a
+resolver (rejected at startup), and a requirement-bearing command reaching this stage
+with no capability checker wired fails loudly rather than silently skipping the gate.
 
 **Mutating flow** (`MutatingCommand`, e.g. `delete pod`, `create project`):
 
-1. `validateInput` — required positional args, required flags, enum membership.
-2. `Plan(ctx, in)` returns `(safety.Effect, ExecuteFunc, error)`. Plan resolves the
+1. `Plan(ctx, in)` returns `(safety.Effect, ExecuteFunc, error)`. Plan resolves the
    target object, its `resourceVersion`, and the `ClusterClient`, and returns a closure
    that captures them. Execute cannot diverge from what Plan previewed because Execute
    *is* the closure Plan built (Approach B). Plan issues a **server-side dry-run** of the
    write to surface admission/RBAC/webhook denials before the user confirms.
-3. Pipeline invariants (enforced centrally, never trusted from command code):
+2. Pipeline invariants (enforced centrally, never trusted from command code):
    - `Effect.Action` must be in the closed enum `{create, update, delete}`;
      unknown → structured error before any gate.
    - `Action == delete` ⇒ `Destructive == true`.
@@ -283,11 +302,11 @@ Every command runs through `runtime.Run`, which type-switches on the command int
      gate inputs — the command's Plan cannot override the contract or stability.
    - `Effect.Server` is stamped from the factory's resolved identity; `Effect.Cluster` is
      set by Plan. Dry-run output and gating state *where* the mutation lands.
-4. `--dry-run` renders the Effect and stops (the executor closure is discarded).
-5. Gates, in order: `--apply` (always) → `--yes` (only if `Destructive`) →
+3. `--dry-run` renders the Effect and stops (the executor closure is discarded).
+4. Gates, in order: `--apply` (always) → `--yes` (only if `Destructive`) →
    `--allow-deprecated` (only if `Stability == deprecated`). A missing gate →
    `CONFIRMATION_REQUIRED`.
-6. `exec(ctx)` runs the real write; the result renders through the envelope.
+5. `exec(ctx)` runs the real write; the result renders through the envelope.
 
 **Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
 server, which authorizes it with the *same* verb as the real write. An agent with

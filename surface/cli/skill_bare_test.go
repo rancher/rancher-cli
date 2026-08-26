@@ -9,10 +9,33 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
 )
+
+// TestCreateResourceEntryIsNonBareAndImplementsCapabilityResolver is the
+// complement of TestTokenEntryIsMarkedBare: create resource must be wired
+// through adaptEntry's non-bare branch, where io.Capability is set on every
+// command — a bare entry never gets a checker, so a bare create resource
+// would resolve a requirement no checker could ever enforce. The command
+// resources.NewCreate returns must also implement runtime.CapabilityResolver,
+// so the seam cannot be dropped in a refactor without failing here.
+func TestCreateResourceEntryIsNonBareAndImplementsCapabilityResolver(t *testing.T) {
+	t.Parallel()
+	for _, e := range buildEntries() {
+		cmd := e.make(runDeps{})
+		if cmd.Describe().Name != "create resource" {
+			continue
+		}
+		assert.False(t, e.bare, "'create resource' must be wired through the non-bare branch so the capability checker is set")
+		_, ok := cmd.(runtime.CapabilityResolver)
+		assert.True(t, ok, "resources.NewCreate must return a command implementing runtime.CapabilityResolver")
+		return
+	}
+	t.Fatal("'create resource' entry not found in buildEntries")
+}
 
 // TestTokenEntryIsMarkedBare pins that the top-level "token" entry has
 // bare: true, so adaptEntry never calls resolveDeps before legacyTokenCmd.Execute
