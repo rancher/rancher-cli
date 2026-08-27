@@ -13,7 +13,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/gofrs/flock v0.13.0
 	github.com/rogpeppe/go-internal v1.16.0
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.1
 	github.com/stretchr/testify v1.12.0
 	github.com/tidwall/gjson v1.19.0
 	github.com/urfave/cli/v3 v3.10.1
