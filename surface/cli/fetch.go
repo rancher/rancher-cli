@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -355,6 +356,19 @@ func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability
 		}
 	}
 	return sanitizeCandidates(out)
+}
+
+// fetchPods lists pods in namespace, filtered by selector, via the
+// management K8s proxy — for `logs --pod` completion (logsPodCandidates).
+// namespace and selector come from the curated observe.Targets table, never
+// user input, so no path-injection guard is needed on them the way
+// isValidSegment guards clusterID. Returns nil on any error.
+func fetchPods(ctx context.Context, hc *http.Client, cap TokenCapability, clusterID, namespace, selector string) []string {
+	apiPath := "/api/v1/namespaces/{namespace}/pods"
+	if selector != "" {
+		apiPath += "?labelSelector=" + neturl.QueryEscape(selector)
+	}
+	return fetchK8sResources(ctx, hc, cap, clusterID, apiPath, namespace)
 }
 
 // fetchCloudCredentials lists the Secrets in cattle-global-data and returns

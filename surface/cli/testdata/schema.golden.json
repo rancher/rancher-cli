@@ -4741,7 +4741,8 @@
       "contract": "internal",
       "examples": [
         "rancher logs agent --cluster prod",
-        "rancher logs server --since 1h"
+        "rancher logs server --since 1h",
+        "rancher logs server --pod rancher-7f58899d95-r87tk --timestamps"
       ],
       "flags": [
         {
@@ -4773,6 +4774,11 @@
           "desc": "prefix each line with a timestamp",
           "name": "timestamps",
           "type": "bool"
+        },
+        {
+          "desc": "restrict to one `pod` name, for per-replica attribution",
+          "name": "pod",
+          "type": "string"
         }
       ],
       "name": "logs",

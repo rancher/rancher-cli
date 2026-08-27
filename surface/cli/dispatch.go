@@ -8,7 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 )
@@ -309,6 +311,14 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	nodeDriverFlagSite := site.Kind == SiteFlagValue && d.Name == "create cluster" &&
 		(site.FlagName == "machine-config" || site.FlagName == "cloud-credential")
 
+	// logs' --pod site is entirely self-contained: its cluster comes from the
+	// curated target's LocalOnly/DownstreamOnly shape (observe.Targets), not a
+	// typed --cluster, so it resolves its own capability and returns directly
+	// rather than flowing through the generic clusterValue pipeline below.
+	if site.Kind == SiteFlagValue && d.Name == "logs" && site.FlagName == "pod" {
+		return logsPodCandidates(ctx, site, d, tail)
+	}
+
 	// Scope comes from the typed tail only — nothing ambient (no config, no
 	// env) may place or filter completion. A typed --project is its own
 	// announcement; absent flags leave the values empty.
@@ -542,6 +552,59 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 	default:
 		return nil
 	}
+	if site.EqualsForm {
+		return equalsFormCandidates(site.FlagSpelling, raw)
+	}
+	return raw
+}
+
+// logsPodCandidates completes `logs <target> --pod`: it resolves the typed
+// target positional to its curated namespace/selector (observe.Targets) and
+// lists pods there. fleet-agent's namespace is resolved dynamically at
+// Execute time, not from the static table, so it has nothing to complete
+// from here and returns no candidates — a degradation by design, not a
+// failure, matching the uncurated-machine-config precedent. A DownstreamOnly
+// target (agent, kube-api-auth) needs a cluster typed on the tail; a
+// display name is resolved to its cluster id the same way the generic
+// pipeline does it — completion must work with whichever spelling the
+// operator used for --cluster.
+func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, tail []string) []string {
+	targetTok := firstPositionalToken(tail, d.Flags)
+	target, ok := observe.Lookup(targetTok)
+	if !ok || target.Namespace == "" {
+		return nil
+	}
+
+	clusterID := engine.LocalCluster
+	if target.DownstreamOnly {
+		clusterID = extractFlagValue(tail, "cluster")
+		if clusterID == "" || !isValidSegment(clusterID) {
+			return nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, completionTimeout())
+	defer cancel()
+
+	cap := resolveCompletionToken(clusterID)
+	if cap.Token == "" {
+		return nil
+	}
+	hc, err := newCompletionClient(cap.CACert)
+	if err != nil {
+		return nil
+	}
+
+	// The typed --cluster value may be a display name; resolve it exactly
+	// like the generic pipeline. An id-shaped value matches no display
+	// name and passes through unchanged.
+	if target.DownstreamOnly {
+		if id := resolveDisplayNameToClusterID(ctx, hc, cap, clusterID); id != "" {
+			clusterID = id
+		}
+	}
+
+	raw := fetchPods(ctx, hc, cap, clusterID, target.Namespace, target.Selector)
 	if site.EqualsForm {
 		return equalsFormCandidates(site.FlagSpelling, raw)
 	}

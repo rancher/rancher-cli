@@ -325,13 +325,16 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 ### 9. Observability & support
 
 - `rancher logs <target> [--cluster <c>] [--tail 200] [--since <dur>]
-  [--previous] [--container <name>] [--timestamps]` — curated,
+  [--previous] [--container <name>] [--timestamps] [--pod <name>]` — curated,
   verified-location logs for `server`, `agent`, `fleet-agent`,
   `kube-api-auth`, or `webhook`. Multi-pod targets merge every matched
   pod/container into one `[pod/container]`-prefixed body; `--tail` defaults
   to 200 lines, `--since` takes a duration (`30m`, `2h`), `--previous` reads
   the last-terminated container instance, and `--container` narrows a
-  multi-container pod. A missing target degrades to an honest `NOT_FOUND`
+  multi-container pod, and `--pod` pins ONE pod of a multi-pod target
+  (per-replica log attribution — e.g. reading a single Rancher
+  server replica during HA triage; an unknown pod name is NOT_FOUND
+  listing the real ones). A missing target degrades to an honest `NOT_FOUND`
   (a single-node Docker install's server logs live in `docker logs
   <container>`; a non-ACE cluster has no `kube-api-auth`). Triage example:
   `rancher logs server --since 1h --timestamps`. Real `-o json` shape:

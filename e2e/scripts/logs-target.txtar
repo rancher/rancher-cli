@@ -15,6 +15,16 @@ jsonquery stdout 'data.entries.#' 1
 jsonquery stdout data.entries.0.pod agent-pod
 jsonquery stdout data.entries.0.container cluster-register
 
+# --pod narrows to the one named pod (per-replica attribution).
+exec rancher logs agent --cluster testcluster --pod agent-pod -o json
+jsonquery stdout 'data.entries.#' 1
+jsonquery stdout data.entries.0.pod agent-pod
+
+# an unknown --pod name is NOT_FOUND naming the real pod names as candidates.
+! exec rancher logs agent --cluster testcluster --pod bogus-pod -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.candidates.0.id agent-pod
+
 # server: LocalOnly. No app=rancher pods (nor a rancher Deployment) exist on
 # the local cluster in this harness — the Docker-install degradation is the
 # honest assertion available without a running Rancher server.

@@ -57,6 +57,65 @@ func TestLogsExecuteContainerFilter(t *testing.T) {
 	assert.NotContains(t, res.Text, "main-line")
 }
 
+func TestLogsExecutePodFlag(t *testing.T) {
+	t.Parallel()
+
+	newDownstream := func() *fakeClient {
+		return newFakeClient().
+			withListNS(podKind.GVR, "cattle-system", podList("agent-1", "agent-2")).
+			withLog("main", "hello\n")
+	}
+
+	t.Run("narrows to the named pod", func(t *testing.T) {
+		t.Parallel()
+		downstream := newDownstream()
+		factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		res, err := execLogs(t, factory, input{
+			args: []string{"agent"},
+			s:    map[string]string{engine.FlagCluster: "c-1", flagPod: "agent-2"},
+		})
+		require.NoError(t, err)
+		data := res.Data.(logsResult)
+		assert.Equal(t, []string{"agent-2"}, data.Pods)
+		assert.NotContains(t, res.Text, "agent-1")
+		assert.Contains(t, res.Text, "[agent-2/main] hello\n")
+	})
+
+	t.Run("zero resolved pods reports the no-logs error, not an empty candidate list", func(t *testing.T) {
+		t.Parallel()
+		downstream := newFakeClient().
+			withListNS(podKind.GVR, "cattle-system", podList())
+		factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		_, err := execLogs(t, factory, input{
+			args: []string{"agent"},
+			s:    map[string]string{engine.FlagCluster: "c-1", flagPod: "agent-1"},
+		})
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Contains(t, ce.Message, "no logs available",
+			"the target/namespace/cluster error is the honest one; a pod-not-found with zero candidates points at a list that does not exist")
+		assert.Empty(t, ce.Candidates)
+	})
+
+	t.Run("unknown pod is NOT_FOUND with the real pod names as candidates", func(t *testing.T) {
+		t.Parallel()
+		downstream := newDownstream()
+		factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		_, err := execLogs(t, factory, input{
+			args: []string{"agent"},
+			s:    map[string]string{engine.FlagCluster: "c-1", flagPod: "agent-9"},
+		})
+		require.Error(t, err)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		require.Len(t, ce.Candidates, 2)
+		assert.ElementsMatch(t, []string{"agent-1", "agent-2"}, []string{ce.Candidates[0].ID, ce.Candidates[1].ID})
+	})
+}
+
 func TestLogsExecutePartialFailureWarnsButSucceeds(t *testing.T) {
 	t.Parallel()
 	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{

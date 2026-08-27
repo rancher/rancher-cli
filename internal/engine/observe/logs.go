@@ -19,6 +19,7 @@ const (
 	flagPrevious   = "previous"
 	flagContainer  = "container"
 	flagTimestamps = "timestamps"
+	flagPod        = "pod"
 )
 
 const defaultTailLines = 200
@@ -28,9 +29,9 @@ type logsCmd struct {
 }
 
 // NewLogs builds `logs <target> [--cluster] [--tail N=200] [--since <dur>]
-// [--previous] [--container] [--timestamps]` (LS-1/LS-2): curated,
+// [--previous] [--container] [--timestamps] [--pod]` (LS-1/LS-2): curated,
 // verified-location logs for a Rancher component, merging every matched
-// pod/container into one prefixed body.
+// pod/container into one prefixed body, or narrowing to one pod with --pod.
 func NewLogs(clients engine.ClusterClientFactory) runtime.Command {
 	return &logsCmd{clients: clients}
 }
@@ -47,11 +48,13 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 			{Name: flagPrevious, Type: "bool", Desc: "logs from the previous container instance"},
 			{Name: flagContainer, Type: "string", Desc: "`container` name (defaults to the main container)"},
 			{Name: flagTimestamps, Type: "bool", Desc: "prefix each line with a timestamp"},
+			{Name: flagPod, Type: "string", Desc: "restrict to one `pod` name, for per-replica attribution"},
 		},
 		CommandType: runtime.ReadOnly,
 		Examples: []string{
 			"rancher logs agent --cluster prod",
 			"rancher logs server --since 1h",
+			"rancher logs server --pod rancher-7f58899d95-r87tk --timestamps",
 		},
 		Network: true,
 		Auth:    true,
@@ -78,6 +81,18 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	resolved, err := Resolve(ctx, c.clients, target, in)
 	if err != nil {
 		return runtime.Result{}, err
+	}
+
+	// With zero resolved pods, skip the name filter and fall through to
+	// the no-logs NOT_FOUND below — it names the target, namespace, and
+	// cluster, which is the actual problem; "pod not found" with an empty
+	// candidate list would point at a list that does not exist.
+	if podFilter := in.String(flagPod); podFilter != "" && len(resolved.Pods) > 0 {
+		pod, perr := selectPod(resolved.Pods, podFilter)
+		if perr != nil {
+			return runtime.Result{}, perr
+		}
+		resolved.Pods = []unstructured.Unstructured{pod}
 	}
 
 	containerFilter := in.String(flagContainer)
@@ -191,6 +206,26 @@ type logEntry struct {
 type logsResult struct {
 	Pods    []string   `json:"pods"`
 	Entries []logEntry `json:"entries"`
+}
+
+// selectPod narrows a target's resolved pods to the one named pod, for
+// per-replica log attribution (the HA-triage case: grep one replica's logs,
+// not the merged stream). An unknown name is a NOT_FOUND naming the target's
+// actual pod names as candidates, the projects.MatchOneOrError convention.
+func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unstructured, error) {
+	for i := range pods {
+		if pods[i].GetName() == name {
+			return pods[i], nil
+		}
+	}
+	names := podNames(pods)
+	cands := make([]clierr.Candidate, len(names))
+	for i, n := range names {
+		cands[i] = clierr.Candidate{ID: n, Name: n}
+	}
+	return unstructured.Unstructured{}, clierr.New(clierr.CodeNotFound, fmt.Sprintf("pod %q not found", name)).
+		WithCandidates(cands).
+		WithHint("choose one of the listed pods")
 }
 
 func podNames(pods []unstructured.Unstructured) []string {
