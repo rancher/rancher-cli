@@ -33,6 +33,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"tok/mint-shape", "tok/dryrun-delete", "tok/stale-precondition-delete", "tok/revoke",
 		"mut/dryrun-create", "mut/dryrun-invalid", "mut/stale-rv-update",
 		"mut/rv-precondition-delete", "mut/dryrun-then-apply",
+		"capability/edition-and-oidc-provider-classification",
 	}
 	var got []string
 	for _, p := range All() {

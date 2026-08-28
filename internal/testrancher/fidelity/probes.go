@@ -31,7 +31,30 @@ func All() []Probe {
 	probes = append(probes, authProbes()...)
 	probes = append(probes, tokProbes()...)
 	probes = append(probes, mutProbes()...)
+	probes = append(probes, capabilityProbes()...)
 	return probes
+}
+
+// capabilityProbes pins the two wire reads the Prime capability detector's
+// truth table decides on: the unauthenticated edition string and a named
+// Feature's effective-value and prime-classification fields. oidc-provider
+// is the one live case known to be un-tiered pre-v2.16 (status.prime false
+// on both editions) — a golden diff here means the server started
+// classifying it, which changes what outcome the detector produces.
+func capabilityProbes() []Probe {
+	return []Probe{
+		{
+			Name:       "capability/edition-and-oidc-provider-classification",
+			OracleOnly: true,
+			Observations: []Observation{
+				{Name: "edition", Request: RequestSpec{Method: http.MethodGet, Path: "/rancherversion", Identity: IdentityNone}},
+				{
+					Name:    "oidc-provider-feature",
+					Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis/management.cattle.io/v3/features/oidc-provider", Identity: IdentityAdmin},
+				},
+			},
+		},
+	}
 }
 
 func authProbes() []Probe {

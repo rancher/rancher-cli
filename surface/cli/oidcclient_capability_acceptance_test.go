@@ -118,6 +118,26 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 		env := oidcErrEnvelope(t, stdout, stderr)
 		assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled")
+		assert.Contains(t, env.Data.Error.Hint, "enable feature oidc-provider")
+		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
+	})
+
+	// This is the real shape a community server serves before oidc-provider
+	// is ever toggled on: the Feature object already exists (200, not 404)
+	// with status.prime false and status.default false. It refuses rather
+	// than falling through to unknown, closing the orphan-commit path a
+	// generic downstream NOT_FOUND used to leave open.
+	t.Run("disabled: community edition, never-toggled feature", func(t *testing.T) {
+		srv, hits := oidcAcceptanceServer(t,
+			`{"Version":"v2.14.3","RancherPrime":"false"}`,
+			oidcFeatureObj(false, false), http.StatusOK)
+		dir := grConfigDir(t, srv)
+		stdout, stderr, err := grRun(t, root, dir, "get", "oidcclient", "-o", "json")
+		require.Error(t, err)
+		env := oidcErrEnvelope(t, stdout, stderr)
+		assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
+		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on this server")
+		assert.Contains(t, env.Data.Error.Hint, clierr.LearnMorePrimeURL)
 		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
 	})
 
@@ -181,4 +201,29 @@ func TestCreateResourceOIDCClientManifestPrimeRequired(t *testing.T) {
 	require.NoError(t, json.Unmarshal(env.Data.Error.Details, &details))
 	assert.Equal(t, "oidc-provider", details.Feature)
 	assert.Zero(t, hits.Load(), "create resource -f must make zero target requests before a PRIME_REQUIRED refusal")
+}
+
+// TestCreateResourceOIDCClientManifestDisabledAfterEnabled pins the
+// disabled-after-enabled orphan case: a feature that was on and is now
+// explicitly off (spec.value=false) still serves its CRD — a create would
+// otherwise commit against a controller that stopped reconciling. The
+// capability resolver must refuse before Plan makes any target request,
+// the same as the PRIME_REQUIRED path above.
+func TestCreateResourceOIDCClientManifestDisabledAfterEnabled(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	srv, hits := oidcAcceptanceServer(t,
+		`{"Version":"v2.14.3","RancherPrime":"false"}`,
+		oidcFeatureObj(false, false), http.StatusOK)
+	dir := grConfigDir(t, srv)
+	manifest := oidcClientManifest(t)
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+	stdout, stderr, err := grRun(t, root, dir, "create", "resource", "-f", manifest, "-o", "json")
+	require.Error(t, err)
+	env := oidcErrEnvelope(t, stdout, stderr)
+	assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on this server")
+	assert.Zero(t, hits.Load(), "create resource -f must make zero target requests before a disabled refusal")
 }

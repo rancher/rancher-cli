@@ -100,16 +100,33 @@ func TestRunCapabilityNilCheckerFailsLoud(t *testing.T) {
 	assert.Contains(t, ce.Message, "no capability checker is wired")
 }
 
-func TestRunCapabilityDisabledRefusesWithValidation(t *testing.T) {
+func TestRunCapabilityDisabledOnPrimeRefusesWithEnableHint(t *testing.T) {
 	t.Parallel()
 	cmd := refusingExecuteRead{d: primeDesc("get widget"), t: t}
-	checker := &stubChecker{dec: CapabilityDecision{Outcome: CapabilityDisabled}}
+	checker := &stubChecker{dec: CapabilityDecision{Outcome: CapabilityDisabled, EditionPrime: true}}
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "json", Capability: checker}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Hint, "enable feature widget-feature")
+}
+
+// TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint pins the
+// amended outcome 2: an explicit disabled reading refuses on every edition,
+// but a server not known to be Prime gets a message that holds regardless
+// of tier rather than the Prime-specific "enable feature" instruction.
+func TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint(t *testing.T) {
+	t.Parallel()
+	cmd := refusingExecuteRead{d: primeDesc("get widget"), t: t}
+	checker := &stubChecker{dec: CapabilityDecision{Outcome: CapabilityDisabled, EditionPrime: false}}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Capability: checker}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "widget-feature is disabled on this server")
+	assert.Contains(t, ce.Hint, clierr.LearnMorePrimeURL)
 }
 
 func TestRunCapabilityPrimeRequiredReturnsStructuredError(t *testing.T) {

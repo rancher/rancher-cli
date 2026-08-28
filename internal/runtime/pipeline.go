@@ -322,9 +322,12 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 // verbs that carries the kind; for create resource it names the command, a
 // reviewed acceptance until the capability Name identifier lands) and its
 // details.feature carries req.Feature, the machine-readable identifier.
-// The Disabled message names req.Feature directly ("<feature> is
-// disabled") and carries no details — the remedy is the feature flag, not
-// an entitlement, so the feature name IS the message.
+// The Disabled message names req.Feature directly and carries no details —
+// the remedy is the feature flag, not an entitlement. Its wording forks on
+// dec.EditionPrime: a known-Prime server gets the actionable "enable
+// feature <name>"; every other edition gets a statement that holds
+// regardless of tier, since a community or unknown edition might still turn
+// out to require Prime once the feature is tiered server-side.
 func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequirement, streams IO) *clierr.Error {
 	if streams.Capability == nil {
 		return clierr.New(clierr.CodeGeneric,
@@ -334,9 +337,14 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 	dec := streams.Capability.Check(ctx, req)
 	switch dec.Outcome {
 	case CapabilityDisabled:
+		if dec.EditionPrime {
+			return clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("%s is disabled", req.Feature)).
+				WithHint(fmt.Sprintf("enable feature %s", req.Feature))
+		}
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is disabled", req.Feature)).
-			WithHint(fmt.Sprintf("enable feature %s", req.Feature))
+			fmt.Sprintf("%s is disabled on this server", req.Feature)).
+			WithHint("availability is decided by the connected server — " + clierr.LearnMorePrimeURL)
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
 			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime", d.Name)).

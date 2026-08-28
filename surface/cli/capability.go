@@ -62,6 +62,7 @@ func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityReq
 	}
 
 	dec.Outcome = decideCapability(enabled, prime, edition)
+	dec.EditionPrime = edition == provider.EditionPrime
 	return dec
 }
 
@@ -76,9 +77,12 @@ func featureState(obj *unstructured.Unstructured) (enabled, prime *bool) {
 // nil means the signal was unavailable, malformed, forbidden, or absent —
 // never guessed. Evaluation order encodes the stated precedence: an
 // affirmative enabled=true always wins (outcome 1), regardless of edition;
-// only then does edition=prime win the disabled outcome (2); only then does
-// prime-required require BOTH prime=true and edition=community (3);
-// everything else is unknown (4).
+// only then does prime-required require BOTH prime=true and edition=community
+// (outcome 3); every other explicit enabled=false reading is disabled,
+// regardless of edition (outcome 2) — an explicit false is certain enough on
+// its own that a committed mutation against a stopped controller is worse
+// than a slightly generic refusal message; only a missing enabled reading is
+// unknown (outcome 4).
 func decideCapability(enabled, prime *bool, edition provider.Edition) runtime.CapabilityOutcome {
 	if enabled == nil {
 		return runtime.CapabilityUnknown
@@ -86,11 +90,8 @@ func decideCapability(enabled, prime *bool, edition provider.Edition) runtime.Ca
 	if *enabled {
 		return runtime.CapabilityProceed
 	}
-	if edition == provider.EditionPrime {
-		return runtime.CapabilityDisabled
-	}
 	if prime != nil && *prime && edition == provider.EditionCommunity {
 		return runtime.CapabilityPrimeRequired
 	}
-	return runtime.CapabilityUnknown
+	return runtime.CapabilityDisabled
 }

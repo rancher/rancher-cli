@@ -30,10 +30,10 @@ func TestDecideCapabilityTruthTable(t *testing.T) {
 		{"disabled on prime edition: disabled", new(false), new(true), provider.EditionPrime, runtime.CapabilityDisabled},
 		{"edition prime + feature prime:false is a non-prime feature that is off", new(false), new(false), provider.EditionPrime, runtime.CapabilityDisabled},
 		{"disabled + prime-classified + community: prime required", new(false), new(true), provider.EditionCommunity, runtime.CapabilityPrimeRequired},
-		{"disabled + non-prime feature + community: unknown (not prime-required)", new(false), new(false), provider.EditionCommunity, runtime.CapabilityUnknown},
-		{"disabled + missing prime classification + community: unknown", new(false), nil, provider.EditionCommunity, runtime.CapabilityUnknown},
+		{"disabled + non-prime feature + community: disabled, not prime-required", new(false), new(false), provider.EditionCommunity, runtime.CapabilityDisabled},
+		{"disabled + missing prime classification + community: disabled", new(false), nil, provider.EditionCommunity, runtime.CapabilityDisabled},
 		{"enabled missing (forbidden/absent Feature GET): unknown", nil, new(true), provider.EditionCommunity, runtime.CapabilityUnknown},
-		{"edition unknown, disabled: unknown", new(false), new(true), provider.EditionUnknown, runtime.CapabilityUnknown},
+		{"edition unknown, disabled: disabled on any edition", new(false), new(true), provider.EditionUnknown, runtime.CapabilityDisabled},
 		{"everything unavailable: unknown", nil, nil, provider.EditionUnknown, runtime.CapabilityUnknown},
 	}
 	for _, tc := range cases {
@@ -151,6 +151,22 @@ func TestCapabilityCheckerDisabledOnPrimeServerEndToEnd(t *testing.T) {
 	c := checkerFor(t, srv)
 	dec := c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
 	assert.Equal(t, runtime.CapabilityDisabled, dec.Outcome)
+	assert.True(t, dec.EditionPrime)
+}
+
+// TestCapabilityCheckerDisabledOnCommunityServerEndToEnd proves the amended
+// outcome 2: a disabled, non-prime-classified feature on a community server
+// is Disabled (not Unknown) with EditionPrime false, selecting the neutral
+// message variant.
+func TestCapabilityCheckerDisabledOnCommunityServerEndToEnd(t *testing.T) {
+	t.Parallel()
+	srv := featureFake(t,
+		`{"Version":"v2.15.0","RancherPrime":"false"}`,
+		featureObj(false, false), http.StatusOK)
+	c := checkerFor(t, srv)
+	dec := c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
+	assert.Equal(t, runtime.CapabilityDisabled, dec.Outcome)
+	assert.False(t, dec.EditionPrime)
 }
 
 // TestCapabilityCheckerForbiddenFeatureGetIsUnknown proves the detector

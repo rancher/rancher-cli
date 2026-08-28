@@ -15,9 +15,15 @@ const (
 	// collapsing them would discard the detector's information the moment a
 	// consumer (verbose messaging, telemetry) wants it.
 	CapabilityProceed CapabilityOutcome = iota
-	// CapabilityDisabled means the feature reads effective-disabled on a
-	// server whose edition is affirmatively Prime — "enable feature <name>"
-	// messaging, the existing error taxonomy (no new code).
+	// CapabilityDisabled means the feature reads effective-disabled and is
+	// not prime-required (see CapabilityPrimeRequired) — on ANY edition,
+	// including community and unknown. An explicit disabled reading is
+	// treated as certain regardless of what else is unknown about the
+	// server, because letting it fall through as Unknown would let a
+	// mutation commit against a CRD whose controller is not running.
+	// Messaging varies by edition: a server known to be Prime gets
+	// "enable feature <name>"; every other edition gets a neutral
+	// statement true regardless of tier.
 	CapabilityDisabled
 	// CapabilityPrimeRequired means the feature reads effective-disabled AND
 	// prime-classified AND the server edition is affirmatively community —
@@ -49,6 +55,11 @@ type CapabilityDecision struct {
 	// details.server — populated whenever the checker could resolve it,
 	// regardless of Outcome.
 	Server string
+	// EditionPrime is true when the connected server's edition is
+	// affirmatively Prime. It only changes behavior for CapabilityDisabled,
+	// selecting between the two message variants; every other outcome
+	// ignores it.
+	EditionPrime bool
 }
 
 // CapabilityChecker probes whether the resolved server permits a capability
