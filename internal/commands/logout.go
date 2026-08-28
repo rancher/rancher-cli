@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -53,11 +52,10 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	}
 
 	var (
-		targets              []string
-		deletedFrom          map[string][]string
-		deletedCache         []string
-		urlByName            = map[string]string{}
-		currentServerCleared bool
+		targets      []string
+		deletedFrom  map[string][]string
+		deletedCache []string
+		urlByName    = map[string]string{}
 	)
 	if err := config.WithLock(cmdCtx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
@@ -77,10 +75,6 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		} else {
 			deletedFrom, deletedCache, err = l.deleteTargets(cmdCtx, cfg, targets, policy)
 		}
-		if err != nil {
-			return err
-		}
-		currentServerCleared, err = clearCurrentServer(cfg, all, targets)
 		return err
 	}); err != nil {
 		return runtime.Result{}, err
@@ -90,20 +84,20 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
 		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
-		"currentServerCleared": currentServerCleared,
-	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache), currentServerCleared)}, nil
+	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache))}, nil
 }
 
 // renderLogoutText is the TTY view of a logout: which servers, which
-// credential backends were touched, how many cached exec credentials went,
-// and whether the current-server pointer was cleared. Silent success is for
-// scripts (exit code + JSON envelope); a person deserves the confirmation.
-// It renders every deletedFrom entry, not just the requested targets:
-// logout --all's orphaned-helper sweep reports records whose server name
-// never made it into config (no URL known) — the text must not diverge
-// from the JSON envelope for exactly the crash-recovery case that sweep
-// exists to catch.
-func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int, currentServerCleared bool) string {
+// credential backends were touched, and how many cached exec credentials
+// went. Silent success is for scripts (exit code + JSON envelope); a person
+// deserves the confirmation. It renders every deletedFrom entry, not just
+// the requested targets: logout --all's orphaned-helper sweep reports
+// records whose server name never made it into config (no URL known) — the
+// text must not diverge from the JSON envelope for exactly the
+// crash-recovery case that sweep exists to catch. Logout never clears the
+// current-server pointer (including --all): the entry survives,
+// credential-less, and the pointer keeps naming it.
+func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int) string {
 	names := make([]string, 0, len(deletedFrom))
 	for s := range deletedFrom {
 		names = append(names, s)
@@ -125,16 +119,6 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 	}
 	if cacheCount > 0 {
 		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
-	}
-	if currentServerCleared {
-		// The hinted command must be valid verbatim: auth login requires
-		// --server, so name a complete invocation when exactly one server
-		// was logged out.
-		hint := "rancher auth login --server <url> --name <name>"
-		if len(names) == 1 && urlByName[names[0]] != "" {
-			hint = fmt.Sprintf("rancher auth login --server %s --name %s", urlByName[names[0]], names[0])
-		}
-		fmt.Fprintf(&b, "current server cleared — log back in with: %s\n", hint)
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
@@ -184,7 +168,7 @@ func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, target
 	for _, s := range targets {
 		from, cache, derr := config.DeleteTokenEverywhere(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
-			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done)
+			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, deletedCache)
 		}
 		deletedFrom[s] = from
 		deletedCache = append(deletedCache, cache...)
@@ -206,14 +190,14 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 	for _, s := range targets {
 		from, derr := config.DeleteLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		if derr != nil {
-			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done)
+			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, nil)
 		}
 		deletedFrom[s] = from
 		done = append(done, s)
 	}
 	deletedCache, err := config.DeleteAllExecCache(l.dir)
 	if err != nil {
-		return nil, nil, deleteFailure("failed to delete exec-credential cache", err, done)
+		return nil, nil, deleteFailure("failed to delete exec-credential cache", err, done, deletedFrom, nil)
 	}
 
 	// Reach helper credentials whose server name never made it into
@@ -226,9 +210,21 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
 	}
 	if rerr != nil {
-		return nil, nil, deleteFailure("failed to delete orphaned helper credentials", rerr, done)
+		return nil, nil, deleteFailure("failed to delete orphaned helper credentials", rerr, done, deletedFrom, deletedCache)
 	}
 	return deletedFrom, deletedCache, nil
+}
+
+// LogoutAllPartialFailure is deleteAll's structured payload for a
+// mid-sequence failure: everything already deleted before the failing step,
+// so a caller decoding the error sees exactly what succeeded rather than a
+// bare failure that looks like nothing happened — the credentials for
+// LoggedOut/DeletedFrom/DeletedCache are already gone regardless of which
+// later step failed.
+type LogoutAllPartialFailure struct {
+	LoggedOut    []string            `json:"loggedOut"`
+	DeletedFrom  map[string][]string `json:"deletedFrom,omitempty"`
+	DeletedCache []string            `json:"deletedCache,omitempty"`
 }
 
 // deleteFailure shapes a delete-step failure: the caller's own cancellation
@@ -236,30 +232,13 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 // unchanged so errors.Is(err, context.Canceled) keeps working — dressing it
 // as a delete failure would send the user diagnosing helper problems.
 // Anything else keeps its classification (a lock timeout stays LOCK_TIMEOUT
-// and retryable) under the step-prefixed message and the already-done hint.
-func deleteFailure(step string, err error, done []string) error {
+// and retryable) under the step-prefixed message and the already-done hint,
+// plus the LogoutAllPartialFailure details so nothing already deleted is
+// vaporized just because a later step in the same --all run failed.
+func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string) error {
 	return wrapUnlessCanceled(err, func(err error) error {
 		return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
-			WithHint(fmt.Sprintf("already logged out: %v", done))
+			WithHint(fmt.Sprintf("already logged out: %v", done)).
+			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache})
 	})
-}
-
-// clearCurrentServer unsets the current-server pointer when it no longer
-// names a logged-in server: always under --all when one is set (including a
-// dangling pointer — --all is a repair command), otherwise only when it
-// names one of the servers just logged out. Reports whether it cleared
-// anything so the result can say so.
-func clearCurrentServer(cfg *config.Config, all bool, targets []string) (bool, error) {
-	if cfg.CurrentServer == "" {
-		return false, nil
-	}
-	if all {
-		cfg.CurrentServer = ""
-		return true, cfg.Write()
-	}
-	if slices.Contains(targets, cfg.CurrentServer) {
-		cfg.CurrentServer = ""
-		return true, cfg.Write()
-	}
-	return false, nil
 }

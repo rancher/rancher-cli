@@ -57,7 +57,7 @@ func TestLogoutNoArgLogsOutCurrent(t *testing.T) {
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Empty(t, cfg.CurrentServer) // unset
+	assert.Equal(t, "acme", cfg.CurrentServer, "logout never clears the pointer, even for the current server")
 	_, ok := cfg.Servers["acme"]
 	assert.True(t, ok, "server config entry kept") // token-only removal
 }
@@ -98,7 +98,7 @@ func TestLogoutAll(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrNoToken)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.CurrentServer)
+	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer — a credential-less entry is a valid state")
 }
 
 func TestLogoutDeletesMatchingExecCache(t *testing.T) {
@@ -275,11 +275,84 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	assert.Empty(t, leftovers, "helper records must be fully deleted")
 }
 
-// TestLogoutAllDeletesLeftoversAfterFailedConfigWrite is finding-2's review-
-// requested scenario: a login whose helper store succeeds but whose config
-// write then fails strands a live helper credential + helper record for a
-// server never persisted to config.yaml. `logout --all` must still clean it.
-func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
+// TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded pins that a
+// failure in the LAST of deleteAll's three steps must not discard the
+// first two: the per-server loop and exec-cache wipe both succeed before
+// the orphan sweep runs, so their results must survive a sweep failure,
+// not be vaporized. "acme" is a plain file-store entry (its deletion never touches
+// the helper-records file at all, exec policy or not); "ghost" is an
+// orphaned EXEC-helper record, opened directly against the "exec:fake"
+// backend independent of cfg's own "file" policy — matching how a real
+// orphan arises (left behind by a PAST exec policy, swept regardless of
+// the CURRENT one). Only the orphan sweep's persist write is refused.
+func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("symlink-based write failure needs POSIX symlink semantics")
+	}
+	t.Setenv("PATH", buildCommandsFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	keyring.MockInit()
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{"acme": {URL: "https://acme.ex"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	fileStore := config.NewFileStore(dir)
+	require.NoError(t, fileStore.SetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"}, "id:sec"))
+
+	// A helper credential for a name never written to config.yaml — the
+	// orphan the sweep step exists to reach — opened directly against
+	// exec:fake regardless of cfg's "file" policy above.
+	execStore, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, execStore.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
+
+	// credhelper-provenance.yaml (internal/config's helperRecordsFileName)
+	// behind a symlink: reads during the sweep still resolve, but its
+	// persist write is refused — the per-server loop (file-backed "acme")
+	// and exec-cache wipe never touch this file, so they complete for real
+	// first.
+	recordsPath := filepath.Join(dir, "credhelper-provenance.yaml")
+	data, rerr := os.ReadFile(recordsPath)
+	require.NoError(t, rerr, "precondition: the helper-records file exists after ghost's SetToken above")
+	backing := filepath.Join(dir, "credhelper-provenance.real.yaml")
+	require.NoError(t, os.WriteFile(backing, data, 0o600))
+	require.NoError(t, os.Remove(recordsPath))
+	require.NoError(t, os.Symlink(backing, recordsPath))
+
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
+		args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.Error(t, err, "the orphan sweep's persist write must fail (symlink refusal)")
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok, "the error must carry LogoutAllPartialFailure, not discard what already succeeded")
+	assert.Equal(t, []string{"acme"}, details.LoggedOut)
+	assert.Contains(t, details.DeletedFrom["acme"], "file", "acme's credential was really deleted before the failing step")
+	assert.NotNil(t, details.DeletedCache, "the exec-cache wipe completed before the failing step")
+
+	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
+	assert.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
+}
+
+// TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential pins a
+// safety property the server-registration restructure adds: registration
+// (config.yaml) commits BEFORE any authentication or credential write, in
+// its own lock cycle. A registration-time config-write failure must
+// therefore leave no helper credential behind at all — the interleaving
+// (helper store succeeds, then config write fails) that used to strand a
+// credential is now structurally impossible, because delegated login can
+// no longer reach the credential-write step without registration's own
+// cfg.Write() having already succeeded. TestLogoutAllDeletesOrphanedHelperCredential
+// covers `logout --all`'s orphan sweep directly, independent of login.
+func TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("symlink-based config-write failure needs POSIX symlink semantics")
 	}
@@ -292,8 +365,9 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	dir := t.TempDir()
 	// A real config behind a symlink at the config path: config.Load follows
 	// it fine, but atomicWriteFile refuses to write THROUGH a symlink — so
-	// cfg.Write fails deterministically while the provenance write-ahead (a
-	// different, non-symlink file) still succeeds.
+	// cfg.Write fails deterministically inside commitCreate's registration
+	// commit, before login's auth flow (and so its credential write) ever
+	// starts.
 	real := filepath.Join(dir, "config.real.yaml")
 	realCfg := &config.Config{CredentialStore: "exec:fake", Servers: map[string]config.Server{}}
 	realCfg.SetPath(real)
@@ -303,25 +377,19 @@ func TestLogoutAllDeletesLeftoversAfterFailedConfigWrite(t *testing.T) {
 	store, err := config.OpenStore("exec:fake", dir)
 	require.NoError(t, err)
 
-	_, err = newLoginCmd(dir, store).Execute(t.Context(),
-		args{s: map[string]string{"server": "https://ghost.ex", "name": "ghost"}, b: map[string]bool{"token-stdin": true}},
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
+	_, err = cmd.Execute(t.Context(),
+		args{s: map[string]string{"url": "https://ghost.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"ghost"}},
 		stdinPrompter("id:secret"))
-	require.Error(t, err, "the config write must fail (symlink refusal)")
-	require.NotEmpty(t, helperCreds(t, statePath), "the helper stored the credential before the config write failed")
-
-	// logout --all reads the unchanged config (ghost is absent from it) yet
-	// must still delete the stranded helper credential via provenance.
-	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
-		args{b: map[string]bool{"all": true}}, ui.Discard())
-	require.NoError(t, err)
-	assert.Empty(t, helperCreds(t, statePath), "logout --all must clean the stranded helper records")
-
-	leftovers, err := config.DeleteOrphanedHelperCredentials(t.Context(), dir)
-	require.NoError(t, err)
-	assert.Empty(t, leftovers)
+	require.Error(t, err, "the registration config write must fail (symlink refusal)")
+	assert.Empty(t, helperCreds(t, statePath), "no credential is ever stored when registration itself fails")
 }
 
-func TestLogoutAllClearsDanglingCurrentServer(t *testing.T) {
+// TestLogoutAllNeverRepairsADanglingCurrentServer pins the retired repair
+// behavior: logout --all is a pure credential-store writer now — pointer
+// bootstrap/repair is registration's privilege alone, so a dangling pointer
+// survives --all exactly as it was.
+func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 	keyring.MockInit()
 	// CurrentServer points at a name not present in Servers (dangling pointer).
 	dir := t.TempDir()
@@ -338,7 +406,7 @@ func TestLogoutAllClearsDanglingCurrentServer(t *testing.T) {
 	require.NoError(t, err)
 	cfgAfter, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
-	assert.Equal(t, "", cfgAfter.CurrentServer)
+	assert.Equal(t, "ghost", cfgAfter.CurrentServer, "the dangling pointer is left exactly as it was")
 }
 
 // TestDeleteFailureCancellationPassesThrough pins the fourth-review P1: a
@@ -349,12 +417,12 @@ func TestLogoutAllClearsDanglingCurrentServer(t *testing.T) {
 func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	t.Parallel()
 	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
-	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"})
+	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"}, nil, nil)
 	require.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
 	assert.NotErrorAs(t, err, &ce, "cancellation must not be dressed as a clierr delete failure")
 
-	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"})
+	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil)
 	require.ErrorAs(t, real, &ce)
 	assert.Contains(t, ce.Hint, "already logged out")
 }
@@ -368,7 +436,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	t.Parallel()
 	inner := clierr.Retryable(clierr.CodeLockTimeout,
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")
-	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"})
+	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"}, nil, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
@@ -382,17 +450,26 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 // is no longer silent — the text names the server, its URL, the backends the
 // token was removed from, and that the current server was cleared — and the
 // envelope carries currentServerCleared for programs.
-func TestLogoutTextAndCurrentServerClearedReported(t *testing.T) {
+// TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField pins the
+// envelope change: currentServerCleared is REMOVED from LogoutResult —
+// logout is a pure credential-store writer and the pointer is untouched
+// even for the current server.
+func TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{}, ui.Discard())
 	require.NoError(t, err)
 
 	data := res.Data.(map[string]any)
-	assert.Equal(t, true, data["currentServerCleared"])
+	_, hasField := data["currentServerCleared"]
+	assert.False(t, hasField, "currentServerCleared must not appear in the envelope at all")
 
 	assert.Contains(t, res.Text, "logged out of acme (https://acme.ex)")
 	assert.Contains(t, res.Text, "token removed from: file")
-	assert.Contains(t, res.Text, "current server cleared")
+	assert.NotContains(t, res.Text, "current server cleared")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", cfg.CurrentServer, "current server untouched")
 }
 
 // TestLogoutTextNoCurrentServerClearWhenOtherServer makes sure logging out a
@@ -403,8 +480,6 @@ func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"other"}}, ui.Discard())
 	require.NoError(t, err)
 
-	data := res.Data.(map[string]any)
-	assert.Equal(t, false, data["currentServerCleared"])
 	assert.Contains(t, res.Text, "logged out of other (https://other.ex)")
 	assert.NotContains(t, res.Text, "current server cleared")
 
