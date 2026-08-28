@@ -12,7 +12,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 	surfacecli "github.com/rancher/rancher-cli/surface/cli"
-	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
 )
 
@@ -33,7 +32,8 @@ func main() {
 	surfacecli.CaptureArgv(os.Args[1:])
 	root, err := surfacecli.BuildRoot(VERSION)
 	if err != nil {
-		logrus.Fatal(err)
+		fmt.Fprintln(os.Stderr, "rancher:", err)
+		os.Exit(1)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

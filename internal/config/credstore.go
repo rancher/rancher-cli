@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/credhelper"
-	"github.com/sirupsen/logrus"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -190,7 +189,7 @@ func warnLoosePermFI(path string, fi os.FileInfo) {
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		if _, seen := warnedLoosePerm.LoadOrStore(path, struct{}{}); !seen {
-			logrus.Warnf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+			writeWarningLine(os.Stderr, fmt.Sprintf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path))
 		}
 	}
 }
@@ -549,7 +548,7 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 		// copy, if any, could not be checked. auth logout's DeleteLoginToken
 		// independently surfaces keyring errors, so nothing is silently
 		// left behind on that path.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint)
+		writeWarningLine(os.Stderr, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).
@@ -626,7 +625,7 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
 		// keychain must not turn `auth logout` into a hard failure when
 		// the file store still deletes cleanly.
-		logrus.Warnf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr)
+		writeWarningLine(os.Stderr, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr))
 	} else {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}

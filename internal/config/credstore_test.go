@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,11 +11,38 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
+
+// captureStderr redirects os.Stderr for the duration of fn and returns the
+// bytes written to it. The pipe is drained concurrently so fn may write more
+// than the pipe buffer, and os.Stderr is restored even when fn panics.
+// Swapping os.Stderr is process-global: callers must not run in parallel
+// tests.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	orig := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		_ = r.Close()
+		done <- buf.String()
+	}()
+	finish := sync.OnceFunc(func() {
+		_ = w.Close()
+		os.Stderr = orig
+	})
+	defer finish()
+	fn()
+	finish()
+	return <-done
+}
 
 func TestFileStoreRoundTrip(t *testing.T) {
 	s := NewFileStore(t.TempDir())
@@ -192,32 +220,32 @@ func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
 		t.Skip("loose-permission warning is intentionally disabled on Windows (permcheck_windows.go); ACL enforcement is the guarantee there")
 	}
 
-	orig := logrus.StandardLogger().Out
-	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(orig)
-
 	// Loose (0644): warns once, then deduped for the same path.
 	looseDir := t.TempDir()
 	loose := NewFileStore(looseDir)
 	require.NoError(t, loose.SetToken(ServerRef{Name: "acme"}, "id:sec"))
 	require.NoError(t, os.Chmod(filepath.Join(looseDir, "credentials.yaml"), 0o644))
-	_, err := loose.GetToken(ServerRef{Name: "acme"})
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "group/world-readable", "0644 credentials must warn")
 
-	buf.Reset()
-	_, err = loose.GetToken(ServerRef{Name: "acme"})
-	require.NoError(t, err)
-	assert.NotContains(t, buf.String(), "group/world-readable", "warning must fire once per path per process")
+	out := captureStderr(t, func() {
+		_, err := loose.GetToken(ServerRef{Name: "acme"})
+		require.NoError(t, err)
+	})
+	assert.Contains(t, out, "group/world-readable", "0644 credentials must warn")
+
+	out = captureStderr(t, func() {
+		_, err := loose.GetToken(ServerRef{Name: "acme"})
+		require.NoError(t, err)
+	})
+	assert.NotContains(t, out, "group/world-readable", "warning must fire once per path per process")
 
 	// Tight (0600), fresh path: silent.
-	buf.Reset()
 	tight := NewFileStore(t.TempDir())
 	require.NoError(t, tight.SetToken(ServerRef{Name: "acme"}, "id:sec")) // written 0600
-	_, err = tight.GetToken(ServerRef{Name: "acme"})
-	require.NoError(t, err)
-	assert.NotContains(t, buf.String(), "group/world-readable", "0600 credentials must be silent")
+	out = captureStderr(t, func() {
+		_, err := tight.GetToken(ServerRef{Name: "acme"})
+		require.NoError(t, err)
+	})
+	assert.NotContains(t, out, "group/world-readable", "0600 credentials must be silent")
 }
 
 func TestCacheKeyScoping(t *testing.T) {
@@ -415,17 +443,16 @@ func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *t
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 
-	var buf bytes.Buffer
-	orig := logrus.StandardLogger().Out
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(orig)
-
-	from, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	var from []string
+	var err error
+	out := captureStderr(t, func() {
+		from, _, err = DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	})
 	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store deletes")
 	assert.Contains(t, from, "file", "file backend must still be deleted")
 	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
-	assert.Contains(t, buf.String(), "keychain unreachable", "the unreachable keychain must still be visibly warned about")
+	assert.Contains(t, out, "keychain unreachable", "the unreachable keychain must still be visibly warned about")
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
@@ -504,17 +531,14 @@ func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
 	t.Cleanup(keyring.MockInit)
 
-	var buf bytes.Buffer
-	orig := logrus.StandardLogger().Out
-	logrus.SetOutput(&buf)
-	defer logrus.SetOutput(orig)
-
 	s := newPinnedKeyringStore(dir, true)
-	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
+	out := captureStderr(t, func() {
+		require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
+	})
 	_, err := fs.GetToken(ServerRef{Name: "prod"})
 	require.ErrorIs(t, err, ErrNoToken)
-	assert.Contains(t, buf.String(), "keychain unreachable")
-	assert.Contains(t, buf.String(), "file store only")
+	assert.Contains(t, out, "keychain unreachable")
+	assert.Contains(t, out, "file store only")
 }
 
 // TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized

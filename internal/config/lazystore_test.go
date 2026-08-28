@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,23 +148,19 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return false }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	origStderr := os.Stderr
-	os.Stderr = w
-	t.Cleanup(func() { os.Stderr = origStderr; _ = w.Close(); _ = r.Close() })
-
-	lazy, lazyErr := NewLazyStore("", dir)
-	require.NoError(t, lazyErr)
-	store, pinWarning, repinErr := RepinForLogin(dir, "", lazy)
-	require.NoError(t, repinErr)
-	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
-	assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
-	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
-
-	_ = w.Close()
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
+	var store CredStore
+	captured := captureStderr(t, func() {
+		lazy, lazyErr := NewLazyStore("", dir)
+		require.NoError(t, lazyErr)
+		var pinWarning string
+		var repinErr error
+		store, pinWarning, repinErr = RepinForLogin(dir, "", lazy)
+		require.NoError(t, repinErr)
+		assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
+		assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
+		require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
+	})
+	buf := bytes.NewBufferString(captured)
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "file", ReadPin(dir))

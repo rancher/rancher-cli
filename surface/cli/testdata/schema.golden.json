@@ -8892,7 +8892,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "debug logging",
+      "desc": "accepted; currently no effect",
       "name": "--debug",
       "type": "bool"
     },

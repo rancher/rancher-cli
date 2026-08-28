@@ -22,7 +22,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	iruntime "github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
 
@@ -156,8 +155,7 @@ func oauthAuthCodeAuth(
 
 	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
-		logrus.Debugf("Failed to open browser: %v", err)
-		p.Notice(fmt.Sprintf("Failed to open browser automatically. Please open the following URL manually:\n%s\n", authURL))
+		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, authURL))
 	}
 
 	timeout := time.NewTimer(timeoutAfter)

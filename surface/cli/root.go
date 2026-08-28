@@ -22,7 +22,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/token"
-	"github.com/sirupsen/logrus"
 	ucli "github.com/urfave/cli/v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -763,7 +762,8 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		Usage:         "Rancher CLI",
 		Version:       version,
 		Flags: append([]ucli.Flag{
-			&ucli.BoolFlag{Name: "debug", Usage: "debug logging"},
+			// --debug is accepted and currently a no-op.
+			&ucli.BoolFlag{Name: "debug", Usage: "accepted; currently no effect"},
 			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to rancher config directory",
 				Sources: ucli.EnvVars(config.EnvConfigDir)},
 		}, GlobalFlags()...),
@@ -781,9 +781,6 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			c.CommandNotFound = commandNotFound
 		},
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
-			if c.Bool("debug") {
-				logrus.SetLevel(logrus.DebugLevel)
-			}
 			config.SetReadOnlyOverride(resolveReadOnly(c))
 			return ctx, nil
 		},

@@ -90,7 +90,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
 		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data"},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
-		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "debug logging"},
+		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
 		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply"},
 		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
