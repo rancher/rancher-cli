@@ -18,21 +18,29 @@ import (
 // state. RESTConfig's own typed errors must pass through unchanged.
 func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	t.Parallel()
-	t.Run("no context and no RANCHER_CLI_URL stays NOT_LOGGED_IN", func(t *testing.T) {
+	t.Run("no context and no RANCHER_CLI_URL stays NOT_LOGGED_IN with no hint", func(t *testing.T) {
 		t.Parallel()
 		_, err := Preflight(t.Context(), config.Effective{})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
-		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
+		assert.Empty(t, ce.Hint)
 	})
-	t.Run("URL resolved but no token stays AUTH with the login-or-env hint", func(t *testing.T) {
+	t.Run("configured tokenless server stays NOT_LOGGED_IN with a concrete login hint", func(t *testing.T) {
+		t.Parallel()
+		_, err := Preflight(t.Context(), config.Effective{ServerName: "qa1", URL: "https://r.ex"})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+		assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+	})
+	t.Run("env-only URL resolved but no token stays AUTH with no hint", func(t *testing.T) {
 		t.Parallel()
 		_, err := Preflight(t.Context(), config.Effective{URL: "https://r.ex"})
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
+		assert.Empty(t, ce.Hint)
 	})
 }
 

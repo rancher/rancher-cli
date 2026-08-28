@@ -14,19 +14,24 @@ import (
 
 const fileName = "config.yaml"
 
-// LoginHint is the canonical remediation hint pointing users at auth login.
-const LoginHint = "run: rancher auth login --server <url>"
-
-// LoginOrEnvHint is LoginHint's counterpart for connection resolution, which
-// also accepts an env-only session (no stored server needed).
-const LoginOrEnvHint = "run: rancher auth login --server <url>, or set " + EnvURL + " and " + EnvToken
+// LoginHintFor returns the bare, shell-quoted `rancher auth login <name>`
+// command for name — the concrete login hint every not-logged-in outcome
+// below emits when (and only when) a name is known. Replaces the retired
+// LoginHint constant, which could not carry a concrete name under the
+// executable-hint contract (a machine hint is a complete command, never a
+// placeholder).
+func LoginHintFor(name string) string {
+	return "rancher auth login " + clierr.ShellQuote(name)
+}
 
 // ErrNotLoggedIn builds the standard not-logged-in error for callers that
-// HAVE the loaded config and can see stored servers: after a logout the
-// current-server pointer is cleared but server entries survive, so the
-// answer to "am I logged in" is "no — and here is the shortcut back", never
-// a hint that implies a blank machine. With no stored servers it falls back
-// to the blank-machine wording, which is then accurate.
+// HAVE the loaded config and can see stored servers: the current-server
+// pointer is empty, dangling, or (after a logout, which never touches the
+// pointer) simply credential-less, but server entries survive either way,
+// so the answer to "am I logged in" is "no — and here is the shortcut
+// back", never a hint that implies a blank machine. With no stored
+// servers it falls back to the blank-machine wording, which is then
+// accurate.
 func (c *Config) ErrNotLoggedIn() *clierr.Error {
 	servers := make(map[string]string, len(c.Servers))
 	for n, s := range c.Servers {
@@ -38,24 +43,35 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 // ErrNotLoggedInFor is ErrNotLoggedIn's core over a name→URL map, usable by
 // callers that carry Effective.KnownServers instead of a loaded Config
 // (kube.RESTConfig — the shared client factory behind nearly every server
-// command). The hinted command is complete and valid verbatim: auth login
-// requires --server, so a bare --name suggestion would fail validation.
+// command). Exact zero/one/many outcomes: zero known servers puts onboarding
+// guidance in the message BODY with no machine hint (neither a name nor a
+// URL is known, so nothing here is a real value to interpolate); exactly one
+// gets a concrete quoted login hint; more than one lists every name as a
+// selectable candidate plus body guidance, again with no template hint — a
+// rewritten constructor cannot adopt the executable-hint contract and keep a
+// placeholder form.
 func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	if len(servers) == 0 {
 		return clierr.New(clierr.CodeNotLoggedIn,
-			"not logged in and no "+EnvURL+" set").WithHint(LoginOrEnvHint)
+			"not logged in and no "+EnvURL+" set; add a server with: rancher auth login <name> --url <url>")
 	}
 	names := make([]string, 0, len(servers))
 	for n := range servers {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	hint := fmt.Sprintf("run: rancher auth login --server %s --name %s", servers[names[0]], names[0])
-	if len(names) > 1 {
-		hint = "run: rancher auth login --server <url> --name <name> — configured servers: " +
-			strings.Join(names, ", ")
+	if len(names) == 1 {
+		return clierr.New(clierr.CodeNotLoggedIn, "not logged in — no current server").
+			WithHint(LoginHintFor(names[0]))
 	}
-	return clierr.New(clierr.CodeNotLoggedIn, "not logged in — no current server").WithHint(hint)
+	cands := make([]clierr.Candidate, 0, len(names))
+	for _, n := range names {
+		cands = append(cands, clierr.Candidate{ID: n, Name: n})
+	}
+	return clierr.New(clierr.CodeNotLoggedIn,
+		"not logged in — no current server; configured servers: "+strings.Join(names, ", ")+
+			"; select one with: rancher config use-server <name>").
+		WithCandidates(cands)
 }
 
 // CompletionConfig holds the shell-completion preferences written by
@@ -143,6 +159,21 @@ type Config struct {
 // FilePath returns the config-file path inside a config directory.
 func FilePath(dir string) string { return filepath.Join(dir, fileName) }
 
+// ParseConfig unmarshals raw config.yaml bytes into a Config, applying the
+// same Servers nil-guard Load does. Exported for callers that already hold
+// the bytes (config edit's before/after restriction diff) and would
+// otherwise have to round-trip through a temp file just to reuse Load.
+func ParseConfig(b []byte) (*Config, error) {
+	c := &Config{Servers: map[string]Server{}}
+	if err := yaml.Unmarshal(b, c); err != nil {
+		return c, err
+	}
+	if c.Servers == nil {
+		c.Servers = map[string]Server{}
+	}
+	return c, nil
+}
+
 // Load reads a config file; a missing file yields an empty, usable Config.
 func Load(path string) (*Config, error) {
 	c := &Config{
@@ -156,14 +187,12 @@ func Load(path string) (*Config, error) {
 		}
 		return c, err
 	}
-	if err := yaml.Unmarshal(b, c); err != nil {
+	parsed, err := ParseConfig(b)
+	if err != nil {
 		return c, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	if c.Servers == nil {
-		c.Servers = map[string]Server{}
-	}
-	c.path = path
-	return c, nil
+	parsed.path = path
+	return parsed, nil
 }
 
 // LoadAndStore parses config.yaml at dir and returns the loaded Config and
@@ -211,8 +240,7 @@ func (c *Config) SetPath(p string) { c.path = p }
 // commands (config use-server, auth logout --all) can load and fix the file.
 func (c *Config) CurrentServerEntry() (string, Server, error) {
 	if c.CurrentServer == "" {
-		return "", Server{}, clierr.New(clierr.CodeNotLoggedIn,
-			"no current server set").WithHint(LoginHint)
+		return "", Server{}, c.ErrNotLoggedIn()
 	}
 	s, ok := c.Servers[c.CurrentServer]
 	if !ok {

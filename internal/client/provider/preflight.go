@@ -30,7 +30,11 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 		if ce, ok := errors.AsType[*clierr.Error](err); ok {
 			return "", ce
 		}
-		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(config.LoginHint)
+		hint := ""
+		if eff.ServerName != "" {
+			hint = config.LoginHintFor(eff.ServerName)
+		}
+		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(hint)
 	}
 	disc, err := kube.Discovery(discoveryConfig(rc))
 	if err != nil {

@@ -926,8 +926,9 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 	}
 
 	if server == "" {
-		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
-			WithHint("pass --server or log in: rancher auth login --server <url>")
+		return "", "", "", clierr.New(clierr.CodeValidation,
+			"--server is required; pass it, or add and log in to a server first").
+			WithHint("pass --server")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {

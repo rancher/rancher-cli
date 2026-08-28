@@ -41,10 +41,20 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	}
 	if eff.Token == "" {
 		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but
-		// no token — a stored-but-tokenless server (never logged in, or a
-		// lost/expired token) rather than a missing login, so this is an auth
-		// gap, not a NOT_LOGGED_IN one.
-		return nil, clierr.New(clierr.CodeAuth, "no token for server").WithHint(config.LoginOrEnvHint)
+		// no token. A concrete configured ServerName is the designed
+		// post-add state under two-phase registration — added but never
+		// logged in, or logged out — so it is NOT_LOGGED_IN with a concrete
+		// login hint. An env-only RANCHER_CLI_URL carries no name to
+		// interpolate (Effective clears ServerName on a mismatched env URL,
+		// or never had one on a blank machine), so it stays AUTH with body
+		// guidance naming RANCHER_CLI_TOKEN and no machine hint.
+		if eff.ServerName != "" {
+			return nil, clierr.New(clierr.CodeNotLoggedIn,
+				fmt.Sprintf("not logged in to %q", eff.ServerName)).
+				WithHint(config.LoginHintFor(eff.ServerName))
+		}
+		return nil, clierr.New(clierr.CodeAuth,
+			"no token for server; set "+config.EnvToken+", or unset "+config.EnvURL+" and use a configured server")
 	}
 	host := fmt.Sprintf("%s/k8s/clusters/%s", BaseURL(eff.URL), cluster)
 

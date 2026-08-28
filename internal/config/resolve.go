@@ -157,7 +157,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		case terr == nil:
 			eff.Token = tok
 		case errors.Is(terr, ErrNoToken):
-			// no stored token: leave empty; RESTConfig reports it with LoginHint
+			// no stored token: leave empty; RESTConfig reports it with a login hint
 		default:
 			return Effective{}, fmt.Errorf("credential store: %w", terr)
 		}

@@ -817,17 +817,17 @@ func seedAuthedDir(t *testing.T) string {
 	return dir
 }
 
-// TestAuthCheckNotLoggedInNamesKnownServers makes sure the post-logout
-// answer is state, not plumbing: with server entries in config but no
-// current context, auth status reports "not logged in" and the hint names
-// the re-login shortcut with the stored server name — never the generic
+// TestAuthCheckNotLoggedInNamesKnownServers makes sure the answer is
+// state, not plumbing: with server entries in config but no current
+// pointer, auth status reports "not logged in" and the hint names the
+// re-login shortcut with the stored server name — never the generic
 // "no current context and no RANCHER_CLI_URL set" that implies a blank
 // machine.
 func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	dir := seedAuthedDir(t)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	cfg.CurrentServer = "" // the state auth logout leaves behind
+	cfg.CurrentServer = "" // an empty pointer (auth logout never touches it)
 	require.NoError(t, cfg.Write())
 
 	cmd := &authCheckCmd{dir: dir, store: config.NewFileStore(dir),
@@ -840,8 +840,7 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 	assert.Contains(t, ce.Message, "not logged in")
-	// The hinted command must be complete and valid verbatim — auth login
-	// requires --server, so a bare --name suggestion would fail validation
-	// when pasted.
-	assert.Contains(t, ce.Hint, "auth login --server https://rancher.test.invalid --name default")
+	// The hinted command must be complete and valid verbatim: a concrete,
+	// shell-quoted name, executable with no substitution.
+	assert.Equal(t, "rancher auth login 'default'", ce.Hint)
 }

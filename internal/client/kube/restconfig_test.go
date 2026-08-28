@@ -74,18 +74,36 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		assert.False(t, rc.Insecure)
 		assert.Nil(t, rc.CAData)
 	})
-	t.Run("empty URL returns NOT_LOGGED_IN with a login-or-env hint", func(t *testing.T) {
+	t.Run("empty URL with no known servers returns NOT_LOGGED_IN with no hint", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{Token: "t", CA: "PEM"}, "local")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
-		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
+		assert.Empty(t, ce.Hint, "the name and URL are unknown on a blank machine; guidance belongs in the body")
 	})
-	t.Run("empty token returns AUTH with a login-or-env hint", func(t *testing.T) {
+	t.Run("configured tokenless server returns NOT_LOGGED_IN with a concrete login hint (fresh add / post-logout)", func(t *testing.T) {
+		_, err := RESTConfig(config.Effective{ServerName: "qa1", URL: "https://r.ex", CA: "PEM"}, "local")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+		assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+	})
+	t.Run("env-only tokenless URL on a blank machine stays AUTH with no hint", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"}, "local")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, config.LoginOrEnvHint, ce.Hint)
+		assert.Empty(t, ce.Hint, "an env-only URL carries no name to interpolate")
+		assert.Contains(t, ce.Message, config.EnvToken)
+	})
+	t.Run("env-only tokenless URL overriding a different configured current server stays AUTH with no hint", func(t *testing.T) {
+		// Effective clears ServerName when RANCHER_CLI_URL diverges from the
+		// configured current server (resolve.go) — RESTConfig must not
+		// resurrect a name that Effective deliberately dropped.
+		_, err := RESTConfig(config.Effective{URL: "https://env.ex", CA: "PEM"}, "local")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+		assert.Empty(t, ce.Hint)
 	})
 }
