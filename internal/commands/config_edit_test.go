@@ -79,7 +79,7 @@ func TestConfigEditEditorNonZeroExitAbortsRealFileUntouched(t *testing.T) {
 func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
-	withUnknownField := validConfigYAML + "futureField: hello\n"
+	withUnknownField := "readOnly: true\nfutureField: hello\n"
 
 	// Prove Load itself accepts it — the same leniency edit must mirror.
 	tmp := filepath.Join(t.TempDir(), "config.yaml")
@@ -113,7 +113,7 @@ func TestConfigEditReEditLoopRecoversOnSecondAttempt(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
 	dangling := "currentServer: gone\nservers: {}\n"
-	fixed := validConfigYAML
+	fixed := "readOnly: true\n"
 
 	calls := 0
 	launch := func(bin string, args []string, tempPath string) error {
@@ -277,14 +277,16 @@ func TestConfigEditConflictPreservesTemp(t *testing.T) {
 func TestConfigEditAbsentFileBaseline(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 
+	const noServersContent = "readOnly: true\n"
+
 	t.Run("still absent is clean write", func(t *testing.T) {
 		dir := t.TempDir()
-		cmd := &configEditCmd{dir: dir, launchEditor: writesContent(validConfigYAML)}
+		cmd := &configEditCmd{dir: dir, launchEditor: writesContent(noServersContent)}
 		_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 		require.NoError(t, err)
 		got, readErr := os.ReadFile(config.FilePath(dir))
 		require.NoError(t, readErr)
-		assert.YAMLEq(t, validConfigYAML, string(got))
+		assert.YAMLEq(t, noServersContent, string(got))
 	})
 
 	t.Run("created meanwhile is conflict", func(t *testing.T) {
@@ -297,7 +299,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 			capturedTemp = tempPath
 			// Concurrently create the config file.
 			require.NoError(t, os.WriteFile(config.FilePath(dir), []byte(concurrentContent), 0600))
-			return os.WriteFile(tempPath, []byte(validConfigYAML), 0600)
+			return os.WriteFile(tempPath, []byte(noServersContent), 0600)
 		}
 
 		cmd := &configEditCmd{dir: dir, launchEditor: launch}
@@ -421,4 +423,105 @@ func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
 	require.NoError(t, <-holderDone)
 	_, statErr := os.Stat(capturedTemp)
 	require.NoError(t, statErr, "edits preserved")
+}
+
+// TestConfigEditRejectsAddingAServer pins that config edit no longer
+// bypasses the registration path: writing raw YAML would let an added
+// entry skip canonicalization, trust, and update-server's credential
+// purge. Adding a server via edit must be VALIDATION naming the owning
+// command.
+func TestConfigEditRejectsAddingAServer(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(validConfigYAML)}
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "servers.prod added")
+	assert.Contains(t, ce.Message, "add-server")
+
+	_, statErr := os.Stat(config.FilePath(dir))
+	assert.True(t, os.IsNotExist(statErr), "the real config file must never be created by this edit")
+}
+
+// TestConfigEditRejectsChangingAServersURL pins the exact credential-boundary
+// violation config edit's restriction closes: editing an existing entry's
+// URL from server A to server B would skip update-server's credential
+// purge, after which A's name-keyed token is served for B.
+func TestConfigEditRejectsChangingAServersURL(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	changed := "currentServer: prod\nservers:\n  prod:\n    url: https://different.example.com\n"
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(changed)}
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "servers.prod changed")
+	assert.Contains(t, ce.Message, "update-server")
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.YAMLEq(t, validConfigYAML, string(got), "the real config file must be untouched")
+}
+
+// TestConfigEditRejectsRemovingAServer pins the delete-server half of the
+// same invariant: removing an entry via edit would skip delete-server's
+// credential purge.
+func TestConfigEditRejectsRemovingAServer(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent("servers: {}\n")}
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Message, "servers.prod removed")
+	assert.Contains(t, ce.Message, "delete-server")
+	assert.Contains(t, ce.Message, "currentServer changed")
+	assert.Contains(t, ce.Message, "use-server")
+}
+
+// TestConfigEditRejectsChangingCurrentServer pins the pointer half: use-server
+// is the only switch verb.
+func TestConfigEditRejectsChangingCurrentServer(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	twoServers := "currentServer: prod\nservers:\n  prod:\n    url: https://acme.ex\n  qa:\n    url: https://qa.ex\n"
+	seedConfigFile(t, dir, twoServers)
+
+	switched := "currentServer: qa\nservers:\n  prod:\n    url: https://acme.ex\n  qa:\n    url: https://qa.ex\n"
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(switched)}
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Message, "currentServer changed")
+	assert.Contains(t, ce.Message, "use-server")
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.YAMLEq(t, twoServers, string(got))
+}
+
+// TestConfigEditAllowsNonServerFieldsUnchanged proves the restriction is
+// scoped to servers/currentServer only: completion, credentialStore, and
+// readOnly stay editable.
+func TestConfigEditAllowsNonServerFieldsUnchanged(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	seedConfigFile(t, dir, validConfigYAML)
+
+	edited := "currentServer: prod\nservers:\n  prod:\n    url: https://acme.ex\ncredentialStore: file\nreadOnly: true\n"
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(edited)}
+	_, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
+	require.NoError(t, err)
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.YAMLEq(t, edited, string(got))
 }

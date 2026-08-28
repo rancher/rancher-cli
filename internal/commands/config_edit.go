@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -17,15 +18,13 @@ import (
 
 // configEditSkeleton seeds the temp buffer when no config file exists yet —
 // commented-out so an unedited save still parses (as an empty config) rather
-// than erroring.
+// than erroring. Carries no example server block: config edit can no longer
+// create one (servers/currentServer are rejected at commit), so seeding one
+// would only teach a workflow this command immediately refuses.
 const configEditSkeleton = `# No rancher CLI config file exists yet at this path.
-# Save this file as-is (or empty) to leave nothing configured, or uncomment
-# and fill in a server to create one.
-#
-# currentServer: my-server
-# servers:
-#   my-server:
-#     url: https://rancher.example.com
+# Save this file as-is (or empty) to leave nothing configured.
+# config edit cannot add or change servers or the current server — use
+# rancher config add-server / update-server / delete-server / use-server.
 `
 
 type configEditCmd struct {
@@ -98,6 +97,9 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 		verr := lerr
 		if verr == nil {
 			verr = config.Validate(cfg)
+		}
+		if verr == nil {
+			verr = checkEditRestrictions(baseline, existed, cfg)
 		}
 
 		if verr != nil {
@@ -256,4 +258,57 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 		return "", nil, false, err
 	}
 	return tmpPath, baseline, existed, nil
+}
+
+// checkEditRestrictions diffs the edited buffer against the pre-edit
+// baseline and rejects any change to servers or currentServer — the
+// registration/update/delete/use verbs are the single-write-path invariant's
+// only drivers of entry and pointer state; config edit's own compare-and-
+// write check (a raw byte comparison against a possibly-changed concurrent
+// file) is a DIFFERENT, unrelated guard and runs separately, after this one
+// passes. baselineExisted false means there was no prior file at all (an
+// empty Config, not one parsed from zero bytes).
+func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config.Config) error {
+	before := &config.Config{Servers: map[string]config.Server{}}
+	if baselineExisted {
+		parsed, err := config.ParseConfig(baseline)
+		if err != nil {
+			return err
+		}
+		before = parsed
+	}
+
+	names := make(map[string]bool, len(before.Servers)+len(edited.Servers))
+	for n := range before.Servers {
+		names[n] = true
+	}
+	for n := range edited.Servers {
+		names[n] = true
+	}
+	sorted := make([]string, 0, len(names))
+	for n := range names {
+		sorted = append(sorted, n)
+	}
+	sort.Strings(sorted)
+
+	var offenses []string
+	for _, n := range sorted {
+		b, bOK := before.Servers[n]
+		e, eOK := edited.Servers[n]
+		switch {
+		case !bOK && eOK:
+			offenses = append(offenses, fmt.Sprintf("servers.%s added (use: rancher config add-server)", n))
+		case bOK && !eOK:
+			offenses = append(offenses, fmt.Sprintf("servers.%s removed (use: rancher config delete-server)", n))
+		case bOK && eOK && b != e:
+			offenses = append(offenses, fmt.Sprintf("servers.%s changed (use: rancher config update-server)", n))
+		}
+	}
+	if before.CurrentServer != edited.CurrentServer {
+		offenses = append(offenses, "currentServer changed (use: rancher config use-server)")
+	}
+	if len(offenses) == 0 {
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation, "config edit cannot change: "+strings.Join(offenses, "; "))
 }
