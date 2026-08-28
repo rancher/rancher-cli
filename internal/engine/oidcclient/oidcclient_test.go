@@ -1,0 +1,32 @@
+package oidcclient
+
+import (
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/stretchr/testify/assert"
+)
+
+// TestRecoveryHint pins the single shared spelling every verb's recovery
+// text is built from — a future wording change only has to happen here.
+func TestRecoveryHint(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "get oidcclient my-app -o json", recoveryHint("my-app"))
+}
+
+// TestOidcClientKindResolvesWithoutPanicking pins oidcClientKind's
+// tripwire: it panics if the "oidcclient" row is ever renamed or removed
+// from kinds.go without this package being updated in lockstep — every
+// bespoke descriptor's Capability, GVR, and Sensitive flag come from this
+// one lookup, so a silent zero-value fallback here would silently weaken
+// the Prime gate every one of them shares. This test pins today's row
+// still resolving; a future rename that breaks it will fail loudly here,
+// at panic, rather than as a silently-ungated command.
+func TestOidcClientKindResolvesWithoutPanicking(t *testing.T) {
+	t.Parallel()
+	assert.NotPanics(t, func() {
+		k := oidcClientKind()
+		assert.Equal(t, runtime.CapabilityPrime, k.Capability.Tier)
+		assert.Equal(t, "oidc-provider", k.Capability.Feature)
+	})
+}

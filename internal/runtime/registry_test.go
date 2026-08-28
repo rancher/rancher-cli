@@ -153,6 +153,75 @@ func TestValidateRejectsFeatureWithoutTier(t *testing.T) {
 	assert.ErrorContains(t, err, "no Tier")
 }
 
+// TestValidateRejectsUnknownOutputPolicyFormat pins the startup rejection for
+// a malformed OutputPolicy declaration: an AllowedFormats entry outside
+// OutputFormats/"template" is a command bug caught at Validate, never a
+// runtime surprise.
+func TestValidateRejectsUnknownOutputPolicyFormat(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		OutputPolicy: OutputPolicy{AllowedFormats: []string{"json", "xml"}}}})
+	err := reg.Validate()
+	require.ErrorContains(t, err, "outputPolicy")
+	assert.ErrorContains(t, err, `"xml"`)
+}
+
+// TestValidatePassesWellFormedOutputPolicy pins the accepted shape: every
+// OutputFormats literal plus the "template" stand-in.
+func TestValidatePassesWellFormedOutputPolicy(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		OutputPolicy: OutputPolicy{AllowedFormats: []string{"table", "wide", "json", "yaml", "template"}}}})
+	assert.NoError(t, reg.Validate())
+}
+
+// TestOnceOnlyOutputPolicyExcludesName pins the once-only contract every
+// caller shares via this one constructor: every OutputFormats literal is
+// allowed except "name", which would silently discard a once-only value
+// under -o name's NAME-column-only projection.
+func TestOnceOnlyOutputPolicyExcludesName(t *testing.T) {
+	t.Parallel()
+	p := OnceOnlyOutputPolicy()
+	assert.False(t, p.Allows("name"))
+	for _, f := range []string{"", "table", "wide", "json", "yaml", "template=x"} {
+		assert.True(t, p.Allows(f), "format %q must be allowed", f)
+	}
+}
+
+// TestValidateRejectsDeliveryOnceOnlyOnReadOnly pins Delivery's Mutating-only
+// restriction: a read command promising once-only delivery makes no sense
+// (there is no mutation to have committed) and must fail at startup.
+func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Delivery: DeliveryOnceOnly}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "Mutating")
+}
+
+// TestValidateRejectsUnknownDeliveryValue pins the closed Delivery enum: any
+// value other than DeliveryOnceOnly (or the zero value) is a startup
+// rejection, matching the CapabilityTier precedent.
+func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{"create widget": {}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Delivery: "bogus"}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unknown delivery classification")
+}
+
+// TestValidatePassesDeliveryOnceOnlyOnMutating pins the accepted shape.
+func TestValidatePassesDeliveryOnceOnlyOnMutating(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{"create widget": {}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Delivery: DeliveryOnceOnly}})
+	assert.NoError(t, reg.Validate())
+}
+
 // fakeReadWithResolver is a ReadCommand that also implements
 // CapabilityResolver — used to pin the registry's mutual-exclusion rule.
 type fakeReadWithResolver struct{ fakeRead }

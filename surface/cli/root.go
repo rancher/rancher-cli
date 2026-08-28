@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/managementtoken"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
+	"github.com/rancher/rancher-cli/internal/engine/oidcclient"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
@@ -73,6 +74,7 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateToken(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateKubeconfig(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return oidcclient.NewCreate(d.clients, d.roots, d.serverBase) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateCluster(d.clients, d.roots) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
@@ -513,6 +515,10 @@ var derivedOpKinds = map[string]string{
 	"project remove-namespace": "namespace",
 	"create secret":            "secret",
 	"create cluster":           "provisioningcluster",
+	// oidc-client add-secret/rotate-secret/remove-secret entries land with
+	// the lifecycle verbs (commit 3): registering them before their
+	// commands exist would fail the coverage rule.
+	"create oidc-client": "oidcclient",
 }
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with

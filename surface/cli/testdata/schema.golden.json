@@ -417,6 +417,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "delivery": "onceOnly",
       "destructive": "true",
       "examples": [
         "rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml"
@@ -585,6 +586,76 @@
     {
       "args": [
         {
+          "desc": "OIDC client name (user-chosen; the server does not generate one)",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "delivery": "onceOnly",
+      "desc": "Creates the client, waits for the server to provision it, reads the initial client secret once, and reads the live discovery document — printing a complete relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
+      "destructive": "true",
+      "examples": [
+        "rancher create oidc-client my-app --redirect-uri https://example.invalid/callback --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "note attached to the client for identification",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "desc": "allowed redirect `URI` (repeatable)",
+          "name": "redirect-uri",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "OAuth `scope` granted to the client (repeatable)",
+          "name": "scope",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "access-token lifetime, a positive whole number of seconds as a duration, e.g. 1h (omit for the CLI default, 3600s/1h)",
+          "name": "token-ttl",
+          "type": "string"
+        },
+        {
+          "desc": "refresh-token lifetime, a positive whole number of seconds as a duration, e.g. 24h (omit for the CLI default, 86400s/24h)",
+          "name": "refresh-ttl",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout` for the server to provision the client, e.g. 90s (default 60s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "create",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "create oidc-client",
+      "network": true,
+      "outputPolicy": [
+        "table",
+        "wide",
+        "json",
+        "yaml",
+        "template"
+      ],
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Create an OIDC client for Rancher's embedded OIDC provider"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "required": true,
           "type": "string"
@@ -735,6 +806,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "delivery": "onceOnly",
       "destructive": "true",
       "examples": [
         "rancher create token --ttl 90d --description ci --apply --yes"
@@ -763,6 +835,13 @@
       "group": "create",
       "name": "create token",
       "network": true,
+      "outputPolicy": [
+        "table",
+        "wide",
+        "json",
+        "yaml",
+        "template"
+      ],
       "stability": "stable",
       "toolset": "core",
       "usage": "Create a token on the server"
@@ -8671,6 +8750,7 @@
         "create resource",
         "create token",
         "create kubeconfig",
+        "create oidc-client",
         "create cluster",
         "create machine-config"
       ],

@@ -218,6 +218,20 @@ func (f *clientFactory) Identity() (string, error) {
 	return eff.ServerName, nil
 }
 
+// ServerBaseURL implements engine.ServerBaseURLProvider: the same
+// kube.BaseURL(eff.URL) value Root() bakes into rootClient.base — scheme
+// preserved, no trailing slash, honoring a RANCHER_CLI_URL override or an
+// http development server. Deliberately NOT eff.ServerName (Identity's
+// display-only value): that name is cleared under a URL override and
+// carries no scheme.
+func (f *clientFactory) ServerBaseURL() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	return kube.BaseURL(eff.URL), nil
+}
+
 // ActiveTokenID implements engine.SessionTokenNamer. It returns the name
 // component of the current bearer token. For id:secret bearers it is the id
 // half. For Rancher-issued JWTs (three dot-separated base64url segments, no
@@ -345,6 +359,7 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 type runDeps struct {
 	clients      engine.ClusterClientFactory
 	roots        engine.RootClientFactory
+	serverBase   engine.ServerBaseURLProvider
 	src          engine.FileSource
 	dir          string
 	store        config.CredStore
@@ -406,7 +421,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
-				cmd = make(runDeps{clients: f, roots: f, src: newFileSource(io.In), dir: dir, store: store, version: version, sessionNamer: f})
+				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, version: version, sessionNamer: f})
 			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {

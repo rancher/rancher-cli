@@ -34,6 +34,24 @@ type PrimeRequiredDetails struct {
 	Server  string `json:"server"`
 }
 
+// CommittedContextDetails is the details payload for a non-retryable error
+// surfaced AFTER a mutation has already committed on the server: a
+// post-commit render failure on a Delivery: DeliveryOnceOnly command, a
+// missing/malformed delivered value, or a wait timeout. Naming the
+// resource and a non-mutating recovery keeps every post-commit failure
+// from reading as an invitation to blindly retry — retrying a committed
+// create/add/rotate mints a second credential. PartialOutput is set only
+// by the render-failure path, when the final stdout write may already have
+// exposed part of the payload.
+type CommittedContextDetails struct {
+	Committed     bool   `json:"committed"`
+	ResourceKind  string `json:"resourceKind"`
+	ResourceName  string `json:"resourceName"`
+	SecretName    string `json:"secretName,omitempty"`
+	PartialOutput bool   `json:"partialOutput,omitempty"`
+	Recovery      string `json:"recovery"`
+}
+
 // exitCodes maps a code to its process exit status.
 var exitCodes = map[string]int{
 	CodeValidation:           2,

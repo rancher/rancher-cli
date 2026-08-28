@@ -2,7 +2,9 @@ package extres
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -36,9 +38,11 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 		Examples: []string{
 			"rancher create token --ttl 90d --description ci --apply --yes",
 		},
-		Destructive: "true", // the token kind is Sensitive
-		Network:     true,
-		Auth:        true,
+		Destructive:  "true", // the token kind is Sensitive
+		Network:      true,
+		Auth:         true,
+		OutputPolicy: runtime.OnceOnlyOutputPolicy(),
+		Delivery:     runtime.DeliveryOnceOnly,
 	}
 }
 
@@ -89,16 +93,26 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		if err != nil {
 			return runtime.Result{}, err
 		}
+		name := created.GetName()
+		recovery := fmt.Sprintf("delete token %s, then create again", name)
 		bearer, _, _ := unstructured.NestedString(created.Object, "status", "bearerToken")
+		if bearer == "" {
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				"the server created the token but returned no bearerToken value").
+				WithDetails(clierr.CommittedContextDetails{
+					Committed: true, ResourceKind: "Token", ResourceName: name, Recovery: recovery,
+				})
+		}
 		expiresAt, _, _ := unstructured.NestedString(created.Object, "status", "expiresAt")
 		return runtime.Result{
 			Kind: "TokenCreated",
 			Data: map[string]string{
-				"name":        created.GetName(),
+				"name":        name,
 				"bearerToken": bearer,
 				"expiresAt":   expiresAt,
 			},
-			Warnings: []string{"this token value is shown exactly once — store it now"},
+			Warnings:         []string{"this token value is shown exactly once — store it now"},
+			CommittedContext: &runtime.CommittedContext{ResourceKind: "Token", ResourceName: name, Recovery: recovery},
 		}, nil
 	}
 	return eff, exec, nil

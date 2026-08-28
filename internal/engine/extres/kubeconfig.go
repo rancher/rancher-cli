@@ -48,6 +48,11 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		Destructive: "true", // the kubeconfig kind is Sensitive
 		Network:     true,
 		Auth:        true,
+		// OutputPolicy stays the zero value (all formats): RawBytes is
+		// format-independent — it writes verbatim regardless of -o, so no
+		// format could discard the once-only value the way -o name would
+		// for a Data/envelope payload. Delivery alone marks it once-only.
+		Delivery: runtime.DeliveryOnceOnly,
 	}
 }
 
@@ -154,12 +159,20 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			return runtime.Result{}, err
 		}
 		name := created.GetName()
+		recovery := fmt.Sprintf("delete kubeconfig %s, then create again", name)
 		value, found, _ := unstructured.NestedString(created.Object, "status", "value")
 		if !found || value == "" {
-			return runtime.Result{}, clierr.New(clierr.CodeGeneric, "server returned no kubeconfig content")
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				"the server created the kubeconfig but returned no content").
+				WithDetails(clierr.CommittedContextDetails{
+					Committed: true, ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery,
+				})
 		}
 		header := fmt.Sprintf("# ext kubeconfig %q — shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
-		return runtime.Result{RawBytes: append([]byte(header), []byte(value)...)}, nil
+		return runtime.Result{
+			RawBytes:         append([]byte(header), []byte(value)...),
+			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},
+		}, nil
 	}
 	return eff, exec, nil
 }

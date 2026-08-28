@@ -87,6 +87,17 @@ type RootClientFactory interface {
 	Root() (RootClient, error)
 }
 
+// ServerBaseURLProvider exposes the canonical, resolved server base URL
+// (scheme preserved, no trailing slash) — the SAME value RootClient's
+// requests are built against, including a RANCHER_CLI_URL override or an
+// http development server. Narrow by design: only a command that must
+// construct a URL itself (discovery, and its degraded fallback) needs this;
+// everything else goes through RootClient or ClusterClientFactory, which
+// already have the base baked into their requests.
+type ServerBaseURLProvider interface {
+	ServerBaseURL() (string, error)
+}
+
 // SessionTokenNamer exposes the ID component of the current session's bearer
 // credential — the part before ":" in the stored "id:secret" token. Only the
 // ID (the token object name) is returned; the secret never crosses this

@@ -100,6 +100,46 @@ type Descriptor struct {
 	// error exits in clierr.CodeExits() — Registry.Validate enforces the
 	// declaration and finishResult rejects an undeclared returned status.
 	SuccessExitCodes []int
+	// OutputPolicy restricts which -o/--output formats this command accepts
+	// (the zero value accepts every format in OutputFormats, today's
+	// behavior). Run enforces it immediately after global format-syntax
+	// validation and before capability resolution or any network work, so a
+	// rejected format makes ZERO total requests. Registry.Validate rejects
+	// an AllowedFormats entry outside OutputFormats/"template".
+	OutputPolicy OutputPolicy
+	// Delivery classifies a command whose successful Result carries a value
+	// shown exactly once (DeliveryOnceOnly; the zero value is ordinary).
+	// Registry.Validate permits it only when CommandType is Mutating. Run
+	// selects BUFFERED rendering for it and requires a non-nil
+	// Result.CommittedContext after a successful executor return — its
+	// absence is a command-bug error, never a silent skip. OutputPolicy is
+	// independent: a DeliveryOnceOnly command may still accept every
+	// format (create kubeconfig's RawBytes payload is format-independent).
+	Delivery Delivery
+}
+
+// Delivery classifies how a command's successful Result must be delivered.
+type Delivery string
+
+// DeliveryOnceOnly marks a command whose Result carries a value the caller
+// can never retrieve again (a minted secret, a bearer token): finishResult
+// buffers its render and requires committed-mutation context before any
+// stdout write. The zero value (ordinary delivery) needs no declaration.
+const DeliveryOnceOnly Delivery = "onceOnly"
+
+// CommittedContext names the resource a DeliveryOnceOnly command's mutation
+// committed on the server, and the non-mutating recovery a caller should
+// take if the render that follows fails. Required on every successful
+// executor return when the Descriptor's Delivery is DeliveryOnceOnly.
+type CommittedContext struct {
+	ResourceKind string
+	ResourceName string
+	// SecretName names the specific secret/key affected, when applicable
+	// (empty for commands with no secret-name concept, e.g. create token).
+	SecretName string
+	// Recovery is the non-mutating action a caller should take after a
+	// post-commit failure — never a suggestion to retry the mutation.
+	Recovery string
 }
 
 // Input abstracts parsed flags/args so engine code never imports urfave/cli.
@@ -153,6 +193,13 @@ type Result struct {
 	// Zero for every command that has not declared SuccessExitCodes. The
 	// pipeline renders the result fully BEFORE the status is honored.
 	ExitStatus int
+	// CommittedContext is REQUIRED when the Descriptor's Delivery is
+	// DeliveryOnceOnly: it names the resource this Result's mutation
+	// committed on the server, so a render failure after this point can
+	// still tell the caller what happened and how to recover without
+	// retrying the mutation. Ignored for ordinary (non-DeliveryOnceOnly)
+	// commands.
+	CommittedContext *CommittedContext
 }
 
 // Command is the minimal self-describing contract. Concrete commands

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,16 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	d := cmd.Describe()
 
 	if ce := validateFormat(streams.Format); ce != nil {
+		return 0, renderErr(streams, ce)
+	}
+
+	// The output-policy gate runs immediately after format-syntax
+	// validation and before EVERYTHING else — read-only/dry-run gates,
+	// input validation, capability resolution, Plan — so a rejected format
+	// makes zero total requests, not merely zero mutation requests: a
+	// once-only command's caller can never silently discard the value it
+	// delivers by picking an unsupported -o.
+	if ce := validateOutputPolicy(d, streams.Format); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
 
@@ -213,6 +224,24 @@ func validateFormat(format string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|"))).
 		WithHint(fmt.Sprintf("allowed: %s, template=<go-template>", strings.Join(OutputFormats, ", ")))
+}
+
+// validateOutputPolicy enforces a Descriptor's OutputPolicy: a command that
+// restricts formats (typically to exclude "name", which would silently
+// discard a once-only value) rejects an unsupported format here, before any
+// capability resolution or network work — the zero OutputPolicy always
+// passes.
+func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
+	if d.OutputPolicy.Allows(format) {
+		return nil
+	}
+	shown := format
+	if shown == "" {
+		shown = "table (the default)"
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("%s does not support --output=%s", d.Name, shown)).
+		WithHint(fmt.Sprintf("allowed: %s", strings.Join(d.OutputPolicy.AllowedFormats, ", ")))
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:
@@ -477,17 +506,71 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // finishResult enforces the SuccessExitCodes declaration, renders the
 // result, and surfaces the declared status. An undeclared status is an
 // internal error rendered through renderErr like every other pipeline
-// error; a render failure is returned unrendered (write-failure parity
-// with the previous renderResult contract).
+// error. For an ORDINARY command a render failure is returned unrendered
+// (write-failure parity with the previous renderResult contract); a
+// Delivery: DeliveryOnceOnly command instead renders through
+// finishOnceOnlyResult, which buffers the render and emits a committed-
+// context error to stderr on failure — see that function's doc.
 func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if !allowedExitStatus(d.SuccessExitCodes, res.ExitStatus) {
 		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("command bug: %s returned undeclared exit status %d", d.Name, res.ExitStatus)))
 	}
+	if d.Delivery == DeliveryOnceOnly {
+		return finishOnceOnlyResult(streams, d, res)
+	}
 	if ce := renderResult(streams, res); ce != nil {
 		return 0, ce
 	}
 	return res.ExitStatus, nil
+}
+
+// finishOnceOnlyResult renders a DeliveryOnceOnly command's result BUFFERED:
+// the payload is encoded fully into memory (Warnings still render to the
+// real stderr immediately — only the once-only stdout payload is
+// buffered), then written to the real stdout in a single Write. A
+// DeliveryOnceOnly executor MUST return a non-nil Result.CommittedContext
+// on every successful return; its absence is a command-bug error, never a
+// silent skip, since a later render failure would otherwise have nothing
+// to report. When the buffered render fails, or the final single write
+// fails, the failure is emitted as a structured, non-retryable error
+// envelope to stderr (best-effort — its own write failure is ignored, and
+// the caller still gets the correct exit code): it names the resource the
+// mutation already committed, whether the final write may have exposed a
+// partial value (n > 0 on the failing write), and the non-mutating
+// recovery — never inviting a blind retry of a mutation that already
+// happened.
+func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
+	if res.CommittedContext == nil {
+		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)))
+	}
+	buffered := streams
+	var buf bytes.Buffer
+	buffered.Out = &buf
+	if ce := renderResult(buffered, res); ce != nil {
+		return 0, renderErr(streams, committedContextError(res.CommittedContext, false, ce.Message))
+	}
+	n, err := streams.Out.Write(buf.Bytes())
+	if err != nil {
+		return 0, renderErr(streams, committedContextError(res.CommittedContext, n > 0, err.Error()))
+	}
+	return res.ExitStatus, nil
+}
+
+// committedContextError builds the shared post-commit-failure shape: a
+// GENERIC, non-retryable error carrying clierr.CommittedContextDetails.
+func committedContextError(cc *CommittedContext, partialOutput bool, cause string) *clierr.Error {
+	return clierr.New(clierr.CodeGeneric,
+		fmt.Sprintf("rendering failed after the mutation committed: %s", cause)).
+		WithDetails(clierr.CommittedContextDetails{
+			Committed:     true,
+			ResourceKind:  cc.ResourceKind,
+			ResourceName:  cc.ResourceName,
+			SecretName:    cc.SecretName,
+			PartialOutput: partialOutput,
+			Recovery:      cc.Recovery,
+		})
 }
 
 // allowedExitStatus reports whether a successful result may carry status.

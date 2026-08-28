@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
@@ -26,6 +28,44 @@ type GlobalFlag struct {
 // not a scope change: on a payload with no wide-only columns it renders
 // identically to "table" (kubectl's own -o wide contract).
 var OutputFormats = []string{"table", "wide", "json", "yaml", "name"}
+
+// OutputPolicy restricts which -o/--output formats a command accepts. The
+// zero value (empty AllowedFormats) accepts every OutputFormats literal
+// plus template=<src> — today's behavior for every command that does not
+// opt in. A declared AllowedFormats is a closed allow-list: entries must be
+// OutputFormats literals or the literal "template" (standing for any
+// template=<src> value, regardless of source) — Registry.Validate rejects
+// anything else.
+type OutputPolicy struct {
+	AllowedFormats []string
+}
+
+// Allows reports whether format is permitted under p. format "" (the
+// default) is checked as its "table" spelling; a template=<src> value is
+// checked against the literal "template" entry.
+func (p OutputPolicy) Allows(format string) bool {
+	if len(p.AllowedFormats) == 0 {
+		return true
+	}
+	if format == "" {
+		format = "table"
+	}
+	if strings.HasPrefix(format, output.TemplatePrefix) {
+		format = "template"
+	}
+	return slices.Contains(p.AllowedFormats, format)
+}
+
+// OnceOnlyOutputPolicy is the restrictive OutputPolicy every
+// Delivery: DeliveryOnceOnly descriptor declares: every format except
+// "name", which would silently discard a once-only value under -o name's
+// NAME-column-only projection. The ONE shared constructor every once-only
+// command calls — never a second hand-authored copy of this list, so a
+// future change to the once-only contract (adding or excluding a format)
+// only has to be made here.
+func OnceOnlyOutputPolicy() OutputPolicy {
+	return OutputPolicy{AllowedFormats: []string{"table", "wide", "json", "yaml", "template"}}
+}
 
 // OutputFormatCompletions is what -o <TAB> suggests: the literal formats plus
 // the template form — the bare prefix for discoverability and a seed template
@@ -128,6 +168,13 @@ type SchemaCommand struct {
 	// Manifest.Groups carries the ordered sections; SE-18). "" for the two
 	// positional-root sections (fixed top-level and ungrouped entries).
 	Group string `json:"group,omitempty"`
+	// OutputPolicy is a projection of Descriptor.OutputPolicy.AllowedFormats:
+	// the closed set of -o/--output values this command accepts. Absent
+	// means every OutputFormats literal (plus template=<src>) is accepted.
+	OutputPolicy []string `json:"outputPolicy,omitempty"`
+	// Delivery is a projection of Descriptor.Delivery. Absent means
+	// ordinary delivery.
+	Delivery string `json:"delivery,omitempty"`
 }
 
 // Verb states for SchemaKind.Verbs (SE-17): available and refused verbs are
@@ -328,6 +375,19 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("command %q: static capability requirement and CapabilityResolver are mutually exclusive", d.Name)
 			}
 		}
+		for _, f := range d.OutputPolicy.AllowedFormats {
+			if f != "template" && !slices.Contains(OutputFormats, f) {
+				return fmt.Errorf("command %q: outputPolicy allows unknown format %q", d.Name, f)
+			}
+		}
+		if d.Delivery != "" {
+			if d.Delivery != DeliveryOnceOnly {
+				return fmt.Errorf("command %q: unknown delivery classification %q", d.Name, d.Delivery)
+			}
+			if d.CommandType != Mutating {
+				return fmt.Errorf("command %q: delivery %q is permitted only on Mutating commands", d.Name, d.Delivery)
+			}
+		}
 		if codes := d.SuccessExitCodes; len(codes) > 0 {
 			errExits := map[int]bool{}
 			for _, e := range clierr.CodeExits() {
@@ -401,6 +461,8 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
 			Prime:            d.Capability.Tier == CapabilityPrime,
+			OutputPolicy:     d.OutputPolicy.AllowedFormats,
+			Delivery:         string(d.Delivery),
 		}
 		if sc.Prime {
 			sc.LearnMore = clierr.LearnMorePrimeURL

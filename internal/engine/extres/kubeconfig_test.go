@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -179,6 +180,23 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	cfg, err := clientcmd.Load(res.RawBytes) // NEVER string-match the rendered YAML for correctness
 	require.NoError(t, err)
 	assert.NotNil(t, cfg)
+
+	require.NotNil(t, res.CommittedContext, "a DeliveryOnceOnly Result must carry CommittedContext")
+	assert.Equal(t, "Kubeconfig", res.CommittedContext.ResourceKind)
+	assert.Equal(t, "kubeconfig-abc", res.CommittedContext.ResourceName)
+	assert.Contains(t, res.CommittedContext.Recovery, "delete kubeconfig kubeconfig-abc")
+}
+
+// TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam pins that create
+// kubeconfig opts into Delivery: DeliveryOnceOnly but keeps the ZERO-VALUE
+// OutputPolicy (all formats) — its RawBytes payload is format-independent,
+// so no format could discard the once-only value.
+func TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam(t *testing.T) {
+	t.Parallel()
+	d := NewCreateKubeconfig(stubFactory{c: &fakeClient{}}).Describe()
+	assert.Equal(t, runtime.DeliveryOnceOnly, d.Delivery)
+	assert.Empty(t, d.OutputPolicy.AllowedFormats, "kubeconfig's RawBytes payload keeps every format")
+	assert.True(t, d.OutputPolicy.Allows("name"), "RawBytes ignores -o entirely")
 }
 
 // TestCreateKubeconfigExecEmptyValueIsError mirrors mintDerivedToken's
@@ -195,6 +213,15 @@ func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {
 		require.NoError(t, err)
 		_, err = exec(t.Context())
 		require.Error(t, err)
+		ce, ok := err.(*clierr.Error)
+		require.True(t, ok, "exec error must be a structured *clierr.Error")
+		assert.False(t, ce.Retryable)
+		details, ok := ce.Details.(clierr.CommittedContextDetails)
+		require.True(t, ok)
+		assert.True(t, details.Committed)
+		assert.Equal(t, "Kubeconfig", details.ResourceKind)
+		assert.Equal(t, "kubeconfig-abc", details.ResourceName)
+		assert.Contains(t, details.Recovery, "delete kubeconfig kubeconfig-abc")
 	})
 
 	t.Run("empty string", func(t *testing.T) {

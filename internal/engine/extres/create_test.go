@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -193,4 +194,49 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 
 	require.Len(t, client.dryRuns, 2, "one dry-run from Plan, one real create from exec")
 	assert.False(t, client.dryRuns[1])
+
+	require.NotNil(t, res.CommittedContext, "a DeliveryOnceOnly Result must carry CommittedContext")
+	assert.Equal(t, "Token", res.CommittedContext.ResourceKind)
+	assert.Equal(t, "token-xyz", res.CommittedContext.ResourceName)
+	assert.Contains(t, res.CommittedContext.Recovery, "delete token token-xyz")
+}
+
+// TestCreateTokenDescriptorDeclaresOnceOnlySeam pins that create token
+// declares the same OutputPolicy/Delivery classification as the OIDC mint
+// verbs, excluding "name" and requiring committed context.
+func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
+	t.Parallel()
+	d := NewCreateToken(stubFactory{c: &fakeClient{}}).Describe()
+	assert.Equal(t, runtime.DeliveryOnceOnly, d.Delivery)
+	assert.NotContains(t, d.OutputPolicy.AllowedFormats, "name")
+	for _, f := range []string{"table", "wide", "json", "yaml", "template"} {
+		assert.Contains(t, d.OutputPolicy.AllowedFormats, f)
+	}
+}
+
+// TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess pins 3e's
+// missing-value contract: an empty status.bearerToken after a committed
+// Create is a non-retryable error naming the token and the delete-then-
+// recreate recovery — never a bare generic failure that could read as
+// retryable (retrying would mint a second token).
+func TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{name: "token-empty", status: map[string]any{"bearerToken": ""}}
+	cmd := NewCreateToken(stubFactory{c: client})
+
+	_, exec, err := planToken(t, cmd, in{s: map[string]string{}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	_, err = exec(t.Context())
+	require.Error(t, err)
+	ce, ok := err.(*clierr.Error)
+	require.True(t, ok, "exec error must be a structured *clierr.Error")
+	assert.False(t, ce.Retryable)
+	details, ok := ce.Details.(clierr.CommittedContextDetails)
+	require.True(t, ok)
+	assert.True(t, details.Committed)
+	assert.Equal(t, "Token", details.ResourceKind)
+	assert.Equal(t, "token-empty", details.ResourceName)
+	assert.Contains(t, details.Recovery, "delete token token-empty")
 }

@@ -54,6 +54,7 @@ target for the legacy `server switch` command.
 | `create resource -f <file\|->` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
 | `create token` | Create a server-side derived token (`ext.Token`), shown once — sensitive; dry-run/apply --yes |
 | `create kubeconfig` | Create a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once — sensitive; dry-run/apply --yes |
+| `create oidc-client <name>` | Create an OIDC client for Rancher's embedded OIDC provider; waits for provisioning, prints the initial client secret once with live discovery endpoints — sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 | `create cluster <name>` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool — dry-run/apply |
 | `create machine-config <kind> <name>` | Create a standalone machine config for `create cluster --machine-config` — dry-run/apply; flag details in [REFERENCE.md](REFERENCE.md#cluster-provisioning) |
 
@@ -117,6 +118,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 — 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) —
-129 generated commands, 172 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 173 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->
