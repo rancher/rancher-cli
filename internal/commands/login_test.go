@@ -72,6 +72,25 @@ func stdinPrompter(tok string) *ui.Prompter {
 	return ui.New(&bytes.Buffer{}, strings.NewReader(tok), true, false)
 }
 
+// beforeReadPrompter wraps a Prompter and runs before once, immediately
+// before the FIRST ReadLine call reaches the wrapped Prompter — the seam
+// used to simulate a concurrent config change landing in the unlocked
+// window between registration commit and the credential-write lock (a
+// --token-stdin login reads its token via ReadLine).
+type beforeReadPrompter struct {
+	runtime.Prompter
+	before func()
+	fired  bool
+}
+
+func (p *beforeReadPrompter) ReadLine(ctx context.Context) (string, error) {
+	if !p.fired {
+		p.fired = true
+		p.before()
+	}
+	return p.Prompter.ReadLine(ctx)
+}
+
 // filePolicyDir returns a config dir pinned to the file backend, so login's
 // RepinForLogin is a no-op and never probes or writes the real OS keychain.
 func filePolicyDir(t *testing.T) (string, config.CredStore) {
@@ -86,25 +105,38 @@ func filePolicyDir(t *testing.T) (string, config.CredStore) {
 	return dir, config.NewFileStore(dir)
 }
 
-// stubRancherVersion stands in for loginCmd.rancherVersion in tests that
-// aren't exercising the PS-8 version probe itself: it never dials out, so
-// login's success path can be tested against unresolvable/example hostnames
-// without a real network call.
-func stubRancherVersion(context.Context, config.Effective) (string, error) {
-	return "v2.20.0", nil
+// seedServer writes name/url/ca directly into dir's config.yaml, bypassing
+// registration entirely — for tests that need an already-registered entry
+// without exercising add-server/delegated-login themselves. When current is
+// true, name becomes the current-server pointer.
+func seedServer(t *testing.T, dir, name, url, ca string, current bool) {
+	t.Helper()
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers[name] = config.Server{URL: url, CA: ca}
+	if current {
+		cfg.CurrentServer = name
+	}
+	require.NoError(t, cfg.Write())
 }
 
-// newLoginCmd builds a loginCmd with the version probe stubbed and the
-// credential store fixed via a factory, mirroring NewLogin's wiring but
-// for direct struct construction in tests. The factory ignores the policy
-// and always returns store, which is sufficient for tests that control
-// the store directly (the store-under-lock race test uses its own factory).
-func newLoginCmd(dir string, store config.CredStore) runtime.ReadCommand {
+// newPlainLoginCmd builds a loginCmd with the credential store fixed via a
+// factory and tlsPreflight left nil (the documented inert default) —
+// mirroring NewLogin's wiring for direct struct construction in tests that
+// exercise an already-registered entry (Case B) and must never dial out.
+func newPlainLoginCmd(dir string, store config.CredStore) *loginCmd {
 	return &loginCmd{
-		dir:            dir,
-		newStore:       func(string, string) (config.CredStore, string, error) { return store, "", nil },
-		rancherVersion: stubRancherVersion,
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
 	}
+}
+
+// TestLoginCompletesServerNames pins login's positional <name> completion
+// (AGENTS.md: completion ships with the surface, in the same change as
+// the value-taking argument).
+func TestLoginCompletesServerNames(t *testing.T) {
+	view := testView{srvNames: []string{"prod", "qa"}}
+	assert.Equal(t, []string{"prod", "qa"}, loginCmd{}.CompleteArgs(context.Background(), view))
 }
 
 // setErrStore wraps a real store, failing SetToken with a fixed error.
@@ -122,11 +154,11 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 		return setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}, "", nil
 	}}
 	res, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
 		stdinPrompter("id:secret"))
 	require.NoError(t, err, "read-only helper must not fail login")
 	require.NotEmpty(t, res.Warnings)
-	assert.Contains(t, res.Warnings[0], "read-only")
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "read-only")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -135,15 +167,15 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 }
 
 // TestLoginRejectsLegacyPrefixedName is the round-7 finding-3 repro: a
-// "legacy:"-prefixed --name must be rejected before any auth or config write —
-// such a server entry would win the token shim's exact-name stored-login tier
-// and defeat its documented server-ranking guarantee.
+// "legacy:"-prefixed name must be rejected before any auth or config write —
+// such a server entry would win the token shim's exact-name stored-login
+// tier and defeat its documented server-ranking guarantee.
 func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
 	_, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "https://r.ex", "name": config.LegacyCachePrefix + "alice"}, b: map[string]bool{"token-stdin": true}},
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{config.LegacyCachePrefix + "alice"}},
 		stdinPrompter("id:secret"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -156,6 +188,10 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	assert.False(t, ok, "the reserved name must never reach the config")
 }
 
+// TestLoginOtherStoreErrorAborts pins the deliberate new behavior (What it
+// costs): a failed credential write after a successful delegated
+// registration leaves the freshly added entry behind — a valid first-class
+// state, not rolled back.
 func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
@@ -163,26 +199,34 @@ func TestLoginOtherStoreErrorAborts(t *testing.T) {
 		return setErrStore{CredStore: store, setErr: errors.New("keychain exploded")}, "", nil
 	}}
 	_, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}},
-		stdinPrompter("id:secret"))
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
 	require.Error(t, err)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	_, ok := cfg.Servers["prod"]
-	assert.False(t, ok, "abort-before-config-write preserved")
+	assert.True(t, ok, "registration is atomic and precedes auth; a failed credential write leaves it behind")
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.Error(t, tokErr, "no token persisted on a failed store write")
 }
 
-func TestLoginTokenViaStdin(t *testing.T) {
+func TestLoginDelegatedAddCreatesEntryAndAuthenticates(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
+		s: map[string]string{"url": "https://rancher.example.com"},
 		b: map[string]bool{"token-stdin": true},
+		a: []string{"acme"},
 	}
-	res, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id-1:secret-1\n"))
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id-1:secret-1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
+	data := res.Data.(map[string]any)
+	assert.Equal(t, "acme", data["server"])
+	assert.Equal(t, "https://rancher.example.com", data["url"])
+	assert.Equal(t, "acme", data["currentServer"])
+	assert.Equal(t, true, data["added"])
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -200,10 +244,11 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
+		s: map[string]string{"url": "https://rancher.example.com"},
 		b: map[string]bool{"token-stdin": true},
+		a: []string{"acme"},
 	}
-	res, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("ext/token-abc:secretxyz\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -219,12 +264,14 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
 	t.Parallel()
 	for _, extra := range []string{"auth-provider", "auth-flow", "ttl"} {
+		dir, store := filePolicyDir(t)
+		seedServer(t, dir, "prod", "https://r.ex", "", false)
 		in := args{
-			s: map[string]string{"server": "https://r.ex", extra: "x"},
+			s: map[string]string{extra: "x"},
 			b: map[string]bool{"token-stdin": true},
+			a: []string{"prod"},
 		}
-		_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).
-			Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+		_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce, extra)
 		assert.Equal(t, clierr.CodeValidation, ce.Code, extra)
@@ -248,12 +295,11 @@ func TestLoginProviderFlowNonTTYAllowedWithExplicitProvider(t *testing.T) {
 	}))
 	defer fake.Close()
 
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{
-		"server": fake.URL, "name": "prod", "auth-provider": "azureADProvider", "auth-flow": "devicecode",
-	}}
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "azureADProvider", "auth-flow": "devicecode"}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, strings.NewReader(""), false, false) // no TTY, no --no-input
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.Error(t, err, "device-code will fail on OAuth config/network, but not on login's own gate")
 	assert.NotContains(t, err.Error(), "token required", "non-TTY must bypass login's outer gate when --auth-provider is explicit")
 }
@@ -261,43 +307,177 @@ func TestLoginProviderFlowNonTTYAllowedWithExplicitProvider(t *testing.T) {
 func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "acme", "https://r.ex", "", false)
 	// isTTY=true, noInput=false -> CanPrompt. Two prompts now fire (EXT-R-8's
 	// paste-or-provider menu, then the secret itself), so the input needs a
 	// reader that doesn't lose the second line to Scanner over-read (see
 	// lineReader's doc comment) — a plain strings.Reader would drop "id:sec".
 	p := ui.New(&bytes.Buffer{}, newLineReader("1", "id:sec"), false, true)
-	in := args{s: map[string]string{"server": "https://r.ex", "name": "acme"}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, p)
+	in := args{a: []string{"acme"}}
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
 	require.NoError(t, err)
 	assert.Equal(t, "id:sec", tok)
 }
 
-func TestLoginServerRequired(t *testing.T) {
+func TestLoginNoNameNoURLIsValidationForCacert(t *testing.T) {
 	t.Parallel()
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}}, stdinPrompter("id:sec\n"))
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{s: map[string]string{"cacert": "x"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Empty(t, ce.Hint)
 }
 
-func TestLoginUnaffectedWithoutGlobalOverride(t *testing.T) {
+func TestLoginUnknownNameNoURLIsNotFoundWithCandidates(t *testing.T) {
+	t.Parallel()
 	dir, store := filePolicyDir(t)
-	in := args{
-		s: map[string]string{"server": "https://rancher.example.com", "name": "acme"},
-		b: map[string]bool{"token-stdin": true},
-	}
-	_, err := newLoginCmd(dir, store).
-		Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{a: []string{"ghost"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, ce.Hint)
+	assert.Contains(t, ce.Message, "--url")
+	require.Len(t, ce.Candidates, 1)
+	assert.Equal(t, "prod", ce.Candidates[0].Name)
+}
+
+// TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint pins
+// the three-way name split: a KNOWN name gets a fully interpolated
+// update-server hint — trust changes belong to registration.
+func TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"cacert": "/etc/ca.pem"}, a: []string{"prod"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "rancher config update-server 'prod' --cacert '/etc/ca.pem'", ce.Hint)
+}
+
+// TestLoginCacertWithoutURLUnknownNameIsNotFound pins that the NOT_FOUND row
+// wins over any --cacert-driven hint when the typed name is unknown — a
+// suggested command must be valid verbatim, and update-server against an
+// unknown name would deterministically fail.
+func TestLoginCacertWithoutURLUnknownNameIsNotFound(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"cacert": "/etc/ca.pem"}, a: []string{"ghost"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, ce.Hint)
+}
+
+func TestLoginNoNameNoURLAuthenticatesCurrentServer(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", true)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}}, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok)
+}
+
+func TestLoginNoNameNoURLZeroEntriesIsNotLoggedIn(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+	assert.Empty(t, ce.Hint, "the name and URL are unknown on a blank machine")
+	assert.Contains(t, ce.Message, "--url")
+}
+
+// TestLoginNoNameNoURLOneEntryNoPointerNeverSelectsImplicitly pins that
+// login never auto-selects the sole entry — a success there would
+// authenticate a target the pointer still doesn't name, so the very next
+// command would fail NOT_LOGGED_IN anyway. It fails with a paste-valid
+// use-server hint instead.
+func TestLoginNoNameNoURLOneEntryNoPointerNeverSelectsImplicitly(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+	assert.Equal(t, "rancher config use-server 'prod'", ce.Hint)
+
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.Error(t, tokErr, "no auth flow ran")
+}
+
+func TestLoginNoNameNoURLManyEntriesNoPointerIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://prod.ex", "", false)
+	seedServer(t, dir, "qa", "https://qa.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Empty(t, ce.Hint)
+	require.Len(t, ce.Candidates, 2)
+}
+
+// TestLoginExplicitNameWithUnsetPointerSucceedsWithAdvisory pins that
+// explicit-name login is a pure credential operation: it succeeds even with
+// an unset pointer, and appends an operator advisory rather than silently
+// leaving the operator to discover the next command still fails.
+func TestLoginExplicitNameWithUnsetPointerSucceedsWithAdvisory(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	data := res.Data.(map[string]any)
+	assert.Equal(t, "", data["currentServer"], "currentServer is always present, even empty")
+	assert.Contains(t, res.Summary, "rancher config use-server 'prod'")
+
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok)
+}
+
+// TestLoginExplicitNameNeverSwitchesValidPointer: logging into a second,
+// already-registered server must never move a VALID current-server pointer —
+// login can never switch, only registration's bootstrap/repair rule can, and
+// that never reaches an already-registered entry.
+func TestLoginExplicitNameNeverSwitchesValidPointer(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://prod.ex", "", true)
+	seedServer(t, dir, "qa", "https://qa.ex", "", false)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{b: map[string]bool{"token-stdin": true}, a: []string{"qa"}}, stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	// A success logging into a registered-but-not-current server must not
+	// look like a bare, unremarkable success: the pointer still names a
+	// DIFFERENT server, so every next command keeps operating against
+	// "prod" unless the operator switches — advise it plainly.
+	assert.Contains(t, res.Summary, "the current server remains 'prod'")
+	assert.Contains(t, res.Summary, "rancher config use-server 'qa'")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "prod", cfg.CurrentServer, "login never switches the pointer")
 }
 
 func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 	t.Parallel()
-	// No --token-stdin and !CanPrompt (Discard) -> VALIDATION "token required".
-	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, ui.Discard())
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{a: []string{"prod"}}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -305,8 +485,10 @@ func TestLoginTokenRequiredNonInteractive(t *testing.T) {
 
 func TestLoginEmptyStdinToken(t *testing.T) {
 	t.Parallel()
-	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter(""))
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	in := args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter(""))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -314,9 +496,11 @@ func TestLoginEmptyStdinToken(t *testing.T) {
 
 func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 	t.Parallel()
-	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	in := args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, errReader{}, true, false)
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -324,373 +508,492 @@ func TestLoginStdinNonEOFErrorIsGeneric(t *testing.T) {
 
 func TestLoginBadTokenShape(t *testing.T) {
 	t.Parallel()
-	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("notacolon\n"))
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	in := args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("notacolon\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-}
-
-func TestLoginStripsUserinfoAndQuery(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	in := args{
-		s: map[string]string{"server": "https://admin:pw@rancher.ex/v3?debug=1#frag", "name": "acme"},
-		b: map[string]bool{"token-stdin": true},
-	}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://rancher.ex", cfg.Servers["acme"].URL)
-}
-
-// TestLoginDefaultNameIsHost makes sure a nameless login names its entry
-// after the canonical host, so two nameless logins to different servers
-// never share (and silently replace) one entry.
-func TestLoginDefaultNameIsHost(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL)
-	assert.Equal(t, "r.ex", cfg.CurrentServer)
-}
-
-// TestLoginNamelessLoginsToDistinctServersKeepBothEntries pins the clobber
-// fix: the second nameless login must not replace the first server's entry
-// (the old literal-"default" behavior lost it).
-func TestLoginNamelessLoginsToDistinctServersKeepBothEntries(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	first := args{s: map[string]string{"server": "https://one.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	second := args{s: map[string]string{"server": "https://two.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://one.ex", cfg.Servers["one.ex"].URL)
-	assert.Equal(t, "https://two.ex", cfg.Servers["two.ex"].URL)
-	assert.Equal(t, "two.ex", cfg.CurrentServer)
-}
-
-// TestLoginNamelessReloginReusesExistingNamedEntry: a nameless re-login to a
-// URL that already has a user-named entry refreshes that entry in place —
-// never a host-named duplicate of the same server.
-func TestLoginNamelessReloginReusesExistingNamedEntry(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	named := args{s: map[string]string{"server": "https://r.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), named, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://r.ex", cfg.Servers["prod"].URL)
-	assert.NotContains(t, cfg.Servers, "r.ex", "no host-named duplicate of an already-named server")
-	assert.Equal(t, "prod", cfg.CurrentServer)
-}
-
-// TestLoginNamelessReuseIsSpellingInsensitive: a stored URL that is not
-// byte-identical to a fresh canonicalization (hand-edited config, an entry
-// from before canonicalization) still matches — the reuse comparison is
-// config.SameServerURL, never ==.
-func TestLoginNamelessReuseIsSpellingInsensitive(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	named := args{s: map[string]string{"server": "https://Rancher.EX", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), named, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	// Force a non-canonical stored spelling, as a hand edit would.
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	cfg.Servers["prod"] = config.Server{URL: "https://Rancher.EX"}
-	require.NoError(t, cfg.Write())
-
-	nameless := args{s: map[string]string{"server": "https://rancher.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-	cfg, err = config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.NotContains(t, cfg.Servers, "rancher.ex", "no duplicate entry for a differently spelled same server")
-	assert.Equal(t, "prod", cfg.CurrentServer)
-}
-
-// TestLoginSameHostDifferentSchemeGetsDistinctEntries: http://X and
-// https://X are different server identities — the derived-name ladder gives
-// the second one a scheme-prefixed entry instead of refusing or clobbering.
-func TestLoginSameHostDifferentSchemeGetsDistinctEntries(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	first := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	second := args{s: map[string]string{"server": "http://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL)
-	assert.Equal(t, "http://r.ex", cfg.Servers["http-r.ex"].URL)
-}
-
-// TestLoginDerivedNameSkipsLegacyReservedPrefix: a host literally named
-// legacy with a port would derive an entry name inside the legacy shim's
-// reserved "legacy:" cache-slot namespace; the ladder skips to the
-// scheme-prefixed candidate instead.
-func TestLoginDerivedNameSkipsLegacyReservedPrefix(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": "https://legacy:8443"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.NotContains(t, cfg.Servers, "legacy:8443")
-	assert.Equal(t, "https://legacy:8443", cfg.Servers["https-legacy:8443"].URL)
-}
-
-// TestLoginNamelessReuseSkipsLegacyReservedEntry: a hand-edited entry inside
-// the legacy shim's reserved namespace is never reused even when its URL
-// matches — the login lands on a safe derived name and leaves the reserved
-// key untouched.
-func TestLoginNamelessReuseSkipsLegacyReservedEntry(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	cfg.Servers[config.LegacyCachePrefix+"8443"] = config.Server{URL: "https://legacy:8443"}
-	require.NoError(t, cfg.Write())
-
-	in := args{s: map[string]string{"server": "https://legacy:8443"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-
-	cfg, err = config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://legacy:8443", cfg.Servers["https-legacy:8443"].URL, "login lands on the safe derived name")
-	assert.Equal(t, "https://legacy:8443", cfg.Servers[config.LegacyCachePrefix+"8443"].URL, "the reserved hand-edited entry is untouched")
-	assert.Equal(t, "https-legacy:8443", cfg.CurrentServer)
-}
-
-// TestLoginReloginPreservesStoredCA: a re-login that reuses an entry (token
-// expiry is the everyday case) must never erase the CA the entry was
-// verified with; only an explicit --cacert replaces it.
-func TestLoginReloginPreservesStoredCA(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	withCA := args{s: map[string]string{"server": "https://r.ex", "name": "prod", "cacert": "-----BEGIN CERTIFICATE-----fake"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), withCA, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-
-	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "-----BEGIN CERTIFICATE-----fake", cfg.Servers["prod"].CA, "a nameless re-login must not erase the stored CA")
-
-	replace := args{s: map[string]string{"server": "https://r.ex", "cacert": "-----BEGIN CERTIFICATE-----new"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), replace, stdinPrompter("id3:sec3\n"))
-	require.NoError(t, err)
-	cfg, err = config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "-----BEGIN CERTIFICATE-----new", cfg.Servers["prod"].CA, "an explicit --cacert replaces the stored CA")
-}
-
-// TestLoginVersionProbeUsesPersistedCA: the post-login version probe must
-// dial with the CA the entry was persisted with — on a nameless re-login
-// that preserves a stored CA, the raw --cacert flag is empty and would build
-// a system-roots client that fails against the custom-CA server.
-func TestLoginVersionProbeUsesPersistedCA(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	var probeCA string
-	cmd := &loginCmd{
-		dir:      dir,
-		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
-		rancherVersion: func(_ context.Context, eff config.Effective) (string, error) {
-			probeCA = eff.CA
-			return "v2.20.0", nil
-		},
-	}
-	withCA := args{s: map[string]string{"server": "https://r.ex", "name": "prod", "cacert": "-----BEGIN CERTIFICATE-----fake"}, b: map[string]bool{"token-stdin": true}}
-	_, err := cmd.Execute(t.Context(), withCA, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	require.Equal(t, "-----BEGIN CERTIFICATE-----fake", probeCA)
-
-	nameless := args{s: map[string]string{"server": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
-	_, err = cmd.Execute(t.Context(), nameless, stdinPrompter("id2:sec2\n"))
-	require.NoError(t, err)
-	assert.Equal(t, "-----BEGIN CERTIFICATE-----fake", probeCA,
-		"the probe must use the preserved stored CA, never the empty --cacert flag")
-}
-
-// TestLoginNameCollisionHintNamesTheEntry: the refusal hint must be
-// copy-paste valid — auth logout takes the entry NAME positionally and has
-// no --server flag.
-func TestLoginNameCollisionHintNamesTheEntry(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Hint, "rancher config delete-server prod",
-		"delete-server removes the entry; auth logout only clears credentials and would leave the collision in place")
-	assert.NotContains(t, ce.Hint, "--server", "the hint must be valid verbatim")
-}
-
-// TestLoginNameCollisionRefusesBeforeAuthentication: the refusal fires
-// before any token is read or auth flow launched — with an empty stdin the
-// collision message (not a missing-token error) must come back, proving the
-// pre-auth check ordered first.
-func TestLoginNameCollisionRefusesBeforeAuthentication(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter(""))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Message, `"prod" already points at`, "the collision refusal must precede token reading")
-}
-
-// TestLoginNameCollisionWithDifferentURLRefuses: an explicit --name that
-// matches an entry pointing at a DIFFERENT server is a structured refusal,
-// never an overwrite.
-func TestLoginNameCollisionWithDifferentURLRefuses(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	first := args{s: map[string]string{"server": "https://one.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err := newLoginCmd(dir, store).Execute(t.Context(), first, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	second := args{s: map[string]string{"server": "https://two.ex", "name": "prod"}, b: map[string]bool{"token-stdin": true}}
-	_, err = newLoginCmd(dir, store).Execute(t.Context(), second, stdinPrompter("id2:sec2\n"))
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, `"prod" already points at https://one.ex`)
-
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://one.ex", cfg.Servers["prod"].URL, "the existing entry is untouched")
-	assert.Equal(t, "prod", cfg.CurrentServer)
 }
 
 func TestLoginEmptyPromptToken(t *testing.T) {
 	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
 	// TTY prompt returns a blank line -> "no token", not an id:secret shape error.
 	p := ui.New(&bytes.Buffer{}, strings.NewReader("\n"), false, true)
-	in := args{s: map[string]string{"server": "https://r.ex"}}
-	_, err := NewLogin(t.TempDir()).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{a: []string{"prod"}}, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
-	// Non-parallel: keyring.MockInit swaps a process-global in-memory backend.
-	// Isolate from the operator's shell: RANCHER_CLI_CREDENTIAL_STORE=file (this
-	// project's own recommended hermetic-manual-run setting) would otherwise
-	// outrank both the "auto" policy under test and the explicit "keychain"
-	// argument to OpenStore below (config.EffectivePolicy: env > argument).
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
-	keyring.MockInit()
-	dir := t.TempDir() // no config on disk → auto policy; mock keychain is usable
-	in := args{
-		s: map[string]string{"server": "https://r.ex", "name": "acme"},
-		b: map[string]bool{"token-stdin": true},
-	}
-	// Inject a file store; under auto with a usable (mock) keychain, login must
-	// re-pin to keychain and write the token there, not to the file store.
-	_, err := newLoginCmd(dir, config.NewFileStore(dir)).
-		Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
+// --- delegated (--url) resolution matrix ---
 
-	if got := config.ReadPin(dir); got != "keychain" {
-		t.Fatalf("pin after auto login = %q, want keychain", got)
-	}
-	ks, err := config.OpenStore("keychain", dir)
-	require.NoError(t, err)
-	tok, err := ks.GetToken(config.ServerRef{Name: "acme"})
-	require.NoError(t, err)
-	assert.Equal(t, "id:sec", tok)
-	if _, ferr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"}); !errors.Is(ferr, config.ErrNoToken) {
-		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
-	}
+// TestLoginDelegatedRejectsUnsupportedScheme: --token-stdin makes no
+// network call at all, so nothing but the registration seam's own scheme
+// gate stops an ftp:// (or any non-http(s)) URL from committing an entry
+// and a token that config.Effective would then silently refuse to ever
+// return — an apparently successful login that reads NOT_LOGGED_IN on the
+// very next command.
+func TestLoginDelegatedRejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "ftp://host"}, b: map[string]bool{"token-stdin": true}, a: []string{"qa1"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Empty(t, cfg.Servers, "no entry written for an unsupported scheme")
+	_, terr := store.GetToken(config.ServerRef{Name: "qa1"})
+	assert.Error(t, terr, "no token stored either")
 }
 
-// TestLoginFirstPinNoticeReachesWarnings exercises the production wiring
-// (newStore: config.OpenStoreWithNotice) on a fresh auto+usable-keychain
-// machine: the first-pin notice must appear in res.Warnings so it reaches
-// the JSON/YAML envelope, not just a raw stderr line. This covers the
-// regression where openStoreResolved probed and pinned the keychain before
-// RepinForLogin ran, making RepinForLogin return early with no notice.
-func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
-	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
-	// Isolate from the operator's shell so RANCHER_CLI_CREDENTIAL_STORE=file
-	// doesn't outrank the "auto" policy under test.
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
-	keyring.MockInit()
-	config.ResetKeyringUsableCacheForTest(t)
+func TestLoginNoNameWithURLIsValidation(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{s: map[string]string{"url": "https://r.ex"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
 
-	dir := t.TempDir() // fresh dir, no config → auto policy, no prior pin
-
-	cmd := &loginCmd{
-		dir:            dir,
-		newStore:       config.OpenStoreWithNotice,
-		rancherVersion: stubRancherVersion,
-	}
-	res, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
+func TestLoginDelegatedIdenticalURLIsNoOpAddAndAuthenticates(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
 		stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
-	assert.Contains(t, res.Warnings, "pinned credential store: keychain",
-		"first-pin notice must reach res.Warnings on the production login path")
-	assert.Equal(t, "keychain", config.ReadPin(dir), "auto + usable keychain must pin to keychain")
+	assert.Equal(t, false, res.Data.(map[string]any)["added"], "identical delegated add is a no-op, entry-scoped")
 }
 
-// TestLoginFileToKeychainRepinNoticeReachesWarnings exercises the production
-// wiring (newStore: config.OpenStoreWithNotice) when the machine was previously
-// pinned to "file" (e.g. first login over SSH) and now has a usable keychain:
-// RepinForLogin must upgrade the pin and emit the re-pin notice into res.Warnings
-// so it appears in the JSON/YAML envelope, not only as a raw stderr line.
-func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
-	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
-	keyring.MockInit()
-	config.ResetKeyringUsableCacheForTest(t)
+func TestLoginDelegatedIdenticalURLDifferentCacertConflicts(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex", "cacert": testCAPem1}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Contains(t, ce.Hint, "update-server")
+	assert.Contains(t, ce.Hint, "--cacert", "the URL matched — only the CA differed, so the hint must not suggest --url")
+	assert.NotContains(t, ce.Hint, "--url")
+}
+
+func TestLoginDelegatedDifferentURLConflicts(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://old.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://new.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Contains(t, ce.Hint, "update-server")
+
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.Error(t, tokErr, "sugar never mutates an existing entry; no auth ran")
+}
+
+func TestLoginDelegatedRejectsLegacyPrefixedName(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{config.LegacyCachePrefix + "x"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func TestLoginDelegatedBootstrapsPointerWhenEmpty(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "prod", res.Data.(map[string]any)["currentServer"])
+}
+
+func TestLoginDelegatedPreservesValidPointer(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "existing", "https://existing.ex", "", true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"new"}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "existing", res.Data.(map[string]any)["currentServer"], "a valid pointer is never repointed by delegated add")
+}
+
+// --- failed delegated auth: stale-hint recheck ---
+
+func delegatedLoginCmdWithHook(dir string, store config.CredStore) *loginCmd {
+	return &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
+}
+
+func TestLoginDelegatedFailedAuthExactMatchGetsRetryHintAndUndo(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	// Empty stdin -> "no token provided", a plain VALIDATION auth failure,
+	// with no concurrent change at all: the exact-match case.
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, stdinPrompter(""))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
+	assert.Contains(t, ce.Message, "delete-server")
+
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	_, ok := cfg.Servers["prod"]
+	assert.True(t, ok, "registration committed before the auth attempt")
+}
+
+func TestLoginDelegatedFailedAuthEntryDeletedNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before: func() {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			delete(cfg.Servers, "prod")
+			require.NoError(t, cfg.Write())
+		},
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint, "the entry is gone; the retry command would immediately fail NOT_FOUND")
+	assert.Contains(t, ce.Message, "config list-servers")
+}
+
+func TestLoginDelegatedFailedAuthURLRepointedNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before: func() {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			cfg.Servers["prod"] = config.Server{URL: "https://different.ex"}
+			require.NoError(t, cfg.Write())
+		},
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint)
+}
+
+func TestLoginDelegatedFailedAuthSelectorChangedNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before: func() {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			cfg.Servers["prod"] = config.Server{URL: "https://r.ex", CA: testCAPem1}
+			require.NoError(t, cfg.Write())
+		},
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint)
+}
+
+func TestLoginDelegatedFailedAuthSamePathBytesRotatedNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	caPath := writeCAFile(t, testCAPem1)
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before: func() {
+			require.NoError(t, os.WriteFile(caPath, []byte(testCAPem2), 0o600))
+		},
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex", "cacert": caPath}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint, "the same path selector now resolves to rotated bytes")
+}
+
+func TestLoginDelegatedFailedAuthPathUnreadableNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	caPath := writeCAFile(t, testCAPem1)
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before:   func() { require.NoError(t, os.Remove(caPath)) },
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex", "cacert": caPath}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint)
+}
+
+func TestLoginDelegatedFailedAuthCancellationNoHint(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter(""),
+		before:   cancel,
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := cmd.Execute(ctx, in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Empty(t, ce.Hint, "cancellation must skip the recheck entirely, never attach a hint")
+}
+
+// TestLoginDeleteBetweenRegisterAndStoreThenReregisterAtNewURLNeverSurfacesOldToken
+// pins that a concurrent delete-then-recreate at a DIFFERENT URL during the
+// unlocked auth window must never let the old token become live for the new
+// address — the credential-write commit seam must conflict on the URL
+// mismatch, never write under the stale name alone.
+func TestLoginDeleteBetweenRegisterAndStoreThenReregisterAtNewURLNeverSurfacesOldToken(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa", URL: "https://a.example.com"}, "server-a-token"))
+
+	p := &beforeReadPrompter{
+		Prompter: stdinPrompter("new-token:secret\n"),
+		before: func() {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			delete(cfg.Servers, "qa")
+			cfg.Servers["qa"] = config.Server{URL: "https://b.example.com"}
+			require.NoError(t, cfg.Write())
+		},
+	}
+	cmd := delegatedLoginCmdWithHook(dir, store)
+	in := args{s: map[string]string{"url": "https://a.example.com"}, b: map[string]bool{"token-stdin": true}, a: []string{"qa"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+
+	tok, terr := store.GetToken(config.ServerRef{Name: "qa", URL: "https://b.example.com"})
+	require.NoError(t, terr)
+	assert.Equal(t, "server-a-token", tok, "the pre-existing token must be untouched, and no new token was written under it")
+}
+
+// --- authentication-snapshot conflicts against an EXISTING entry (plain login) ---
+
+func TestLoginConflictWhenStoredCAChangesDuringPlainLogin(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "-----BEGIN CERTIFICATE-----old", false)
+
+	cmd := &loginCmd{
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		tlsPreflight: func(context.Context, string, string) (string, error) {
+			cfg, err := config.Load(config.FilePath(dir))
+			if err != nil {
+				return "", err
+			}
+			cfg.Servers["prod"] = config.Server{URL: "https://r.ex", CA: "-----BEGIN CERTIFICATE-----swapped"}
+			return "", cfg.Write()
+		},
+	}
+	_, err := cmd.Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}, stdinPrompter("id2:sec2\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----swapped", cfg.Servers["prod"].CA, "the concurrent writer's CA is untouched")
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.Error(t, tokErr, "the conflicted login must not store a token")
+}
+
+func TestLoginConflictWhenEntryDeletedDuringPlainLogin(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "-----BEGIN CERTIFICATE-----doomed", false)
+
+	cmd := &loginCmd{
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		tlsPreflight: func(context.Context, string, string) (string, error) {
+			cfg, err := config.Load(config.FilePath(dir))
+			if err != nil {
+				return "", err
+			}
+			delete(cfg.Servers, "prod")
+			return "", cfg.Write()
+		},
+	}
+	_, err := cmd.Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}, stdinPrompter("id2:sec2\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.NotContains(t, cfg.Servers, "prod", "the deleted entry must not be resurrected")
+}
+
+func TestLoginConflictWhenStoredCAFileContentRotatesDuringPlainLogin(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	caPath := writeCAFile(t, testCAPem1)
+	seedServer(t, dir, "prod", "https://r.ex", caPath, false)
+
+	cmd := &loginCmd{
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		tlsPreflight: func(context.Context, string, string) (string, error) {
+			return "", os.WriteFile(caPath, []byte(testCAPem2), 0o600)
+		},
+	}
+	_, err := cmd.Execute(t.Context(), args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}, stdinPrompter("id2:sec2\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+}
+
+// TestLoginPrecheckConfigLoadFailureAborts: a corrupt config must abort
+// before any name resolution, never silently collapse to a blank state.
+func TestLoginPrecheckConfigLoadFailureAborts(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("{not yaml"), 0o600))
+	in := args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Message, "reading config")
+}
+
+func TestLoginCanonicalizesStoredURL(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
+	res, err := cmd.Execute(t.Context(),
+		args{s: map[string]string{"url": "HTTPS://Rancher2.Example.Local:443"}, b: map[string]bool{"token-stdin": true}, a: []string{"canon"}},
+		stdinPrompter("id:secret"))
+	require.NoError(t, err)
+
+	data := res.Data.(map[string]any)
+	assert.Equal(t, "https://rancher2.example.local", data["url"], "echo must show the canonical form")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "https://rancher2.example.local", cfg.Servers["canon"].URL, "config must persist the canonical form")
+
+	tok, err := store.GetToken(config.ServerRef{Name: "canon", URL: "https://rancher2.example.local"})
+	require.NoError(t, err)
+	assert.Equal(t, "id:secret", tok, "credential must be stored under the canonical ref")
+}
+
+// TestLoginResolvesStoreFromLockedConfig pins a race: a credentialStore
+// policy change committed while login waits for the config lock must be
+// honored — the token lands in the backend the NEW policy names, not the
+// dependency-resolution snapshot's.
+func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, config.WritePin(dir, "file"))
-
-	cmd := &loginCmd{
-		dir:            dir,
-		newStore:       config.OpenStoreWithNotice,
-		rancherVersion: stubRancherVersion,
+	cfg := &config.Config{
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{"acme": {URL: "https://r.ex"}},
 	}
-	res, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
-		stdinPrompter("id:sec\n"))
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	// Hook fires inside WithLock, before fn. Login parks here so the config
+	// still reads "file" at hook time. We rewrite to "exec:fake" then release:
+	// fn loads the rewritten config and calls the factory with the new policy.
+	loginParked := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	restore := config.SetLockHookForTest(func() {
+		once.Do(func() { close(loginParked) })
+		<-release
+	})
+	defer restore()
+
+	var calledWith string
+	factory := func(policy, d string) (config.CredStore, string, error) {
+		calledWith = policy
+		return config.NewFileStore(d), "", nil
+	}
+	loginDone := make(chan error, 1)
+	go func() {
+		cmd := &loginCmd{dir: dir, newStore: factory}
+		_, lerr := cmd.Execute(t.Context(),
+			args{b: map[string]bool{"token-stdin": true}, a: []string{"acme"}},
+			stdinPrompter("id:sec\n"))
+		loginDone <- lerr
+	}()
+
+	select {
+	case <-loginParked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("login never acquired the config lock")
+	}
+	newCfg := &config.Config{
+		CredentialStore: "exec:fake",
+		Servers:         map[string]config.Server{"acme": {URL: "https://r.ex"}},
+	}
+	newCfg.SetPath(config.FilePath(dir))
+	b, err := json.Marshal(newCfg)
 	require.NoError(t, err)
-	assert.Contains(t, res.Warnings, "credential store re-pinned: file → keychain",
-		"file→keychain re-pin notice must reach res.Warnings on the production login path")
-	assert.Equal(t, "keychain", config.ReadPin(dir), "pin must be upgraded to keychain after re-probe")
+	require.NoError(t, os.WriteFile(config.FilePath(dir), b, 0600))
+
+	close(release)
+	require.NoError(t, <-loginDone)
+	assert.Equal(t, "exec:fake", calledWith,
+		"factory must be called with the policy from the config loaded under the lock, not before")
+}
+
+// TestLoginSerializedUnderConfigLock exercises the boundary-test harness for
+// auth login: two concurrent delegated logins to distinct new names
+// serialize correctly and the deciding load of the first login sees a
+// mutation committed while the lock was held.
+func TestLoginSerializedUnderConfigLock(t *testing.T) {
+	dir, _ := filePolicyDir(t)
+	assertSerializedWithLoadUnderLock(t, dir,
+		func() { runLogin(t, dir, "acme", "https://r.ex") },
+		func() { writeSentinelServer(t, dir) },
+		func() { runLogin(t, dir, "acme2", "https://r2.ex") },
+	)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, sentinelOK := cfg.Servers["sentinel"]
+	assert.True(t, sentinelOK, "sentinel written while the lock was held must survive the first login's write")
+	_, acmeOK := cfg.Servers["acme"]
+	assert.True(t, acmeOK, "first login's server must be present")
+	_, acme2OK := cfg.Servers["acme2"]
+	assert.True(t, acme2OK, "second login's server must be present")
 }
 
 // extLoginFakeOpts configures the httptest fake server standing in for
@@ -756,9 +1059,10 @@ func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T)
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess1:sessionsecret", revokedPathCh: revokedPathCh})
 
 	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 
@@ -779,10 +1083,11 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess2:sessionsecret", mintNotFound: true})
 
 	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
@@ -796,10 +1101,11 @@ func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T)
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess3:sessionsecret", revokeStatus: http.StatusInternalServerError})
 
 	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
@@ -813,10 +1119,11 @@ func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
 	bodyCh := make(chan []byte, 1)
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess4:sessionsecret", mintBodyCh: bodyCh})
 
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider", "ttl": "12h"}}
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider", "ttl": "12h"}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	select {
@@ -843,10 +1150,11 @@ func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
 	bodyCh := make(chan []byte, 1)
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", mintBodyCh: bodyCh})
 
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "prod", "auth-provider": "localProvider"}}
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	select {
@@ -869,11 +1177,10 @@ func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
 func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{
-		"server": "https://r.ex", "name": "prod", "auth-provider": "localProvider", "ttl": "500us",
-	}}
+	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider", "ttl": "500us"}, a: []string{"prod"}}
 	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
-	_, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, p)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -882,205 +1189,84 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
 }
 
-// newVersionProbeFake stands in for Rancher's unauthenticated /rancherversion
-// endpoint. Any path other than /rancherversion 404s here, the same way a
-// real server would reject an unrecognised root path.
-func newVersionProbeFake(t *testing.T, value string, status int) *httptest.Server {
-	t.Helper()
-	if status == 0 {
-		status = http.StatusOK
+func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
+	// Non-parallel: keyring.MockInit swaps a process-global in-memory backend.
+	// Isolate from the operator's shell: RANCHER_CLI_CREDENTIAL_STORE=file (this
+	// project's own recommended hermetic-manual-run setting) would otherwise
+	// outrank both the "auto" policy under test and the explicit "keychain"
+	// argument to OpenStore below (config.EffectivePolicy: env > argument).
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	dir := t.TempDir() // no config on disk → auto policy; mock keychain is usable
+	in := args{
+		s: map[string]string{"url": "https://r.ex"},
+		b: map[string]bool{"token-stdin": true},
+		a: []string{"acme"},
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rancherversion" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		if status == http.StatusOK {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"Version": value, "GitCommit": "abc123",
-			})
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func TestLoginWarnsWhenServerBelowMinVersion(t *testing.T) {
-	t.Parallel()
-	fake := newVersionProbeFake(t, "v2.13.0", http.StatusOK)
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
+	// Inject a file store; under auto with a usable (mock) keychain, login must
+	// re-pin to keychain and write the token there, not to the file store.
+	_, err := newPlainLoginCmd(dir, config.NewFileStore(dir)).
+		Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
-}
 
-func TestLoginNoWarningAtOrAboveMinVersion(t *testing.T) {
-	t.Parallel()
-	for _, v := range []string{"v2.14.0", "v2.15.2", "2.14"} {
-		fake := newVersionProbeFake(t, v, http.StatusOK)
-		dir, _ := filePolicyDir(t)
-		in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-		res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-		require.NoError(t, err, v)
-		assert.Empty(t, res.Warnings, v)
+	if got := config.ReadPin(dir); got != "keychain" {
+		t.Fatalf("pin after auto login = %q, want keychain", got)
+	}
+	ks, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	tok, err := ks.GetToken(config.ServerRef{Name: "acme"})
+	require.NoError(t, err)
+	assert.Equal(t, "id:sec", tok)
+	if _, ferr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme"}); !errors.Is(ferr, config.ErrNoToken) {
+		t.Errorf("token must land in the keychain, not the file store; got %v", ferr)
 	}
 }
 
-func TestLoginUnparseableVersionWarnsCannotDetermine(t *testing.T) {
-	t.Parallel()
-	fake := newVersionProbeFake(t, "dev", http.StatusOK)
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
-}
+// TestLoginFirstPinNoticeReachesWarnings exercises the production wiring
+// (newStore: config.OpenStoreWithNotice) on a fresh auto+usable-keychain
+// machine: the first-pin notice must appear in res.Warnings so it reaches
+// the JSON/YAML envelope, not just a raw stderr line. This covers the
+// regression where openStoreResolved probed and pinned the keychain before
+// RepinForLogin ran, making RepinForLogin return early with no notice.
+func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
+	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
+	// Isolate from the operator's shell so RANCHER_CLI_CREDENTIAL_STORE=file
+	// doesn't outrank the "auto" policy under test.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
 
-// TestLoginVersionProbeFailureNeverFailsLogin pins PS-8's warn-only
-// contract at the login seam: an RBAC-denied/missing-setting probe must
-// never turn an otherwise-successful login into an error.
-func TestLoginVersionProbeFailureNeverFailsLogin(t *testing.T) {
-	t.Parallel()
-	fake := newVersionProbeFake(t, "", http.StatusForbidden)
-	dir, store := filePolicyDir(t)
-	in := args{s: map[string]string{"server": fake.URL, "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
+	dir := t.TempDir() // fresh dir, no config → auto policy, no prior pin
 
-	tok, err := store.GetToken(config.ServerRef{Name: "acme"})
-	require.NoError(t, err)
-	assert.Equal(t, "id:sec", tok, "the token is stored regardless of the version probe's outcome")
-}
-
-// TestLoginVersionProbeUnreachableServerNeverFailsLogin covers the
-// connectivity-failure sub-case (no listener at all) of the same
-// never-fails contract, distinct from an HTTP-level RBAC/404 response.
-func TestLoginVersionProbeUnreachableServerNeverFailsLogin(t *testing.T) {
-	t.Parallel()
-	dir, _ := filePolicyDir(t)
-	in := args{s: map[string]string{"server": "https://127.0.0.1:1", "name": "acme"}, b: map[string]bool{"token-stdin": true}}
-	res, err := NewLogin(dir).(runtime.ReadCommand).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
-	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, config.UnknownServerVersionWarning, res.Warnings[0])
-}
-
-// TestLoginCanonicalizesStoredURL pins the live-exercise friction-6 finding:
-// a non-canonical --server (host case, explicit default port) must be
-// canonicalized ONCE at login and used consistently — the config.yaml server
-// entry, the credential-store ref, and the success echo must all carry the
-// canonical form the credential helper is keyed by, never the raw spelling.
-func TestLoginCanonicalizesStoredURL(t *testing.T) {
-	t.Parallel()
-	dir, store := filePolicyDir(t)
-	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil }}
+	cmd := &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice}
 	res, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": "HTTPS://Rancher2.Example.Local:443", "name": "canon"}, b: map[string]bool{"token-stdin": true}},
-		stdinPrompter("id:secret"))
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"acme"}},
+		stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
-
-	data := res.Data.(map[string]string)
-	assert.Equal(t, "https://rancher2.example.local", data["url"], "echo must show the canonical form")
-
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	assert.Equal(t, "https://rancher2.example.local", cfg.Servers["canon"].URL, "config must persist the canonical form")
-
-	tok, err := store.GetToken(config.ServerRef{Name: "canon", URL: "https://rancher2.example.local"})
-	require.NoError(t, err)
-	assert.Equal(t, "id:secret", tok, "credential must be stored under the canonical ref")
+	assert.Contains(t, res.Warnings, "pinned credential store: keychain",
+		"first-pin notice must reach res.Warnings on the production login path")
+	assert.Equal(t, "keychain", config.ReadPin(dir), "auto + usable keychain must pin to keychain")
 }
 
-// TestLoginResolvesStoreFromLockedConfig pins the review-r1-issue-2 race:
-// a credentialStore policy change committed while login waits for the
-// config lock must be honored — the token lands in the backend the NEW
-// policy names, not the dependency-resolution snapshot's.
-//
-// Sequence: install a lock hook, start login (it parks on the hook),
-// THEN rewrite config.yaml to the new policy, THEN release.  This proves
-// the factory is called after the fn-load, not before the lock is
-// acquired — a pre-lock snapshot would still see "file".
-func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
+// TestLoginFileToKeychainRepinNoticeReachesWarnings exercises the production
+// wiring (newStore: config.OpenStoreWithNotice) when the machine was previously
+// pinned to "file" (e.g. first login over SSH) and now has a usable keychain:
+// RepinForLogin must upgrade the pin and emit the re-pin notice into res.Warnings
+// so it appears in the JSON/YAML envelope, not only as a raw stderr line.
+func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
+	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
 	dir := t.TempDir()
-	cfg := &config.Config{
-		CredentialStore: "file",
-		Servers:         map[string]config.Server{},
-	}
-	cfg.SetPath(config.FilePath(dir))
-	require.NoError(t, cfg.Write())
+	require.NoError(t, config.WritePin(dir, "file"))
 
-	// Hook fires inside WithLock, before fn. Login parks here so the config
-	// still reads "file" at hook time. We rewrite to "exec:fake" then release:
-	// fn loads the rewritten config and calls the factory with the new policy.
-	loginParked := make(chan struct{})
-	release := make(chan struct{})
-	var once sync.Once
-	restore := config.SetLockHookForTest(func() {
-		once.Do(func() { close(loginParked) })
-		<-release
-	})
-	defer restore()
-
-	var calledWith string
-	factory := func(policy, d string) (config.CredStore, string, error) {
-		calledWith = policy
-		return config.NewFileStore(d), "", nil
-	}
-	loginDone := make(chan error, 1)
-	go func() {
-		cmd := &loginCmd{dir: dir, newStore: factory, rancherVersion: stubRancherVersion}
-		_, lerr := cmd.Execute(t.Context(),
-			args{s: map[string]string{"server": "https://r.ex", "name": "acme"}, b: map[string]bool{"token-stdin": true}},
-			stdinPrompter("id:sec\n"))
-		loginDone <- lerr
-	}()
-
-	// Wait for login to park on the hook (config still "file" at this point),
-	// then rewrite the policy before releasing.
-	select {
-	case <-loginParked:
-	case <-time.After(10 * time.Second):
-		t.Fatal("login never acquired the config lock")
-	}
-	newCfg := &config.Config{
-		CredentialStore: "exec:fake",
-		Servers:         map[string]config.Server{},
-	}
-	newCfg.SetPath(config.FilePath(dir))
-	b, err := json.Marshal(newCfg)
+	cmd := &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice}
+	res, err := cmd.Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}, a: []string{"acme"}},
+		stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(config.FilePath(dir), b, 0600))
-
-	close(release)
-	require.NoError(t, <-loginDone)
-	assert.Equal(t, "exec:fake", calledWith,
-		"factory must be called with the policy from the config loaded under the lock, not before")
-}
-
-// TestLoginSerializedUnderConfigLock exercises the boundary-test harness
-// for auth login: two concurrent logins serialize correctly and the
-// deciding load of the first login (which happens under the lock) sees a
-// mutation committed while the lock was held.
-func TestLoginSerializedUnderConfigLock(t *testing.T) {
-	dir, _ := filePolicyDir(t)
-	assertSerializedWithLoadUnderLock(t, dir,
-		func() { runLogin(t, dir, "acme", "https://r.ex") },
-		func() { writeSentinelServer(t, dir) },
-		func() { runLogin(t, dir, "acme2", "https://r2.ex") },
-	)
-	cfg, err := config.Load(config.FilePath(dir))
-	require.NoError(t, err)
-	_, sentinelOK := cfg.Servers["sentinel"]
-	assert.True(t, sentinelOK, "sentinel written while the lock was held must survive the first login's write")
-	_, acmeOK := cfg.Servers["acme"]
-	assert.True(t, acmeOK, "first login's server must be present")
-	_, acme2OK := cfg.Servers["acme2"]
-	assert.True(t, acme2OK, "second login's server must be present")
+	assert.Contains(t, res.Warnings, "credential store re-pinned: file → keychain",
+		"file→keychain re-pin notice must reach res.Warnings on the production login path")
+	assert.Equal(t, "keychain", config.ReadPin(dir), "pin must be upgraded to keychain after re-probe")
 }

@@ -91,19 +91,18 @@ func seedTwoServerConfig(t *testing.T) string {
 	return dir
 }
 
-// runLogin runs `auth login` for the given server/name with --token-stdin
-// using an in-memory file store. Errors are reported via assert (safe from
-// goroutines).
+// runLogin runs a delegated `auth login <name> --url <server>` with
+// --token-stdin using an in-memory file store. Errors are reported via
+// assert (safe from goroutines).
 func runLogin(t *testing.T, dir, name, server string) {
 	t.Helper()
 	store := config.NewFileStore(dir)
 	cmd := &loginCmd{
-		dir:            dir,
-		newStore:       func(string, string) (config.CredStore, string, error) { return store, "", nil },
-		rancherVersion: stubRancherVersion,
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
 	}
 	_, err := cmd.Execute(t.Context(),
-		args{s: map[string]string{"server": server, "name": name}, b: map[string]bool{"token-stdin": true}},
+		args{s: map[string]string{"url": server}, b: map[string]bool{"token-stdin": true}, a: []string{name}},
 		stdinPrompter("id:sec\n"))
 	assert.NoError(t, err)
 }
