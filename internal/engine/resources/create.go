@@ -145,7 +145,34 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return eff, exec, nil
+	return eff, redactCreateResult(exec, k), nil
+}
+
+// redactCreateResult scrubs sensitive fields from a create's rendered
+// response before it reaches output: the server can echo a submitted
+// credential back verbatim on create even though it never returns one on a
+// later read. It removes the kind's declared RedactPaths (a named field like
+// User's root-level password) and, for a Sensitive kind, a Secret-shaped
+// payload's data/stringData — the same two guards patch.go's diff redaction
+// applies, so the two seams cannot silently diverge on what counts as a
+// credential.
+func redactCreateResult(exec runtime.ExecuteFunc, k kinds.Kind) runtime.ExecuteFunc {
+	return func(ctx context.Context) (runtime.Result, error) {
+		res, err := exec(ctx)
+		if err != nil {
+			return res, err
+		}
+		obj, ok := res.Data.(map[string]any)
+		if !ok {
+			return res, nil
+		}
+		obj = engine.ScrubPaths(obj, k.RedactPaths)
+		if k.Sensitive {
+			obj = engine.ScrubPaths(obj, [][]string{{"data"}, {"stringData"}})
+		}
+		res.Data = obj
+		return res, nil
+	}
 }
 
 // parseManifest returns the memoized parse of the manifest named by the

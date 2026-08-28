@@ -252,6 +252,54 @@ func TestCreateResourceSensitiveKindIsDestructive(t *testing.T) {
 	assert.False(t, eff2.Destructive)
 }
 
+// TestCreateResourceRedactsUserPassword pins the create-response redaction
+// seam: a User manifest's password reaches the server (the create client
+// echoes back exactly what it submitted, as a real server does), but the
+// rendered Result never carries it.
+func TestCreateResourceRedactsUserPassword(t *testing.T) {
+	t.Parallel()
+	const userManifest = "apiVersion: management.cattle.io/v3\nkind: User\n" +
+		"metadata:\n  name: u-test\n" +
+		"username: alice\npassword: hunter2\n"
+	client := &createClient{}
+	fac := &recFactory{client: client}
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(userManifest)})
+
+	_, exec, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml"}})
+	require.NoError(t, err)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	obj, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	_, present := obj["password"]
+	assert.False(t, present, "password must be scrubbed from the create response")
+	assert.Equal(t, "alice", obj["username"], "unrelated fields survive redaction")
+}
+
+// TestCreateResourceRedactsSecretPayload proves the Sensitive-gated
+// data/stringData guard applies to a create response the same way it
+// already applies to patch diffs.
+func TestCreateResourceRedactsSecretPayload(t *testing.T) {
+	t.Parallel()
+	const secretManifest = "apiVersion: v1\nkind: Secret\n" +
+		"metadata:\n  name: s1\n  namespace: ns1\n" +
+		"stringData:\n  k: v\n"
+	client := &createClient{}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(secretManifest)})
+
+	_, exec, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
+	require.NoError(t, err)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	obj, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	_, present := obj["stringData"]
+	assert.False(t, present, "stringData must be scrubbed from the create response")
+}
+
 func TestCreateResourceClusterScopedRejectsNamespace(t *testing.T) {
 	t.Parallel()
 	const setting = "apiVersion: management.cattle.io/v3\nkind: Setting\nmetadata:\n  name: s\n  namespace: oops\n"

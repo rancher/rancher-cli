@@ -579,6 +579,11 @@ var table = []Kind{
 		// the user store's exact system:// check, so the two differing is
 		// intent, not drift.
 		SystemFilter: &PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://", Label: "system account"},
+		// The v3 User type carries a root-level password field, write-only
+		// on the CLI's side but echoed back verbatim in a create response —
+		// a server never returns it on a later read, only on the create
+		// that set it.
+		RedactPaths: [][]string{{"password"}},
 		// PRINCIPALS renders every principal raw, comma-joined in server
 		// order (local://m-x, system://local, okta_user://…): the auth
 		// provider and the system-account marker exactly as the server
