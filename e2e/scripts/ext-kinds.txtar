@@ -26,14 +26,17 @@ exec rancher delete kubeconfig ext-kinds-kubeconfig --apply --yes
 # feature (management.cattle.io/v3, NSNone/Management, Deletable: false): the
 # generic `get`/`patch` pair, no `delete` generated. Feature's interesting
 # fields are set by Rancher's own controller (status.value/default/
-# lockedValue), which this harness does not emulate — an empty list against
-# the registered CRD is the honest assertion available here.
+# lockedValue), which this harness does not emulate. The list is NOT
+# asserted empty: testscript scenarios share one envtest cluster and run
+# concurrently, and oidc-client-secrets.txtar legitimately seeds a real
+# "oidc-provider" Feature to exercise Prime-capability gating end to end —
+# a fixed, production-real name that cannot be scenario-namespaced the way
+# ordinary test objects are.
 exec rancher get features -o json
-jsonquery stdout 'data.#' 0
 
 # PRIME-ONLY renders the wire's status.prime classification, never
-# server-edition detection; the column header must appear even on an empty
-# list (community-fixture envtest never sets status.prime).
+# server-edition detection; the column header must appear regardless of
+# how many Features exist.
 exec rancher get features
 stdout PRIME-ONLY
 

@@ -137,7 +137,7 @@ Composite reads (`inspect *`, `images`, `usage`) answer with what the caller
 can see: a collector they cannot read is named in the payload's `degraded`
 field with a paired warning, and the command still exits 0.
 
-Generated `get`/`patch`/`delete` commands cover every kind in the 48-kind
+Generated `get`/`patch`/`delete` commands cover every kind in the 49-kind
 vocabulary. The full catalog is [COMMANDS.md](COMMANDS.md), and
 `rancher schema` is its live version. Per-kind verb rules:
 [REFERENCE.md](REFERENCE.md#kinds--verbs); project scoping:

@@ -612,6 +612,13 @@ func handleStatusLever(w http.ResponseWriter, r *http.Request) {
 	if group == "core" {
 		group = ""
 	}
+	// clusterScopedNSSegment (cmdFlipStatus) is the round-trip of "." for a
+	// cluster-scoped resource: a literal "." or an empty segment are both
+	// dot-segment/redundant-slash forms path normalization strips before
+	// this handler ever sees them.
+	if ns == clusterScopedNSSegment {
+		ns = ""
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

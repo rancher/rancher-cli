@@ -55,13 +55,25 @@ func cmdJSONQuery(ts *testscript.TestScript, neg bool, args []string) {
 	}
 }
 
+// clusterScopedNSSegment is the URL-safe placeholder for a cluster-scoped
+// resource's <ns> path segment: a literal "." (seedobj's convention for
+// "no namespace") or an empty segment are both dot-segment/redundant-slash
+// forms that path normalization strips before the handler ever sees them,
+// silently shifting the split part count. An ordinary token round-trips
+// untouched.
+const clusterScopedNSSegment = "_"
+
 // cmdFlipStatus drives the shim's status lever: flipstatus <cluster>
-// <group>/<version>/<resource> <ns> <name> <json-status-merge>.
+// <group>/<version>/<resource> <ns> <name> <json-status-merge>. Use "." for
+// <ns> on a cluster-scoped resource (matches seedobj's convention).
 func cmdFlipStatus(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 5 {
 		ts.Fatalf("usage: flipstatus <cluster> <group>/<version>/<resource> <ns> <name> <json-status-merge>")
 	}
 	cluster, gvr, ns, name, body := args[0], args[1], args[2], args[3], args[4]
+	if ns == "." {
+		ns = clusterScopedNSSegment
+	}
 
 	reqURL := fmt.Sprintf("%s/_test/status/%s/%s/%s/%s", shimURL, cluster, gvr, ns, name)
 	req, err := http.NewRequest(http.MethodPut, reqURL, strings.NewReader(body))
