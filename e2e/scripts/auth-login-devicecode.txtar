@@ -3,7 +3,7 @@
 # needed. Login completes after the stub's pending polls; the stored
 # credential is asserted by exercising it, never by string-matching the
 # token itself.
-exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider azureADProvider --auth-flow devicecode
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider azureADProvider --auth-flow devicecode
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # Membership, not count: scripts run concurrently against one shared

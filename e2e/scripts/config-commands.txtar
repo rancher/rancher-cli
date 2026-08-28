@@ -52,6 +52,37 @@ jsonquery stderr data.error.code VALIDATION
 stderr 'TTY'
 stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
 
+# config add-server: establishes trust, records the entry, and bootstraps
+# the current-server pointer (empty here, after the delete-server above).
+exec rancher config add-server qa1 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
+jsonquery stdout data.name qa1
+jsonquery stdout data.unchanged false
+jsonquery stdout data.currentServer qa1
+
+# idempotent re-run: an identical url+ca is an entry no-op, never a second write.
+exec rancher config add-server qa1 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
+jsonquery stdout data.unchanged true
+
+# a different URL under the same name is CONFLICT, never a silent upsert —
+# the machine hint is the single, fully interpolated update-server command.
+! exec rancher config add-server qa1 --url https://different.example.com -o json
+jsonquery stderr data.error.code CONFLICT
+jsonquery stderr data.error.hint 'rancher config update-server ''qa1'' --url ''https://different.example.com'''
+
+# config update-server --clear-cacert (system roots) and a URL change
+# against a different host are exercised at the unit level
+# (config_update_server_test.go, register_test.go) — this harness's single
+# real server presents a self-signed cert, so clearing its CA or dialing a
+# different host cannot succeed here; the e2e coverage below stays limited
+# to what a real probe against the actual test server can prove.
+
+# a same-value update (URL already effective) is a no-op success after the
+# verification probe.
+exec rancher config update-server qa1 --url $TEST_RANCHER_URL -o json
+jsonquery stdout data.unchanged true
+
+exec rancher config delete-server qa1 -o json
+
 -- seed-config.yaml --
 currentServer: acme
 servers:

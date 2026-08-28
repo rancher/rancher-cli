@@ -400,8 +400,11 @@ reachable command.
 
 ## Auth & credentials
 
-**Login and the credential store.** `auth login` records the server and stores a manually
-supplied token. The store backend is resolved by `config.OpenStoreWithNotice` (login's
+**Login and the credential store.** `auth login` stores a manually supplied token; it
+records the server entry only when given `--url` for a name that doesn't exist yet
+(delegating to the same registration path `config add-server` uses) — otherwise the entry
+must already exist, added by `config add-server` or a prior delegated login. The store
+backend is resolved by `config.OpenStoreWithNotice` (login's
 eager path) with strict precedence:
 
 `RANCHER_CLI_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`

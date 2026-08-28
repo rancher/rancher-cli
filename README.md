@@ -85,7 +85,7 @@ The login token is a Rancher
 in its `access-key:secret-key` form.
 
     # Log in (token is the Rancher UI "id:secret" API key)
-    rancher auth login --server https://rancher.example.com --name prod
+    rancher auth login prod --url https://rancher.example.com
     # (prompts for token, or pass via --token-stdin)
 
     # Verify connectivity + credentials
@@ -213,7 +213,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
     "data": { "error": { "code": "NOT_LOGGED_IN", "message": "...",
-              "hint": "run: rancher auth login --server <url>", "retryable": false } } }
+              "hint": "rancher auth login 'prod'", "retryable": false } } }
   ```
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·

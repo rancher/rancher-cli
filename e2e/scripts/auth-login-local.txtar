@@ -9,7 +9,7 @@
 [!unix] skip 'ttyin (real pty) is unix-only'
 
 ttyin -stdin creds.txt
-exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # Membership, not count: scripts run concurrently against one shared
@@ -18,7 +18,7 @@ exec rancher get clusters -o json
 jsonquery stdout 'data.#(metadata.name=="c-test").metadata.name' c-test
 
 ttyin -stdin wrong.txt
-! exec rancher auth login --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider --name bad -o json
+! exec rancher auth login bad --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider -o json
 jsonquery stderr data.error.code AUTH
 
 -- creds.txt --

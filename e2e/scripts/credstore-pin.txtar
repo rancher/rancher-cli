@@ -18,7 +18,7 @@ env RANCHER_CLI_CREDENTIAL_STORE=
 # (First-ever execution of this script — Linux acceptance 2026-07-13 — found
 # it asserting the usable-branch notice; adjudication gist 6252584.)
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --name e2e
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin
 stderr 'keychain unavailable; credentials will be stored in plaintext'
 exists $RANCHER_CLI_CONFIG_DIR/credstore-pin
 grep '^file$' $RANCHER_CLI_CONFIG_DIR/credstore-pin

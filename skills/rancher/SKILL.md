@@ -25,18 +25,23 @@ or `token` field plus a `warnings` entry is a normal degradation (e.g.
 token), not an error condition; don't treat it as one. If it fails with
 `AUTH` or `NOT_LOGGED_IN`, establish a session:
 
-- Interactive: `rancher auth login --server <url> --name <alias>` — no UI trip
-  needed. With no piped/pasted token, it offers a choice: paste an existing
-  API token, or sign in via an identity provider (`--auth-provider`,
-  `--auth-flow devicecode|authcode` skip the prompt). The provider path creates
-  its own purpose-made, individually revocable token behind the scenes (see
-  the token taxonomy below).
-- Scripted/CI: pipe the token — `rancher auth login --server <url> --token-stdin < token.txt`,
+- Interactive: `rancher auth login <name> --url <url>` — adds the server entry
+  and logs in, no UI trip needed (or add and log in as two steps:
+  `rancher config add-server <name> --url <url>` then
+  `rancher auth login <name>`). With no piped/pasted token, it offers a
+  choice: paste an existing API token, or sign in via an identity provider
+  (`--auth-provider`, `--auth-flow devicecode|authcode` skip the prompt). The
+  provider path creates its own purpose-made, individually revocable token
+  behind the scenes (see the token taxonomy below).
+- Scripted/CI: pipe the token — `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
   not a stored login session.
+- Added ≠ logged in: a server can be added without a stored credential
+  (`NOT_LOGGED_IN` until you log in). `auth login` never switches the current
+  server — `rancher config use-server <name>` is the only switch verb.
 
 **Three kinds of token** — three distinct things called "token", each created by a
 different actor for a different purpose:

@@ -6,7 +6,7 @@
 [!kubectl] skip 'kubectl not on PATH'
 
 stdin token.txt
-exec rancher auth login --token-stdin --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin
 
 exec rancher kubeconfig --cluster testcluster
 cp stdout kc.yaml

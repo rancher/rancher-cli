@@ -398,6 +398,17 @@ for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
 forensics).
 
+## Machine hints
+
+An error's `data.error.hint` field, when present, is a single bare command
+targeting POSIX sh — no `run:` or other prose prefix, every argument a real,
+shell-quoted value. It is emitted only when the CLI can fully interpolate
+it; guidance that needs a value the CLI does not have (an unknown URL, a
+name that does not exist) goes in the message body instead, with no `hint`
+field at all. Treat `hint` as paste-valid verbatim; anything narrated in
+prose belongs to the message, not the hint. Windows agents adapt the
+command themselves — the same posture as the rest of the machine contract.
+
 ## Read-only mode
 
 Three sources, OR'd together, put a session into read-only mode, refusing
