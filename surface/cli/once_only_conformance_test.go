@@ -24,36 +24,42 @@ var oidcOnceOnlyInventory = map[string]bool{
 	"oidc-client rotate-secret": true,
 }
 
-// zeroOutputPolicyExempt is the closed, named allowlist of once-only
-// commands permitted a zero-value OutputPolicy: exactly create
-// kubeconfig, whose RawBytes payload (internal/engine/extres/kubeconfig.go)
-// is format-independent and needs no restriction. Every other once-only
-// descriptor must equal runtime.OnceOnlyOutputPolicy() exactly — a silent
-// zero-value anywhere else would allow -o name and reintroduce the hazard
-// the once-only OutputPolicy exists to prevent.
-var zeroOutputPolicyExempt = map[string]bool{
-	"create kubeconfig": true,
+// bespokeOutputPolicyExempt is the closed, named allowlist of once-only
+// commands permitted a non-canonical OutputPolicy other than the zero
+// value: exactly create kubeconfig, whose RawBytes payload
+// (internal/engine/extres/kubeconfig.go) never varies with -o, so every
+// format but the bare table default would silently accept and then ignore
+// it. Every other once-only descriptor must equal
+// runtime.OnceOnlyOutputPolicy() exactly, and a zero-value OutputPolicy is
+// never accepted anywhere — that would allow -o name and reintroduce the
+// hazard the once-only OutputPolicy exists to prevent.
+var bespokeOutputPolicyExempt = map[string]runtime.OutputPolicy{
+	"create kubeconfig": {AllowedFormats: []string{"table"}},
 }
 
 // onceOnlyOutputPolicyOK reports whether a once-only descriptor's
 // OutputPolicy passes conformance: exactly runtime.OnceOnlyOutputPolicy(),
-// or the zero value if and only if name is in zeroOutputPolicyExempt.
+// or the exact bespoke policy named in bespokeOutputPolicyExempt.
 func onceOnlyOutputPolicyOK(name string, p runtime.OutputPolicy) bool {
 	if reflect.DeepEqual(p, runtime.OnceOnlyOutputPolicy()) {
 		return true
 	}
-	return len(p.AllowedFormats) == 0 && zeroOutputPolicyExempt[name]
+	want, ok := bespokeOutputPolicyExempt[name]
+	return ok && reflect.DeepEqual(p, want)
 }
 
 // TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException pins
-// the fix's core claim: a zero-value OutputPolicy is accepted ONLY for the
-// named exception, never universally — a future once-only command that
-// forgets OutputPolicy: runtime.OnceOnlyOutputPolicy() must fail this
-// check, not pass it by accident.
+// the fix's core claim: a zero-value OutputPolicy is never accepted, and a
+// non-canonical policy is accepted ONLY for the named exception's exact
+// value — a future once-only command that forgets
+// OutputPolicy: runtime.OnceOnlyOutputPolicy() must fail this check, not
+// pass it by accident.
 func TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException(t *testing.T) {
 	t.Parallel()
-	assert.True(t, onceOnlyOutputPolicyOK("create kubeconfig", runtime.OutputPolicy{}),
-		"the named exception must still pass with a zero-value OutputPolicy")
+	assert.True(t, onceOnlyOutputPolicyOK("create kubeconfig", runtime.OutputPolicy{AllowedFormats: []string{"table"}}),
+		"the named exception must pass with its exact declared policy")
+	assert.False(t, onceOnlyOutputPolicyOK("create kubeconfig", runtime.OutputPolicy{}),
+		"a zero-value OutputPolicy must be rejected even for the named exception")
 	assert.True(t, onceOnlyOutputPolicyOK("create token", runtime.OnceOnlyOutputPolicy()),
 		"the canonical policy must pass for any once-only command")
 	assert.False(t, onceOnlyOutputPolicyOK("create oidc-client", runtime.OutputPolicy{}),

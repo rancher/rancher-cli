@@ -1,6 +1,7 @@
 package extres
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -188,15 +189,36 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 }
 
 // TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam pins that create
-// kubeconfig opts into Delivery: DeliveryOnceOnly but keeps the ZERO-VALUE
-// OutputPolicy (all formats) — its RawBytes payload is format-independent,
-// so no format could discard the once-only value.
+// kubeconfig opts into Delivery: DeliveryOnceOnly and restricts OutputPolicy
+// to "table" — the one format its RawBytes payload actually honors, since
+// renderResult writes it verbatim regardless of -o.
 func TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 	t.Parallel()
 	d := NewCreateKubeconfig(stubFactory{c: &fakeClient{}}).Describe()
 	assert.Equal(t, runtime.DeliveryOnceOnly, d.Delivery)
-	assert.Empty(t, d.OutputPolicy.AllowedFormats, "kubeconfig's RawBytes payload keeps every format")
-	assert.True(t, d.OutputPolicy.Allows("name"), "RawBytes ignores -o entirely")
+	assert.Equal(t, []string{"table"}, d.OutputPolicy.AllowedFormats)
+	assert.True(t, d.OutputPolicy.Allows(""), "the bare default is honored")
+	assert.True(t, d.OutputPolicy.Allows("table"), "an explicit table request is honored")
+	assert.False(t, d.OutputPolicy.Allows("name"), "RawBytes never varies with -o, so name must be rejected pre-Plan")
+	assert.False(t, d.OutputPolicy.Allows("json"), "RawBytes never varies with -o, so json must be rejected pre-Plan")
+}
+
+// TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests pins the
+// pipeline-level enforcement: `create kubeconfig -o json` is rejected
+// before Plan ever runs — zero total requests, not merely zero mutation
+// requests — rather than silently accepting the flag and returning raw
+// kubeconfig bytes anyway.
+func TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests(t *testing.T) {
+	t.Parallel()
+	client := &fakeClient{}
+	cmd := NewCreateKubeconfig(stubFactory{c: client})
+	var out, errBuf bytes.Buffer
+	_, ce := runtime.Run(t.Context(), cmd, in{s: map[string]string{}},
+		runtime.IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Yes: true}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Empty(t, client.dryRuns, "zero TOTAL requests: not even the dry-run Plan Create may fire")
+	assert.Empty(t, out.String())
 }
 
 // TestCreateKubeconfigExecEmptyValueIsError mirrors mintDerivedToken's

@@ -530,6 +530,9 @@
       "group": "create",
       "name": "create kubeconfig",
       "network": true,
+      "outputPolicy": [
+        "table"
+      ],
       "stability": "stable",
       "toolset": "core",
       "usage": "Create a kubeconfig with an embedded token"

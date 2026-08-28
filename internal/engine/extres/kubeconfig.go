@@ -48,11 +48,14 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		Destructive: "true", // the kubeconfig kind is Sensitive
 		Network:     true,
 		Auth:        true,
-		// OutputPolicy stays the zero value (all formats): RawBytes is
-		// format-independent — it writes verbatim regardless of -o, so no
-		// format could discard the once-only value the way -o name would
-		// for a Data/envelope payload. Delivery alone marks it once-only.
-		Delivery: runtime.DeliveryOnceOnly,
+		// RawBytes writes verbatim regardless of -o (renderResult never
+		// looks at the format for a RawBytes payload), so every format
+		// other than the bare table default would silently accept and then
+		// ignore whatever the operator asked for. OutputPolicy accepts only
+		// "table" — the one format this command actually honors — and
+		// rejects everything else, including "name", pre-Plan.
+		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
+		Delivery:     runtime.DeliveryOnceOnly,
 	}
 }
 
