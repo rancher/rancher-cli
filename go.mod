@@ -3,10 +3,10 @@ module github.com/rancher/rancher-cli
 go 1.26.5
 
 replace (
-	k8s.io/apiserver => k8s.io/apiserver v0.36.3
-	k8s.io/client-go => k8s.io/client-go v0.36.3
-	k8s.io/component-base => k8s.io/component-base v0.36.3
-	k8s.io/kubernetes => k8s.io/kubernetes v1.36.3
+	k8s.io/apiserver => k8s.io/apiserver v0.36.4
+	k8s.io/client-go => k8s.io/client-go v0.36.4
+	k8s.io/component-base => k8s.io/component-base v0.36.4
+	k8s.io/kubernetes => k8s.io/kubernetes v1.36.4
 )
 
 require (
@@ -23,9 +23,9 @@ require (
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.36.3
-	k8s.io/apiextensions-apiserver v0.36.3
-	k8s.io/apimachinery v0.36.3
+	k8s.io/api v0.36.4
+	k8s.io/apiextensions-apiserver v0.36.4
+	k8s.io/apimachinery v0.36.4
 	k8s.io/client-go v12.0.0+incompatible
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/yaml v1.6.0
