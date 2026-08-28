@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The seven-case grammar fixture set (design's Command shape section):
+// The seven-case grammar fixture set:
 // local id, known external user principal, known group principal
 // (rejected), unknown prefix (rejected), unowned external (NOT_FOUND),
 // ambiguous display name, system principal (resolves).

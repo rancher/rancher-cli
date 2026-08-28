@@ -12,7 +12,7 @@ import (
 
 // capabilityChecker composes the provider's per-invocation server-info probe
 // with the management-scope feature client behind runtime.CapabilityChecker
-// — the design's required composition: provider owns version/edition
+// — a deliberate composition: provider owns version/edition
 // (config.Effective's unauthenticated HTTP path, never RootClientFactory);
 // the feature GET reuses the same engine.ClusterClientFactory every
 // Management-scope generated verb uses. Both are the SAME per-invocation
@@ -31,8 +31,8 @@ func newCapabilityChecker(f *clientFactory) *capabilityChecker {
 // Check implements runtime.CapabilityChecker. It never returns an error:
 // every failure mode (unresolved server, unreachable /rancherversion,
 // forbidden or absent Feature GET, malformed field) folds into
-// CapabilityUnknown, per the design's "unknown never blocks, detector
-// errors are never returned" rule.
+// CapabilityUnknown — unknown never blocks, and detector errors are
+// never returned.
 func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityRequirement) runtime.CapabilityDecision {
 	server := ""
 	if eff, err := c.f.resolve(); err == nil {
@@ -72,7 +72,7 @@ func featureState(obj *unstructured.Unstructured) (enabled, prime *bool) {
 	return engine.FeatureEffectiveValue(obj), engine.FeaturePrimeOnly(obj)
 }
 
-// decideCapability is the design's four-outcome truth table. enabled/prime
+// decideCapability is the four-outcome capability truth table. enabled/prime
 // nil means the signal was unavailable, malformed, forbidden, or absent —
 // never guessed. Evaluation order encodes the stated precedence: an
 // affirmative enabled=true always wins (outcome 1), regardless of edition;

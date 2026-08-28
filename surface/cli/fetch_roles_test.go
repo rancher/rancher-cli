@@ -103,7 +103,7 @@ func TestFetchRolesFailEmpty(t *testing.T) {
 
 func TestFetchRolesTimeout(t *testing.T) {
 	t.Parallel()
-	// The design's deadline row: a server slower than the context deadline
+	// The deadline case: a server slower than the context deadline
 	// yields nil, silently.
 	block := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

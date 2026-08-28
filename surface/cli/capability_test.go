@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestDecideCapabilityTruthTable pins the design's four-outcome truth table
+// TestDecideCapabilityTruthTable pins the four-outcome capability truth table
 // exactly, including the stated precedence and contradiction resolutions.
 func TestDecideCapabilityTruthTable(t *testing.T) {
 	t.Parallel()
@@ -166,7 +166,7 @@ func TestCapabilityCheckerForbiddenFeatureGetIsUnknown(t *testing.T) {
 }
 
 // TestCapabilityCheckerOneEditionFetchSharedWithFeatureCheck proves the
-// design's "one fetch per invocation" requirement using the SAME checker
+// one-fetch-per-invocation requirement using the SAME checker
 // (and therefore the same underlying clientFactory) for two Check calls —
 // the memoized ServerInfo must not re-fetch.
 func TestCapabilityCheckerOneEditionFetchSharedAcrossChecks(t *testing.T) {

@@ -447,8 +447,8 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 
 // TestTableRowsRenderFeaturePrimeOnlyColumn pins PRIME-ONLY: it renders the
 // wire's status.prime classification (true/false), and blank — never
-// "false" — when an older server omits the field, matching the design's
-// "absent is not false" rule.
+// "false" — when an older server omits the field: absent is not false,
+// nothing is fabricated.
 func TestTableRowsRenderFeaturePrimeOnlyColumn(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("feature")

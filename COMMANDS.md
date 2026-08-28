@@ -76,7 +76,7 @@ target for the legacy `server switch` command.
 | `oidc-client rotate-secret <client> [secret-name]` | Regenerate a client secret (name required with more than one secret); shown once — sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 | `oidc-client remove-secret <client> <secret-name>` | Remove a client secret — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 
-See also `create oidc-client` in [Create](#create), which mints the client itself.
+See also `create oidc-client` in [Create](#create), which creates the client itself.
 
 ## Read & inspect
 

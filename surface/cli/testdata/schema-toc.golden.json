@@ -228,7 +228,7 @@
           "usage": "Remove a client secret from an OIDC client"
         }
       ],
-      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
       "name": "oidc-client"
     },
     {

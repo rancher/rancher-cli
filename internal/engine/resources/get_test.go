@@ -956,7 +956,7 @@ func userObjNonArrayPrincipals(name string, val any) unstructured.Unstructured {
 }
 
 // TestIsSystemManagedBoundaryFixtures pins the per-element predicate exactly
-// against Rancher's user-store prefix "system://" — the design's boundary
+// against Rancher's user-store prefix "system://" — the full boundary
 // set: near-miss prefixes, non-string elements, mixed arrays (pinning the
 // per-element fail-open cast), non-array fields, and an absent field.
 func TestIsSystemManagedBoundaryFixtures(t *testing.T) {

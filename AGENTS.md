@@ -64,8 +64,18 @@ Two gotchas:
 - **Tests:** testify; a real server (`httptest`) or dependency injection over
   mocks; any test touching keyring code calls `keyring.MockInit()` first. Never
   string-match rendered JSON — decode the envelope and assert on fields.
+- **Comments are self-contained.** A comment states a constraint the
+  code can't show — never its provenance. No references to design
+  docs, reviews, rounds or findings, handoffs, recordings, tasks, or
+  commit hashes; a reader with only the repo must get the full
+  meaning. In test doc-comments, "pins" is the term of art for
+  "asserts and freezes as contractual"; in files that carry the
+  credential/CA pin concept, tests say "asserts" instead.
 - **Descriptions:** operator-facing help is terse and plain; the schema `desc`
-  carries the fuller, precise wording. Keep internal jargon out of both.
+  carries the fuller, precise wording. Keep internal jargon out of both:
+  plain verbs in user-facing text (create/generate — never "mint"), no
+  coined terms; established internal vocabulary (mint in identifiers,
+  probe, seam, envelope) lives in code and comments only.
 - **Completion ships with the surface.** A change that adds or alters a
   value-taking flag or argument includes its shell completion (static enum
   or live fetch) and completion tests in the same change. A suggestion must

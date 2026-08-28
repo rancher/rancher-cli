@@ -66,7 +66,7 @@ func NewLogin(dir string) runtime.Command {
 // NOT surfaced as a login failure here: that stays the existing warn-only
 // posture the post-login version probe already has for an unreachable
 // server, unchanged by this preflight. This narrows the check to exactly
-// the gap the design targets (an untrusted certificate silently accepted)
+// the gap this preflight exists for (an untrusted certificate silently accepted)
 // rather than making login stricter about plain connectivity than it has
 // ever been.
 func tlsPreflightDefault(ctx context.Context, serverURL, caPEM string) (string, error) {

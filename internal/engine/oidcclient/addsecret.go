@@ -29,7 +29,7 @@ func (addSecretCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "oidc-client add-secret",
 		Usage:       "Add a new client secret to an OIDC client",
-		Desc:        "Sets the create annotation, waits for the controller to mint a new secret, and prints it once.",
+		Desc:        "Sets the create annotation, waits for the controller to generate a new secret, and prints it once.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "client", Type: "string", Required: true, Desc: "OIDC client name"},

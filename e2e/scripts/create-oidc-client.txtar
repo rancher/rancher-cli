@@ -59,8 +59,8 @@ seedobj core/v1/secrets cattle-oidc-client-secrets lifecycle-secret.yaml
 # The controller's half (consuming the annotation, updating status, minting
 # the backing value) is simulated the same way wait-success.txtar simulates
 # Fleet: a short pause for the real annotation write to land, then the
-# generic `patch` verb (the reviewed power-user escape hatch, design's
-# accepted residual asymmetry) removes the annotation and `patch secret`/
+# generic `patch` verb (the deliberately kept power-user escape hatch)
+# removes the annotation and `patch secret`/
 # flipstatus apply the controller's effect — all well inside the bespoke
 # verb's 2s poll tick.
 exec rancher oidc-client add-secret lifecycle-client --apply --yes -o json &addcmd&

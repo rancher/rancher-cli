@@ -11,7 +11,7 @@ const (
 	// prove the target API/CRD/route is installed and ready; the actual
 	// request stays authoritative. Proceed (affirmative evidence) and
 	// Unknown (no evidence) run the target identically TODAY, and the
-	// distinction is kept anyway: it is the design's reviewed contract, and
+	// distinction is kept anyway — deliberately, as a contract — because
 	// collapsing them would discard the detector's information the moment a
 	// consumer (verbose messaging, telemetry) wants it.
 	CapabilityProceed CapabilityOutcome = iota

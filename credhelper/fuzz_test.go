@@ -14,8 +14,8 @@ import (
 //
 // Assertions (b2) reparseability and (c) idempotence ship DISABLED: a `%25`
 // anywhere in the host (e.g. an IPv6 zone id) canonicalizes to a result
-// that cannot re-parse (tracked genuine bug in canonical.go's host
-// handling; fixed in its own reviewed slice, which re-enables both here).
+// that cannot re-parse (a tracked genuine bug in canonical.go's host
+// handling; its fix re-enables both assertions).
 // The seeds below exercise that class and must stay green under every
 // assertion that ships enabled.
 func FuzzCanonicalServerURL(f *testing.F) {

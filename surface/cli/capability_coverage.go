@@ -14,7 +14,7 @@ import (
 // revoke back both binding rows (they operate at cluster or project scope);
 // the inspect composites map to their declared PRIMARY target kind only —
 // incidental follow-up reads (inspect's owner-reference chain) stay outside
-// the gate per the design's Non-goals. Adding a family here is a reviewed
+// the gate deliberately. Adding a family here is a reviewed
 // edit, same as kindOverrideTable or derivedOpKinds.
 var capabilityCoverageExtraOps = map[string][]string{
 	"create machine-config": {"amazonec2config", "azureconfig", "digitaloceanconfig", "harvesterconfig", "vmwarevsphereconfig"},
@@ -29,7 +29,7 @@ var capabilityCoverageExtraOps = map[string][]string{
 
 // capabilityCoverageAllowlist is the closed, reviewed set of registered ops
 // with no kind linkage at all: auth/config/local ops, and kind-adjacent ops
-// the review classified as outside the gate. A new op present in neither a
+// deliberately classified as outside the gate. A new op present in neither a
 // kind mapping nor this allowlist fails TestCapabilityCoverageRealWiring
 // with a "classify this op" message — silence is impossible, the property
 // the retired tripwire (TestNoKindDeclaresCapabilityUntilCreateGatingLands)

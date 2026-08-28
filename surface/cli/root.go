@@ -334,7 +334,7 @@ var groupUsages = map[string]string{
 	"inspect":     "Inspect related resources together",
 	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
 	"skill":       "Agents-skill installation for coding-agent harnesses",
-	"oidc-client": "OIDC client secret lifecycle (create oidc-client mints the client itself)",
+	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
@@ -682,7 +682,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// the group would churn the TOC section layout and every agent
 		// prompt that references it.
 		"project":     "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
-		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
 		"inspect":     "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
 		"get":         "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
 		"patch":       "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",

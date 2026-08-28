@@ -4963,7 +4963,7 @@
       "commandType": "mutating",
       "contract": "internal",
       "delivery": "onceOnly",
-      "desc": "Sets the create annotation, waits for the controller to mint a new secret, and prints it once.",
+      "desc": "Sets the create annotation, waits for the controller to generate a new secret, and prints it once.",
       "destructive": "true",
       "examples": [
         "rancher oidc-client add-secret my-app --apply --yes"
@@ -8910,7 +8910,7 @@
         "oidc-client rotate-secret",
         "oidc-client remove-secret"
       ],
-      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
       "name": "oidc-client"
     },
     {
