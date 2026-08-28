@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
 
 // completionCharset is the allowlist for candidate values (AC-21).
@@ -591,6 +592,31 @@ func isSystemUserItem(item map[string]any) bool {
 		}
 	}
 	return false
+}
+
+// fetchOIDCClientSecretNames GETs the single named OIDCClient and returns
+// its status.clientSecrets key names — the dependent secret-name
+// completion for oidc-client rotate-secret/remove-secret. Requires a full
+// management token, same boundary as the client-name completion above; any
+// fetch error (including a not-found client) degrades to nil.
+func fetchOIDCClientSecretNames(ctx context.Context, hc *http.Client, cap TokenCapability, k kinds.Kind, clientName string) []string {
+	if cap.Token == "" || cap.IDOnly {
+		return nil
+	}
+	url := cap.ServerURL + "/k8s/clusters/local" + gvrPath(k) + "/" + clientName
+	var obj struct {
+		Status struct {
+			ClientSecrets map[string]any `json:"clientSecrets"`
+		} `json:"status"`
+	}
+	if err := getJSON(ctx, hc, cap.Token, url, &obj); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(obj.Status.ClientSecrets))
+	for name := range obj.Status.ClientSecrets {
+		names = append(names, name)
+	}
+	return sanitizeCandidates(names)
 }
 
 // dedupe removes duplicates from a sorted slice (input must be sorted).

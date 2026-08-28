@@ -4951,6 +4951,144 @@
       "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
     },
     {
+      "args": [
+        {
+          "desc": "OIDC client name",
+          "name": "client",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "delivery": "onceOnly",
+      "desc": "Sets the create annotation, waits for the controller to mint a new secret, and prints it once.",
+      "destructive": "true",
+      "examples": [
+        "rancher oidc-client add-secret my-app --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "wait `timeout` for the controller to add the secret, e.g. 90s (default 60s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "oidc-client",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "oidc-client add-secret",
+      "network": true,
+      "outputPolicy": [
+        "table",
+        "wide",
+        "json",
+        "yaml",
+        "template"
+      ],
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Add a new client secret to an OIDC client"
+    },
+    {
+      "args": [
+        {
+          "desc": "OIDC client name",
+          "name": "client",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "secret to remove",
+          "name": "secret-name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Sets the remove annotation and waits for the controller to drop the named secret.",
+      "destructive": "true",
+      "examples": [
+        "rancher oidc-client remove-secret my-app client-secret-2 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "wait `timeout` for the controller to remove the secret, e.g. 90s (default 60s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "oidc-client",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "oidc-client remove-secret",
+      "network": true,
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Remove a client secret from an OIDC client"
+    },
+    {
+      "args": [
+        {
+          "desc": "OIDC client name",
+          "name": "client",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "secret to regenerate (required when the client has more than one)",
+          "name": "secret-name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "delivery": "onceOnly",
+      "desc": "Sets the regenerate annotation, waits for the controller to replace the named secret's value, and prints the new value once. secret-name may be omitted only when the client has exactly one secret.",
+      "destructive": "true",
+      "examples": [
+        "rancher oidc-client rotate-secret my-app client-secret-1 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "wait `timeout` for the controller to regenerate the secret, e.g. 90s (default 60s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "oidc-client",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "oidc-client rotate-secret",
+      "network": true,
+      "outputPolicy": [
+        "table",
+        "wide",
+        "json",
+        "yaml",
+        "template"
+      ],
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Regenerate a client secret on an OIDC client"
+    },
+    {
       "aliases": [
         "amazonec2configs"
       ],
@@ -8177,6 +8315,7 @@
             "inspect",
             "kubeconfig",
             "logs",
+            "oidc-client",
             "patch",
             "project",
             "revoke",
@@ -8764,6 +8903,15 @@
       ],
       "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
       "name": "project"
+    },
+    {
+      "commands": [
+        "oidc-client add-secret",
+        "oidc-client rotate-secret",
+        "oidc-client remove-secret"
+      ],
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+      "name": "oidc-client"
     },
     {
       "commands": [

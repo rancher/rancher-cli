@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 173,
+  "commandCount": 176,
   "effectSchema": {
     "actions": [
       "create",
@@ -212,6 +212,24 @@
       ],
       "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
       "name": "project"
+    },
+    {
+      "commands": [
+        {
+          "name": "oidc-client add-secret",
+          "usage": "Add a new client secret to an OIDC client"
+        },
+        {
+          "name": "oidc-client rotate-secret",
+          "usage": "Regenerate a client secret on an OIDC client"
+        },
+        {
+          "name": "oidc-client remove-secret",
+          "usage": "Remove a client secret from an OIDC client"
+        }
+      ],
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+      "name": "oidc-client"
     },
     {
       "commands": [

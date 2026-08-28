@@ -11,6 +11,7 @@ in detail.
 [Servers & configuration](#servers--configuration) ·
 [Create](#create) ·
 [Projects & access](#projects--access) ·
+[OIDC client](#oidc-client) ·
 [Read & inspect](#read--inspect) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
@@ -67,6 +68,16 @@ target for the legacy `server switch` command.
 | `grant <subject>` | Grant a role at project, cluster, or global scope — dry-run/apply --yes |
 | `revoke <subject>` | Revoke role binding(s) at a scope; omitting `--role` revokes every role there — destructive; dry-run/apply --yes |
 
+## OIDC client
+
+| Command | Purpose |
+|---|---|
+| `oidc-client add-secret <client>` | Add a new client secret; waits for the controller, shown once — sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `oidc-client rotate-secret <client> [secret-name]` | Regenerate a client secret (name required with more than one secret); shown once — sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `oidc-client remove-secret <client> <secret-name>` | Remove a client secret — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+
+See also `create oidc-client` in [Create](#create), which mints the client itself.
+
 ## Read & inspect
 
 | Command | Purpose |
@@ -118,6 +129,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 — 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) —
-129 generated commands, 173 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 176 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

@@ -630,6 +630,17 @@ func livePositionalCandidates(
 	clusterID, effectiveProject string,
 	tail []string,
 ) []string {
+	// Bespoke single-kind ops (the oidc-client lifecycle verb group):
+	// derivedOpKinds supplies safety Binding only, never completion — this
+	// is the data-driven completion seam commit 3 adds. Index 0 (the
+	// client name) reuses the SAME generic management-kind listing path
+	// get/patch/delete use; index 1 (secret-name, rotate/remove only) is a
+	// DEPENDENT positional needing a client-scoped GET, so it cannot share
+	// the index-0-only gate below.
+	if kindKey, ok := bespokeSingleKindOps[d.Name]; ok {
+		return bespokeSingleKindPositional(ctx, hc, site, d, cap, kindKey, tail)
+	}
+
 	if site.Index != 0 {
 		return nil // only first positional completes for resource names
 	}
@@ -858,6 +869,50 @@ func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, ta
 	}
 	sort.Strings(out)
 	return out, true
+}
+
+// bespokeSingleKindOps maps a bespoke op whose surface is a single kind
+// row's resource to that row's key, for completion — a data-driven
+// mapping, never per-name exceptions.
+// derivedOpKinds (root.go) is the sibling mapping for safety Binding
+// derivation — kept separate on purpose, since a future bespoke op could
+// need one without the other.
+var bespokeSingleKindOps = map[string]string{
+	"oidc-client add-secret":    "oidcclient",
+	"oidc-client rotate-secret": "oidcclient",
+	"oidc-client remove-secret": "oidcclient",
+}
+
+// bespokeSingleKindPositional completes a bespoke op's positionals for a
+// kind named in bespokeSingleKindOps: index 0 (the resource name) lists via
+// the same generic management-kind path get/patch/delete use; index 1
+// (present only on rotate-secret/remove-secret's secret-name) is a
+// DEPENDENT positional resolved via a client-scoped GET of index 0's
+// already-typed value — a missing or unresolvable first positional
+// completes to nothing, never an error into the TAB stream.
+func bespokeSingleKindPositional(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, kindKey string, tail []string) []string {
+	k, ok := kinds.Lookup(kindKey)
+	if !ok || !k.Completable {
+		return nil
+	}
+	switch site.Index {
+	case 0:
+		if cap.IDOnly {
+			return nil
+		}
+		return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
+	case 1:
+		clientName := firstPositionalToken(tail, d.Flags)
+		if clientName == "" || !isValidSegment(clientName) {
+			return nil
+		}
+		if cap.IDOnly {
+			return nil
+		}
+		return fetchOIDCClientSecretNames(ctx, hc, cap, k, clientName)
+	default:
+		return nil
+	}
 }
 
 // firstPositionalToken returns the first non-flag token in the leaf tail,

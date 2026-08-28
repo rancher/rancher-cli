@@ -35,6 +35,11 @@ type fakeOIDCClient struct {
 	secretResp  *unstructured.Unstructured
 	secretErr   error
 	secretCalls int
+	// secretRespFunc, when set, overrides secretResp and is called once per
+	// secret GET — used to simulate the backing value changing between
+	// rotate's Plan-time correlation read and its post-consumption
+	// delivery read.
+	secretRespFunc func() *unstructured.Unstructured
 }
 
 func (f *fakeOIDCClient) Get(_ context.Context, gvr schema.GroupVersionResource, _, _ string) (*unstructured.Unstructured, error) {
@@ -42,6 +47,9 @@ func (f *fakeOIDCClient) Get(_ context.Context, gvr schema.GroupVersionResource,
 		f.secretCalls++
 		if f.secretErr != nil {
 			return nil, f.secretErr
+		}
+		if f.secretRespFunc != nil {
+			return f.secretRespFunc(), nil
 		}
 		return f.secretResp, nil
 	}
@@ -440,7 +448,7 @@ func TestCreateFullPipelineFailingStdoutEmitsCommittedContext(t *testing.T) {
 	assert.Contains(t, errBuf.String(), `"Error"`)
 }
 
-// TestCreateOutputPolicyRejectsNameWithZeroRequests pins round-7/8's P1:
+// TestCreateOutputPolicyRejectsNameWithZeroRequests pins that
 // `create oidc-client -o name` is rejected BEFORE Plan/capability
 // resolution — zero total requests, not merely zero mutation requests — so
 // a caller can never invalidate-and-discard a once-only client secret by

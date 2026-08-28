@@ -79,6 +79,9 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
+		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewAddSecret(d.clients) }},
+		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewRotateSecret(d.clients) }},
+		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewRemoveSecret(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
@@ -322,15 +325,16 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string,
 // entries but absent here still gets a (usage-less) group command — command
 // reachability never depends on an allowlist.
 var groupUsages = map[string]string{
-	"auth":    "Auth operations",
-	"config":  "Config operations",
-	"create":  "Create resources",
-	"get":     "Read resources",
-	"patch":   "Patch resources",
-	"delete":  "Delete resources",
-	"inspect": "Inspect related resources together",
-	"project": "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
-	"skill":   "Agents-skill installation for coding-agent harnesses",
+	"auth":        "Auth operations",
+	"config":      "Config operations",
+	"create":      "Create resources",
+	"get":         "Read resources",
+	"patch":       "Patch resources",
+	"delete":      "Delete resources",
+	"inspect":     "Inspect related resources together",
+	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
+	"skill":       "Agents-skill installation for coding-agent harnesses",
+	"oidc-client": "OIDC client secret lifecycle (create oidc-client mints the client itself)",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
@@ -507,18 +511,18 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 // same core-v1 dynamic path as the generated namespace verbs and are bound
 // to that row, not the project verbs they sit beside.
 var derivedOpKinds = map[string]string{
-	"create project":           "project",
-	"create token":             "token",
-	"create kubeconfig":        "kubeconfig",
-	"create namespace":         "namespace",
-	"project add-namespace":    "namespace",
-	"project remove-namespace": "namespace",
-	"create secret":            "secret",
-	"create cluster":           "provisioningcluster",
-	// oidc-client add-secret/rotate-secret/remove-secret entries land with
-	// the lifecycle verbs (commit 3): registering them before their
-	// commands exist would fail the coverage rule.
-	"create oidc-client": "oidcclient",
+	"create project":            "project",
+	"create token":              "token",
+	"create kubeconfig":         "kubeconfig",
+	"create namespace":          "namespace",
+	"project add-namespace":     "namespace",
+	"project remove-namespace":  "namespace",
+	"create secret":             "secret",
+	"create cluster":            "provisioningcluster",
+	"create oidc-client":        "oidcclient",
+	"oidc-client add-secret":    "oidcclient",
+	"oidc-client rotate-secret": "oidcclient",
+	"oidc-client remove-secret": "oidcclient",
 }
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
@@ -677,11 +681,12 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// allowlisted (TestSchemaGroupKindCollisionsAreDeliberate): renaming
 		// the group would churn the TOC section layout and every agent
 		// prompt that references it.
-		"project": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
-		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
-		"get":     "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
-		"patch":   "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
-		"delete":  "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+		"project":     "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
+		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` mints the client itself.",
+		"inspect":     "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
+		"get":         "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+		"patch":       "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+		"delete":      "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
 	}
 
 	// The manifest's ordered sections mirror assembleCommands below exactly
