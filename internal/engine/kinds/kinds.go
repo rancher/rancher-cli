@@ -648,6 +648,37 @@ var table = []Kind{
 			{Header: "PROJECT", Path: []string{"projectName"}},
 		},
 	},
+	{
+		// OIDCClient (management.cattle.io/v3, cluster-scoped) is the server
+		// side of Rancher's embedded OIDC provider (feature "oidc-provider") —
+		// the first kind row to carry a Capability requirement. Sensitive: true escalates
+		// generic patch to --yes: patch can set the same lifecycle annotations
+		// (create/regenerate/remove a client secret) the curated oidc-client
+		// verbs gate behind confirmation, waiting, and one-time delivery — the
+		// nodedriver precedent for a generic path that reaches a Rancherism the
+		// curated commands exist to hide. Both TTL spec fields are CRD-required
+		// (no server defaulting); the curated create command supplies its own
+		// 3600/86400 defaults. status.clientSecrets' createdAt/lastUsedAt are
+		// unix-seconds STRINGS with no epoch rendering in this table layer — a
+		// LAST-USED column is deliberately cut rather than shown raw.
+		// DeleteCascadeWarning: the backing Secret carries an OwnerReference to
+		// this object (Kubernetes GC, not the oidc-provider controller), so
+		// deleting the client invalidates every live secret even with the
+		// feature off.
+		Key: "oidcclient", Name: "oidcclient", Aliases: []string{"oidcclients"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "oidcclients"},
+		Policy: NSNone, K8sKind: "OIDCClient", Scope: Management, Deletable: true, Sensitive: true,
+		DeleteCascadeWarning: "deleting this OIDC client removes its secrets; every relying application using them loses access",
+		Completable:          true,
+		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Capability:           runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "oidc-provider"},
+		Columns: []Column{
+			{Header: "CLIENT-ID", Path: []string{"status", "clientID"}},
+			{Header: "SECRETS", Count: []string{"status", "clientSecrets"}},
+			{Header: "TOKEN-TTL", Path: []string{"spec", "tokenExpirationSeconds"}},
+			{Header: "REFRESH-TTL", Path: []string{"spec", "refreshTokenExpirationSeconds"}},
+		},
+	},
 
 	{
 		Key: "provisioningcluster", Name: "provisioning-cluster", Aliases: []string{"provisioningclusters", "provisioning-clusters"},

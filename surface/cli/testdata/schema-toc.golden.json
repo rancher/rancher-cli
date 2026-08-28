@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 169,
+  "commandCount": 172,
   "effectSchema": {
     "actions": [
       "create",
@@ -46,7 +46,7 @@
       }
     ]
   },
-  "generatedCommandCount": 126,
+  "generatedCommandCount": 129,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -248,7 +248,7 @@
       ],
       "desc": "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
       "generated": {
-        "count": 48,
+        "count": 49,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -292,7 +292,7 @@
     {
       "desc": "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
       "generated": {
-        "count": 48,
+        "count": 49,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -300,13 +300,13 @@
     {
       "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
       "generated": {
-        "count": 30,
+        "count": 31,
         "pattern": "delete <kind>"
       },
       "name": "delete"
     }
   ],
-  "kindCount": 48,
+  "kindCount": 49,
   "kinds": [
     "cluster",
     "project",
@@ -340,6 +340,7 @@
     "globalrolebinding",
     "clusterroletemplatebinding",
     "projectroletemplatebinding",
+    "oidcclient",
     "provisioning-cluster",
     "capi-cluster",
     "machine",

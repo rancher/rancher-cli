@@ -697,8 +697,17 @@ func livePositionalCandidates(
 			}
 			return fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), ns)
 		default:
-			// Other management kinds: no generic downstream path applies.
-			return nil
+			// Any other Completable NSNone management kind (e.g. oidcclient):
+			// list via the local cluster, the same shape as nodedriver — a
+			// full management token is required, since exec-cred-only
+			// (IDOnly) capabilities cannot authorize a management-plane list.
+			if k.Policy != kinds.NSNone {
+				return nil
+			}
+			if cap.IDOnly {
+				return nil
+			}
+			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
 		}
 	}
 

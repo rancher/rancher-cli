@@ -301,13 +301,21 @@ func primeCommandNames(t *testing.T) map[string]bool {
 }
 
 // TestCommandsTablePrimeLabels pins COMMANDS.md's per-row Prime label to the
-// manifest, both ways: every Prime command's row carries the label, and no
-// row carries the label without a matching Prime command. No command
-// declares a requirement yet, so this currently pins the empty case; it
-// gates the first Prime command COMMANDS.md ever documents.
+// manifest, both ways: every FIXED Prime command's row carries the label, and
+// no row carries the label without a matching Prime command. Scoped to fixed
+// commands the same way TestCommandsTableMatchesManifest is: generated
+// get/patch/delete-per-kind commands never get their own COMMANDS.md row (the
+// counts paragraph and the kind's schema card cover them, e.g. `rancher
+// schema oidcclient`), so a Capability-bearing kind row's generated verbs
+// (the first being oidcclient, 2026-08-26) are not expected to appear here.
 func TestCommandsTablePrimeLabels(t *testing.T) {
 	t.Parallel()
 	primeNames := primeCommandNames(t)
+	_, _, fixed, _ := deriveSurface(t)
+	fixedSet := map[string]bool{}
+	for _, name := range fixed {
+		fixedSet[name] = true
+	}
 
 	labeled := map[string]bool{}
 	for _, row := range commandRows(t) {
@@ -317,6 +325,9 @@ func TestCommandsTablePrimeLabels(t *testing.T) {
 	}
 
 	for name := range primeNames {
+		if !fixedSet[name] {
+			continue // generated per-kind command: no COMMANDS.md row expected
+		}
 		assert.True(t, labeled[name],
 			"command %q requires Rancher Prime but its COMMANDS.md row carries no %q label", name, primeMarker)
 	}

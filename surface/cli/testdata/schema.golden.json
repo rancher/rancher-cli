@@ -1640,6 +1640,51 @@
     },
     {
       "aliases": [
+        "oidcclients"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "delete oidcclient",
+      "network": true,
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the oidcclient"
+    },
+    {
+      "aliases": [
         "persistentvolumeclaims",
         "pvc"
       ],
@@ -3728,6 +3773,45 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List nodedrivers or show one"
+    },
+    {
+      "aliases": [
+        "oidcclients"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "get oidcclient",
+      "network": true,
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List oidcclients or show one"
     },
     {
       "aliases": [
@@ -6766,6 +6850,64 @@
     },
     {
       "aliases": [
+        "oidcclients"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait for the resource to reach --for before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "name": "timeout",
+          "type": "string"
+        },
+        {
+          "desc": "inline RFC 6902 JSON `patch` ops",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "f"
+          ],
+          "desc": "patch `file`, or - for stdin",
+          "name": "filename",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "patch oidcclient",
+      "network": true,
+      "prime": true,
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the oidcclient"
+    },
+    {
+      "aliases": [
         "persistentvolumes",
         "pv"
       ],
@@ -8590,6 +8732,7 @@
         "get globalrolebinding",
         "get clusterroletemplatebinding",
         "get projectroletemplatebinding",
+        "get oidcclient",
         "get provisioning-cluster",
         "get capi-cluster",
         "get machine",
@@ -8657,6 +8800,7 @@
         "patch globalrolebinding",
         "patch clusterroletemplatebinding",
         "patch projectroletemplatebinding",
+        "patch oidcclient",
         "patch provisioning-cluster",
         "patch capi-cluster",
         "patch machine",
@@ -8699,6 +8843,7 @@
         "delete globalrolebinding",
         "delete clusterroletemplatebinding",
         "delete projectroletemplatebinding",
+        "delete oidcclient",
         "delete provisioning-cluster",
         "delete k3k-cluster",
         "delete token",
@@ -9662,6 +9807,38 @@
         "patch": {
           "contract": "public",
           "stability": "stable",
+          "state": "available"
+        }
+      },
+      "version": "v3"
+    },
+    {
+      "aliases": [
+        "oidcclients"
+      ],
+      "completable": true,
+      "group": "management.cattle.io",
+      "key": "oidcclient",
+      "name": "oidcclient",
+      "namespacePolicy": "none",
+      "prime": true,
+      "resource": "oidcclients",
+      "scope": "management",
+      "sensitive": true,
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
           "state": "available"
         }
       },

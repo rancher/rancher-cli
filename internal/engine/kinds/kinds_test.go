@@ -25,6 +25,7 @@ var cliOnlyKinds = map[string]bool{
 	"clusterregistrationtoken": true,
 	"managementtoken":          true, // deprecated legacy v3 Token; no MCP tool counterpart
 	"nodedriver":               true,
+	"oidcclient":               true, // first Prime-capability kind row; no MCP tool counterpart yet
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {

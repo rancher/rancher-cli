@@ -272,6 +272,20 @@ the token-vs-kubeconfig TTL unit conversion (`--ttl` takes a duration; the
 underlying spec fields are milliseconds and seconds respectively — the CLI
 never exposes the raw units), and shown-once handling for the created secret.
 
+`oidcclient` (Rancher's `management.cattle.io/v3` OIDCClient — the server
+side of the embedded OIDC provider) is the first generated kind gated behind
+a Rancher Prime capability requirement (feature `oidc-provider`): `rancher
+schema oidcclient` and `--help` mark it accordingly, and on a server where
+the feature is unavailable the generated verbs answer `PRIME_REQUIRED`
+instead of reaching the server's data. Sensitive (`patch oidcclient`
+escalates to `--yes`) — the generic patch path can set the same client-secret
+lifecycle annotations the curated `create oidc-client` / `oidc-client
+add-secret|rotate-secret|remove-secret` commands gate behind confirmation,
+waiting, and one-time delivery; prefer the curated commands. Deleting a
+client cascades: its backing secret is removed (Kubernetes garbage
+collection via an owner reference, independent of the `oidc-provider`
+controller), instantly invalidating every live client secret.
+
 ## Cluster provisioning
 
 Rancher's provisioning model (node drivers, machine pools, imported and

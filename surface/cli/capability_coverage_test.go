@@ -178,13 +178,16 @@ func TestCapabilityCoverageDanglingRefusalFails(t *testing.T) {
 }
 
 // TestCapabilityCoverageRealWiring runs the coverage rule against the actual
-// registry. The gating half is EXPECTED-VACUOUS today: no kind row sets
-// Capability until the first consumer slice (autoscaler) ships, so
-// uncoveredGated can never fire yet — this is a property of the real table,
-// pinned by the pure-function tests above instead. The classification half
-// is LIVE immediately: every registered op must resolve to a kind mapping
-// or capabilityCoverageAllowlist, so a new op classified as neither fails
-// here today, the same silence-is-impossible property the retired tripwire
+// registry. The gating half is LIVE and non-vacuous as of the oidcclient row
+// (2026-08-26, the first Capability-bearing kind — feature "oidc-provider"):
+// its generated get/patch/delete each copy the row's requirement into their
+// own Descriptor (resources/get.go, patch.go, delete.go), and `create
+// resource` is covered structurally via its CapabilityResolver — so
+// uncoveredGated now exercises the real coverage rule, not just the
+// pure-function tests above. The classification half has been LIVE since
+// before: every registered op must resolve to a kind mapping or
+// capabilityCoverageAllowlist, so a new op classified as neither fails here,
+// the same silence-is-impossible property the retired tripwire
 // (TestNoKindDeclaresCapabilityUntilCreateGatingLands, now deleted) had.
 func TestCapabilityCoverageRealWiring(t *testing.T) {
 	t.Parallel()
@@ -206,7 +209,7 @@ func TestCapabilityCoverageRealWiring(t *testing.T) {
 		registered: registered,
 	})
 	assert.Empty(t, res.uncoveredGated,
-		"expected-vacuous until the first Capability-bearing kind row ships")
+		"every Capability-bearing kind's ops must be Capability-carrying or a resolver")
 	assert.Empty(t, res.unclassified,
 		"classify this op: add it to capabilityCoverageExtraOps or capabilityCoverageAllowlist")
 	assert.Empty(t, res.danglingRefusals)
