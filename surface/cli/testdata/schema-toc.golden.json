@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 176,
+  "commandCount": 178,
   "effectSchema": {
     "actions": [
       "create",
@@ -114,6 +114,14 @@
         {
           "name": "config use-server",
           "usage": "Switch the current server"
+        },
+        {
+          "name": "config add-server",
+          "usage": "Add a Rancher server entry"
+        },
+        {
+          "name": "config update-server",
+          "usage": "Change a configured server's URL or CA"
         },
         {
           "name": "config delete-server",

@@ -99,16 +99,23 @@
       "usage": "List cached exec-credential token entries"
     },
     {
+      "args": [
+        {
+          "desc": "server entry `name`",
+          "name": "name",
+          "type": "string"
+        }
+      ],
       "auth": false,
       "commandType": "local",
       "examples": [
-        "rancher auth login --server https://rancher.ex --token-stdin --name prod < token.txt"
+        "rancher auth login prod",
+        "rancher auth login prod --url https://rancher.ex --token-stdin < token.txt"
       ],
       "flags": [
         {
-          "desc": "Rancher server `url` (scheme required)",
-          "name": "server",
-          "required": true,
+          "desc": "Rancher server `url` to add and log into (requires <name>)",
+          "name": "url",
           "type": "string"
         },
         {
@@ -117,12 +124,7 @@
           "type": "bool"
         },
         {
-          "desc": "`name` for the saved server entry; defaults to the existing entry for this URL, else the server's host",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "desc": "PEM CA bundle, a `path` or the literal PEM",
+          "desc": "PEM CA bundle, a `path` or the literal PEM (requires --url)",
           "name": "cacert",
           "type": "string"
         },
@@ -231,6 +233,38 @@
       "auth": false,
       "commandType": "local",
       "examples": [
+        "rancher config add-server qa1 --url https://qa1.example.com"
+      ],
+      "flags": [
+        {
+          "desc": "Rancher server `url` (scheme required)",
+          "name": "url",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "PEM CA bundle, a `path` or the literal PEM",
+          "name": "cacert",
+          "type": "string"
+        }
+      ],
+      "group": "config",
+      "name": "config add-server",
+      "network": false,
+      "toolset": "core",
+      "usage": "Add a Rancher server entry"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
         "rancher config delete-server prod"
       ],
       "group": "config",
@@ -314,6 +348,42 @@
       "network": false,
       "toolset": "core",
       "usage": "Print config diagnostics: file path and effective credential store"
+    },
+    {
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": false,
+      "commandType": "local",
+      "examples": [
+        "rancher config update-server qa1 --cacert /etc/rancher/ca.pem"
+      ],
+      "flags": [
+        {
+          "desc": "new Rancher server `url` (scheme required)",
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "desc": "PEM CA bundle, a `path` or the literal PEM",
+          "name": "cacert",
+          "type": "string"
+        },
+        {
+          "desc": "return the entry to system roots",
+          "name": "clear-cacert",
+          "type": "bool"
+        }
+      ],
+      "group": "config",
+      "name": "config update-server",
+      "network": false,
+      "toolset": "core",
+      "usage": "Change a configured server's URL or CA"
     },
     {
       "args": [
@@ -8863,6 +8933,8 @@
       "commands": [
         "config list-servers",
         "config use-server",
+        "config add-server",
+        "config update-server",
         "config delete-server",
         "config path",
         "config status",

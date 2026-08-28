@@ -22,7 +22,7 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `auth login` | Store a server + token; set the current server. Token via interactive prompt or `--token-stdin` (the `--token` flag is removed; secrets never on the command line). |
+| `auth login <name> [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new. Never switches the current server — only a fresh add can bootstrap it when unset. |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; does not touch the exec-credential cache |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
@@ -35,6 +35,8 @@ in detail.
 |---|---|
 | `config list-servers` | List configured servers |
 | `config use-server [name]` | Switch the current server |
+| `config add-server <name> --url <url>` | Add a server entry (establishes trust); bootstraps the current server if unset — never an upsert (a different URL/CA under an existing name is a conflict) |
+| `config update-server <name>` | Change a server's URL or CA without the credential purge `delete-server` forces; a URL change clears the stored token and exec-credential cache, a CA-only change keeps them |
 | `config delete-server <name>` | Remove a server and its stored credentials — does NOT revoke the server-side token |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |
 | `config status` | Print config diagnostics: file path, current server, effective credential store and its source, completion settings — first stop when tab completion shows no candidates |
@@ -129,6 +131,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 — 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) —
-129 generated commands, 176 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 178 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->
