@@ -60,6 +60,8 @@ func buildEntries() []entry {
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewDeleteTokenCommand(d.dir, d.store) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerLs(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerSwitch(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigAddServer(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigUpdateServer(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigDeleteServer(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigPath(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigInfo(d.dir) }},

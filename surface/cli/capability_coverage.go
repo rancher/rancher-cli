@@ -42,6 +42,8 @@ var capabilityCoverageAllowlist = map[string]string{
 	"auth list-tokens":        "local auth, no kind row",
 	"auth delete-token":       "local auth, no kind row",
 	"token":                   "legacy top-level token shim (bare), no kind row",
+	"config add-server":       "local config, no kind row",
+	"config update-server":    "local config, no kind row",
 	"config delete-server":    "local config, no kind row",
 	"config edit":             "local config, no kind row",
 	"config list-servers":     "local config, no kind row",

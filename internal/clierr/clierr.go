@@ -3,6 +3,7 @@ package clierr
 import (
 	"errors"
 	"maps"
+	"strings"
 )
 
 const (
@@ -69,6 +70,15 @@ var exitCodes = map[string]int{
 	CodePrimeRequired: 9,
 	CodeTLSTrust:      10,
 	CodeGeneric:       1,
+}
+
+// ShellQuote quotes s for a POSIX sh command line: wrapped in single quotes,
+// with each embedded single quote closed, escaped, and reopened. Every value
+// interpolated into a machine hint (a name, URL, or path) goes through this
+// so the emitted command round-trips as one argument even when the value
+// carries a space or shell metacharacter.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // Candidate is a selectable option returned with AMBIGUOUS_SELECTION.

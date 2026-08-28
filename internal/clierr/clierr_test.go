@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,4 +130,47 @@ func TestWrapPreservesClassification(t *testing.T) {
 		assert.Equal(t, "original", inner.Message)
 		assert.Empty(t, inner.Hint)
 	})
+}
+
+// execArgv runs a hint through /bin/sh with `rancher` shadowed by a shell
+// function that prints each argument it receives, separated by a byte no
+// shell-quoted value can produce unescaped (0x1e). This recovers the EXACT
+// argv a machine hint would invoke — proving it is valid, single-command
+// POSIX sh — without running the real binary. Fails the test if hint is not
+// executable shell syntax at all (the failure mode a stray placeholder like
+// "<url>" produces: sh reads it as redirection).
+func execArgv(t *testing.T, hint string) []string {
+	t.Helper()
+	const sep = "\x1e"
+	script := "rancher() { for a in \"$@\"; do printf '%s" + sep + "' \"$a\"; done; }\n" + hint
+	out, err := exec.Command("sh", "-c", script).Output()
+	require.NoError(t, err, "hint must be valid, executable POSIX sh: %q", hint)
+	s := strings.TrimSuffix(string(out), sep)
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, sep)
+}
+
+func TestShellQuoteRoundTripsThroughSh(t *testing.T) {
+	cases := []string{
+		"prod",
+		"has space",
+		"has'quote",
+		"'wrapped'",
+		"multi\nline\nvalue",
+		"",
+		"$(rm -rf /)",
+		"`echo pwned`",
+		"; rm -rf /",
+	}
+	for i, c := range cases {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			hint := "rancher x " + ShellQuote(c)
+			got := execArgv(t, hint)
+			require.Len(t, got, 2, "the quoted value must round-trip as exactly one argument")
+			assert.Equal(t, "x", got[0])
+			assert.Equal(t, c, got[1])
+		})
+	}
 }
