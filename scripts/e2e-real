@@ -11,6 +11,21 @@ set -euo pipefail
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 
+# E2E_REAL_EXTRA_SANS=<ip-or-dns>[,...] primes the oracle's self-signed cert
+# with extra SANs, for a remote box (e.g. a Windows VM on the LAN) that will
+# reach the oracle by a hostname/IP other than 127.0.0.1. Rancher's listener
+# (rancher/dynamiclistener) mints a SAN for any hostname/SNI it is queried
+# with, signed by the same CA already captured in ca.pem — no separate CA
+# per SAN, so priming before the remote box connects only avoids its first
+# request racing the cert regeneration.
+EXTRA_SANS="${E2E_REAL_EXTRA_SANS:-}"
+
+# E2E_REAL_BIND_ADDR publishes 443 beyond loopback (e.g. 0.0.0.0) for that
+# same LAN scenario. Default stays loopback-only; LAN exposure is opt-in
+# because the oracle's bootstrap password and admin token are well-known
+# within a single run.
+BIND_ADDR="${E2E_REAL_BIND_ADDR:-127.0.0.1}"
+
 if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   ORACLE_IMAGE="${PRIME_ORACLE_IMAGE}"
   CONTAINER="rancher-cli-e2e-real-prime"
@@ -98,6 +113,15 @@ wait_for_webhook() {
   return 1
 }
 
+prime_extra_sans() {
+  IFS=',' read -ra hosts <<<"${EXTRA_SANS}"
+  for h in "${hosts[@]}"; do
+    [ -n "${h}" ] || continue
+    echo "==> priming TLS SAN for ${h}"
+    curl -sk --max-time 5 --resolve "${h}:${HOST_PORT}:127.0.0.1" "https://${h}:${HOST_PORT}/ping" >/dev/null || true
+  done
+}
+
 reuse_state() {
   [ -f "${STATE_FILE}" ] || return 1
   cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
@@ -111,11 +135,13 @@ reuse_state() {
     echo "==> kept container was created from a different oracle image; recreating"
     return 1
   }
-  # The kept container must be loopback-bound: a reused oracle published on
-  # every interface would expose known test credentials to the network.
+  # The kept container must be bound to the currently requested address: a
+  # reused oracle published wider than asked (or narrower, missing a
+  # requested LAN bind) would silently change the exposure the caller opted
+  # into.
   bound_ip="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "443/tcp") 0).HostIp}}' "${CONTAINER}" 2>/dev/null)" || return 1
-  [ "${bound_ip}" = "127.0.0.1" ] || {
-    echo "==> kept container is not loopback-bound; recreating"
+  [ "${bound_ip}" = "${BIND_ADDR}" ] || {
+    echo "==> kept container bind address changed; recreating"
     return 1
   }
   curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong || return 1
@@ -127,6 +153,11 @@ reuse_state() {
 
 if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
   echo "==> reusing healthy kept container"
+  # A kept container was not necessarily primed for THIS run's SAN list —
+  # the knob may appear (or change) between runs against the same
+  # container. Priming is idempotent (dynamiclistener adds a SAN once),
+  # and the CA is unchanged by it, so re-prime unconditionally.
+  [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
   docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
@@ -139,15 +170,17 @@ else
   echo "==> booting ${ORACLE_IMAGE}"
   # --privileged is required: the image runs an embedded k3s (containerd, CNI,
   # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
-  # here — the image is digest-pinned, the port is loopback-bound below, and
-  # the container is ephemeral (removed unless E2E_REAL_KEEP=1).
+  # here — the image is digest-pinned, the port is loopback-bound by default
+  # (BIND_ADDR), and the container is ephemeral (removed unless
+  # E2E_REAL_KEEP=1).
   docker run -d --name "${CONTAINER}" --privileged \
-    -p "127.0.0.1:${HOST_PORT}:443" \
+    -p "${BIND_ADDR}:${HOST_PORT}:443" \
     --env-file "${ENV_FILE}" \
     "${ORACLE_IMAGE}" >/dev/null
   rm -f "${ENV_FILE}"
   wait_for_ping
   wait_for_webhook
+  [ -z "${EXTRA_SANS}" ] || prime_extra_sans
   fetch_ca >"${CA_FILE}"
   [ -s "${CA_FILE}" ] || { echo "error: could not extract the server CA" >&2; exit 1; }
 
@@ -187,7 +220,10 @@ if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   # No goldens for the Prime oracle: golden verification runs only against
   # the community pin. This is boot+bootstrap verification only.
   echo "==> prime oracle boot smoke"
-  curl -s --cacert "${CA_FILE}" "${BASE_URL}/rancherversion"
+  # -f: a 4xx/5xx on the unauthenticated version endpoint must fail the
+  # smoke, not print an error body and fall through to the token check.
+  curl -fsS --cacert "${CA_FILE}" "${BASE_URL}/rancherversion" ||
+    { echo "error: rancherversion smoke check failed" >&2; exit 1; }
   echo
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
     -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")"
