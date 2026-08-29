@@ -41,24 +41,29 @@ func TestSetCompletionNetworkFalse(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"network": "false"}}, nil)
+	res, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"network": "false"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.False(t, cfg.Completion.Network)
+	// --network=false carries no capability note, so Text falls to the same
+	// fallback headline --timeout alone uses below — never empty.
+	assert.Equal(t, "completion settings updated\n", res.Text)
 }
 
 func TestSetCompletionTimeout(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cmd := commands.NewSetCompletion(dir).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"timeout": "750ms"}}, nil)
+	res, err := cmd.Execute(t.Context(), setCompletionInput{flags: map[string]string{"timeout": "750ms"}}, nil)
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	// Timeout stored as string duration (finding 6); EffectiveCompletionTimeout parses it.
 	assert.Equal(t, "750ms", cfg.Completion.Timeout)
 	assert.Equal(t, 750*time.Millisecond, config.EffectiveCompletionTimeout(cfg))
+	// --timeout alone carries no capability note, so Text must not be empty.
+	assert.Equal(t, "completion settings updated\n", res.Text)
 }
 
 func TestSetCompletionTimeoutClampsAt2s(t *testing.T) {

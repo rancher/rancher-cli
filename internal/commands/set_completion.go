@@ -113,12 +113,14 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 		return runtime.Result{}, err
 	}
 
-	text := ""
 	if note != "" {
 		result["note"] = note
-		text = "# " + note + "\n"
+		return runtime.Result{Kind: "CompletionConfig", Data: result, Text: "# " + note + "\n"}, nil
 	}
-	return runtime.Result{Kind: "CompletionConfig", Data: result, Text: text}, nil
+	res := runtime.TextLines("completion settings updated")
+	res.Kind = "CompletionConfig"
+	res.Data = result
+	return res, nil
 }
 
 // completionCapabilityNote returns the credential-store-aware note for
