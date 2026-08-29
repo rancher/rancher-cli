@@ -139,6 +139,7 @@ graph TD
     cli --> clierr
     cli --> httpx
     cli --> safety
+    cli --> outputstyle
 
     commands --> runtime
     commands --> completions
