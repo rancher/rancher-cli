@@ -157,6 +157,11 @@
           "desc": "session-token lifetime `duration`, e.g. 90d",
           "name": "ttl",
           "type": "string"
+        },
+        {
+          "desc": "store the token without an authenticated round-trip against the server",
+          "name": "no-verify",
+          "type": "bool"
         }
       ],
       "group": "auth",

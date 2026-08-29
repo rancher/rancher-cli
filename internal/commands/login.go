@@ -35,6 +35,13 @@ type loginCmd struct {
 	// of establishing trust for the entry. nil is a valid, deliberately
 	// inert value: tests that do not exercise TLS behavior leave it unset.
 	tlsPreflight tlsPreflightFunc
+	// verify performs an authenticated self-read against the resolved token
+	// before it is persisted. Follows tlsPreflight's own nil-skip idiom:
+	// production wiring sets it to provider.Preflight; a test-constructed
+	// struct that leaves it nil never dials out for this check. Skipped
+	// unconditionally for a provider-issued token (already authenticated by
+	// construction) and whenever --no-verify is set.
+	verify loginVerifyFunc
 }
 
 // NewLogin builds the `auth login` command (local). The store is resolved
@@ -42,8 +49,12 @@ type loginCmd struct {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, tlsPreflight: tlsPreflightDefault}
+	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, tlsPreflight: tlsPreflightDefault, verify: provider.Preflight}
 }
+
+// loginVerifyFunc matches provider.Preflight's shape: an authenticated
+// self-read against a resolved (URL, CA, token) triple.
+type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, error)
 
 // tlsPreflightDefault performs the every-https-path TLS preflight: an
 // unauthenticated GET against the same /rancherversion endpoint the PS-8
@@ -96,6 +107,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
+			{Name: "no-verify", Type: "bool", Desc: "store the token without an authenticated round-trip against the server"},
 		},
 		Examples: []string{
 			"rancher auth login prod",
@@ -226,6 +238,17 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	// canonicalization failure here is not this check's concern — it falls
 	// through so prepareRegistration's own invalid-URL error surfaces
 	// unchanged.
+	//
+	// This deliberately calls credhelper.CanonicalServerURL directly rather
+	// than config.SameServerURL: SameServerURL falls back to exact string
+	// equality when either side fails to canonicalize, so a malformed --url
+	// would be compared as a raw string against existing.URL (which is
+	// always stored canonical), almost certainly come out "different," and
+	// get caught here with a canonical URL in the hint that was never
+	// actually computed — instead of falling through to prepareRegistration,
+	// which is the one place that can say the URL itself is invalid.
+	// existing.URL is assumed already canonical because registration only
+	// ever stores it that way.
 	if known {
 		if canonical, cerr := credhelper.CanonicalServerURL(url); cerr == nil && canonical != existing.URL {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -309,7 +332,7 @@ func (l loginCmd) authenticateAndStore(
 
 	snap := authSnapshot{name: name, canonicalURL: serverURL, caSelector: caSelector, caBytes: caBytes}
 
-	token, authErr := resolveLoginToken(ctx, serverURL, caBytes, in, p)
+	token, viaProvider, authErr := resolveLoginToken(ctx, serverURL, caBytes, in, p)
 	if authErr == nil {
 		id, secret, ok := strings.Cut(token, ":")
 		if !ok || id == "" || secret == "" {
@@ -323,6 +346,24 @@ func (l loginCmd) authenticateAndStore(
 			return runtime.Result{}, decorateDelegatedAuthFailure(ctx, l.dir, authErr, snap)
 		}
 		return runtime.Result{}, authErr
+	}
+
+	// A provider-issued token is authenticated by construction — the server
+	// just issued it during the sign-in dance — so a second round-trip here
+	// would be pure overhead, never a real check. --no-verify skips the
+	// round-trip for a pasted/piped token instead; the success text below
+	// says so.
+	noVerify := in.Bool("no-verify")
+	if !viaProvider && !noVerify && l.verify != nil {
+		if _, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: token, ServerName: name}); verr != nil {
+			if delegated {
+				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, verr, snap)
+			}
+			if ce, ok := errors.AsType[*clierr.Error](verr); ok {
+				return runtime.Result{}, ce.WithHint("re-run with --no-verify to store the token without checking it")
+			}
+			return runtime.Result{}, verr
+		}
 	}
 
 	warnings := []string{}
@@ -377,8 +418,14 @@ func (l loginCmd) authenticateAndStore(
 		return runtime.Result{}, err
 	}
 
+	// verified mirrors the headline choice below exactly: false only when
+	// the round-trip was explicitly skipped via --no-verify for a
+	// pasted/piped token. A provider-issued token is authenticated by
+	// construction, so it reads true even though no explicit round-trip ran.
+	verified := !noVerify || viaProvider
+
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
-		"server": name, "url": serverURL, "currentServer": currentServer, "added": added,
+		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
 	}}
 	res.Warnings = warnings
 	var lines []string
@@ -398,7 +445,11 @@ func (l loginCmd) authenticateAndStore(
 		lines = append(lines, fmt.Sprintf("the current server remains %s — switch to %s with: rancher config use-server %s",
 			shquote(currentServer), shquote(name), shquote(name)))
 	}
-	res.Text = runtime.TextLines(fmt.Sprintf("logged in to %s (%s)", name, serverURL), lines...)
+	headline := fmt.Sprintf("logged in to %s (%s)", name, serverURL)
+	if !verified {
+		headline = fmt.Sprintf("token stored for %s (%s) — not verified", name, serverURL)
+	}
+	res.Text = runtime.TextLines(headline, lines...)
 	return res, nil
 }
 
@@ -410,11 +461,34 @@ func (l loginCmd) authenticateAndStore(
 // read-only — it writes nothing — and never replaces authErr, which stays
 // the primary error either way.
 func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error, snap authSnapshot) error {
-	ce, ok := errors.AsType[*clierr.Error](authErr)
+	return decorateDelegatedFailure(ctx, dir, authErr, snap, "")
+}
+
+// decorateDelegatedVerifyFailure is decorateDelegatedAuthFailure for the
+// verify round-trip specifically: an orphaned registration is the bigger
+// problem, so the undo-the-registration guidance still owns the message
+// body and the hint, but --no-verify is a real way out of a verify failure
+// (unlike a plain auth failure, where it would just fail again the same
+// way), so it is folded into the body as a secondary option instead of
+// fighting the undo guidance for the one hint slot.
+func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr error, snap authSnapshot) error {
+	return decorateDelegatedFailure(ctx, dir, verifyErr, snap, ", or bypass verification with --no-verify")
+}
+
+// decorateDelegatedFailure is the shared body behind decorateDelegatedAuthFailure
+// and decorateDelegatedVerifyFailure: it rechecks CURRENT state before
+// deciding whether the retry hint is still the undo-the-registration command
+// (entry unchanged) or has to fall back to a plain "check it" pointer (entry
+// changed or vanished since registration), then appends extra — a caller's
+// own secondary-option sentence, or "" when there is none — to the message
+// body either way. A failure that is not a structured error, or a context
+// already cancelled, skips the recheck and returns failure unchanged.
+func decorateDelegatedFailure(ctx context.Context, dir string, failure error, snap authSnapshot, extra string) error {
+	ce, ok := errors.AsType[*clierr.Error](failure)
 	if !ok || ctx.Err() != nil {
 		// Not a structured error, or cancellation preempts the recheck:
 		// preserve the original error verbatim, no hint.
-		return authErr
+		return failure
 	}
 
 	var current bool
@@ -428,26 +502,37 @@ func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error
 	})
 	if lockErr != nil || !current {
 		return ce.WithMessage(ce.Message +
-			fmt.Sprintf(" (server entry %q may have changed since registration; check it with: rancher config list-servers)", snap.name)).
+			fmt.Sprintf(" (server entry %q may have changed since registration; check it with: rancher config list-servers)", snap.name) + extra).
 			WithHint("")
 	}
 	return ce.WithMessage(ce.Message +
-		fmt.Sprintf("; undo the registration with: rancher config delete-server %s", shquote(snap.name))).
+		fmt.Sprintf("; undo the registration with: rancher config delete-server %s", shquote(snap.name)) + extra).
 		WithHint(config.LoginHintFor(snap.name))
 }
 
-func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
+// resolveLoginToken returns the resolved token and whether it came from the
+// provider/OAuth sign-in flow (viaProvider) — true only when
+// resolveProviderLoginToken produced it, since a server-issued token is
+// authenticated by construction and must never take a second verification
+// round-trip.
+func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, bool, error) {
 	if in.Bool("token-stdin") {
 		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
-			return "", clierr.New(clierr.CodeValidation,
+			return "", false, clierr.New(clierr.CodeValidation,
 				"--auth-provider/--auth-flow/--ttl apply to the provider sign-in flow and are incompatible with --token-stdin").
 				WithHint("drop --token-stdin to use the provider flow, or drop the provider flags to paste/pipe a token")
 		}
 	}
+	if in.Bool("no-verify") && (in.String("auth-provider") != "" || in.String("auth-flow") != "") {
+		return "", false, clierr.New(clierr.CodeValidation,
+			"--no-verify has no effect on the provider sign-in flow, which is already authenticated by construction").
+			WithHint("drop --no-verify, or drop the provider flags to skip verification for a pasted token")
+	}
 
 	var (
-		tok string
-		err error
+		tok         string
+		viaProvider bool
+		err         error
 	)
 	switch {
 	case in.Bool("token-stdin"):
@@ -459,9 +544,9 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 	// already runs its OAuth device-code/auth-code flows headlessly. Without
 	// an explicit provider, the paste-or-provider menu itself needs a TTY.
 	case p.CanPrompt() || in.String("auth-provider") != "":
-		tok, err = promptForToken(ctx, server, caPEM, in, p)
+		tok, viaProvider, err = promptForToken(ctx, server, caPEM, in, p)
 	default:
-		return "", clierr.New(clierr.CodeValidation, "token required").
+		return "", false, clierr.New(clierr.CodeValidation, "token required").
 			WithHint("pipe it via --token-stdin, or run in a terminal")
 	}
 	if err != nil {
@@ -469,41 +554,46 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 		// already the right error to surface — the io.EOF/generic mapping
 		// below is for the plain-paste read paths only.
 		if _, ok := errors.AsType[*clierr.Error](err); ok {
-			return "", err
+			return "", false, err
 		}
 		if errors.Is(err, io.EOF) {
-			return "", clierr.New(clierr.CodeValidation, "no token provided").
+			return "", false, clierr.New(clierr.CodeValidation, "no token provided").
 				WithHint("pipe the token via --token-stdin, or enter it at the prompt")
 		}
-		return "", clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
+		return "", false, clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
 	}
 	tok = strings.TrimSpace(tok)
 	if tok == "" {
-		return "", clierr.New(clierr.CodeValidation, "no token provided").
+		return "", false, clierr.New(clierr.CodeValidation, "no token provided").
 			WithHint("pipe the token via --token-stdin, or enter it at the prompt")
 	}
-	return tok, nil
+	return tok, viaProvider, nil
 }
 
 // promptForToken offers the paste-or-provider choice (EXT-R-8): --auth-provider
 // or --auth-flow already signal provider intent and skip straight to it,
 // mirroring get-token's own explicit-flag shortcut past its provider menu.
-func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
+// The bool return is viaProvider, true exactly when resolveProviderLoginToken
+// produced the token.
+func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, bool, error) {
 	if in.String("auth-provider") != "" || in.String("auth-flow") != "" {
-		return resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		tok, err := resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		return tok, true, err
 	}
 	p.Notice("1) paste an API token\n2) sign in via an identity provider")
 	choice, err := p.Prompt(ctx, "Select [1]: ")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	switch strings.TrimSpace(choice) {
 	case "", "1":
-		return p.PromptSecret(ctx, "Enter token (id:secret): ")
+		tok, err := p.PromptSecret(ctx, "Enter token (id:secret): ")
+		return tok, false, err
 	case "2":
-		return resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		tok, err := resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		return tok, true, err
 	default:
-		return "", clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
+		return "", false, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
 			WithHint("re-run and answer 1 or 2")
 	}
 }

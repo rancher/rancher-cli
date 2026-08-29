@@ -35,6 +35,11 @@ token), not an error condition; don't treat it as one. If it fails with
   behind the scenes (see the token taxonomy below).
 - Scripted/CI: pipe the token — `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
+  A piped token is VERIFIED against the server before it is stored: a bad
+  token or unreachable server fails the login and stores nothing. To stage a
+  credential without the round-trip (e.g. the server is down), add
+  `--no-verify` — the result then reports `"verified": false` under `-o json`
+  and says "not verified" in text.
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,

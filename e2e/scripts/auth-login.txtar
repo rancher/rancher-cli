@@ -19,5 +19,15 @@ seedexeccache e2e-c-test c-test
 exec rancher auth logout e2e -o json
 jsonquery stdout 'data.deletedCache.#' 1
 
+# --no-verify stores a pasted token against an unreachable server with no
+# authenticated round-trip; a verified login (above) would have refused
+# instead.
+stdin noverify-token.txt
+exec rancher auth login e2e-noverify --url https://127.0.0.1:1 --token-stdin --no-verify
+stdout 'token stored for e2e-noverify \(https://127.0.0.1:1\) — not verified'
+grep e2e-noverify $RANCHER_CLI_CONFIG_DIR/config.yaml
+
 -- token.txt --
 e2e:secret
+-- noverify-token.txt --
+noverify:secret
