@@ -96,9 +96,10 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		"deletedCache":         deletedCache,
 		"currentServerCleared": currentCleared,
 	}, Warnings: notices}
+	const pointerClearedLine = "was current — pointer cleared"
 	var lines []string
 	if currentCleared {
-		lines = append(lines, "was current — pointer cleared")
+		lines = append(lines, pointerClearedLine)
 	}
 	if len(deletedFrom) > 0 {
 		lines = append(lines, "credentials removed ("+strings.Join(deletedFrom, ", ")+")")
@@ -106,7 +107,11 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 	if len(deletedCache) > 0 {
 		lines = append(lines, cachedCredsRemovedLine(len(deletedCache)))
 	}
-	res.Text = runtime.TextLines("server "+name+" deleted", lines...)
+	tr := runtime.TextLines("server "+name+" deleted", lines...)
+	if currentCleared {
+		tr = runtime.AccentLine(tr, pointerClearedLine)
+	}
+	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
 }
 

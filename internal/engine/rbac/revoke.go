@@ -216,9 +216,15 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 				return runtime.Result{}, partialFailure(err, name, deleted, names[i+1:])
 			}
 			deleted = append(deleted, name)
-			text.WriteString(runtime.MutationText(bindKind.Name, name, "deleted"))
+			text.WriteString(runtime.MutationText(bindKind.Name, name, "deleted").Text)
 		}
-		return runtime.Result{Kind: bindKind.K8sKind + "Delete", Data: map[string]any{"deleted": deleted}, Text: text.String()}, nil
+		final := text.String()
+		return runtime.Result{
+			Kind:       bindKind.K8sKind + "Delete",
+			Data:       map[string]any{"deleted": deleted},
+			Text:       final,
+			StyledText: runtime.StyleFirstLineBold(final),
+		}, nil
 	}
 	return eff, exec, nil
 }

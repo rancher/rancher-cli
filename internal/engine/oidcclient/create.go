@@ -225,20 +225,18 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
-	text := runtime.MutationText("oidcclient", name, "created",
+	res := runtime.MutationText("oidcclient", name, "created",
 		"client id: "+clientID,
 		secretLine,
 		"secret name: "+secretName,
 		"issuer: "+issuer,
 	)
-	return runtime.Result{
-		Kind:             "OIDCClientCreated",
-		Data:             data,
-		Text:             text,
-		OnceOnlyNotice:   shownOnce,
-		Warnings:         warnings,
-		CommittedContext: &runtime.CommittedContext{ResourceKind: "OIDCClient", ResourceName: name, SecretName: secretName, Recovery: recovery},
-	}, nil
+	res.Kind = "OIDCClientCreated"
+	res.Data = data
+	res.OnceOnlyNotice = shownOnce
+	res.Warnings = warnings
+	res.CommittedContext = &runtime.CommittedContext{ResourceKind: "OIDCClient", ResourceName: name, SecretName: secretName, Recovery: recovery}
+	return res, nil
 }
 
 // discover reads the live discovery document and returns its projected

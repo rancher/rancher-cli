@@ -146,18 +146,17 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", newValue, "client secret")
-	return runtime.Result{
-		Kind: "OIDCClientSecretRotated",
-		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": newValue},
-		Text: runtime.MutationText("oidcclient", clientName, "patched",
-			"secret "+secretName+" rotated",
-			secretLine,
-		),
-		OnceOnlyNotice: shownOnce,
-		CommittedContext: &runtime.CommittedContext{
-			ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
-		},
-	}, nil
+	res := runtime.MutationText("oidcclient", clientName, "patched",
+		"secret "+secretName+" rotated",
+		secretLine,
+	)
+	res.Kind = "OIDCClientSecretRotated"
+	res.Data = map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": newValue}
+	res.OnceOnlyNotice = shownOnce
+	res.CommittedContext = &runtime.CommittedContext{
+		ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
+	}
+	return res, nil
 }
 
 // isTransientSecretReadError reports whether err should be tolerated and

@@ -76,6 +76,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	if out.pointerRepaired {
 		lines = append(lines, "current server set to "+out.name)
 	}
-	res.Text = runtime.TextLines("server "+out.name+" added", lines...)
+	tr := runtime.TextLines("server "+out.name+" added", lines...)
+	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
 }

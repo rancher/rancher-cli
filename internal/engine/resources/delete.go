@@ -124,11 +124,10 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{
-			Kind: title + "Delete",
-			Data: map[string]any{"deleted": name},
-			Text: runtime.MutationText(k.Name, name, "deleted"),
-		}, nil
+		res := runtime.MutationText(k.Name, name, "deleted")
+		res.Kind = title + "Delete"
+		res.Data = map[string]any{"deleted": name}
+		return res, nil
 	}
 	return eff, exec, nil
 }

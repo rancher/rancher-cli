@@ -84,12 +84,11 @@ func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	}
 
 	degraded, warnings := sec.Finalize()
-	return runtime.Result{
-		Kind:     "DeploymentInspection",
-		Data:     deploymentResult{Deployment: dep.Object, Pods: pods, Degraded: degraded},
-		Text:     renderDeploymentText(name, ns, clusterID, dep.Object, pods, degraded),
-		Warnings: warnings,
-	}, nil
+	res := renderDeploymentText(name, ns, clusterID, dep.Object, pods, degraded)
+	res.Kind = "DeploymentInspection"
+	res.Data = deploymentResult{Deployment: dep.Object, Pods: pods, Degraded: degraded}
+	res.Warnings = warnings
+	return res, nil
 }
 
 type deploymentResult struct {
@@ -107,7 +106,7 @@ type deploymentResult struct {
 // be read; "none" would be indistinguishable from a selector matching zero
 // pods), "pods: none" only for a genuine empty match — and one line per
 // degraded finding (the block is omitted entirely when there are none).
-func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []map[string]any, degraded []sectionOutcome) string {
+func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []map[string]any, degraded []sectionOutcome) runtime.Result {
 	ready, _, _ := unstructured.NestedInt64(dep, "status", "readyReplicas")
 	desired, _, _ := unstructured.NestedInt64(dep, "spec", "replicas")
 

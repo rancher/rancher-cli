@@ -449,7 +449,11 @@ func (l loginCmd) authenticateAndStore(
 	if !verified {
 		headline = fmt.Sprintf("token stored for %s (%s) — not verified", name, serverURL)
 	}
-	res.Text = runtime.TextLines(headline, lines...)
+	tr := runtime.TextLines(headline, lines...)
+	if !verified {
+		tr = runtime.AccentLine(tr, headline)
+	}
+	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
 }
 

@@ -123,18 +123,17 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
-	return runtime.Result{
-		Kind: "OIDCClientSecretAdded",
-		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": plaintext},
-		Text: runtime.MutationText("oidcclient", clientName, "patched",
-			"secret "+secretName+" added",
-			secretLine,
-		),
-		OnceOnlyNotice: shownOnce,
-		CommittedContext: &runtime.CommittedContext{
-			ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
-		},
-	}, nil
+	res := runtime.MutationText("oidcclient", clientName, "patched",
+		"secret "+secretName+" added",
+		secretLine,
+	)
+	res.Kind = "OIDCClientSecretAdded"
+	res.Data = map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": plaintext}
+	res.OnceOnlyNotice = shownOnce
+	res.CommittedContext = &runtime.CommittedContext{
+		ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
+	}
+	return res, nil
 }
 
 // addSecretAmbiguousShape builds add-secret's terminal, non-retryable error

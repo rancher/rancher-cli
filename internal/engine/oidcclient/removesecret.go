@@ -110,10 +110,9 @@ func (c *removeSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		return runtime.Result{}, err
 	}
 
-	return runtime.Result{
-		Kind: "OIDCClientSecretRemoved",
-		Data: map[string]any{"clientID": clientID, "secretName": secretName},
-		Text: runtime.MutationText("oidcclient", clientName, "patched",
-			"secret "+secretName+" removed — anything using it stops working"),
-	}, nil
+	res := runtime.MutationText("oidcclient", clientName, "patched",
+		"secret "+secretName+" removed — anything using it stops working")
+	res.Kind = "OIDCClientSecretRemoved"
+	res.Data = map[string]any{"clientID": clientID, "secretName": secretName}
+	return res, nil
 }

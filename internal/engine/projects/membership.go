@@ -171,7 +171,8 @@ func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, befo
 		if err != nil {
 			return res, err
 		}
-		res.Text = runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
+		tr := runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
+		res.Text, res.StyledText = tr.Text, tr.StyledText
 		return res, nil
 	}
 	return eff, wrapped, nil

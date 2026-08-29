@@ -768,7 +768,7 @@ func dryRunText(eff safety.Effect) string {
 	}
 	gate += " to execute"
 	lines = append(lines, gate)
-	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...)
+	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...).Text
 }
 
 // renderErr writes ce to stderr in the invocation's requested format, after
@@ -864,7 +864,7 @@ func errorText(ce *clierr.Error, s style.Style) string {
 		lines = append(lines, "candidates: "+strings.Join(names, ", "))
 	}
 	lines = append(lines, detailsTextLines(ce.Details)...)
-	return TextLines(header, lines...)
+	return TextLines(header, lines...).Text
 }
 
 // detailsFallbackLine is the neutral line rendered when a details payload

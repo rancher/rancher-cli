@@ -110,17 +110,16 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		if expiresAt != "" {
 			lines = append(lines, "expires: "+expiresAt)
 		}
-		return runtime.Result{
-			Kind: "TokenCreated",
-			Data: map[string]string{
-				"name":        name,
-				"bearerToken": bearer,
-				"expiresAt":   expiresAt,
-			},
-			Text:             runtime.MutationText("token", name, "created", lines...),
-			OnceOnlyNotice:   shownOnce,
-			CommittedContext: &runtime.CommittedContext{ResourceKind: "Token", ResourceName: name, Recovery: recovery},
-		}, nil
+		res := runtime.MutationText("token", name, "created", lines...)
+		res.Kind = "TokenCreated"
+		res.Data = map[string]string{
+			"name":        name,
+			"bearerToken": bearer,
+			"expiresAt":   expiresAt,
+		}
+		res.OnceOnlyNotice = shownOnce
+		res.CommittedContext = &runtime.CommittedContext{ResourceKind: "Token", ResourceName: name, Recovery: recovery}
+		return res, nil
 	}
 	return eff, exec, nil
 }

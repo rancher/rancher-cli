@@ -145,7 +145,7 @@ func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	res := Result{
 		Kind:           "TokenCreated",
 		Data:           map[string]string{"name": "t-abc"},
-		Text:           MutationText("token", "t-abc", "created", "bearer token: tok:xxxx"+ShownOnceSuffix),
+		Text:           MutationText("token", "t-abc", "created", "bearer token: tok:xxxx"+ShownOnceSuffix).Text,
 		Warnings:       []string{shownOnce},
 		OnceOnlyNotice: shownOnce,
 	}
@@ -176,7 +176,7 @@ func TestRenderResultOrdinaryTextNeverBoldedByShownOnceSuffixCoincidence(t *test
 	res := Result{
 		Kind: "ThingDone",
 		Data: map[string]string{"name": "x"},
-		Text: MutationText("thing", "x", "done", "value: y"+ShownOnceSuffix),
+		Text: MutationText("thing", "x", "done", "value: y"+ShownOnceSuffix).Text,
 	}
 	var out bytes.Buffer
 	_, ce := renderResult(IO{Out: &out, Err: new(bytes.Buffer), Format: "table", Color: "always", OutTTY: true}, d, res)
@@ -244,7 +244,7 @@ func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
 		OnceOnlyNotice:   "this value is shown exactly once — store it now",
 		CommittedContext: &CommittedContext{ResourceKind: "Credential", ResourceName: "x", Recovery: "get credential x"},
 		StyledText: func(s style.Style) string {
-			return styleLines(plain, s, func(i int, body string) (string, bool) {
+			return StyleLines(plain, s, func(i int, body string) (string, bool) {
 				if i != 0 {
 					return "", false
 				}

@@ -107,9 +107,9 @@ func TestFormatIECBytes(t *testing.T) {
 func TestRenderBundleText(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "support bundle written: /tmp/b.tar.gz\n  5 items, 1.0 KiB\n",
-		renderBundleText("/tmp/b.tar.gz", 5, 1024, 0, 0))
+		renderBundleText("/tmp/b.tar.gz", 5, 1024, 0, 0).Text)
 	assert.Equal(t, "support bundle written: /tmp/b.tar.gz\n  5 items, 1.0 KiB\n  skipped: 2, errors: 1\n",
-		renderBundleText("/tmp/b.tar.gz", 5, 1024, 2, 1))
+		renderBundleText("/tmp/b.tar.gz", 5, 1024, 2, 1).Text)
 }
 
 // TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError is the exercise bug 6

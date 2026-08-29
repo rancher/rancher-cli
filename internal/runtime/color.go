@@ -53,13 +53,16 @@ func stylesFor(streams IO) (out, err style.Style) {
 	return out, err
 }
 
-// styleLines is the one line-mapping scaffold behind every per-line styling
+// StyleLines is the one line-mapping scaffold behind every per-line styling
 // helper: it splits text into lines, hands each line's body (trailing
 // newline removed) to transform with its index, and re-attaches the newline
 // to a transformed result. Lines transform declines (ok=false) pass through
 // byte-identical, as does the whole text on a disabled Style — keeping the
-// newline re-attachment logic in exactly one place.
-func styleLines(text string, s style.Style, transform func(i int, body string) (string, bool)) string {
+// newline re-attachment logic in exactly one place. Exported so a command
+// package outside runtime can anchor its own default-format text view to
+// structural facts (an exact header, a known line index) it already knows,
+// the same way the schema and mutation-text builders do.
+func StyleLines(text string, s style.Style, transform func(i int, body string) (string, bool)) string {
 	if !s.Enabled || text == "" {
 		return text
 	}
@@ -82,7 +85,7 @@ func styleLines(text string, s style.Style, transform func(i int, body string) (
 // once-only credential value's own line — in bold, leaving every other
 // line and all whitespace untouched.
 func boldShownOnceLine(text string, s style.Style) string {
-	return styleLines(text, s, func(_ int, body string) (string, bool) {
+	return StyleLines(text, s, func(_ int, body string) (string, bool) {
 		if !strings.HasSuffix(body, ShownOnceSuffix) {
 			return "", false
 		}
@@ -90,10 +93,10 @@ func boldShownOnceLine(text string, s style.Style) string {
 	})
 }
 
-// boldFirstLine wraps text's first line in bold, leaving every other line
+// BoldFirstLine wraps text's first line in bold, leaving every other line
 // untouched.
-func boldFirstLine(text string, s style.Style) string {
-	return styleLines(text, s, func(i int, body string) (string, bool) {
+func BoldFirstLine(text string, s style.Style) string {
+	return StyleLines(text, s, func(i int, body string) (string, bool) {
 		if i != 0 {
 			return "", false
 		}
@@ -101,16 +104,35 @@ func boldFirstLine(text string, s style.Style) string {
 	})
 }
 
-// boldExactLines wraps, in bold, every line in text whose content exactly
+// BoldExactLines wraps, in bold, every line in text whose content exactly
 // matches an entry in names.
-func boldExactLines(text string, names map[string]bool, s style.Style) string {
+func BoldExactLines(text string, names map[string]bool, s style.Style) string {
 	if len(names) == 0 {
 		return text
 	}
-	return styleLines(text, s, func(_ int, body string) (string, bool) {
+	return StyleLines(text, s, func(_ int, body string) (string, bool) {
 		if !names[body] {
 			return "", false
 		}
 		return s.Bold(body), true
+	})
+}
+
+// BoldPrefixLines wraps, in bold, every line in text whose content starts
+// with one of prefixes — for a renderer whose header carries a dynamic
+// suffix (a scope label, a bracketed qualifier) so no exact string ever
+// matches the whole line, only the literal token the renderer's own source
+// always emits first.
+func BoldPrefixLines(text string, prefixes []string, s style.Style) string {
+	if len(prefixes) == 0 {
+		return text
+	}
+	return StyleLines(text, s, func(_ int, body string) (string, bool) {
+		for _, p := range prefixes {
+			if strings.HasPrefix(body, p) {
+				return s.Bold(body), true
+			}
+		}
+		return "", false
 	})
 }

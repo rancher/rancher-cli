@@ -48,11 +48,10 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		// server-assigned name (including a generateName result) — never
 		// the dry-run preview's Effect.DisplayName, which a generateName
 		// caller (grant) may have rewritten to a "prefix*" placeholder.
-		return runtime.Result{
-			Kind: resultKind,
-			Data: created.Object,
-			Text: runtime.MutationText(displayKind, created.GetName(), "created"),
-		}, nil
+		res := runtime.MutationText(displayKind, created.GetName(), "created")
+		res.Kind = resultKind
+		res.Data = created.Object
+		return res, nil
 	}
 	return eff, out, exec, nil
 }
@@ -95,11 +94,10 @@ func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{
-			Kind: resultKind,
-			Data: updated.Object,
-			Text: runtime.MutationText(displayKind, updated.GetName(), "patched"),
-		}, nil
+		res := runtime.MutationText(displayKind, updated.GetName(), "patched")
+		res.Kind = resultKind
+		res.Data = updated.Object
+		return res, nil
 	}
 	return eff, exec, nil
 }

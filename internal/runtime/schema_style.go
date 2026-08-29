@@ -11,8 +11,8 @@ import (
 // groups: the header line (bold, whole line) and every named group label
 // (bold). Command rows and every other line are left untouched.
 func styleSchemaTOC(text string, groups []SchemaGroup, s style.Style) string {
-	out := boldFirstLine(text, s)
-	return boldExactLines(out, groupLabelSet(groups), s)
+	out := BoldFirstLine(text, s)
+	return BoldExactLines(out, groupLabelSet(groups), s)
 }
 
 // groupLabelSet builds the set of rendered group-label lines ("<name>:")
@@ -57,7 +57,7 @@ func flagRowIndexes(text string, headerIdx int) map[int]bool {
 }
 
 // labelIndexes resolves each rule to the line index it anchors to, using
-// the same SplitAfter line numbering styleLines walks.
+// the same SplitAfter line numbering StyleLines walks.
 func labelIndexes(text string, rules []labelRule) map[int]string {
 	at := map[int]string{}
 	lines := strings.SplitAfter(text, "\n")
@@ -100,7 +100,7 @@ func styleSchemaGroupCard(text string, hasCommands bool, s style.Style) string {
 		rules = append(rules, labelRule{label: "commands:", exact: true, last: true})
 	}
 	at := labelIndexes(text, rules)
-	return styleLines(text, s, func(i int, body string) (string, bool) {
+	return StyleLines(text, s, func(i int, body string) (string, bool) {
 		if i == 0 {
 			return s.Bold(body), true
 		}
@@ -148,7 +148,7 @@ func styleSchemaCommandCard(text string, hasFlags, hasExamples bool, s style.Sty
 			}
 		}
 	}
-	return styleLines(text, s, func(i int, body string) (string, bool) {
+	return StyleLines(text, s, func(i int, body string) (string, bool) {
 		if i == 0 {
 			return s.Bold(body), true
 		}

@@ -154,7 +154,8 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	res.Warnings = append(res.Warnings, notices...)
 	if out.unchanged {
-		res.Text = runtime.TextLines("server " + out.name + " unchanged")
+		tr := runtime.TextLines("server " + out.name + " unchanged")
+		res.Text, res.StyledText = tr.Text, tr.StyledText
 		return res, nil
 	}
 	var lines []string
@@ -168,8 +169,10 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			lines = append(lines, "ca: cleared (changed)")
 		}
 	}
+	credentialsClearedLine := ""
 	if out.credentialsCleared {
-		lines = append(lines, fmt.Sprintf("credentials cleared — log in again: rancher auth login %s", shquote(out.name)))
+		credentialsClearedLine = fmt.Sprintf("credentials cleared — log in again: rancher auth login %s", shquote(out.name))
+		lines = append(lines, credentialsClearedLine)
 	}
 	if len(deletedCache) > 0 {
 		lines = append(lines, cachedCredsRemovedLine(len(deletedCache)))
@@ -177,7 +180,11 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if out.pointerRepaired {
 		lines = append(lines, "current server set to "+out.name)
 	}
-	res.Text = runtime.TextLines("server "+out.name+" updated", lines...)
+	tr := runtime.TextLines("server "+out.name+" updated", lines...)
+	if credentialsClearedLine != "" {
+		tr = runtime.AccentLine(tr, credentialsClearedLine)
+	}
+	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
 }
 
