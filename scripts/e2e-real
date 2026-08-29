@@ -4,14 +4,24 @@ set -euo pipefail
 # Fidelity oracle harness: boots the pinned real Rancher in Docker, bootstraps
 # an admin token, and runs the e2e_real record/verify suite against it.
 #
-# ORACLE_IMAGE is the single bump point: one literal tag+digest, changed only
-# through a reviewed golden-regeneration change (wave 4 sets the first value).
+# ORACLE_IMAGE is the single bump point for the community golden oracle: one
+# literal tag+digest, changed only through a reviewed golden-regeneration
+# change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_REAL_PRIME=1) —
+# it has no goldens; the suite only boots and smoke-checks it.
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
+PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 
-CONTAINER="rancher-cli-e2e-real"
-HOST_PORT="8443"
+if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
+  ORACLE_IMAGE="${PRIME_ORACLE_IMAGE}"
+  CONTAINER="rancher-cli-e2e-real-prime"
+  HOST_PORT="8444"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-prime"
+else
+  CONTAINER="rancher-cli-e2e-real"
+  HOST_PORT="8443"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
+fi
 BASE_URL="https://127.0.0.1:${HOST_PORT}"
-STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
 LOCK_DIR="${STATE_ROOT}/lock"
 STATE_FILE="${STATE_ROOT}/state.json"
 CA_FILE="${STATE_ROOT}/ca.pem"
@@ -173,8 +183,20 @@ E2E_REAL_CACERT="$(cat "${CA_FILE}")"
 export E2E_REAL_CACERT
 export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
 
-echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
-# E2E_REAL_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
-# user-supplied, so the intentional word-splitting here is safe.
-# shellcheck disable=SC2086
-go test -tags e2e_real -count=1 ./e2e/real/ ${UPDATE_FLAG}
+if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
+  # No goldens for the Prime oracle: golden verification runs only against
+  # the community pin. This is boot+bootstrap verification only.
+  echo "==> prime oracle boot smoke"
+  curl -s --cacert "${CA_FILE}" "${BASE_URL}/rancherversion"
+  echo
+  code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")"
+  [ "${code}" = "200" ] || { echo "error: admin token smoke check failed (http ${code})" >&2; exit 1; }
+  echo "==> prime oracle bootstrap smoke passed"
+else
+  echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
+  # E2E_REAL_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
+  # user-supplied, so the intentional word-splitting here is safe.
+  # shellcheck disable=SC2086
+  go test -tags e2e_real -count=1 ./e2e/real/ ${UPDATE_FLAG}
+fi
