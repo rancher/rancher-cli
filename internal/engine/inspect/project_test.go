@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -427,6 +428,25 @@ func TestRenderProjectTextSections(t *testing.T) {
 	assert.Contains(t, text, "QUOTA\n  limit:\n    configMaps: 5\n    pods: 10\n")
 	// measured usage renders when present; absent measurements stay off the line.
 	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1 usage=250m\n  memory: request=1Gi limit=2Gi\n")
+}
+
+// TestStyleProjectTextStripInvariant pins inspect project's bold spans:
+// every section header is bold, whole line; the strip invariant holds; and
+// a disabled Style returns text unchanged.
+func TestStyleProjectTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	text := renderProjectText(projectResult{ID: "p-cvrp4", DisplayName: "Default", Cluster: "c-phmj7"})
+	enabled := style.Style{Enabled: true}
+
+	styled := styleProjectText(text, enabled)
+	assert.NotEqual(t, text, styled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, styleProjectText(text, style.Style{}), "disabled style returns text unchanged")
+
+	for _, header := range []string{"PROJECT", "NAMESPACES", "MEMBERS", "QUOTA", "USAGE"} {
+		assert.Contains(t, styled, "\x1b[1m"+header+"\x1b[0m\n", "%s must be bold, whole line", header)
+	}
+	assert.NotContains(t, styled, "\x1b[1mid: p-cvrp4", "a data line must not be styled")
 }
 
 func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {

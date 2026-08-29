@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -722,6 +723,38 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 	assert.Contains(t, text, "identity: unavailable")
 	assert.Contains(t, text, "token: unavailable")
 	assert.Contains(t, text, "pinned: -", "empty pinned renders as dash, not blank")
+}
+
+// TestStyleAuthCheckTextStripInvariant pins auth status's bold spans: every
+// section header is bold, whole line, and a healthy "ok: true" row stays
+// plain — plus the strip invariant and the inactive-style identity.
+func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	text := renderAuthCheckText(true, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "")
+	enabled := style.Style{Enabled: true}
+
+	styled := styleAuthCheckText(text, true, enabled)
+	assert.NotEqual(t, text, styled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, styleAuthCheckText(text, true, style.Style{}), "disabled style returns text unchanged")
+
+	for _, header := range []string{"AUTH STATUS", "VERSIONS", "IDENTITY", "TOKEN", "CREDENTIAL STORE"} {
+		assert.Contains(t, styled, "\x1b[1m"+header+"\x1b[0m\n", "%s must be bold, whole line", header)
+	}
+	assert.NotContains(t, styled, "\x1b[33m", "a healthy ok: true row must not be yellow")
+	assert.NotContains(t, styled, "\x1b[1m  ok: true", "ok: true is not bold either")
+}
+
+// TestStyleAuthCheckTextAccentsFalseOK pins the yellow accent: only the
+// unhealthy "ok: false" row turns yellow, never "ok: true".
+func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
+	t.Parallel()
+	text := renderAuthCheckText(false, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "")
+	enabled := style.Style{Enabled: true}
+
+	styled := styleAuthCheckText(text, false, enabled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Contains(t, styled, "\x1b[33m  ok: false\x1b[0m\n")
 }
 
 // TestAuthCheckTextViewWarningsReachStderr drives the real pipeline (runtime.Run's

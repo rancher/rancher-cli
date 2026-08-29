@@ -2,10 +2,12 @@ package rbac
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -408,4 +410,16 @@ func TestRevokeGlobalScope(t *testing.T) {
 		assert.Equal(t, "", ns, "global scope delete must use empty namespace")
 	}
 	assert.Contains(t, client.deletedNames, "grb-abc")
+}
+
+// TestRevokeMultiBindingBoldsEveryConfirmationLine asserts a multi-binding
+// revoke's styled text bolds each per-binding confirmation line, not only
+// the first — every line is a headline.
+func TestRevokeMultiBindingBoldsEveryConfirmationLine(t *testing.T) {
+	t.Parallel()
+	text := "globalrolebinding/grb-a deleted\nglobalrolebinding/grb-b deleted\n"
+	styled := runtime.StyleEveryLineBold(text)(style.Style{Enabled: true})
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, 2, strings.Count(styled, "\x1b[1m"))
+	assert.Equal(t, text, runtime.StyleEveryLineBold(text)(style.Style{}))
 }

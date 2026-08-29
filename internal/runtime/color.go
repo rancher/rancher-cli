@@ -117,22 +117,3 @@ func BoldExactLines(text string, names map[string]bool, s style.Style) string {
 		return s.Bold(body), true
 	})
 }
-
-// BoldPrefixLines wraps, in bold, every line in text whose content starts
-// with one of prefixes — for a renderer whose header carries a dynamic
-// suffix (a scope label, a bracketed qualifier) so no exact string ever
-// matches the whole line, only the literal token the renderer's own source
-// always emits first.
-func BoldPrefixLines(text string, prefixes []string, s style.Style) string {
-	if len(prefixes) == 0 {
-		return text
-	}
-	return StyleLines(text, s, func(_ int, body string) (string, bool) {
-		for _, p := range prefixes {
-			if strings.HasPrefix(body, p) {
-				return s.Bold(body), true
-			}
-		}
-		return "", false
-	})
-}

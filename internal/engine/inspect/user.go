@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -120,11 +121,13 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	degraded, warnings := sec.Finalize()
 	warnings = append(warnings, extraWarnings...)
 	result := userResult{User: identity, Roles: roles, Degraded: degraded}
+	text := renderUserText(result, rbac.OwnIdentitySet(rs.UserID, rs.PrincipalIDs))
 	return runtime.Result{
-		Kind:     "UserInspection",
-		Data:     result,
-		Text:     renderUserText(result, rbac.OwnIdentitySet(rs.UserID, rs.PrincipalIDs)),
-		Warnings: warnings,
+		Kind:       "UserInspection",
+		Data:       result,
+		Text:       text,
+		StyledText: func(s style.Style) string { return styleUserText(text, s) },
+		Warnings:   warnings,
 	}, nil
 }
 
@@ -481,6 +484,58 @@ func renderUserText(r userResult, own map[string]bool) string {
 	renderUserGroups(&b, r.User)
 	renderRoles(&b, r, own)
 	return b.String()
+}
+
+// userSectionHeaders is the fixed, always-present exact header set
+// renderUserText emits: GROUPS and ROLES render unconditionally, every
+// call. The USER header (always line 0, with optional bracketed
+// qualifiers) and the role sub-headers (dynamic scope labels, matched by
+// prefix below the ROLES header — see userRoleSubheaderPrefixes) are
+// handled separately in styleUserText.
+var userSectionHeaders = map[string]bool{"GROUPS": true, "ROLES": true}
+
+// userRoleSubheaderPrefixes are the literal tokens renderRoles always emits
+// first for a role sub-header, whose full line varies (a scope label after
+// GLOBAL/CLUSTER/PROJECT, or ": unavailable" when that scope's read
+// failed). A role ROW never collides with these — it renders four-space
+// indented, not two.
+var userRoleSubheaderPrefixes = []string{"  GLOBAL", "  CLUSTER", "  PROJECT"}
+
+// styleUserText applies inspect user's bold spans to text, the plain
+// rendering renderUserText already produced: the USER header (always the
+// first line; its full text varies with " [system]"/" [disabled]"
+// qualifiers), the GROUPS/ROLES headers (exact), and each role sub-header —
+// bold, whole line. Sub-header prefix matching is scoped to the lines BELOW
+// the ROLES header: the GROUPS block shares the two-space indent and its
+// rows carry provider-owned display names, so a group named "GLOBAL-…"
+// above ROLES must stay plain.
+func styleUserText(text string, s style.Style) string {
+	if !s.Enabled || text == "" {
+		return text
+	}
+	rolesAt := -1
+	for i, line := range strings.SplitAfter(text, "\n") {
+		if body, _ := strings.CutSuffix(line, "\n"); body == "ROLES" {
+			rolesAt = i
+			break
+		}
+	}
+	return runtime.StyleLines(text, s, func(i int, body string) (string, bool) {
+		if i == 0 {
+			return s.Bold(body), true
+		}
+		if userSectionHeaders[body] {
+			return s.Bold(body), true
+		}
+		if rolesAt >= 0 && i > rolesAt {
+			for _, p := range userRoleSubheaderPrefixes {
+				if strings.HasPrefix(body, p) {
+					return s.Bold(body), true
+				}
+			}
+		}
+		return "", false
+	})
 }
 
 func renderUserIdentity(b *strings.Builder, u userIdentity) {

@@ -28,6 +28,21 @@ func StyleFirstLineBold(text string) func(style.Style) string {
 	return func(s style.Style) string { return BoldFirstLine(text, s) }
 }
 
+// StyleEveryLineBold returns a StyledText builder that bolds every
+// non-empty line — for a Text whose lines are ALL headlines, such as a
+// multi-binding revoke concatenating one kubectl-terse confirmation per
+// binding.
+func StyleEveryLineBold(text string) func(style.Style) string {
+	return func(s style.Style) string {
+		return StyleLines(text, s, func(_ int, body string) (string, bool) {
+			if body == "" {
+				return "", false
+			}
+			return s.Bold(body), true
+		})
+	}
+}
+
 // TextLines renders the shared kubectl-terse text body (see
 // textLinesString) into a Result whose StyledText builder bolds the
 // headline. Merge the returned Text and StyledText into a fuller Result the

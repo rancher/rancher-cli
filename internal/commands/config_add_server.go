@@ -65,7 +65,8 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 		res.Warnings = append(res.Warnings, probe.versionWarning)
 	}
 	if !out.created {
-		res.Text = "server " + out.name + " unchanged\n"
+		tr := runtime.TextLines("server " + out.name + " unchanged")
+		res.Text, res.StyledText = tr.Text, tr.StyledText
 		return res, nil
 	}
 	var lines []string

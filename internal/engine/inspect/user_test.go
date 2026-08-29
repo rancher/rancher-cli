@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -442,4 +443,68 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	assert.Equal(t, "c-1:p-1", (*r.Roles.Projects)[0].Project)
 	assert.Contains(t, res.Warnings, "1 project role binding(s) with no scope id omitted: prtb-broken")
 	assert.NotContains(t, res.Text, "PROJECT \n", "no blank project heading")
+}
+
+// TestStyleUserTextStripInvariant pins inspect user's bold spans: the
+// dynamic USER header (by prefix, since it carries [system]/[disabled]
+// qualifiers), the GROUPS/ROLES headers (exact), and each dynamic role
+// sub-header (by prefix, since it carries a scope label) — all bold, whole
+// line — plus the strip invariant and the inactive-style identity.
+func TestStyleUserTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	disabled := false
+	r := userResult{
+		User: userIdentity{ID: "u-1", Username: "alice", System: true, Enabled: &disabled},
+		Roles: rolesResult{
+			Global: &[]rbac.MemberRow{{Principal: "local://u-1", Role: "admin", Binding: "grb-1"}},
+			Clusters: &[]rolesCluster{{Cluster: "c-1", DisplayName: "prod", Roles: []rbac.MemberRow{
+				{Principal: "local://u-1", Role: "cluster-owner", Binding: "crtb-1"},
+			}}},
+			Projects: &[]rolesProject{{Project: "p-1", Roles: []rbac.MemberRow{
+				{Principal: "local://u-1", Role: "project-member", Binding: "prtb-1"},
+			}}},
+		},
+	}
+	own := map[string]bool{"local://u-1": true}
+	text := renderUserText(r, own)
+	require.Contains(t, text, "USER [system] [disabled]\n")
+
+	enabled := style.Style{Enabled: true}
+	styled := styleUserText(text, enabled)
+	assert.NotEqual(t, text, styled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, styleUserText(text, style.Style{}), "disabled style returns text unchanged")
+
+	assert.Contains(t, styled, "\x1b[1mUSER [system] [disabled]\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1mGROUPS\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1mROLES\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1m  CLUSTER prod (c-1)\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1m  PROJECT p-1\x1b[0m\n")
+	assert.NotContains(t, styled, "\x1b[1m    admin", "a role row must not be styled")
+}
+
+// TestStyleUserTextGroupRowNeverTakesSubheaderBold asserts the role
+// sub-header prefixes are scoped below the ROLES header: a GROUPS row whose
+// provider-owned display name begins with a sub-header word (GLOBAL-ADMINS)
+// stays plain, while the real GLOBAL sub-header below ROLES is bold.
+func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
+	t.Parallel()
+	text := strings.Join([]string{
+		"USER [system]",
+		"  id: u-x",
+		"",
+		"GROUPS",
+		"  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]",
+		"",
+		"ROLES",
+		"  GLOBAL",
+		"    admin  [grb-x]",
+	}, "\n") + "\n"
+	styled := styleUserText(text, style.Style{Enabled: true})
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Contains(t, styled, "\x1b[1mUSER [system]\x1b[0m")
+	assert.Contains(t, styled, "  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]\n", "the group row stays plain")
+	assert.NotContains(t, styled, "\x1b[1m  GLOBAL-ADMINS")
+	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n", "the real sub-header below ROLES is bold")
 }

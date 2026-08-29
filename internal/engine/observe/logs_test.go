@@ -1,12 +1,14 @@
 package observe
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -33,6 +35,29 @@ func TestLogsExecuteMergesAndPrefixesMultiPod(t *testing.T) {
 	require.True(t, ok)
 	assert.ElementsMatch(t, []string{"agent-1", "agent-2"}, data.Pods)
 	assert.Len(t, data.Entries, 2)
+}
+
+// TestLogsRendersByteIdenticalUnderColor pins the exemption: logs hand-builds
+// Text directly (user-owned log content) and sets no StyledText, so
+// --color=always renders byte-identical to plain.
+func TestLogsRendersByteIdenticalUnderColor(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().
+		withListNS(podKind.GVR, "cattle-system", podList("agent-1")).
+		withLog("main", "hello\n")
+	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	cmd := NewLogs(factory)
+	in := input{args: []string{"agent"}, s: map[string]string{engine.FlagCluster: "c-1"}}
+
+	var plain, colored bytes.Buffer
+	_, ce := runtime.Run(t.Context(), cmd, in, runtime.IO{Out: &plain, Err: new(bytes.Buffer), Format: ""}, safety.Binding{})
+	require.Nil(t, ce)
+	_, ce = runtime.Run(t.Context(), cmd, in,
+		runtime.IO{Out: &colored, Err: new(bytes.Buffer), Format: "", Color: "always", OutTTY: true}, safety.Binding{})
+	require.Nil(t, ce)
+
+	assert.Equal(t, plain.String(), colored.String())
+	assert.NotContains(t, colored.String(), "\x1b[")
 }
 
 func TestLogsExecuteContainerFilter(t *testing.T) {

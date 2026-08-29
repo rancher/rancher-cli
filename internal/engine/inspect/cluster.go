@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -206,11 +207,13 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	res.Degraded = degraded
 	warnings = append(warnings, dwarn...)
 
+	text := renderClusterText(res)
 	return runtime.Result{
-		Kind:     "ClusterInspection",
-		Data:     res,
-		Text:     renderClusterText(res),
-		Warnings: warnings,
+		Kind:       "ClusterInspection",
+		Data:       res,
+		Text:       text,
+		StyledText: func(s style.Style) string { return styleClusterText(text, s) },
+		Warnings:   warnings,
 	}, nil
 }
 
@@ -704,6 +707,21 @@ func renderClusterText(r clusterResult) string {
 		writeRegistrationField(&b, "manifestUrl", r.Registration.ManifestURL)
 	}
 	return b.String()
+}
+
+// clusterSectionHeaders is the fixed, always-present section header set
+// renderClusterText emits — every one of them, every call, regardless of
+// which sub-objects came back unavailable.
+var clusterSectionHeaders = map[string]bool{
+	"CLUSTER": true, "CONDITIONS": true, "MACHINE POOLS": true,
+	"MEMBERS": true, "MACHINES": true, "REGISTRATION": true,
+}
+
+// styleClusterText applies inspect cluster's bold spans to text, the plain
+// rendering renderClusterText already produced: every section header, bold,
+// whole line. Nothing inside a section is styled.
+func styleClusterText(text string, s style.Style) string {
+	return runtime.BoldExactLines(text, clusterSectionHeaders, s)
 }
 
 // renderAgentLine appends the agent-connectivity line to the CLUSTER

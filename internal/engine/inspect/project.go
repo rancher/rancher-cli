@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -120,11 +121,13 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		Usage:         usage,
 		Degraded:      degraded,
 	}
+	text := renderProjectText(result)
 	return runtime.Result{
-		Kind:     "ProjectInspection",
-		Data:     result,
-		Text:     renderProjectText(result),
-		Warnings: append(warnings, degradedWarnings...),
+		Kind:       "ProjectInspection",
+		Data:       result,
+		Text:       text,
+		StyledText: func(s style.Style) string { return styleProjectText(text, s) },
+		Warnings:   append(warnings, degradedWarnings...),
 	}, nil
 }
 
@@ -349,6 +352,20 @@ func renderProjectText(r projectResult) string {
 		b.WriteString("  usage: unavailable\n")
 	}
 	return b.String()
+}
+
+// projectSectionHeaders is the fixed, always-present section header set
+// renderProjectText emits — every one of them, every call, regardless of
+// which sub-objects came back unavailable.
+var projectSectionHeaders = map[string]bool{
+	"PROJECT": true, "NAMESPACES": true, "MEMBERS": true, "QUOTA": true, "USAGE": true,
+}
+
+// styleProjectText applies inspect project's bold spans to text, the plain
+// rendering renderProjectText already produced: every section header, bold,
+// whole line. Nothing inside a section is styled.
+func styleProjectText(text string, s style.Style) string {
+	return runtime.BoldExactLines(text, projectSectionHeaders, s)
 }
 
 // writeSortedMap renders a nested map with recursively sorted keys —

@@ -154,6 +154,7 @@ graph TD
     commands --> tlstrust
     commands --> clierr
     commands --> skillinstall
+    commands --> outputstyle
 
     token --> runtime
     token --> config
@@ -195,6 +196,7 @@ graph TD
     inspect --> resources
     inspect --> runtime
     inspect --> clierr
+    inspect --> outputstyle
 
     projects --> engine
     projects --> kinds

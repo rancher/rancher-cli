@@ -223,7 +223,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			Kind:       bindKind.K8sKind + "Delete",
 			Data:       map[string]any{"deleted": deleted},
 			Text:       final,
-			StyledText: runtime.StyleFirstLineBold(final),
+			StyledText: runtime.StyleEveryLineBold(final),
 		}, nil
 	}
 	return eff, exec, nil

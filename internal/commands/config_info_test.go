@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
@@ -52,6 +53,24 @@ func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
 	assert.Contains(t, res.Text, "completion:\n")
 
 	return c
+}
+
+// TestStyleConfigInfoTextStripInvariant pins config status's bold span: the
+// "completion:" section label is bold, whole line; every flat "key: value"
+// line stays plain — plus the strip invariant and the inactive-style
+// identity.
+func TestStyleConfigInfoTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	res := execConfigInfoResult(t, dir)
+	enabled := style.Style{Enabled: true}
+
+	styled := styleConfigInfoText(res.Text, enabled)
+	assert.NotEqual(t, res.Text, styled)
+	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, styleConfigInfoText(res.Text, style.Style{}), "disabled style returns text unchanged")
+	assert.Contains(t, styled, "\x1b[1mcompletion:\x1b[0m\n")
+	assert.NotContains(t, styled, "\x1b[1mpath:", "a flat key: value line must not be styled")
 }
 
 // TestConfigInfoCompletionBlock pins the completion section as a nested object

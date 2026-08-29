@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
 )
@@ -129,6 +130,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	tokenWarn := tokenWarning(tokenErr, supported)
 
 	credentialPolicy := config.EffectivePolicy(cfg.CredentialStore)
+	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned)
 	res := runtime.Result{
 		Kind: "AuthCheck",
 		Data: map[string]any{
@@ -140,7 +142,8 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 				"pinned": pinned,
 			},
 		},
-		Text: renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned),
+		Text:       text,
+		StyledText: func(s style.Style) string { return styleAuthCheckText(text, true, s) },
 	}
 	for _, w := range []string{warning, idWarning, tokenWarn} {
 		if w != "" {
@@ -230,6 +233,32 @@ func renderAuthCheckText(
 	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(pinned))
 
 	return b.String()
+}
+
+// authCheckSectionHeaders is the fixed, always-present section header set
+// renderAuthCheckText emits — every one of them, every call, regardless of
+// which sub-objects came back null.
+var authCheckSectionHeaders = map[string]bool{
+	"AUTH STATUS": true, "VERSIONS": true, "IDENTITY": true,
+	"TOKEN": true, "CREDENTIAL STORE": true,
+}
+
+// styleAuthCheckText applies auth status's bold spans to text, the plain
+// rendering renderAuthCheckText already produced: every section header
+// (bold, whole line), plus the "  ok: false" row in yellow — only the false
+// case; a healthy "  ok: true" stays plain, matching what an operator would
+// scan for.
+func styleAuthCheckText(text string, ok bool, s style.Style) string {
+	out := runtime.BoldExactLines(text, authCheckSectionHeaders, s)
+	if ok {
+		return out
+	}
+	return runtime.StyleLines(out, s, func(_ int, body string) (string, bool) {
+		if body != "  ok: false" {
+			return "", false
+		}
+		return s.Yellow(body), true
+	})
 }
 
 // checkMinRancherVersion evaluates the server's stamped version (from GET

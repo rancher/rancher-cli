@@ -6,6 +6,8 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,4 +112,15 @@ func TestAddServerRejectsUnsupportedScheme(t *testing.T) {
 	cfg, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
 	assert.Empty(t, cfg.Servers, "no entry written for an unsupported scheme")
+}
+
+// TestAddServerUnchangedHeadlineBold asserts the idempotent re-add's
+// one-line text carries the shared headline bold, matching update-server's
+// unchanged branch.
+func TestAddServerUnchangedHeadlineBold(t *testing.T) {
+	t.Parallel()
+	tr := runtime.TextLines("server prod unchanged")
+	styled := tr.StyledText(style.Style{Enabled: true})
+	assert.Equal(t, "\x1b[1mserver prod unchanged\x1b[0m\n", styled)
+	assert.Equal(t, tr.Text, style.Strip(styled))
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -1825,4 +1826,23 @@ func TestInspectClusterDegradedParity(t *testing.T) {
 		assert.True(t, strings.HasPrefix(typed[i], entry.Section+" unavailable: "),
 			"warning %q must pair with entry %q", typed[i], entry.Section)
 	}
+}
+
+// TestStyleClusterTextStripInvariant pins inspect cluster's bold spans:
+// every section header is bold, whole line; the strip invariant holds; and
+// a disabled Style returns text unchanged.
+func TestStyleClusterTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	text := renderClusterText(clusterResult{Cluster: clusterIdentity{ID: "c-abc", Name: "prod"}})
+	enabled := style.Style{Enabled: true}
+
+	styled := styleClusterText(text, enabled)
+	assert.NotEqual(t, text, styled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, styleClusterText(text, style.Style{}), "disabled style returns text unchanged")
+
+	for _, header := range []string{"CLUSTER", "CONDITIONS", "MACHINE POOLS", "MEMBERS", "MACHINES", "REGISTRATION"} {
+		assert.Contains(t, styled, "\x1b[1m"+header+"\x1b[0m\n", "%s must be bold, whole line", header)
+	}
+	assert.NotContains(t, styled, "\x1b[1mid: c-abc", "a data line must not be styled")
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -112,5 +113,23 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 			fmt.Fprintf(&text, "%s: %v\n", f.key, f.val)
 		}
 	}
-	return runtime.Result{Kind: "ConfigInfo", Data: data, Text: text.String()}, nil
+	rendered := text.String()
+	return runtime.Result{
+		Kind:       "ConfigInfo",
+		Data:       data,
+		Text:       rendered,
+		StyledText: func(s style.Style) string { return styleConfigInfoText(rendered, s) },
+	}, nil
+}
+
+// configInfoSectionHeaders is the exact line config status always emits for
+// its one nested section — the completion block is unconditional (see
+// Execute's field list above), so "completion:" needs no presence check.
+var configInfoSectionHeaders = map[string]bool{"completion:": true}
+
+// styleConfigInfoText applies config status's bold span to text, the plain
+// rendering built above: the "completion:" section label, bold, whole line.
+// Every flat "key: value" line stays plain.
+func styleConfigInfoText(text string, s style.Style) string {
+	return runtime.BoldExactLines(text, configInfoSectionHeaders, s)
 }

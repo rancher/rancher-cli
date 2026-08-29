@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
@@ -562,4 +563,27 @@ func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, "acme", cfg.CurrentServer, "current server untouched")
+}
+
+// TestStyleLogoutTextStripInvariant pins auth logout's bold spans: each
+// server's opener line is bold, whole line; its detail line stays plain;
+// the trailing exec-credential cache-count line stays plain too — plus the
+// strip invariant and the inactive-style identity.
+func TestStyleLogoutTextStripInvariant(t *testing.T) {
+	t.Parallel()
+	urlByName := map[string]string{"acme": "https://acme.ex", "other": "https://other.ex"}
+	deletedFrom := map[string][]string{"acme": {"keychain"}, "other": nil}
+	text := renderLogoutText(urlByName, deletedFrom, 3)
+	enabled := style.Style{Enabled: true}
+
+	styled := styleLogoutText(text, len(deletedFrom), enabled)
+	assert.NotEqual(t, text, styled)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, styleLogoutText(text, len(deletedFrom), style.Style{}), "disabled style returns text unchanged")
+
+	assert.Contains(t, styled, "\x1b[1mlogged out of acme (https://acme.ex)\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1mlogged out of other (https://other.ex)\x1b[0m\n")
+	assert.NotContains(t, styled, "\x1b[1m  token removed from", "a detail line must not be styled")
+	assert.NotContains(t, styled, "\x1b[1m  no stored token found", "a detail line must not be styled")
+	assert.NotContains(t, styled, "\x1b[1mexec-credential cache entries removed", "the cache-count line must not be styled")
 }

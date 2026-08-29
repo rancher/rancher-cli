@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -84,9 +85,14 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 
 	sort.Strings(targets)
 	sort.Strings(deletedCache)
+	text := renderLogoutText(urlByName, deletedFrom, len(deletedCache))
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
 		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
-	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache)), Warnings: notices}, nil
+	},
+		Text:       text,
+		StyledText: func(s style.Style) string { return styleLogoutText(text, len(deletedFrom), s) },
+		Warnings:   notices,
+	}, nil
 }
 
 // renderLogoutText is the TTY view of a logout: which servers, which
@@ -123,6 +129,24 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
 	}
 	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// styleLogoutText applies auth logout's bold spans to text, the plain
+// rendering renderLogoutText already produced: each server's opener line
+// ("logged out of <name> (<url>)"), bold, whole line — its detail line
+// stays plain. openers is renderLogoutText's own per-server block count
+// (len(deletedFrom), the same map it iterates), so the opener lines are the
+// even-indexed lines up to openers*2 — a structural position, not a scan
+// for the "logged out of" text — leaving the optional trailing
+// exec-credential cache-count line (which lands at that same index range's
+// end) untouched.
+func styleLogoutText(text string, openers int, s style.Style) string {
+	return runtime.StyleLines(text, s, func(i int, body string) (string, bool) {
+		if i%2 != 0 || i >= openers*2 {
+			return "", false
+		}
+		return s.Bold(body), true
+	})
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `auth logout <server> <TAB>`
