@@ -128,7 +128,7 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": plaintext},
 		Text: runtime.MutationText("oidcclient", clientName, "patched",
 			"secret "+secretName+" added",
-			"client secret: "+plaintext+"   (shown once — store it now)",
+			"client secret: "+plaintext+runtime.ShownOnceSuffix,
 		),
 		// The shown-once note is delivered inline in Text (above);
 		// TextOnlyWarnings names it by value so renderResult keeps it out

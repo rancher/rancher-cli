@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
@@ -29,6 +30,17 @@ type IO struct {
 	AllowDeprecated bool
 	NoInput         bool
 	IsTTY           bool
+
+	// Color is the raw --color flag value ("", "auto", "always", or
+	// "never"); "" and "auto" are equivalent. Validated by Run before use.
+	Color string
+	// OutTTY and ErrTTY report whether stdout and stderr are each a real
+	// terminal — decided independently, since one stream can be redirected
+	// while the other is not (`rancher get pod | less` still colors
+	// stderr). Distinct from IsTTY above, which is stdin-only and feeds the
+	// prompter, not styling.
+	OutTTY bool
+	ErrTTY bool
 
 	// ReadOnly is the OR of three sources — config `readOnly: true`, a
 	// non-empty RANCHER_CLI_READONLY, and --read-only — resolved once per
@@ -90,6 +102,10 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	d := cmd.Describe()
 
 	if ce := validateFormat(streams.Format); ce != nil {
+		return 0, renderErr(streams, ce)
+	}
+
+	if ce := validateColor(streams.Color); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
 
@@ -256,6 +272,19 @@ func validateFormat(format string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|"))).
 		WithHint(fmt.Sprintf("allowed: %s, template=<go-template>", strings.Join(OutputFormats, ", ")))
+}
+
+// validateColor closes the --color value set: "" (the flag omitted, same as
+// "auto") and the ColorModes literals. Run calls it before dispatch so an
+// unrecognized value is a structured VALIDATION error rather than a silent
+// fall-through to auto.
+func validateColor(color string) *clierr.Error {
+	if color == "" || slices.Contains(ColorModes, color) {
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("--color=%q is not one of %s", color, strings.Join(ColorModes, "|"))).
+		WithHint("allowed: " + strings.Join(ColorModes, ", "))
 }
 
 // validateOutputPolicy enforces a Descriptor's OutputPolicy: a command that
@@ -505,17 +534,18 @@ func envelopeCarriesWarnings(format string) bool {
 // line, skipping an entry already counted in silent — a value-matched
 // multiset (not positional; see Result.TextOnlyWarnings' doc for why
 // position cannot be trusted), decremented per skip so a repeated value
-// mirrors past its silenced count. silent may be nil (no suppression). The
-// one implementation behind every stderr warning mirror in the pipeline:
+// mirrors past its silenced count. silent may be nil (no suppression). s
+// styles the "# warning:" prefix only, never the message. The one
+// implementation behind every stderr warning mirror in the pipeline:
 // renderResult's Text, RawBytes, Raw, and envelope branches, and
 // renderEffect's text and envelope branches.
-func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int) {
+func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s style.Style) {
 	for _, warn := range warnings {
 		if silent[warn] > 0 {
 			silent[warn]--
 			continue
 		}
-		_, _ = fmt.Fprintf(w, "# warning: %s\n", warn)
+		_, _ = fmt.Fprintf(w, "%s %s\n", s.Yellow("# warning:"), warn)
 	}
 }
 
@@ -535,6 +565,7 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int) {
 // caller writing into a discardable buffer (finishOnceOnlyResult) needs to
 // act on it.
 func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error) {
+	outStyle, errStyle := stylesFor(streams)
 	notices := drainNotices(streams)
 	res.Warnings = append(append([]string{}, notices...), res.Warnings...)
 
@@ -565,7 +596,11 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		}
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
-		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
+		text := res.Text
+		if d.Delivery == DeliveryOnceOnly {
+			text = boldShownOnceLine(text, outStyle)
+		}
+		if _, err := streams.Out.Write([]byte(text)); err != nil {
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 		// Mirror every Warnings entry to stderr except the ones Text
@@ -577,7 +612,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		for _, w := range res.TextOnlyWarnings {
 			silent[w]++
 		}
-		mirrorWarnings(streams.Err, res.Warnings, silent)
+		mirrorWarnings(streams.Err, res.Warnings, silent, errStyle)
 		return nil, nil
 	}
 	if res.RawBytes != nil {
@@ -588,7 +623,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		// completion): stderr is the only delivery path Warnings has, so it
 		// mirrors unconditionally rather than only for the non-json/yaml
 		// formats the envelope branch below gates on.
-		mirrorWarnings(streams.Err, res.Warnings, nil)
+		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
 		return nil, nil
 	}
 	// Raw results (exec-credential) bypass the envelope: kubectl parses a single
@@ -600,7 +635,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		}
 		// Same rationale as RawBytes above: kubectl surfaces exec-credential
 		// stderr, and no envelope exists here under any format.
-		mirrorWarnings(streams.Err, res.Warnings, nil)
+		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
 		return nil, nil
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
@@ -614,7 +649,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 	}
-	if err := output.Render(streams.Out, streams.Format, env); err != nil {
+	if err := output.RenderStyled(streams.Out, streams.Format, env, outStyle); err != nil {
 		return notices, clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
@@ -626,7 +661,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// expansion — no envelope). json/yaml carry warnings inside the envelope;
 	// mirroring there would double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		mirrorWarnings(streams.Err, res.Warnings, nil)
+		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
 		return nil, nil
 	}
 	// json/yaml: the notices are embedded only in the envelope bytes just
@@ -642,6 +677,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 // envelope unchanged, as do the raw formats (name/template), which read the
 // envelope's target field.
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
+	_, errStyle := stylesFor(streams)
 	// A dry-run Plan can still touch a lazily-resolving credential store
 	// (reading the current server's CA, say); drain ahead of eff.Warnings
 	// so that notice is not silently stranded in the source until whatever
@@ -655,7 +691,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 		// — mirror them to stderr here so they are not silently dropped,
 		// the same contract renderResult's Text branch applies to
 		// Result.Warnings.
-		mirrorWarnings(streams.Err, eff.Warnings, nil)
+		mirrorWarnings(streams.Err, eff.Warnings, nil, errStyle)
 		return nil
 	}
 	env := output.NewEnvelope("Effect", eff)
@@ -669,7 +705,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// convention renderResult uses for those formats; json/yaml carry warnings
 	// inside the envelope and must not double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		mirrorWarnings(streams.Err, env.Warnings, nil)
+		mirrorWarnings(streams.Err, env.Warnings, nil, errStyle)
 	}
 	return nil
 }
@@ -706,7 +742,8 @@ func dryRunText(eff safety.Effect) string {
 // path) leads ce's own error-carried warnings — RenderError's notices
 // parameter is documented as recorded-earliest-first for exactly this call.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
-	_ = RenderError(streams.Err, streams.Format, ce, drainNotices(streams)...)
+	_, errStyle := stylesFor(streams)
+	_ = RenderErrorStyled(streams.Err, streams.Format, ce, errStyle, drainNotices(streams)...)
 	return ce
 }
 
@@ -715,10 +752,10 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // as YAML, not JSON dressed up as one — and a short operator-facing text block
 // for every other format, including an unrecognized one (an untrusted format
 // value renders as text rather than being guessed at as an envelope). Shared
-// by the pipeline's own error rendering and every pre-pipeline failure in
-// surface/cli that must format an error before a command has resolved its own
-// parsed --output value (those callers pass no notices — nothing has resolved
-// a credential store yet at that point).
+// by every pre-pipeline failure in surface/cli that must format an error
+// before a command has resolved its own parsed --output value (those callers
+// pass no notices — nothing has resolved a credential store yet at that
+// point) or its own --color/TTY state, so this path never carries styling.
 //
 // notices and ce's own warning ride (WithWarnings) are merged in one fixed
 // order — notices first (recorded earliest, e.g. a NoticeSource drained
@@ -728,17 +765,30 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // otherwise. Never inside the error payload itself, so a warning cannot
 // print twice.
 func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string) error {
+	return RenderErrorStyled(w, format, ce, style.Style{}, notices...)
+}
+
+// RenderErrorStyled is RenderError with presentation control: s styles the
+// "error (CODE):" prefix red and the "hint:"/"# warning:" prefixes cyan and
+// yellow respectively, applied only when format is among the styleable set
+// (table/default/wide) — json, yaml, name, and template render byte-identical
+// to RenderError regardless of s, the same eligibility rule RenderStyled
+// enforces for the table renderer.
+func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) error {
 	warnings := append(append([]string{}, notices...), ce.Warnings()...)
 	if envelopeCarriesWarnings(format) {
 		env := output.ErrorEnvelope(ce)
 		env.Warnings = warnings
 		return output.Render(w, format, env)
 	}
+	if !textRenderFormat(format) {
+		s = style.Style{}
+	}
 	var b strings.Builder
 	for _, warn := range warnings {
-		fmt.Fprintf(&b, "# warning: %s\n", warn)
+		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), warn)
 	}
-	b.WriteString(errorText(ce))
+	b.WriteString(errorText(ce, s))
 	_, err := w.Write([]byte(b.String()))
 	return err
 }
@@ -747,17 +797,19 @@ func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string
 // naming the code (and "retryable" when the error is retryable), an indented
 // hint line when present, an indented candidates line — each candidate
 // rendered "name (id)" — when present, and finally the details payload's own
-// projected lines (detailsTextLines) when one is attached.
-func errorText(ce *clierr.Error) string {
+// projected lines (detailsTextLines) when one is attached. s styles the
+// "error (CODE):" and "hint:" prefixes only, never the message/hint body.
+func errorText(ce *clierr.Error, s style.Style) string {
 	retry := ""
 	if ce.Retryable {
 		retry = ", retryable"
 	}
-	header := fmt.Sprintf("error (%s%s): %s", ce.Code, retry, ce.Message)
+	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
+	header := s.Red(prefix) + " " + ce.Message
 
 	var lines []string
 	if ce.Hint != "" {
-		lines = append(lines, "hint: "+ce.Hint)
+		lines = append(lines, s.Cyan("hint:")+" "+ce.Hint)
 	}
 	if len(ce.Candidates) > 0 {
 		names := make([]string, len(ce.Candidates))

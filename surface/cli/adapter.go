@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -29,6 +30,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
+		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
 		&ucli.StringFlag{Name: "project", Usage: "scope operations to project namespaces (downstream namespaced resources only)"},
 		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way)"},
 	}
@@ -123,15 +125,29 @@ func buildIO(c *ucli.Command) runtime.IO {
 		Err:             r.ErrWriter,
 		In:              in,
 		Format:          c.String("output"),
+		Color:           c.String("color"),
 		DryRun:          c.Bool("dry-run"),
 		Apply:           c.Bool("apply"),
 		Yes:             c.Bool("yes"),
 		AllowDeprecated: c.Bool("allow-deprecated"),
 		NoInput:         c.Bool("no-input"),
 		IsTTY:           isTTY,
+		OutTTY:          fileIsTTY(r.Writer),
+		ErrTTY:          fileIsTTY(r.ErrWriter),
 		ReadOnly:        readOnly,
 		ReadOnlySources: readOnlySources,
 	}
+}
+
+// fileIsTTY reports whether w is a terminal file descriptor — false for any
+// writer that is not an *os.File (a buffer, a pipe destination that is not
+// itself the terminal).
+func fileIsTTY(w io.Writer) bool {
+	fp, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(fp.Fd()))
 }
 
 // resolveReadOnly OR's the three read-only sources into one bool plus active

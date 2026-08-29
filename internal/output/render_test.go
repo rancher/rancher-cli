@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -342,4 +343,56 @@ func TestRenderTableAndNameNeverMarshal(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "unsupported output format",
 		"format error precedes any marshal")
+}
+
+// TestRenderStyledBoldsHeaderRowOnly pins the styling scope: the rendered
+// header LINE carries the bold wrap; no row's bytes do.
+func TestRenderStyledBoldsHeaderRowOnly(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("ServerList", namedRows{rows: [][]string{{"acme", "https://a"}, {"beta", "https://b"}}})
+	var buf bytes.Buffer
+	require.NoError(t, RenderStyled(&buf, "table", env, style.Style{Enabled: true}))
+	out := buf.String()
+	lines := strings.SplitN(out, "\n", 2)
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], "\x1b[1m", "header line must carry the bold escape")
+	assert.Contains(t, lines[0], "\x1b[0m", "header line must carry a reset")
+	assert.NotContains(t, lines[1], "\x1b[", "row bytes must never carry an escape code")
+}
+
+// TestRenderStyledStripInvariant pins the content-invariant for every
+// styled/eligible-format combination: strip(styled) == plain byte-for-byte.
+func TestRenderStyledStripInvariant(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("ServerList", namedRows{rows: [][]string{{"acme", "https://a"}, {"beta", "https://b"}}})
+	for _, format := range []string{"", "table", "wide"} {
+		t.Run("format="+format, func(t *testing.T) {
+			t.Parallel()
+			var plain, styled bytes.Buffer
+			require.NoError(t, RenderStyled(&plain, format, env, style.Style{}))
+			require.NoError(t, RenderStyled(&styled, format, env, style.Style{Enabled: true}))
+			assert.NotEqual(t, plain.String(), styled.String(), "styled render must differ from plain")
+			assert.Equal(t, plain.String(), style.Strip(styled.String()))
+		})
+	}
+}
+
+// TestRenderStyledNeverStylesIneligibleFormats pins the eligibility rule: a
+// caller passing Enabled: true still gets byte-plain output for json, yaml,
+// name, and template — no flag or environment value can ever reach these
+// formats, since the eligibility gate is structural, not caller-supplied.
+func TestRenderStyledNeverStylesIneligibleFormats(t *testing.T) {
+	t.Parallel()
+	env := NewEnvelope("ServerList", namedRows{rows: [][]string{{"acme", "https://a"}}})
+	forced := style.Style{Enabled: true}
+	for _, format := range []string{"json", "yaml", "name", "template={{.}}"} {
+		t.Run("format="+format, func(t *testing.T) {
+			t.Parallel()
+			var plain, maybeStyled bytes.Buffer
+			require.NoError(t, Render(&plain, format, env))
+			require.NoError(t, RenderStyled(&maybeStyled, format, env, forced))
+			assert.Equal(t, plain.String(), maybeStyled.String())
+			assert.NotContains(t, maybeStyled.String(), "\x1b[", "ineligible format must never carry an escape code")
+		})
+	}
 }

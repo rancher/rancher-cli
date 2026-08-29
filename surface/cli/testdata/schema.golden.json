@@ -8973,6 +8973,21 @@
       "name": "RANCHER_CLI_READONLY"
     },
     {
+      "desc": "when non-empty, turn off styling under --color=auto",
+      "flag": "--color",
+      "name": "NO_COLOR"
+    },
+    {
+      "desc": "when set to a value other than \"0\", turn on styling under --color=auto",
+      "flag": "--color",
+      "name": "CLICOLOR_FORCE"
+    },
+    {
+      "desc": "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins",
+      "flag": "--color",
+      "name": "FORCE_COLOR"
+    },
+    {
       "desc": "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking",
       "name": "RANCHER_CLI_CONFIG_NO_LOCK"
     },
@@ -9079,6 +9094,22 @@
         "name"
       ],
       "name": "-o/--output",
+      "type": "enum"
+    },
+    {
+      "appliesTo": "all",
+      "desc": "when table/default/wide text is styled: auto (default) styles only a real terminal, always/never override detection; NO_COLOR turns styling off, CLICOLOR_FORCE/FORCE_COLOR turn it on, under auto",
+      "enum": [
+        "auto",
+        "always",
+        "never"
+      ],
+      "env": [
+        "NO_COLOR",
+        "CLICOLOR_FORCE",
+        "FORCE_COLOR"
+      ],
+      "name": "--color",
       "type": "enum"
     },
     {

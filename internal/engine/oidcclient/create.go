@@ -226,7 +226,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 
 	text := runtime.MutationText("oidcclient", name, "created",
 		"client id: "+clientID,
-		"client secret: "+plaintext+"   (shown once — store it now)",
+		"client secret: "+plaintext+runtime.ShownOnceSuffix,
 		"secret name: "+secretName,
 		"issuer: "+issuer,
 	)

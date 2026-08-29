@@ -73,6 +73,30 @@ func TestEnumCandidatesGlobalOutputEqualsForm(t *testing.T) {
 	})
 }
 
+func TestEnumCandidatesGlobalColorSpaceForm(t *testing.T) {
+	t.Parallel()
+	want := []string{"always", "auto", "never"}
+	d := runtime.Descriptor{}
+
+	for _, spelling := range []string{"--color"} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			site := CompletionSite{Kind: SiteFlagValue, FlagName: "color", FlagSpelling: spelling, EqualsForm: false}
+			got := enumCandidates(site, d)
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestEnumCandidatesGlobalColorEqualsForm(t *testing.T) {
+	t.Parallel()
+	d := runtime.Descriptor{}
+
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "color", FlagSpelling: "--color", EqualsForm: true}
+	got := enumCandidates(site, d)
+	assert.Equal(t, []string{"--color=always", "--color=auto", "--color=never"}, got)
+}
+
 func TestStripRoutingPrefix(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

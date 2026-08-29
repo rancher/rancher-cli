@@ -331,6 +331,7 @@ var globalArgSpecs = []runtime.ArgSpec{
 	{Name: "allow-deprecated", Type: "bool"},
 	{Name: "no-input", Type: "bool"},
 	{Name: "output", Type: "enum", Enum: runtime.OutputFormatCompletions, Aliases: []string{"o"}},
+	{Name: "color", Type: "enum", Enum: runtime.ColorModes},
 	{Name: "project", Type: "string"},
 	{Name: "read-only", Type: "bool"},
 	{Name: "debug", Type: "bool"},

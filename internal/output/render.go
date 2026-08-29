@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"text/template"
 
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"sigs.k8s.io/yaml"
 )
 
@@ -45,17 +46,28 @@ func renderSource(env *Envelope) (any, error) {
 	return tree, nil
 }
 
-// Render writes env to w in the requested format.
+// Render writes env to w in the requested format, with no ANSI styling.
 // format: "" or "table" (user-facing), "wide" (table plus any Wide-marked
 // columns), "json", "yaml", "name" (ids), or "template=<go-template>".
 // Anything else is an error; the pipeline validates the format before the
 // command runs, so hitting it here is defense in depth.
 func Render(w io.Writer, format string, env *Envelope) error {
+	return RenderStyled(w, format, env, style.Style{})
+}
+
+// RenderStyled is Render with presentation control: under "table" or the ""
+// default, s bolds the rendered header row — applied to the header LINE
+// after tabwriter has already column-aligned it, never to a column's own
+// bytes, which would inflate the byte-counted widths tabwriter measures.
+// "wide" gets the same treatment; every other format ignores s and renders
+// byte-identical to Render, regardless of s.Enabled — json, yaml, name, and
+// template stay plain no matter what the caller passes.
+func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) error {
 	switch format {
 	case "", "table":
-		return renderTable(w, env)
+		return renderTable(w, env, s)
 	case "wide":
-		return renderWide(w, env)
+		return renderWide(w, env, s)
 	case "json":
 		src, err := renderSource(env)
 		if err != nil {
@@ -139,30 +151,51 @@ func encodeJSON(w io.Writer, v any) error {
 // requires Data to implement Tabular — there is no pretty-JSON fallback. A
 // non-Tabular Data value here is a command bug: the command's declared
 // OutputShape promised Tabular and its Data does not honor that.
-func renderTable(w io.Writer, env *Envelope) error {
+func renderTable(w io.Writer, env *Envelope, s style.Style) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
 		return fmt.Errorf("table format requires Data to implement output.Tabular; got %T", env.Data)
 	}
-	return writeTable(w, t.Columns(), t.Rows())
+	return writeTable(w, t.Columns(), t.Rows(), s)
 }
 
 // renderWide is -o wide: it prefers WideTabular's superset columns/rows and
 // falls back to plain Tabular (byte-identical to -o table) for every payload
 // that carries no wide-only columns — presentation, not a scope change. Like
 // renderTable, there is no pretty-JSON fallback for non-Tabular Data.
-func renderWide(w io.Writer, env *Envelope) error {
+func renderWide(w io.Writer, env *Envelope, s style.Style) error {
 	if wt, ok := env.Data.(WideTabular); ok {
-		return writeTable(w, wt.WideColumns(), wt.WideRows())
+		return writeTable(w, wt.WideColumns(), wt.WideRows(), s)
 	}
 	t, ok := env.Data.(Tabular)
 	if !ok {
 		return fmt.Errorf("wide format requires Data to implement output.Tabular; got %T", env.Data)
 	}
-	return writeTable(w, t.Columns(), t.Rows())
+	return writeTable(w, t.Columns(), t.Rows(), s)
 }
 
-func writeTable(w io.Writer, cols []string, rows [][]string) error {
+func writeTable(w io.Writer, cols []string, rows [][]string, s style.Style) error {
+	if !s.Enabled {
+		return writePlainTable(w, cols, rows)
+	}
+	// Render the whole table through tabwriter first, then bold the header
+	// LINE in the already-aligned output — bolding a column's own bytes
+	// before tabwriter measures it would inflate that column's width.
+	var buf bytes.Buffer
+	if err := writePlainTable(&buf, cols, rows); err != nil {
+		return err
+	}
+	text := buf.String()
+	header, rest, found := strings.Cut(text, "\n")
+	if !found {
+		_, err := w.Write([]byte(text))
+		return err
+	}
+	_, err := fmt.Fprintf(w, "%s\n%s", s.Bold(header), rest)
+	return err
+}
+
+func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	for i, c := range cols {
 		if i > 0 {

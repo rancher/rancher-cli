@@ -151,7 +151,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": newValue},
 		Text: runtime.MutationText("oidcclient", clientName, "patched",
 			"secret "+secretName+" rotated",
-			"client secret: "+newValue+"   (shown once — store it now)",
+			"client secret: "+newValue+runtime.ShownOnceSuffix,
 		),
 		// The shown-once note is delivered inline in Text (above);
 		// TextOnlyWarnings names it by value so renderResult keeps it out

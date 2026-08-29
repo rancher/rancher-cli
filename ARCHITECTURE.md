@@ -66,6 +66,7 @@ what drifted the previous revision of this doc).
 | `internal/client/httpx` | Constructs a hardened `*http.Client` (TLS floor / CA / insecure, proxy, timeouts) used by `internal/token`'s auth-provider HTTP flows, by `internal/client/provider`'s unauthenticated `/rancherversion` probe, and by `surface/cli`'s GET-only `engine.RootClient` (Steve `/v1` and channel-server reads). |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, and picks the candidate trust anchor from the chain the failed handshake itself already observed — no separate probe dial. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). |
+| `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
@@ -107,6 +108,7 @@ graph TD
     httpx["internal/client/httpx"]
     tlstrust["internal/client/tlstrust"]
     output["internal/output"]
+    outputstyle["internal/output/style"]
     clierr["internal/clierr"]
     ui["internal/ui"]
     skillinstall["internal/skillinstall"]
@@ -163,6 +165,7 @@ graph TD
 
     runtime --> safety
     runtime --> output
+    runtime --> outputstyle
     runtime --> ui
     runtime --> clierr
 
@@ -265,6 +268,7 @@ graph TD
     fakehelper --> config
 
     output --> clierr
+    output --> outputstyle
 
     testrancher --> token
 

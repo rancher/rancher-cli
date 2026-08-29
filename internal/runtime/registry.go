@@ -29,6 +29,12 @@ type GlobalFlag struct {
 // identically to "table" (kubectl's own -o wide contract).
 var OutputFormats = []string{"table", "wide", "json", "yaml", "name"}
 
+// ColorModes is the canonical set of --color literal values: the schema
+// enum, globalArgSpecs' completion enum, and Run's validation all key off
+// this one slice. "" (the flag omitted) is accepted as a spelling of
+// "auto" but is not itself a completion candidate.
+var ColorModes = []string{"auto", "always", "never"}
+
 // OutputPolicy restricts which -o/--output formats a command accepts. The
 // zero value (empty AllowedFormats) accepts every OutputFormats literal
 // plus template=<src> — today's behavior for every command that does not
@@ -89,6 +95,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-stability write"},
 		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
 		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data"},
+		{Name: "--color", Type: "enum", Enum: ColorModes, AppliesTo: "all", Desc: "when table/default/wide text is styled: auto (default) styles only a real terminal, always/never override detection; NO_COLOR turns styling off, CLICOLOR_FORCE/FORCE_COLOR turn it on, under auto", Env: []string{"NO_COLOR", "CLICOLOR_FORCE", "FORCE_COLOR"}},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
 		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply"},
@@ -117,6 +124,9 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
 		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Desc: "credential store backend: auto, keychain, or file"},
 		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse commands that make changes"},
+		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
+		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
+		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},
 		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking"},
 		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},

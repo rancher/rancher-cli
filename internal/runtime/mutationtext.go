@@ -27,3 +27,10 @@ func TextLines(first string, lines ...string) string {
 func MutationText(kind, name, verb string, lines ...string) string {
 	return TextLines(fmt.Sprintf("%s/%s %s", kind, name, verb), lines...)
 }
+
+// ShownOnceSuffix marks the line within a DeliveryOnceOnly command's Text
+// body that carries the one value a caller can never retrieve again (a
+// bearer token, a client secret). Every once-only command appends it to
+// that line, and only that line, so the render path can find and emphasize
+// it without inspecting the value itself.
+const ShownOnceSuffix = "   (shown once — store it now)"

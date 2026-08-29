@@ -471,7 +471,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 	sort.Strings(specNames)
 
 	// Extract canonical names from root.Flags (live ucli flags built by BuildRoot).
-	// root.Flags = [debug, config] ++ GlobalFlags() — 11 total.
+	// root.Flags = [debug, config] ++ GlobalFlags() — 12 total.
 	root, err := surfacecli.BuildRoot("test")
 	require.NoError(t, err)
 	rootFlagNames := make([]string, 0)

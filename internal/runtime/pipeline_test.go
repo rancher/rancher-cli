@@ -1088,6 +1088,39 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 	}
 }
 
+// TestRunValidatesColor pins the --color contract: "" (omitted), "auto",
+// "always", and "never" are accepted; anything else is a structured
+// VALIDATION error, never a silent fall-through to auto.
+func TestRunValidatesColor(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{"", "auto", "always", "never"}
+	for _, color := range valid {
+		t.Run("valid color="+color, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d:   Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeTabular},
+				res: Result{Kind: "Thing", Data: fooTabularData{Foo: "bar"}},
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Color: color}, safety.Binding{})
+			require.Nil(t, ce)
+		})
+	}
+
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get thing", CommandType: ReadOnly},
+		res: Result{Kind: "Thing", Data: map[string]string{"foo": "bar"}},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Color: "rainbow"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, `--color="rainbow" is not one of auto|always|never`)
+	assert.Equal(t, "allowed: auto, always, never", ce.Hint)
+	assert.Empty(t, out.String(), "nothing may reach stdout for an invalid --color")
+}
+
 // TestRunInvalidOutputFormatRefusesMutatingBeforePlan proves the pre-execution
 // guarantee: a mutation must never execute and then fail at render, so an
 // invalid -o refuses the command before Plan is ever invoked (Plan sends real

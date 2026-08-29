@@ -106,7 +106,7 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		}
 		expiresAt, _, _ := unstructured.NestedString(created.Object, "status", "expiresAt")
 		shownOnce := "this token value is shown exactly once — store it now"
-		lines := []string{"bearer token: " + bearer + "   (shown once — store it now)"}
+		lines := []string{"bearer token: " + bearer + runtime.ShownOnceSuffix}
 		if expiresAt != "" {
 			lines = append(lines, "expires: "+expiresAt)
 		}
