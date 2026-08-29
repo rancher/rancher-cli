@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
@@ -239,6 +240,20 @@ type Result struct {
 	// Mutually exclusive with RawBytes; renderResult rejects a Result that
 	// sets both.
 	Text string
+	// StyledText, when set, renders Text through the invocation's active
+	// output Style instead of writing Text verbatim — the table-family
+	// render path (renderResult's Text branch) calls it with the resolved
+	// Style and writes its return value; every other format ignores it and
+	// renders Data as usual. StyledText(style.Style{}) must return Text
+	// unchanged, and style.Strip(StyledText(s)) must equal Text
+	// byte-for-byte for any s: styling may only add ANSI escapes around
+	// Text's own bytes, never change them. checkResultShape rejects a
+	// non-nil StyledText paired with an empty Text — the pairing is a
+	// command bug, not a valid combination. A func field is unmarshalable;
+	// tagged json:"-" so marshaling a Result directly (as some tests do,
+	// independent of the real envelope encoding, which only ever encodes
+	// Data) never errors on it.
+	StyledText func(style.Style) string `json:"-"`
 	// Summary, when non-empty, lands in the -o json/-o yaml envelope's summary
 	// field and, under format ""/table, prints as its own stdout line ahead of
 	// the rendered Data. One line, no trailing newline needed.

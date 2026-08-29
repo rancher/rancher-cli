@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1133,6 +1134,78 @@ func TestSchemaAllConflicts(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Contains(t, ce.Message, "--all")
 	}
+}
+
+// TestSchemaResultStyledTextWiring pins which schema views carry a
+// StyledText builder: the bare TOC, --all, the filtered TOC, the command
+// card, and the group card each set one whose active-style output strips
+// back to Text exactly; the kind card sets none.
+func TestSchemaResultStyledTextWiring(t *testing.T) {
+	t.Parallel()
+	active := style.Style{Enabled: true}
+
+	t.Run("bare TOC", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.NotEqual(t, res.Text, res.StyledText(active))
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("all manifest", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{flags: map[string]bool{"all": true}}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("filtered TOC", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{strs: map[string]string{"verb": "get"}}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("command card", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("command card carries its kind-collision footnote through styling", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"kubeconfig"}}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("group card", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res.StyledText)
+		assert.Equal(t, res.Text, style.Strip(res.StyledText(active)))
+	})
+
+	t.Run("kind card carries no StyledText", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"crt"}}, nil)
+		require.NoError(t, err)
+		assert.Nil(t, res.StyledText)
+	})
 }
 
 // TestSchemaPositionalCompletionShape pins SE-12's candidate shape: command

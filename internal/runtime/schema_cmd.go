@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output/style"
 )
 
 // schemaCmd emits the capability manifest. It is readOnly (produces no server
@@ -139,7 +140,9 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		case len(in.Args()) > 0:
 			return Result{}, allConflict("the selector")
 		}
-		return Result{Kind: "Schema", Data: newSchemaView(m), Text: renderTOCText(m, false)}, nil
+		text := renderTOCText(m, false)
+		return Result{Kind: "Schema", Data: newSchemaView(m), Text: text,
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m.Groups, s) }}, nil
 	}
 	if f.active() {
 		// SE-20: filters and --search span the whole surface; a positional
@@ -148,15 +151,18 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
 		}
 		fm := filterManifest(m, f)
-		return Result{Kind: "Schema", Data: newTOCView(fm, false),
-			Text: renderFilteredTOC(fm, f)}, nil
+		text := renderFilteredTOC(fm, f)
+		return Result{Kind: "Schema", Data: newTOCView(fm, false), Text: text,
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, fm.Groups, s) }}, nil
 	}
 	if len(in.Args()) == 0 {
 		if asKind {
 			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector").
 				WithHint("pass a kind name, e.g. `rancher schema kubeconfig --kind`")
 		}
-		return Result{Kind: "Schema", Data: newTOCView(m, true), Text: renderTOC(m)}, nil
+		text := renderTOC(m)
+		return Result{Kind: "Schema", Data: newTOCView(m, true), Text: text,
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m.Groups, s) }}, nil
 	}
 	want := strings.Join(in.Args(), " ")
 	// Resolution order (SE-5/SE-6): command match wins; a positional that
@@ -172,7 +178,10 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 					text += line
 					kindHint = hint
 				}
-				return Result{Kind: "Schema", Data: newCardView(m, c, kindHint), Text: text}, nil
+				return Result{Kind: "Schema", Data: newCardView(m, c, kindHint), Text: text,
+					StyledText: func(s style.Style) string {
+						return styleSchemaCommandCard(text, len(c.Flags) > 0, len(c.Examples) > 0, s)
+					}}, nil
 			}
 		}
 	}
@@ -193,7 +202,10 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 				text += line
 				gv.kindHint = hint
 			}
-			return Result{Kind: "Schema", Data: gv, Text: text}, nil
+			return Result{Kind: "Schema", Data: gv, Text: text,
+				StyledText: func(s style.Style) string {
+					return styleSchemaGroupCard(text, len(gv.bespoke) > 0 || gv.generatedCount > 0, s)
+				}}, nil
 		}
 	}
 	if k, ok := lookupKind(m.Kinds, want); ok {

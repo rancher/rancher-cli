@@ -515,6 +515,10 @@ func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("command bug: %s is not DeliveryOnceOnly but returned OnceOnlyNotice", d.Name))
 	}
+	if res.StyledText != nil && res.Text == "" {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s returned StyledText but no Text", d.Name))
+	}
 	switch d.Shape {
 	case ShapeTabular:
 		if _, ok := res.Data.(output.Tabular); !ok {
@@ -618,6 +622,15 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
 		text := res.Text
+		if res.StyledText != nil {
+			text = res.StyledText(outStyle)
+		}
+		// Composed, not either-or: a once-only command that also styles
+		// its text must not lose the shown-once emphasis. No double
+		// wrap either way: a builder that already styled that line left
+		// a trailing reset code, so the suffix is no longer terminal and
+		// the match declines; an unstyled line keeps the suffix and
+		// gains the bold here.
 		if d.Delivery == DeliveryOnceOnly {
 			text = boldShownOnceLine(text, outStyle)
 		}

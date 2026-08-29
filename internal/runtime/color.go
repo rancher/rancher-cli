@@ -53,25 +53,64 @@ func stylesFor(streams IO) (out, err style.Style) {
 	return out, err
 }
 
-// boldShownOnceLine wraps the line ending in ShownOnceSuffix — the
-// once-only credential value's own line — in bold, leaving every other
-// line and all whitespace untouched. A text with no matching line, or a
-// disabled Style, is returned unchanged.
-func boldShownOnceLine(text string, s style.Style) string {
-	if !s.Enabled {
+// styleLines is the one line-mapping scaffold behind every per-line styling
+// helper: it splits text into lines, hands each line's body (trailing
+// newline removed) to transform with its index, and re-attaches the newline
+// to a transformed result. Lines transform declines (ok=false) pass through
+// byte-identical, as does the whole text on a disabled Style — keeping the
+// newline re-attachment logic in exactly one place.
+func styleLines(text string, s style.Style, transform func(i int, body string) (string, bool)) string {
+	if !s.Enabled || text == "" {
 		return text
 	}
 	lines := strings.SplitAfter(text, "\n")
 	for i, line := range lines {
 		body, hadNewline := strings.CutSuffix(line, "\n")
-		if !strings.HasSuffix(body, ShownOnceSuffix) {
+		styled, ok := transform(i, body)
+		if !ok {
 			continue
 		}
-		styled := s.Bold(body)
 		if hadNewline {
 			styled += "\n"
 		}
 		lines[i] = styled
 	}
 	return strings.Join(lines, "")
+}
+
+// boldShownOnceLine wraps the line ending in ShownOnceSuffix — the
+// once-only credential value's own line — in bold, leaving every other
+// line and all whitespace untouched.
+func boldShownOnceLine(text string, s style.Style) string {
+	return styleLines(text, s, func(_ int, body string) (string, bool) {
+		if !strings.HasSuffix(body, ShownOnceSuffix) {
+			return "", false
+		}
+		return s.Bold(body), true
+	})
+}
+
+// boldFirstLine wraps text's first line in bold, leaving every other line
+// untouched.
+func boldFirstLine(text string, s style.Style) string {
+	return styleLines(text, s, func(i int, body string) (string, bool) {
+		if i != 0 {
+			return "", false
+		}
+		return s.Bold(body), true
+	})
+}
+
+// boldExactLines wraps, in bold, every line in text whose content exactly
+// matches an entry in names.
+func boldExactLines(text string, names map[string]bool, s style.Style) string {
+	if len(names) == 0 {
+		return text
+	}
+	return styleLines(text, s, func(_ int, body string) (string, bool) {
+		if !names[body] {
+			return "", false
+		}
+		return s.Bold(body), true
+	})
 }
