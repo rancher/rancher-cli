@@ -113,9 +113,11 @@ func TestInspectDeploymentPodListDeniedNullsPods(t *testing.T) {
 		{Section: sectionPods, State: stateUnavailable, Code: clierr.CodeRBAC},
 	}, data.Degraded)
 	require.Equal(t, []string{"pods unavailable: forbidden"}, res.Warnings)
+	// "pods: unavailable", never "pods: none": a degraded pod list must stay
+	// distinguishable from a selector that genuinely matched zero pods.
 	assert.Equal(t, "deployment/web (namespace ns1, cluster c-abc)\n"+
 		"  replicas: 0/0 ready\n"+
-		"  pods: none\n"+
+		"  pods: unavailable\n"+
 		"  degraded: pods unavailable (RBAC)\n", res.Text)
 
 	var payload struct {

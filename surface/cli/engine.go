@@ -417,7 +417,13 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			} else {
 				dir, store, err := resolveDeps(c)
 				if err != nil {
-					return exit(clierr.New(clierr.CodeGeneric, err.Error()))
+					// Render before exiting, like the Before hook above: a
+					// bare exit here would fail non-zero with an empty
+					// stderr. Flags have already parsed successfully, so
+					// the invocation's own --output value is trusted.
+					ce := clierr.New(clierr.CodeGeneric, err.Error())
+					_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
+					return exit(ce)
 				}
 				// The store is the drain handle for every notice recorded
 				// outside a Result (a lazy first-pin notice, a keychain

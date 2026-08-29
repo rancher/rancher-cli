@@ -2,16 +2,17 @@
 # template rendering run before/without any server call, so schema and
 # config path carry the whole scenario.
 
-# VALIDATION: the -o value set is closed — an unknown format is a structured
-# JSON envelope on stderr with a non-zero exit, before the command runs.
+# VALIDATION: the -o value set is closed — an unrecognized format renders as
+# the short operator-facing text block, not the envelope it failed to
+# resolve, before the command runs.
 ! exec rancher schema -o csv
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'template=<go-template>'
 
 # Bare "template" (without =) is not a format; the template form requires
 # template=<go-template>.
 ! exec rancher schema -o template
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # template=<go-template> renders the Go template over the JSON view of data:
 # config path's data carries {path, exists}, so {{.path}} prints the resolved

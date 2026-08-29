@@ -15,8 +15,8 @@ import (
 
 // stderrAllowlist names every production source file allowed to reference
 // os.Stderr directly. Every other pipeline-owned diagnostic goes through
-// runtime.IO.Err (wired to the invocation's real stderr) so renderErr and
-// renderResult stay the only two places that decide what an operator sees —
+// runtime.IO.Err (wired to the invocation's real stderr), so every drain
+// feeds exactly one render and decides what an operator sees from there —
 // a stray os.Stderr write bypasses that decision entirely, e.g. printing
 // under -o json when the machine contract promises stderr is the error
 // envelope or empty.

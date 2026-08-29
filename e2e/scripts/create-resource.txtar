@@ -12,17 +12,17 @@ jsonquery stdout data.metadata.name from-stdin
 
 # unknown kind is rejected offline, before any server object exists
 ! exec rancher create resource -f bogus.yaml
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'supported kinds:'
 
 # manifest/flag namespace conflict
 ! exec rancher create resource -f cm-conflict.yaml --cluster testcluster --namespace team-a
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # a Sensitive kind's create is destructive: --apply alone is refused
 ! exec rancher create resource -f grb.yaml --apply
-jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --yes'
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+stderr 'hint: re-run with: --yes'
 
 -- cm.yaml --
 apiVersion: v1

@@ -41,10 +41,10 @@ func TestAddServerTextCAPinnedNoPointerLine(t *testing.T) {
 	c := newAddServerCmd(dir)
 	// Seed an existing current server so this add's pointer bootstrap is a
 	// no-op (the pointer is already valid).
-	_, err := c.Execute(context.Background(), args{s: map[string]string{"url": "https://prod.example.com"}, a: []string{"prod"}}, nil)
+	_, err := c.Execute(t.Context(), args{s: map[string]string{"url": "https://prod.example.com"}, a: []string{"prod"}}, nil)
 	require.NoError(t, err)
 
-	res, err := c.Execute(context.Background(),
+	res, err := c.Execute(t.Context(),
 		args{s: map[string]string{"url": "https://qa1.example.com", "cacert": testCAPem1}, a: []string{"qa1"}}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "server qa1 added\n  url: https://qa1.example.com\n  ca: pinned\n", res.Text)

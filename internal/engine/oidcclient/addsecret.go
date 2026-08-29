@@ -122,20 +122,15 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 		return runtime.Result{}, committedPartialSuccess(err, "OIDCClient", clientName, secretName, getRecovery)
 	}
 
-	shownOnce := "this client secret is shown exactly once — store it now"
+	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
 	return runtime.Result{
 		Kind: "OIDCClientSecretAdded",
 		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": plaintext},
 		Text: runtime.MutationText("oidcclient", clientName, "patched",
 			"secret "+secretName+" added",
-			"client secret: "+plaintext+runtime.ShownOnceSuffix,
+			secretLine,
 		),
-		// The shown-once note is delivered inline in Text (above);
-		// TextOnlyWarnings names it by value so renderResult keeps it out
-		// of the table/wide stderr mirror while -o json/yaml still see it
-		// in the envelope's Warnings.
-		Warnings:         []string{shownOnce},
-		TextOnlyWarnings: []string{shownOnce},
+		OnceOnlyNotice: shownOnce,
 		CommittedContext: &runtime.CommittedContext{
 			ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
 		},

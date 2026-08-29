@@ -18,7 +18,7 @@ jsonquery stdout data.data.key new
 
 # exactly one of --patch/-f
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH -f cm.yaml
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 env SECRET_PATCH='[{"op":"replace","path":"/data/password","value":"bmV3"}]'
 
@@ -35,8 +35,8 @@ jsonquery secret-eff.json data.diff.0.to '<redacted>'
 
 # secret is now a Sensitive kind: patch --apply alone is refused
 ! exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply
-jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --yes'
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+stderr 'hint: re-run with: --yes'
 
 exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply --yes -o json
 

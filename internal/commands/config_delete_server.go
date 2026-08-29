@@ -104,7 +104,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		lines = append(lines, "credentials removed ("+strings.Join(deletedFrom, ", ")+")")
 	}
 	if len(deletedCache) > 0 {
-		lines = append(lines, fmt.Sprintf("%d cached kubectl credentials removed", len(deletedCache)))
+		lines = append(lines, cachedCredsRemovedLine(len(deletedCache)))
 	}
 	res.Text = runtime.TextLines("server "+name+" deleted", lines...)
 	return res, nil

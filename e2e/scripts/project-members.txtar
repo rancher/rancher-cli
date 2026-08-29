@@ -62,8 +62,8 @@ stdout 'c-test'
 
 # revoke is destructive: --apply alone is refused.
 ! exec rancher revoke alice --project members-proj --cluster testcluster --apply
-jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --yes'
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+stderr 'hint: re-run with: --yes'
 
 exec rancher revoke alice --project members-proj --cluster testcluster --apply --yes
 

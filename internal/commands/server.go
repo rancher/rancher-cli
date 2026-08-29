@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -120,4 +121,12 @@ func serverNotFoundWithCandidates(cfg *config.Config, name string) *clierr.Error
 	}
 	return clierr.New(clierr.CodeNotFound, "server not found: "+name).
 		WithCandidates(cands)
+}
+
+// cachedCredsRemovedLine renders the "<n> cached kubectl credentials
+// removed" summary line delete-server and update-server both print — the
+// two commands report the same DeleteTokenEverywhere output and must read
+// alike.
+func cachedCredsRemovedLine(n int) string {
+	return fmt.Sprintf("%d cached kubectl credentials removed", n)
 }

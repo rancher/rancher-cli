@@ -105,8 +105,8 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 				})
 		}
 		expiresAt, _, _ := unstructured.NestedString(created.Object, "status", "expiresAt")
-		shownOnce := "this token value is shown exactly once — store it now"
-		lines := []string{"bearer token: " + bearer + runtime.ShownOnceSuffix}
+		bearerLine, shownOnce := runtime.OnceOnlyLine("bearer token", bearer, "token value")
+		lines := []string{bearerLine}
 		if expiresAt != "" {
 			lines = append(lines, "expires: "+expiresAt)
 		}
@@ -117,15 +117,8 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 				"bearerToken": bearer,
 				"expiresAt":   expiresAt,
 			},
-			Text: runtime.MutationText("token", name, "created", lines...),
-			// The shown-once note is ALSO delivered inline in Text (above)
-			// on the default format; TextOnlyWarnings names it by value so
-			// renderResult skips mirroring it to stderr too under
-			// table/wide — one channel, no double-print. -o json/yaml
-			// serialize the full Warnings slice into the envelope either
-			// way.
-			Warnings:         []string{shownOnce},
-			TextOnlyWarnings: []string{shownOnce},
+			Text:             runtime.MutationText("token", name, "created", lines...),
+			OnceOnlyNotice:   shownOnce,
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Token", ResourceName: name, Recovery: recovery},
 		}, nil
 	}

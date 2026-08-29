@@ -28,13 +28,13 @@ jsonquery stdout data.spec.rkeConfig.machinePools.0.machineConfigRef.name mycfg
 
 # mode exclusivity and per-pool validation.
 ! exec rancher create cluster bad-1 --import --custom
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 ! exec rancher create cluster bad-2 --import --cloud-credential e2e-cred
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 ! exec rancher create cluster bad-3 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'at least one role'
 
 # Task 9 (spec D-6): guarded provisioning-cluster delete. The "local" guard
@@ -43,7 +43,7 @@ stderr 'at least one role'
 # NOT_FOUND. In production where "local" exists, inner.Plan succeeds and the
 # guard refuses with VALIDATION before execute.
 ! exec rancher delete provisioning-cluster local --apply --yes
-jsonquery stderr data.error.code NOT_FOUND
+stderr 'error \(NOT_FOUND\):'
 
 # dry-run previews the cascade warning without deleting imported-1 (this
 # script's own imported cluster, created above).

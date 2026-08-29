@@ -123,6 +123,12 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		var serr error
 		_, store, serr = config.LoadAndStore(dir)
 		if serr != nil {
+			// warn (the fast-path probe's loose-permission finding) must
+			// ride this error: the probe's global dedup already marked the
+			// path seen, so no later read can re-surface it.
+			if warn != "" {
+				return runtime.Result{}, clierr.Wrap(serr, serr.Error()).WithWarnings(warn)
+			}
 			return runtime.Result{}, serr
 		}
 	}
@@ -143,13 +149,33 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		ProbedNoticed:   noticed,
 		legacyShim:      true,
 	}, p)
-	// warn (the fast-path probe's loose-permission finding, if any) is
-	// independent of hit/miss: the probe already returned before this point,
-	// so it must ride whatever Result the slow path goes on to build.
-	if err == nil && warn != "" {
-		res.Warnings = append(res.Warnings, warn)
+	// The `token` entry is bare: no NoticeSource is ever wired onto
+	// IO.Notices for this command, so notices the store buffered during the
+	// credential work above (a first-run keychain-unavailable fallback, a
+	// loose-permission finding) have no pipeline drain. Drain them here, on
+	// success and failure alike, and ride them on the Result or error — a
+	// ShapeExecJSON result mirrors every warning to stderr as a
+	// "# warning:" line under every format, and kubectl surfaces an
+	// exec-credential plugin's stderr.
+	var notices []string
+	if ns, ok := store.(runtime.NoticeSource); ok {
+		notices = ns.DrainNotices()
 	}
-	return res, err
+	// warn (the fast-path probe's loose-permission finding, if any) is
+	// independent of hit/miss AND of success/failure: the probe's global
+	// dedup already marked the path seen, so this is the only carrier left.
+	// The probe ran before any store work — it delivers first.
+	if warn != "" {
+		notices = append([]string{warn}, notices...)
+	}
+	if err != nil {
+		if len(notices) > 0 {
+			return runtime.Result{}, clierr.Wrap(err, err.Error()).WithWarnings(notices...)
+		}
+		return runtime.Result{}, err
+	}
+	res.Warnings = append(notices, res.Warnings...)
+	return res, nil
 }
 
 // shimProbeFlagCache is the shim's fast-path cache probe: reads token-cache.yaml

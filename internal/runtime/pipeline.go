@@ -70,8 +70,9 @@ type IO struct {
 	// Result by this invocation's credential-store dependency (a first-pin
 	// notice, a keychain-degrade warning) — wired from the resolved store
 	// wherever one exists; nil for a command with no store dependency
-	// (schema, a bare local command). renderErr and renderResult are the
-	// only two drain points, each emptying it into that one render.
+	// (schema, a bare local command). renderResult, renderEffect, renderErr,
+	// and finishOnceOnlyResult each drain it exactly once, feeding the one
+	// render they own.
 	Notices NoticeSource
 }
 
@@ -209,8 +210,21 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	if err != nil {
 		return 0, renderErr(streams, toClierr(err))
 	}
+	res = prependOnceOnlyNotice(res)
 	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
 	return finishResult(streams, c.Describe(), res)
+}
+
+// prependOnceOnlyNotice prepends res.OnceOnlyNotice, when set, to
+// res.Warnings ahead of every other command-declared warning. Called before
+// a mutating command's Plan-time Effect.Warnings are merged in (runMutating),
+// so the final order stays Effect.Warnings, then the notice, then any other
+// Warnings the command itself declared.
+func prependOnceOnlyNotice(res Result) Result {
+	if res.OnceOnlyNotice != "" {
+		res.Warnings = append([]string{res.OnceOnlyNotice}, res.Warnings...)
+	}
+	return res
 }
 
 // checkPlan enforces the command-bug invariants on a Plan result: a non-nil
@@ -241,6 +255,7 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 	if err != nil {
 		return 0, renderErr(streams, toClierr(err))
 	}
+	res = prependOnceOnlyNotice(res)
 	return finishResult(streams, c.Describe(), res)
 }
 
@@ -496,6 +511,10 @@ func textRenderFormat(format string) bool {
 // command's Data-only rendering even though nothing about that rendering
 // is actually broken.
 func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
+	if res.OnceOnlyNotice != "" && d.Delivery != DeliveryOnceOnly {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s is not DeliveryOnceOnly but returned OnceOnlyNotice", d.Name))
+	}
 	switch d.Shape {
 	case ShapeTabular:
 		if _, ok := res.Data.(output.Tabular); !ok {
@@ -532,10 +551,12 @@ func envelopeCarriesWarnings(format string) bool {
 
 // mirrorWarnings writes each entry of warnings to w as a "# warning: <w>"
 // line, skipping an entry already counted in silent — a value-matched
-// multiset (not positional; see Result.TextOnlyWarnings' doc for why
-// position cannot be trusted), decremented per skip so a repeated value
-// mirrors past its silenced count. silent may be nil (no suppression). s
-// styles the "# warning:" prefix only, never the message. The one
+// multiset, not positional: Plan-time Effect.Warnings are prepended to a
+// Result's Warnings before rendering, so a suppressed entry (the
+// once-only advisory) is not reliably first. Decremented per skip so a
+// repeated value mirrors past its silenced count. silent may be nil (no
+// suppression). s styles the "# warning:" prefix only, never the
+// message. The one
 // implementation behind every stderr warning mirror in the pipeline:
 // renderResult's Text, RawBytes, Raw, and envelope branches, and
 // renderEffect's text and envelope branches.
@@ -603,14 +624,15 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		if _, err := streams.Out.Write([]byte(text)); err != nil {
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
-		// Mirror every Warnings entry to stderr except the ones Text
-		// already embeds verbatim (TextOnlyWarnings, matched by value —
-		// see that field's doc for why position cannot be trusted): one
-		// channel, no double-print for those; every other warning,
-		// including a mutation's Plan-time advisory, still reaches stderr.
+		// Mirror every Warnings entry to stderr except OnceOnlyNotice
+		// (matched by value — see that field's doc for why position
+		// cannot be trusted), whose content Text already embeds via
+		// ShownOnceSuffix: one channel, no double-print for that one;
+		// every other warning, including a mutation's Plan-time advisory,
+		// still reaches stderr.
 		silent := map[string]int{}
-		for _, w := range res.TextOnlyWarnings {
-			silent[w]++
+		if res.OnceOnlyNotice != "" {
+			silent[res.OnceOnlyNotice]++
 		}
 		mirrorWarnings(streams.Err, res.Warnings, silent, errStyle)
 		return nil, nil
@@ -743,7 +765,17 @@ func dryRunText(eff safety.Effect) string {
 // parameter is documented as recorded-earliest-first for exactly this call.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 	_, errStyle := stylesFor(streams)
-	_ = RenderErrorStyled(streams.Err, streams.Format, ce, errStyle, drainNotices(streams)...)
+	return renderErrDrained(streams, ce, errStyle, drainNotices(streams))
+}
+
+// renderErrDrained is renderErr for a caller that has already drained the
+// invocation's NoticeSource and computed its stderr style: notices are the
+// caller's drained entries (recorded-earliest-first), passed through
+// unchanged; the source is never touched again, and the styles are not
+// recomputed. finishOnceOnlyResult uses it after renderResult has already
+// drained; every other error path goes through renderErr.
+func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notices []string) *clierr.Error {
+	_ = RenderErrorStyled(streams.Err, streams.Format, ce, errStyle, notices...)
 	return ce
 }
 
@@ -887,10 +919,15 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 // recovery — never inviting a blind retry of a mutation that already
 // happened.
 func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
+	// Computed once for every error path below: the paths after the
+	// renderResult call must not go through renderErr, whose own drain would
+	// hit the already-emptied NoticeSource and whose styles are recomputed
+	// per call — the drained notices ride each error's warnings instead.
+	_, errStyle := stylesFor(streams)
 	if res.CommittedContext == nil {
-		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
+		return 0, renderErrDrained(streams, clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("command bug: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)).
-			WithWarnings(drainNotices(streams)...))
+			WithWarnings(drainNotices(streams)...), errStyle, nil)
 	}
 	buffered := streams
 	var buf bytes.Buffer
@@ -904,8 +941,8 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		// Nothing was written anywhere (checkResultShape and the
 		// exclusivity/Summary checks all return before any write): every
 		// drained notice is still unaccounted for.
-		return 0, renderErr(streams, committedContextError(res.CommittedContext, false, ce.Message).
-			WithWarnings(pending...))
+		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, false, ce.Message).
+			WithWarnings(pending...), errStyle, nil)
 	}
 	n, err := streams.Out.Write(buf.Bytes())
 	if err != nil {
@@ -915,8 +952,8 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		// branches) means nothing to add — those notices already reached
 		// the real stderr inside the renderResult call above, independent
 		// of this failing stdout write.
-		return 0, renderErr(streams, committedContextError(res.CommittedContext, n > 0, err.Error()).
-			WithWarnings(pending...))
+		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, n > 0, err.Error()).
+			WithWarnings(pending...), errStyle, nil)
 	}
 	return res.ExitStatus, nil
 }

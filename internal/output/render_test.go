@@ -396,3 +396,40 @@ func TestRenderStyledNeverStylesIneligibleFormats(t *testing.T) {
 		})
 	}
 }
+
+// countingWriter records how many Write calls reach it, so a test can tell
+// streamed output from a single whole-buffer copy.
+type countingWriter struct {
+	bytes.Buffer
+	writes int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.writes++
+	return c.Buffer.Write(p)
+}
+
+// TestWriteTableStyledStreamsMultiRowTable pins the styled table writer's
+// streaming contract: a multi-row table's rows flow to the destination
+// across multiple writes rather than as one whole-table copy, only the
+// header line carries the bold escapes, and strip(styled) still equals the
+// plain render byte-for-byte.
+func TestWriteTableStyledStreamsMultiRowTable(t *testing.T) {
+	t.Parallel()
+	cols := []string{"NAME", "URL"}
+	rows := [][]string{{"acme", "https://a"}, {"beta", "https://b"}, {"gamma", "https://c"}}
+
+	var plain bytes.Buffer
+	require.NoError(t, writeTable(&plain, cols, rows, style.Style{}))
+
+	dst := &countingWriter{}
+	require.NoError(t, writeTable(dst, cols, rows, style.Style{Enabled: true}))
+
+	out := dst.String()
+	assert.Equal(t, plain.String(), style.Strip(out))
+	lines := strings.SplitN(out, "\n", 2)
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], "\x1b[1m", "header line must carry the bold escape")
+	assert.NotContains(t, lines[1], "\x1b[", "row bytes must never carry an escape code")
+	assert.Greater(t, dst.writes, 1, "rows must stream through, not arrive as one buffered copy")
+}

@@ -89,8 +89,13 @@ func TestFormatIECBytes(t *testing.T) {
 		{1023, "1023 B"},
 		{1024, "1.0 KiB"},
 		{1536, "1.5 KiB"},
-		{1024 * 1024, "1.0 MiB"},
+		{1023 * 1024, "1023.0 KiB"},
+		// One byte under each unit boundary rounds to "1024.0" in the
+		// smaller unit at print time — it must roll into the larger unit.
+		{1<<20 - 1, "1.0 MiB"},
+		{1 << 20, "1.0 MiB"},
 		{3355443, "3.2 MiB"},
+		{1<<30 - 1, "1.0 GiB"},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, formatIECBytes(c.n))

@@ -154,7 +154,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	res.Warnings = append(res.Warnings, notices...)
 	if out.unchanged {
-		res.Text = "server " + out.name + " unchanged\n"
+		res.Text = runtime.TextLines("server " + out.name + " unchanged")
 		return res, nil
 	}
 	var lines []string
@@ -172,7 +172,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		lines = append(lines, fmt.Sprintf("credentials cleared — log in again: rancher auth login %s", shquote(out.name)))
 	}
 	if len(deletedCache) > 0 {
-		lines = append(lines, fmt.Sprintf("%d cached kubectl credentials removed", len(deletedCache)))
+		lines = append(lines, cachedCredsRemovedLine(len(deletedCache)))
 	}
 	if out.pointerRepaired {
 		lines = append(lines, "current server set to "+out.name)

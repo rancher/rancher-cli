@@ -18,11 +18,11 @@ jsonquery stdout data.0.metadata.name proj-member-cm
 # named get of the non-member's configmap under --project → VALIDATION, never
 # a silent no-op (PC-3).
 ! exec rancher get configmap proj-other-cm --cluster testcluster --namespace proj-ns-other --project web
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # a workspace-policy kind rejects --project outright.
 ! exec rancher get gitrepos --project web
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # membership commands: add a second namespace, see it join the membership
 # listing, then remove it again.

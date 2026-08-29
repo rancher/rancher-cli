@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -170,7 +171,7 @@ func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, befo
 		if err != nil {
 			return res, err
 		}
-		res.Text += "  " + contextLine + "\n"
+		res.Text = runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
 		return res, nil
 	}
 	return eff, wrapped, nil

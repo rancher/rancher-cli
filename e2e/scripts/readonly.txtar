@@ -7,7 +7,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # validateInput and Plan alike.
 env RANCHER_CLI_READONLY=false
 ! exec rancher create resource
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'read-only mode: create resource is a mutating command'
 stderr 'RANCHER_CLI_READONLY'
 

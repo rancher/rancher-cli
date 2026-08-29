@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -101,16 +102,24 @@ type deploymentResult struct {
 
 // renderDeploymentText builds `inspect deployment`'s default-format text
 // (sibling of inspect cluster/pod's own text renderers): the deployment
-// identity, the replica summary, one line per matched pod in list order (or
-// "pods: none" when the selector matched nothing), and one line per
+// identity, the replica summary, one line per matched pod in list order —
+// "pods: unavailable" when the pods section is degraded (the list could not
+// be read; "none" would be indistinguishable from a selector matching zero
+// pods), "pods: none" only for a genuine empty match — and one line per
 // degraded finding (the block is omitted entirely when there are none).
 func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []map[string]any, degraded []sectionOutcome) string {
 	ready, _, _ := unstructured.NestedInt64(dep, "status", "readyReplicas")
 	desired, _, _ := unstructured.NestedInt64(dep, "spec", "replicas")
 
+	podsUnavailable := slices.ContainsFunc(degraded, func(f sectionOutcome) bool {
+		return f.Section == sectionPods && f.State == stateUnavailable
+	})
+
 	var lines []string
 	lines = append(lines, fmt.Sprintf("replicas: %d/%d ready", ready, desired))
 	switch {
+	case podsUnavailable:
+		lines = append(lines, "pods: unavailable")
 	case len(pods) == 0:
 		lines = append(lines, "pods: none")
 	default:

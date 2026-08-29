@@ -2,6 +2,8 @@ package cli
 
 import (
 	"maps"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -116,6 +118,18 @@ func TestDryRunDisplayIdentityClosedWorldConformance(t *testing.T) {
 				"add it to dryRunDisplayIdentityGenericCommands (built purely from the shared generic "+
 				"planners) or dryRunBespokeEffectCommands (naming the test that verifies its "+
 				"DisplayKind/DisplayName) before it ships", d.Name)
+
+		// The generated "patch <kind>"/"delete <kind>" families register
+		// their command Name as the literal prefix plus the kind row's own
+		// Name field (patch.go, delete.go) — the exact value they pass as
+		// DisplayKind. A non-empty suffix here is therefore real evidence
+		// that DisplayKind is non-empty for every one of these commands,
+		// not a restatement of the classification above.
+		for _, prefix := range dryRunGenericFamilyPrefixes {
+			if kindName, ok := strings.CutPrefix(d.Name, prefix); ok {
+				assert.NotEmpty(t, kindName, "command %q must carry a non-empty kind name after %q — its DisplayKind would be empty", d.Name, prefix)
+			}
+		}
 	}
 
 	for name := range dryRunDisplayIdentityGenericCommands {
@@ -128,41 +142,101 @@ func TestDryRunDisplayIdentityClosedWorldConformance(t *testing.T) {
 
 // TestDryRunDisplayIdentityClosedWorldConformanceCatchesAnUnclassifiedCommand
 // proves the forward direction actually fails when a mutating command is
-// absent from BOTH reviewed inventories — the exact shape a future bespoke
-// command (built like grant/revoke, hand-touching Effect identity fields)
-// would take if it shipped without review.
+// absent from BOTH reviewed inventories: it trims "revoke" — a real
+// registered command — out of a copy of the actual bespoke inventory,
+// installs that copy in place of the package var, and runs the real
+// classifyDryRunDisplayIdentity/registry walk that
+// TestDryRunDisplayIdentityClosedWorldConformance itself relies on. This
+// must not run in parallel with tests that read the package-level
+// inventories.
 func TestDryRunDisplayIdentityClosedWorldConformanceCatchesAnUnclassifiedCommand(t *testing.T) {
-	t.Parallel()
-	trimmedBespoke := map[string]string{}
-	maps.Copy(trimmedBespoke, dryRunBespokeEffectCommands)
-	delete(trimmedBespoke, "revoke")
+	wr, err := buildWiredRegistry("v-test", nil)
+	require.NoError(t, err)
 
-	generic, bespoke := dryRunDisplayIdentityGenericCommands["revoke"], false
-	if _, ok := trimmedBespoke["revoke"]; ok {
-		bespoke = true
+	original := dryRunBespokeEffectCommands
+	trimmed := map[string]string{}
+	maps.Copy(trimmed, original)
+	delete(trimmed, "revoke")
+	dryRunBespokeEffectCommands = trimmed
+	t.Cleanup(func() { dryRunBespokeEffectCommands = original })
+
+	var unclassified bool
+	for _, c := range wr.reg.Commands() {
+		d := c.Describe()
+		if d.CommandType != runtime.Mutating || d.Name != "revoke" {
+			continue
+		}
+		generic, bespoke := classifyDryRunDisplayIdentity(d.Name)
+		unclassified = !generic && !bespoke
 	}
-	assert.False(t, generic || bespoke, "removing a bespoke inventory entry must make the command unclassified")
+	assert.True(t, unclassified, "removing a bespoke inventory entry must leave the real classifier unable to classify that command")
 }
 
 // TestDryRunDisplayIdentityClosedWorldConformanceCatchesAStaleEntry proves
-// the reverse direction: an inventory entry naming a command the registry
-// no longer has must be detectable.
+// the reverse direction: it adds a fabricated entry naming a command the
+// registry does not have to a copy of the real bespoke inventory, installs
+// it in place of the package var, and runs the same seen-membership check
+// TestDryRunDisplayIdentityClosedWorldConformance's second loop performs
+// against the real registry. This must not run in parallel with tests that
+// read the package-level inventories.
 func TestDryRunDisplayIdentityClosedWorldConformanceCatchesAStaleEntry(t *testing.T) {
-	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
+
+	original := dryRunBespokeEffectCommands
+	withStale := map[string]string{}
+	maps.Copy(withStale, original)
+	withStale["grant (renamed)"] = "stale entry for the reverse-direction proof"
+	dryRunBespokeEffectCommands = withStale
+	t.Cleanup(func() { dryRunBespokeEffectCommands = original })
 
 	seen := map[string]bool{}
 	for _, c := range wr.reg.Commands() {
 		seen[c.Describe().Name] = true
 	}
 
-	stale := map[string]string{"grant (renamed)": "nonexistent"}
 	var found bool
-	for name := range stale {
+	for name := range dryRunBespokeEffectCommands {
 		if !seen[name] {
 			found = true
 		}
 	}
 	assert.True(t, found, "a stale inventory entry naming an unregistered command must be detectable")
+}
+
+// bespokeTestReferencePattern extracts a dryRunBespokeEffectCommands value's
+// file path (everything before the first ": ") and the Test function names
+// it cites, so TestDryRunBespokeEffectCommandsCiteRealTests can check both
+// still exist. It intentionally does not try to parse the free-form prose
+// between names.
+var (
+	bespokeTestReferenceFile = regexp.MustCompile(`^([^:]+\.go):`)
+	bespokeTestReferenceFunc = regexp.MustCompile(`\bTest[A-Za-z0-9_]+\b`)
+)
+
+// TestDryRunBespokeEffectCommandsCiteRealTests keeps
+// dryRunBespokeEffectCommands' doc-string test references from rotting: each
+// value names a file and one or more Test functions that are supposed to
+// assert the command's DisplayKind/DisplayName end to end. Renaming or
+// deleting one of those functions would otherwise silently stop proving the
+// claim this file's own review process depends on.
+func TestDryRunBespokeEffectCommandsCiteRealTests(t *testing.T) {
+	t.Parallel()
+	for command, ref := range dryRunBespokeEffectCommands {
+		fileMatch := bespokeTestReferenceFile.FindStringSubmatch(ref)
+		if !assert.NotNil(t, fileMatch, "dryRunBespokeEffectCommands[%q] must start with \"<path>.go: \"", command) {
+			continue
+		}
+		path := docPath(t, fileMatch[1])
+		src, err := os.ReadFile(path)
+		require.NoErrorf(t, err, "dryRunBespokeEffectCommands[%q] cites %s, which does not exist", command, fileMatch[1])
+		names := bespokeTestReferenceFunc.FindAllString(ref, -1)
+		if !assert.NotEmpty(t, names, "dryRunBespokeEffectCommands[%q] names no Test function", command) {
+			continue
+		}
+		for _, name := range names {
+			assert.Regexp(t, regexp.MustCompile(`func `+name+`\(`), string(src),
+				"dryRunBespokeEffectCommands[%q] cites %s's %s, which no longer exists there", command, fileMatch[1], name)
+		}
+	}
 }

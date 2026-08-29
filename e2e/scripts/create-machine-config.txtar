@@ -3,7 +3,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # bare mutation → CONFIRMATION_REQUIRED (no --yes: non-destructive).
 ! exec rancher create machine-config digitaloceanconfig web-pool --region nyc3
-jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+stderr 'error \(CONFIRMATION_REQUIRED\):'
 
 # dry-run: the diff-less create Effect.
 exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --set backups=true --dry-run -o json
@@ -38,18 +38,18 @@ jsonquery stdout data.spec ''
 
 # validation gates: credential field, curated flag on a foreign kind.
 ! exec rancher create machine-config digitaloceanconfig bad --set accessToken=tok --dry-run
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 ! exec rancher create machine-config azureconfig bad --region nyc3 --dry-run
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # kind enum is enforced by the runtime layer.
 ! exec rancher create machine-config pod bad --dry-run
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # name collision → the structured CONFLICT from the engine error mapping.
 ! exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --apply
-jsonquery stderr data.error.code CONFLICT
+stderr 'error \(CONFLICT\):'
 
 # an uncurated kind via --set, root-level.
 exec rancher create machine-config amazonec2config aws-pool --set region=us-east-1 --set instanceType=t3a.medium --apply

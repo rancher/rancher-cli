@@ -6,7 +6,7 @@ stdout 'generate-shell-completion'
 stdout 'urfave/cli'
 
 ! exec rancher completion nope-shell
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # Callback driving: --generate-shell-completion must be LAST (checkShellCompleteFlag
 # looks only at the final argument). Default urfave suggestions and our

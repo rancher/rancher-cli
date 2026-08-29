@@ -284,12 +284,12 @@ func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 	assert.Equal(t, "OIDCClient", res.CommittedContext.ResourceKind)
 	assert.Equal(t, "my-app", res.CommittedContext.ResourceName)
 	assert.Equal(t, "client-secret-1", res.CommittedContext.SecretName)
-	// The shown-once note rides BOTH Text (below) and -o json's Warnings
-	// (no discovery-degradation warning here); TextOnlyWarnings names it
-	// by value so the table/wide render doesn't also mirror it to stderr.
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "shown exactly once")
-	assert.Equal(t, res.Warnings, res.TextOnlyWarnings)
+	// The shown-once note rides BOTH Text (below) and OnceOnlyNotice (no
+	// discovery-degradation warning here); the pipeline prepends
+	// OnceOnlyNotice to Warnings before rendering, so it still reaches
+	// -o json without also mirroring to stderr under table/wide.
+	assert.Empty(t, res.Warnings)
+	assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
 	assert.Equal(t, "oidcclient/my-app created\n"+
 		"  client id: client-abc\n"+
 		"  client secret: super-secret-value   (shown once — store it now)\n"+
@@ -332,14 +332,14 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, "https://rancher.example/oidc", data["issuer"], "degraded issuer derives from the effective base")
 			assert.NotContains(t, data, "endpoints")
-			// Both warnings ride -o json's Warnings, shown-once first;
-			// TextOnlyWarnings names only the shown-once note by value, so
-			// the table/wide render skips exactly that one and still
-			// mirrors the discovery warning normally.
-			require.Len(t, res.Warnings, 2)
-			assert.Contains(t, res.Warnings[0], "shown exactly once")
-			assert.Contains(t, res.Warnings[1], "discovery")
-			assert.Equal(t, []string{res.Warnings[0]}, res.TextOnlyWarnings)
+			// The pipeline prepends OnceOnlyNotice ahead of res.Warnings
+			// (prependOnceOnlyNotice) before rendering, so the discovery
+			// warning here is the command's own Warnings entry, shown-once
+			// first once merged; the table/wide render skips exactly the
+			// notice and still mirrors the discovery warning normally.
+			require.Len(t, res.Warnings, 1)
+			assert.Contains(t, res.Warnings[0], "discovery")
+			assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
 		})
 	}
 }

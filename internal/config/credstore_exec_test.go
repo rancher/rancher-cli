@@ -187,3 +187,23 @@ func TestExecStoreShortLivedToLongLivedTransitionClearsExpiry(t *testing.T) {
 	_, isShort = st.ShortLivedTokenExpiry(execRef())
 	assert.False(t, isShort, "after a long-lived refresh, ShortLivedTokenExpiry must return false")
 }
+
+// noNoticeStore satisfies CredStore through its embedded interface but is
+// itself not a NoticeSource: the embedded CredStore interface carries no
+// DrainNotices, so the type-assert on it fails.
+type noNoticeStore struct{ CredStore }
+
+// TestExecStoreDrainNoticesDrainsWrappedCache asserts execStore satisfies
+// NoticeSource through its wrapped exec-credential cache: a notice the cache
+// recorded (a loose-permission finding on token-cache.yaml, say) surfaces
+// via DrainNotices exactly once, and a cache that is not a NoticeSource
+// yields nil.
+func TestExecStoreDrainNoticesDrainsWrappedCache(t *testing.T) {
+	s := newExecStore("fake", t.TempDir())
+	s.cache.(*fileStore).notices.record("token-cache.yaml is group/world-readable")
+	assert.Equal(t, []string{"token-cache.yaml is group/world-readable"}, s.DrainNotices())
+	assert.Empty(t, s.DrainNotices(), "drain is destructive; a notice surfaces exactly once")
+
+	s.cache = noNoticeStore{s.cache}
+	assert.Nil(t, s.DrainNotices())
+}

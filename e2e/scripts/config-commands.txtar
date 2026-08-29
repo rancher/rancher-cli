@@ -48,7 +48,7 @@ jsonquery stdout data.currentServer ''
 # scripting an interactive editor is the no-TTY gate — `exec` here has no
 # terminal attached.
 ! exec rancher config edit
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'TTY'
 stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
 

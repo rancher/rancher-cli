@@ -224,27 +224,19 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		data["endpoints"] = endpoints
 	}
 
+	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
 	text := runtime.MutationText("oidcclient", name, "created",
 		"client id: "+clientID,
-		"client secret: "+plaintext+runtime.ShownOnceSuffix,
+		secretLine,
 		"secret name: "+secretName,
 		"issuer: "+issuer,
 	)
-	// The shown-once note is ALSO delivered inline in Text (above);
-	// TextOnlyWarnings names it by value so renderResult skips mirroring it
-	// to stderr under table/wide (one channel, no double-print) regardless
-	// of where Plan-time Effect.Warnings merging places it in the slice —
-	// any discovery-degradation warning still mirrors normally. -o
-	// json/yaml serialize the full Warnings slice into the envelope either
-	// way.
-	shownOnce := "this client secret is shown exactly once — store it now"
-	allWarnings := append([]string{shownOnce}, warnings...)
 	return runtime.Result{
 		Kind:             "OIDCClientCreated",
 		Data:             data,
 		Text:             text,
-		TextOnlyWarnings: []string{shownOnce},
-		Warnings:         allWarnings,
+		OnceOnlyNotice:   shownOnce,
+		Warnings:         warnings,
 		CommittedContext: &runtime.CommittedContext{ResourceKind: "OIDCClient", ResourceName: name, SecretName: secretName, Recovery: recovery},
 	}, nil
 }

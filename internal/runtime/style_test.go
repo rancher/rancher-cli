@@ -142,11 +142,11 @@ func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	d := Descriptor{Name: "create token", Delivery: DeliveryOnceOnly, Shape: ShapeText}
 	shownOnce := "this token value is shown exactly once — store it now"
 	res := Result{
-		Kind:             "TokenCreated",
-		Data:             map[string]string{"name": "t-abc"},
-		Text:             MutationText("token", "t-abc", "created", "bearer token: tok:xxxx"+ShownOnceSuffix),
-		Warnings:         []string{shownOnce},
-		TextOnlyWarnings: []string{shownOnce},
+		Kind:           "TokenCreated",
+		Data:           map[string]string{"name": "t-abc"},
+		Text:           MutationText("token", "t-abc", "created", "bearer token: tok:xxxx"+ShownOnceSuffix),
+		Warnings:       []string{shownOnce},
+		OnceOnlyNotice: shownOnce,
 	}
 
 	var plainOut, plainErr, styledOut, styledErr bytes.Buffer

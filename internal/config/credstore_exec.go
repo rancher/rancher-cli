@@ -313,6 +313,19 @@ func (s *execStore) DeleteToken(ref ServerRef) error {
 // concurrent operations. Nil in production.
 var execStoreLockedHook func(op string)
 
+// DrainNotices implements runtime.NoticeSource by draining the wrapped
+// exec-credential cache's buffer: the helper owns login tokens, but the
+// cache is a file store with notices of its own (a loose-permission finding
+// on token-cache.yaml), and those must reach the invocation's drain wherever
+// this store is wired onto IO.Notices. Returns nil when the cache is not a
+// NoticeSource.
+func (s *execStore) DrainNotices() []string {
+	if ns, ok := s.cache.(NoticeSource); ok {
+		return ns.DrainNotices()
+	}
+	return nil
+}
+
 func (s *execStore) GetCachedCred(key string) (string, time.Time, error) {
 	return s.cache.GetCachedCred(key)
 }

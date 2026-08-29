@@ -449,7 +449,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 			return runtime.Result{}, err
 		}
 		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": "all"},
-			Text: "all cached credentials deleted\n"}, nil
+			Text: runtime.TextLines("all cached credentials deleted")}, nil
 	}
 	if len(keys) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,

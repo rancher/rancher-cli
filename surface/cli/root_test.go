@@ -642,6 +642,9 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 // unhinted "No help topic" text at exit 3 (indistinguishable from the AUTH
 // exit code).
 func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	var gotCode int
 	ucli.OsExiter = func(code int) { gotCode = code }
@@ -676,6 +679,9 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 // line, an unmatched command name renders the short text form, not a JSON
 // envelope — the deterministic "scan miss falls back to text" rule.
 func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -696,6 +702,9 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 // case for onUsageError: an unknown flag with no -o anywhere on the raw
 // command line renders as text.
 func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
@@ -715,6 +724,9 @@ func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
 // scan recognizing "yaml" renders the same structured envelope as json,
 // serialized as YAML.
 func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -736,6 +748,9 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 // exercise bug 2 repro: unknown command "version" is the friction item — the
 // hint must point at --version, not the generic `rancher schema` hint.
 func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -769,6 +784,9 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 // Only the literal tokens "cluster" / "clusters" under "delete" get the
 // targeted hint; other unknown tokens under delete keep the generic hint.
 func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -810,6 +828,9 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 // standard VALIDATION envelope at exit 2, not urfave's own unhinted
 // "Incorrect Usage" text.
 func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
@@ -833,6 +854,9 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 // rancher schema. A genuinely unknown flag must still get the generic hint.
 // Mirrors TestDeleteClusterHintsAtProvisioningCluster one seam over.
 func TestAllNamespacesHintTargeted(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	t.Run("-A shorthand", func(t *testing.T) {
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)
@@ -1088,6 +1112,9 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 // unhinted "No help topic" text and not a custom help Action (the command is
 // machinery, not surface, per STOP adjudication 2026-07-12).
 func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
 	origExiter := ucli.OsExiter
 	var gotCode int
 	ucli.OsExiter = func(code int) { gotCode = code }

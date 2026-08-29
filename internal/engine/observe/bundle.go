@@ -239,18 +239,23 @@ func renderBundleText(path string, items int, bytesWritten int64, skipped, error
 }
 
 // formatIECBytes renders n using IEC binary units (KiB/MiB/GiB/...), one
-// decimal place, e.g. "3.2 MiB" — plain "<n> B" below 1024.
+// decimal place, e.g. "3.2 MiB" — plain "<n> B" below 1024. Unit selection
+// accounts for the print-time rounding: a value %.1f would round up to
+// "1024.0" (anything >= 1023.95 in the current unit) rolls into the next
+// unit instead, so 1048575 renders "1.0 MiB", never "1024.0 KiB". The roll
+// is capped at the table's last unit.
 func formatIECBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
 		return fmt.Sprintf("%d B", n)
 	}
-	div, exp := int64(unit), 0
-	for next := n / unit; next >= unit; next /= unit {
-		div *= unit
+	const units = "KMGTPE"
+	v, exp := float64(n)/unit, 0
+	for v >= 1023.95 && exp < len(units)-1 {
+		v /= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", v, units[exp])
 }
 
 func itemStatus(err error) string {

@@ -12,6 +12,15 @@ fi
 
 go vet ./...
 
+# go.mod/go.sum tidiness: go mod tidy -diff exits non-zero when go.mod or
+# go.sum would change — module churn belongs in its own reviewed commit,
+# never untidy leftovers riding along with an unrelated change.
+if ! tidy_diff=$(go mod tidy -diff); then
+  echo "$tidy_diff" >&2
+  echo "error: go.mod/go.sum are not tidy — run 'go mod tidy'" >&2
+  exit 1
+fi
+
 # golangci-lint if available; otherwise warn (go vet already ran). In CI the
 # soft fallback would silently weaken the commit gate, so there it is an error.
 if command -v golangci-lint >/dev/null 2>&1; then

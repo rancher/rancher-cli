@@ -7,11 +7,12 @@ A greenfield rewrite of the Rancher CLI, built so a terminal coding agent
 operators get the same commands with readable table output.
 
 - **Structured, versioned output** — every command emits one JSON envelope
-  under `-o json`, versioned as `cli.rancher.io/v1`.
+  under `-o json` (YAML under `-o yaml`), versioned as `cli.rancher.io/v1`;
+  the default is readable text for an operator at a terminal.
 - **Self-describing surface** — `rancher schema` lists every command, flag,
   contract, and gate; agents orient themselves without docs.
-- **Machine-readable errors** — structured errors with next-step hints, on
-  stderr, always the same envelope.
+- **Machine-readable errors** — the same envelope as a success, under
+  `-o json`/`-o yaml`, with next-step hints; a short text block otherwise.
 - **Branchable exit codes** — scripts and agents branch on the code without
   parsing anything.
 - **Plan/apply safety** — a server-computed preview before every mutation,
@@ -205,15 +206,23 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 `template=<go-template>`. Full format semantics:
 [REFERENCE.md](REFERENCE.md#output-formats).
 
-- **Errors** are structured, on stderr, always the JSON envelope regardless of
-  `-o`, with the error object under `data`. A plain-text notice (the
-  credential-store pin warning) may precede it on stderr — the
-  envelope is always the LAST JSON object on stderr:
+- **Errors** follow the same contract as a success: under `-o json`/
+  `-o yaml` they are the envelope, error object under `data`, any warnings
+  folded into the envelope's own `warnings` array. Use `-o json` for the
+  envelope — including errors:
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
     "data": { "error": { "code": "NOT_LOGGED_IN", "message": "...",
               "hint": "rancher auth login 'prod'", "retryable": false } } }
+  ```
+
+  Every other format, including the default, renders a short text block
+  on stderr instead:
+
+  ```
+  error (NOT_LOGGED_IN): ...
+    hint: rancher auth login 'prod'
   ```
 
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·

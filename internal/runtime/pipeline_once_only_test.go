@@ -324,7 +324,7 @@ func onceOnlyTextDesc() Descriptor {
 // TestFinishOnceOnlyResultWideRendersExactText pins that "-o wide renders
 // exactly the Text" for once-only ShapeText commands: the shown-once secret
 // must reach the operator once, on stdout, identically under table and
-// wide — never duplicated onto the stderr warning channel (TextOnlyWarnings
+// wide — never duplicated onto the stderr warning channel (OnceOnlyNotice
 // suppresses only the already-embedded entry, matched by value; an
 // unrelated warning still mirrors to stderr as usual).
 func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
@@ -335,11 +335,11 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 			t.Parallel()
 			var out, errBuf bytes.Buffer
 			res := Result{
-				Kind:             "TokenCreated",
-				Data:             map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
-				Text:             text,
-				Warnings:         []string{"this token value is shown exactly once — store it now", "unrelated-warning"},
-				TextOnlyWarnings: []string{"this token value is shown exactly once — store it now"},
+				Kind:           "TokenCreated",
+				Data:           map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
+				Text:           text,
+				Warnings:       []string{"unrelated-warning"},
+				OnceOnlyNotice: "this token value is shown exactly once — store it now",
 				CommittedContext: &CommittedContext{
 					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
 				},

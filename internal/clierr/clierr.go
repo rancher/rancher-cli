@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 )
 
@@ -166,6 +167,10 @@ func (e *Error) WithHint(h string) *Error { e.Hint = h; return e }
 func (e *Error) WithMessage(msg string) *Error {
 	c := *e
 	c.Message = msg
+	// The struct copy above aliases e's warnings backing array; clone it so
+	// a later WithWarnings append on c (or e) can never overwrite the
+	// other's slice.
+	c.warnings = slices.Clone(e.warnings)
 	return &c
 }
 
@@ -194,7 +199,7 @@ func (e *Error) WithWarnings(w ...string) *Error {
 // Warnings returns a copy of the error's warning ride, in the order they
 // were added.
 func (e *Error) Warnings() []string {
-	return append([]string{}, e.warnings...)
+	return slices.Clone(e.warnings)
 }
 
 // Retryable builds a new Error with the given code and message with Retryable

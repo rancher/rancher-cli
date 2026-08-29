@@ -29,3 +29,11 @@ exec rancher delete project e2e-loop --cluster testcluster --apply --yes
 # gone
 ! exec rancher get project e2e-loop --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND
+
+# default format (no -o): a successful mutation renders MutationText
+# directly on stdout, never the json/yaml envelope.
+exec rancher create project e2e-loop-text --cluster testcluster --apply
+stdout 'project/e2e-loop-text created'
+
+exec rancher delete project e2e-loop-text --cluster testcluster --apply --yes
+stdout 'project/e2e-loop-text deleted'

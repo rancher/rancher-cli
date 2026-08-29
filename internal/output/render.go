@@ -178,20 +178,59 @@ func writeTable(w io.Writer, cols []string, rows [][]string, s style.Style) erro
 	if !s.Enabled {
 		return writePlainTable(w, cols, rows)
 	}
-	// Render the whole table through tabwriter first, then bold the header
-	// LINE in the already-aligned output — bolding a column's own bytes
-	// before tabwriter measures it would inflate that column's width.
-	var buf bytes.Buffer
-	if err := writePlainTable(&buf, cols, rows); err != nil {
+	// Bold the header LINE in the already-aligned output — bolding a
+	// column's own bytes before tabwriter measures it would inflate that
+	// column's width. The writer styles only the bytes up to the first
+	// newline and streams every row through unchanged, so the table is
+	// never buffered whole just to style one line.
+	hw := &headerBoldWriter{w: w, s: s}
+	if err := writePlainTable(hw, cols, rows); err != nil {
 		return err
 	}
-	text := buf.String()
-	header, rest, found := strings.Cut(text, "\n")
-	if !found {
-		_, err := w.Write([]byte(text))
-		return err
+	return hw.flush()
+}
+
+// headerBoldWriter bolds the bytes up to (not including) the first newline
+// written through it and passes every later byte to the underlying writer
+// unchanged. Bytes seen before the first newline are held until it arrives
+// (the source may split the header line across Writes); flush releases them
+// unstyled when no newline ever arrives.
+type headerBoldWriter struct {
+	w      io.Writer
+	s      style.Style
+	done   bool
+	header []byte
+}
+
+func (h *headerBoldWriter) Write(p []byte) (int, error) {
+	if h.done {
+		return h.w.Write(p)
 	}
-	_, err := fmt.Fprintf(w, "%s\n%s", s.Bold(header), rest)
+	i := bytes.IndexByte(p, '\n')
+	if i < 0 {
+		h.header = append(h.header, p...)
+		return len(p), nil
+	}
+	h.header = append(h.header, p[:i]...)
+	h.done = true
+	if _, err := fmt.Fprintf(h.w, "%s\n", h.s.Bold(string(h.header))); err != nil {
+		return 0, err
+	}
+	h.header = nil
+	n, err := h.w.Write(p[i+1:])
+	return i + 1 + n, err
+}
+
+// flush releases header bytes still held when the stream carried no newline
+// at all — a headerless fragment stays unstyled, byte-identical to the
+// plain render.
+func (h *headerBoldWriter) flush() error {
+	if h.done || len(h.header) == 0 {
+		return nil
+	}
+	h.done = true
+	_, err := h.w.Write(h.header)
+	h.header = nil
 	return err
 }
 

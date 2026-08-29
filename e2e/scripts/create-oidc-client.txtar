@@ -42,7 +42,19 @@ stdout 'could not confirm the discovery document'
 # -o name is rejected before Plan for this once-only command — zero total
 # requests, never a silent invalidate-and-discard.
 ! exec rancher create oidc-client name-rejected -o name --apply --yes
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
+
+# Default format (no -o): the once-only body renders as text, with the
+# shown-once line present. Run without --color=always so there is nothing
+# to strip.
+exec rancher create oidc-client create-test-text --description e2e-test --redirect-uri https://example.invalid/callback --scope openid --token-ttl 1h --refresh-ttl 24h --apply --yes &createtextcmd&
+exec sleep 1
+flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientID":"client-e2e-2","clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ2"}}}
+seedobj core/v1/secrets cattle-oidc-client-secrets secret2.yaml
+wait createtextcmd
+
+stdout 'oidcclient/create-test-text created'
+stdout 'client secret: super-secret-value-2   \(shown once — store it now\)'
 
 # --- oidc-client add-secret / rotate-secret / remove-secret ---
 #
@@ -89,11 +101,11 @@ jsonquery stdout data.clientSecret rotated-value-1
 # rotate-secret omitting the name is a VALIDATION error once more than one
 # secret exists (client-secret-1 and client-secret-2 both remain).
 ! exec rancher oidc-client rotate-secret lifecycle-client --apply --yes
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 
 # rotate-secret naming an unknown secret lists the real names as candidates,
 # never a silent no-op or a poll to timeout.
-! exec rancher oidc-client rotate-secret lifecycle-client client-secret-typo --apply --yes
+! exec rancher oidc-client rotate-secret lifecycle-client client-secret-typo --apply --yes -o json
 jsonquery stderr data.error.code VALIDATION
 jsonquery stderr 'data.error.candidates.#(id=="client-secret-1").id' client-secret-1
 
@@ -126,6 +138,14 @@ metadata:
   namespace: cattle-oidc-client-secrets
 data:
   client-secret-1: c3VwZXItc2VjcmV0LXZhbHVl
+-- secret2.yaml --
+apiVersion: v1
+kind: Secret
+metadata:
+  name: client-e2e-2
+  namespace: cattle-oidc-client-secrets
+data:
+  client-secret-1: c3VwZXItc2VjcmV0LXZhbHVlLTI=
 -- lifecycle-client.yaml --
 apiVersion: management.cattle.io/v3
 kind: OIDCClient

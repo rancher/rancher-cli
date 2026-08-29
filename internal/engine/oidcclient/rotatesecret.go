@@ -145,20 +145,15 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		return runtime.Result{}, err
 	}
 
-	shownOnce := "this client secret is shown exactly once — store it now"
+	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", newValue, "client secret")
 	return runtime.Result{
 		Kind: "OIDCClientSecretRotated",
 		Data: map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": newValue},
 		Text: runtime.MutationText("oidcclient", clientName, "patched",
 			"secret "+secretName+" rotated",
-			"client secret: "+newValue+runtime.ShownOnceSuffix,
+			secretLine,
 		),
-		// The shown-once note is delivered inline in Text (above);
-		// TextOnlyWarnings names it by value so renderResult keeps it out
-		// of the table/wide stderr mirror while -o json/yaml still see it
-		// in the envelope's Warnings.
-		Warnings:         []string{shownOnce},
-		TextOnlyWarnings: []string{shownOnce},
+		OnceOnlyNotice: shownOnce,
 		CommittedContext: &runtime.CommittedContext{
 			ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: getRecovery,
 		},

@@ -24,23 +24,23 @@ jsonquery stdout 'data.token' ''
 # Fix 2 — patch refusal: management-token patch must be refused with a
 # VALIDATION error before any network call. Only the stable code is asserted;
 # the message text is implementation detail.
-! exec rancher patch management-token mgmt-token-test --patch '[{"op":"replace","path":"/description","value":"changed"}]' --apply --yes --allow-deprecated
+! exec rancher patch management-token mgmt-token-test --patch '[{"op":"replace","path":"/description","value":"changed"}]' --apply --yes --allow-deprecated -o json
 jsonquery stderr 'data.error.code' VALIDATION
 
 # Fix 2 — create resource rejection: a management.cattle.io/v3 Token manifest
 # must be refused with a VALIDATION error before any network call.
-! exec rancher create resource -f mtoken.yaml --apply --yes
+! exec rancher create resource -f mtoken.yaml --apply --yes -o json
 jsonquery stderr 'data.error.code' VALIDATION
 
 # Fix 3 — session guard: the "e2e" token matching the harness credential id
 # ("e2e" — the id part of testToken "e2e:secret") is seeded globally in
 # harness_test.go so this test remains deterministic regardless of script
 # execution order. Verify that deleting it is refused with a VALIDATION error.
-! exec rancher delete management-token e2e --apply --yes --allow-deprecated
+! exec rancher delete management-token e2e --apply --yes --allow-deprecated -o json
 jsonquery stderr 'data.error.code' VALIDATION
 
 # Delete WITHOUT --allow-deprecated is refused: management-token is Deprecated.
-! exec rancher delete management-token mgmt-token-test --apply --yes
+! exec rancher delete management-token mgmt-token-test --apply --yes -o json
 jsonquery stderr 'data.error.code' CONFIRMATION_REQUIRED
 jsonquery stderr 'data.error.hint' 're-run with: --allow-deprecated'
 

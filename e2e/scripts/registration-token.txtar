@@ -25,5 +25,5 @@ jsonquery stdout data.0.clusterName c-fixture
 # so the refusal itself is what's under test, not flag validation firing
 # first for the wrong reason.
 ! exec rancher patch clusterregistrationtoken default-token --namespace c-fixture --patch '[]'
-jsonquery stderr data.error.code VALIDATION
+stderr 'error \(VALIDATION\):'
 stderr 'read-only'

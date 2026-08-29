@@ -1,6 +1,7 @@
 package token
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -8,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -521,4 +524,153 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a mint via right-server")
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "shim/ambient-guard:tok", cred.Status.Token)
+}
+
+// noticeRecordingStore wraps a CredStore with a pre-loaded notice buffer,
+// standing in for a store whose lazy resolution fell back to the plaintext
+// file store and recorded the first-run keychain-unavailable notice.
+type noticeRecordingStore struct {
+	config.CredStore
+	notices []string
+}
+
+func (s *noticeRecordingStore) DrainNotices() []string {
+	out := s.notices
+	s.notices = nil
+	return out
+}
+
+// keychainUnavailableNotice mirrors the first-run wording the store records
+// when the auto policy falls back to the plaintext file store.
+const keychainUnavailableNotice = "keychain unavailable; credentials will be stored in plaintext"
+
+// TestLegacyTokenStoreNoticeReachesStderr pins the shim's notice delivery on
+// success: the bare `token` command has no NoticeSource wired onto
+// IO.Notices, so the shim drains its own store and the first-run
+// keychain-unavailable notice reaches stderr as a "# warning:" line while
+// stdout stays a bare ExecCredential object.
+func TestLegacyTokenStoreNoticeReachesStderr(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	base := config.NewFileStore(dir)
+	require.NoError(t, base.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	store := &noticeRecordingStore{CredStore: base, notices: []string{keychainUnavailableNotice}}
+	cmd := NewLegacyTokenCommand(dir, store)
+
+	var out, errBuf bytes.Buffer
+	status, ce := runtime.Run(t.Context(), cmd,
+		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
+		runtime.IO{Out: &out, Err: &errBuf, In: strings.NewReader(""), NoInput: true},
+		safety.Binding{})
+	require.Nil(t, ce)
+	assert.Zero(t, status)
+	assert.Equal(t, "ExecCredential", gjson.GetBytes(out.Bytes(), "kind").String())
+	assert.Contains(t, errBuf.String(), "# warning: "+keychainUnavailableNotice)
+}
+
+// TestLegacyTokenStoreNoticeRidesFailure pins the failure-path counterpart:
+// when the credential work fails after the store recorded a notice, the
+// drained notice rides the error and still reaches stderr as a "# warning:"
+// line ahead of the error text.
+func TestLegacyTokenStoreNoticeRidesFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	// No stored login token: the shim falls through to the interactive
+	// provider flow, whose provider listing 404s — a hard failure.
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	store := &noticeRecordingStore{CredStore: config.NewFileStore(dir), notices: []string{keychainUnavailableNotice}}
+	cmd := NewLegacyTokenCommand(dir, store)
+
+	var out, errBuf bytes.Buffer
+	_, ce := runtime.Run(t.Context(), cmd,
+		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
+		runtime.IO{Out: &out, Err: &errBuf, In: strings.NewReader(""), NoInput: true},
+		safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, []string{keychainUnavailableNotice}, ce.Warnings())
+	assert.Contains(t, errBuf.String(), "# warning: "+keychainUnavailableNotice)
+	assert.Contains(t, errBuf.String(), "error (")
+	assert.Empty(t, out.String(), "a failed credential run must write nothing to stdout")
+}
+
+// TestLegacyTokenProbeWarnRidesLoadFailure pins the probe's loose-permission
+// finding surviving a slow-path failure: the probe's global dedup marks the
+// cache path seen on first check, so the warning has no second chance — a
+// cache miss followed by a broken config.yaml must still carry it on the
+// error.
+func TestLegacyTokenProbeWarnRidesLoadFailure(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	dir := t.TempDir()
+	seed := config.NewFileStore(dir)
+	serverID := config.CanonicalServerIdentity("https://r.ex")
+	otherKey := config.CacheKey("legacy:bob", serverID, "c-1")
+	require.NoError(t, seed.SetCachedCred(otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("{not yaml"), 0o600))
+
+	cmd := NewLegacyTokenCommand(dir, nil)
+	var out, errBuf bytes.Buffer
+	_, ce := runtime.Run(t.Context(), cmd,
+		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
+		runtime.IO{Out: &out, Err: &errBuf, In: strings.NewReader(""), NoInput: true},
+		safety.Binding{})
+	require.NotNil(t, ce)
+	require.Len(t, ce.Warnings(), 1)
+	assert.Contains(t, ce.Warnings()[0], "group/world-readable")
+	assert.Contains(t, errBuf.String(), "# warning: ")
+	assert.Contains(t, errBuf.String(), "group/world-readable")
+}
+
+// TestLegacyTokenProbeWarnPrecedesStoreNotices asserts delivery in record
+// order when both the fast-path probe and the slow-path store produce
+// notices: the probe observed its loose-permission finding before any store
+// work, so it must come first on the error's warning ride.
+func TestLegacyTokenProbeWarnPrecedesStoreNotices(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	seed := config.NewFileStore(dir)
+	serverID := config.CanonicalServerIdentity(srv.URL)
+	otherKey := config.CacheKey("legacy:bob", serverID, "c-1")
+	require.NoError(t, seed.SetCachedCred(otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	store := &noticeRecordingStore{CredStore: config.NewFileStore(dir), notices: []string{keychainUnavailableNotice}}
+	cmd := NewLegacyTokenCommand(dir, store)
+	var out, errBuf bytes.Buffer
+	_, ce := runtime.Run(t.Context(), cmd,
+		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "c-1"}},
+		runtime.IO{Out: &out, Err: &errBuf, In: strings.NewReader(""), NoInput: true},
+		safety.Binding{})
+	require.NotNil(t, ce)
+	warnings := ce.Warnings()
+	require.Len(t, warnings, 2)
+	assert.Contains(t, warnings[0], "group/world-readable", "the probe's earlier finding delivers first")
+	assert.Equal(t, keychainUnavailableNotice, warnings[1])
 }

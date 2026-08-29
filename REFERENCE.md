@@ -386,17 +386,32 @@ Wide-marked columns — presentation, never a scope change: a payload with no
 wide-only columns renders identically to `table`) · `json` · `yaml` ·
 `name` (`.metadata.name`/ids only) · `template=<go-template>` — a Go template
 over the JSON view of `data` (same shape as `-o json`). Any other value is
-rejected with a `VALIDATION` error before the command runs. A kind without a
-table projection falls back to indented JSON under the default `table`
-format; use `-o json` for the versioned envelope. Some commands (e.g. `logs`)
-render a plain-text default under `table`/default format instead, with
-warnings on stderr as `# warning: <w>` lines;
-`-o json`/`yaml`/`template=`/`name` still see the normal envelope over `data`.
-Structured output (json, yaml, template, and the table fallback) omits
-`metadata.managedFields` (kubectl-parity; no opt-out flag — read the raw API
-for
+rejected with a `VALIDATION` error before the command runs. Every kind
+declares its own table projection; there is no pretty-JSON fallback under
+`table`/`wide` — a kind that did not implement it would fail with a
+rendering error instead of silently dumping JSON, so use `-o json` for the
+versioned envelope. Some commands (e.g. `logs`) render a plain-text default
+under `table`/default format instead, with warnings on stderr as
+`# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
+normal envelope over `data`. Structured output (json, yaml, and template)
+omits `metadata.managedFields` (kubectl-parity; no opt-out flag — read the
+raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
 forensics).
+
+## Color
+
+`--color`: `auto` (default) · `always` · `never` — controls whether
+`table`/default/`wide` text (the header row, the `error (CODE):`/`hint:`
+prefixes, a once-only credential's shown-once line) is styled with ANSI
+escapes; `json`, `yaml`, `name`, and `template` output never carries styling
+regardless of this flag. Precedence, checked in order: `--color=never` or
+`--color=always` always wins, overriding every environment variable. Under
+`auto`, `NO_COLOR` set to any non-empty value turns styling off; otherwise
+`CLICOLOR_FORCE` or `FORCE_COLOR` set to a non-empty value other than `0`
+turns it on. If none of those apply, styling follows whether the stream
+being written to (stdout or stderr, resolved independently) is a real
+terminal.
 
 ## Machine hints
 
