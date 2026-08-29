@@ -150,6 +150,13 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		Examples: []string{
 			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod",
 		},
+		// The exec-credential plugin's stdout is a bare ExecCredential object
+		// kubectl parses directly — no envelope exists to vary with -o. table
+		// (the default) and json are the two forms this command has ever
+		// honored; every other value is now rejected pre-Plan instead of
+		// being silently ignored.
+		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table", "json"}},
+		Shape:        runtime.ShapeExecJSON,
 	}
 }
 
@@ -411,6 +418,7 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 			"rancher auth delete-token --all",
 			"rancher auth delete-token prod",
 		},
+		Shape: runtime.ShapeText,
 	}
 }
 

@@ -301,7 +301,7 @@ func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
 type markerCmd struct{ k kinds.Kind }
 
 func (m markerCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "get " + m.k.Name, CommandType: runtime.ReadOnly, Usage: "MARKER"}
+	return runtime.Descriptor{Name: "get " + m.k.Name, CommandType: runtime.ReadOnly, Usage: "MARKER", Shape: runtime.ShapeTabular}
 }
 
 func (m markerCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtime.Result, error) {
@@ -473,7 +473,7 @@ func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 type markerDelCmd struct{ k kinds.Kind }
 
 func (m markerDelCmd) Describe() runtime.Descriptor {
-	return runtime.Descriptor{Name: "delete " + m.k.Name, CommandType: runtime.Mutating, Usage: "MARKER-DEL"}
+	return runtime.Descriptor{Name: "delete " + m.k.Name, CommandType: runtime.Mutating, Usage: "MARKER-DEL", Shape: runtime.ShapeText}
 }
 
 func (m markerDelCmd) Plan(context.Context, runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {

@@ -128,6 +128,7 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 		Examples: []string{"images --all-clusters --match library/elasticsearch: --by workload"},
 		Network:  true,
 		Auth:     true,
+		Shape:    runtime.ShapeTabular,
 	}
 }
 

@@ -37,6 +37,7 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		Destructive: "false",
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 
@@ -88,6 +89,7 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		Destructive: "false",
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

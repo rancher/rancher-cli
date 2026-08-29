@@ -55,6 +55,7 @@ func (grantCmd) Describe() runtime.Descriptor {
 		Destructive: "true",
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

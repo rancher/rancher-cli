@@ -36,6 +36,7 @@ func (logoutCmd) Describe() runtime.Descriptor {
 			"rancher auth logout prod",
 			"rancher auth logout --all",
 		},
+		Shape: runtime.ShapeText,
 	}
 }
 

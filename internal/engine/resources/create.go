@@ -69,6 +69,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

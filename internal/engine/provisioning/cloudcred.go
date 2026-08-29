@@ -261,6 +261,7 @@ func (c *getCloudCredCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeTabular,
 	}
 }
 

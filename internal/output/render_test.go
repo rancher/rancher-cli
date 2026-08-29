@@ -97,16 +97,17 @@ func TestRenderWideFallsBackToTabularByteIdentical(t *testing.T) {
 	assert.Equal(t, table.String(), wide.String())
 }
 
-// TestRenderWideNonTabularFallsBackToJSON pins the non-Tabular case: -o wide
-// on a payload that is neither WideTabular nor Tabular falls back to the
-// same pretty-JSON rendering -o table uses.
-func TestRenderWideNonTabularFallsBackToJSON(t *testing.T) {
+// TestRenderWideAndTableRejectNonTabular pins the closed-world contract:
+// there is no pretty-JSON fallback for -o table/-o wide. A payload that is
+// neither WideTabular nor Tabular is a rendering error for both formats —
+// the caller's declared shape promised Tabular and its Data does not honor
+// that.
+func TestRenderWideAndTableRejectNonTabular(t *testing.T) {
 	t.Parallel()
 	env := NewEnvelope("X", map[string]string{"a": "b"})
 	var wide, table bytes.Buffer
-	require.NoError(t, Render(&wide, "wide", env))
-	require.NoError(t, Render(&table, "table", env))
-	assert.Equal(t, table.String(), wide.String())
+	require.Error(t, Render(&wide, "wide", env))
+	require.Error(t, Render(&table, "table", env))
 }
 
 func TestRenderTemplatePreservesIntegerPrecision(t *testing.T) {
@@ -210,23 +211,6 @@ func TestEncodeJSONKeepsAngleAndAmpLiteral(t *testing.T) {
 	assertNotHTMLEscaped(t, buf.String())
 }
 
-func TestRenderTableFallbackKeepsAngleAndAmpLiteral(t *testing.T) {
-	t.Parallel()
-	for _, format := range []string{"", "table"} {
-		name := format
-		if name == "" {
-			name = "empty"
-		}
-		t.Run("format="+name, func(t *testing.T) {
-			t.Parallel()
-			var buf bytes.Buffer
-			env := NewEnvelope("probe", map[string]string{"desc": escapeProbe})
-			require.NoError(t, Render(&buf, format, env))
-			assertNotHTMLEscaped(t, buf.String())
-		})
-	}
-}
-
 func TestRenderJSONStripsManagedFields(t *testing.T) {
 	t.Parallel()
 	env := NewEnvelope("X", map[string]any{
@@ -306,7 +290,13 @@ func TestRenderTemplateRootAndStrip(t *testing.T) {
 	assert.Equal(t, "root-field\n", buf.String(), "fast path root unchanged")
 }
 
-func TestRenderTableFallbackStripsManagedFields(t *testing.T) {
+// TestRenderTableRejectsNonTabularEffectPayload pins the closed-world
+// contract over the same shape the old pretty-JSON fallback used to paper
+// over: a non-Tabular payload (e.g. an Effect preview) is a rendering error
+// under table/default format, never a JSON dump. The scrubbing behavior
+// these fixtures used to exercise for that dump is still covered for
+// json/yaml/template by TestRenderJSONStripsManagedFields and its siblings.
+func TestRenderTableRejectsNonTabularEffectPayload(t *testing.T) {
 	t.Parallel()
 	payload := map[string]any{
 		"observed": map[string]any{
@@ -325,45 +315,9 @@ func TestRenderTableFallbackStripsManagedFields(t *testing.T) {
 			t.Parallel()
 			env := NewEnvelope("Effect", payload)
 			var buf bytes.Buffer
-			require.NoError(t, Render(&buf, format, env))
-			out := buf.String()
-			assert.NotContains(t, out, "managedFields", "table fallback must strip managedFields")
-			assert.Contains(t, out, `"name": "x"`, "neighboring metadata must survive")
+			assert.Error(t, Render(&buf, format, env))
 		})
 	}
-}
-
-func TestRenderTableFallbackFastPathByteIdentical(t *testing.T) {
-	t.Parallel()
-	payload := map[string]any{"metadata": map[string]any{"name": "clean"}}
-	env := NewEnvelope("X", payload)
-	var got bytes.Buffer
-	require.NoError(t, Render(&got, "table", env))
-	var want bytes.Buffer
-	require.NoError(t, encodeJSON(&want, env.Data))
-	assert.Equal(t, want.String(), got.String(),
-		"no managedFields: table fallback is byte-identical to encodeJSON(env.Data) (MF-2 fast path)")
-}
-
-// TestRenderTableFallbackShapeOverType pins spec MF-6: a payload whose Data
-// contains a map shaped like {"metadata": {"managedFields": "user-data"}} is
-// stripped — the scrubber operates on shape, not type. This is the documented
-// tradeoff: use the raw API for server-side-apply forensics.
-func TestRenderTableFallbackShapeOverType(t *testing.T) {
-	t.Parallel()
-	payload := map[string]any{
-		"metadata": map[string]any{
-			"name":          "obj",
-			"managedFields": "user-data", // not a k8s object, but same shape
-		},
-	}
-	env := NewEnvelope("X", payload)
-	var buf bytes.Buffer
-	require.NoError(t, Render(&buf, "table", env))
-	// Spec MF-6 recorded tradeoff: the key is stripped regardless of value type.
-	assert.NotContains(t, buf.String(), "managedFields",
-		"MF-6: shape-over-type tradeoff — managedFields under metadata is always stripped")
-	assert.Contains(t, buf.String(), `"name": "obj"`, "neighboring key survives")
 }
 
 type marshalBomb struct{}

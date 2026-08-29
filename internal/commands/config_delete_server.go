@@ -35,6 +35,7 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Examples:    []string{"rancher config delete-server prod"},
+		Shape:       runtime.ShapeText,
 	}
 }
 

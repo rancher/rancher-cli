@@ -94,6 +94,7 @@ func (skillInstallCmd) Describe() runtime.Descriptor {
 			"rancher skill install --agent claude --scope project",
 		},
 		CommandType: runtime.Local,
+		Shape:       runtime.ShapeTabular,
 	}
 }
 
@@ -151,6 +152,7 @@ func (skillUninstallCmd) Describe() runtime.Descriptor {
 		Flags:       skillFlags(),
 		Examples:    []string{"rancher skill uninstall --agent claude"},
 		CommandType: runtime.Local,
+		Shape:       runtime.ShapeTabular,
 	}
 }
 
@@ -215,6 +217,7 @@ func (skillStatusCmd) Describe() runtime.Descriptor {
 		},
 		CommandType:      runtime.Local,
 		SuccessExitCodes: []int{0, 7},
+		Shape:            runtime.ShapeTabular,
 	}
 }
 

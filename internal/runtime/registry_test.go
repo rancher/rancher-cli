@@ -67,8 +67,8 @@ func TestSchemaManifestExitCodes(t *testing.T) {
 func TestValidateRejectsDuplicateNames(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
-	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
-	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly, Shape: ShapeTabular}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly, Shape: ShapeTabular}})
 	err := reg.Validate()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "duplicate")
@@ -134,7 +134,7 @@ func TestValidateRejectsPrimeWithoutDetectorKey(t *testing.T) {
 func TestValidatePassesWellFormedCapability(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
-	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeTabular,
 		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature"}}})
 	assert.NoError(t, reg.Validate())
 }
@@ -172,7 +172,7 @@ func TestValidateRejectsUnknownOutputPolicyFormat(t *testing.T) {
 func TestValidatePassesWellFormedOutputPolicy(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
-	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeTabular,
 		OutputPolicy: OutputPolicy{AllowedFormats: []string{"table", "wide", "json", "yaml", "template"}}}})
 	assert.NoError(t, reg.Validate())
 }
@@ -190,13 +190,26 @@ func TestOnceOnlyOutputPolicyExcludesName(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsUnspecifiedShape pins the closed-world OutputShape
+// contract: the zero value (ShapeUnspecified) is never valid on a registered
+// descriptor — an omitted Shape field must fail at startup, never silently
+// default to Tabular.
+func TestValidateRejectsUnspecifiedShape(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "output shape must be declared")
+}
+
 // TestValidateRejectsDeliveryOnceOnlyOnReadOnly pins Delivery's Mutating-only
 // restriction: a read command promising once-only delivery makes no sense
 // (there is no mutation to have committed) and must fail at startup.
 func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
-	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Delivery: DeliveryOnceOnly}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeTabular, Delivery: DeliveryOnceOnly}})
 	err := reg.Validate()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "Mutating")
@@ -208,7 +221,7 @@ func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
 func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"create widget": {}})
-	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Delivery: "bogus"}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Shape: ShapeText, Delivery: "bogus"}})
 	err := reg.Validate()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "unknown delivery classification")
@@ -218,7 +231,7 @@ func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
 func TestValidatePassesDeliveryOnceOnlyOnMutating(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"create widget": {}})
-	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Delivery: DeliveryOnceOnly}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Shape: ShapeText, Delivery: DeliveryOnceOnly}})
 	assert.NoError(t, reg.Validate())
 }
 
@@ -288,8 +301,8 @@ func TestValidatePassesWellFormedRegistry(t *testing.T) {
 	reg := NewRegistry(stubResolver{
 		"create widget": {Contract: safety.ContractPublic, Stability: safety.Stable},
 	})
-	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}})
-	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
+	reg.Register(fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly, Shape: ShapeTabular}})
+	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Shape: ShapeText}})
 	require.NoError(t, reg.Validate())
 }
 
@@ -330,11 +343,21 @@ type exitDeclCmd struct {
 }
 
 func (c exitDeclCmd) Describe() Descriptor {
-	return Descriptor{Name: c.name, CommandType: Local, Toolset: "core", SuccessExitCodes: c.codes}
+	return Descriptor{Name: c.name, CommandType: Local, Toolset: "core", Shape: ShapeTabular, SuccessExitCodes: c.codes}
 }
 
+// probeTabularData is exitDeclCmd's Result.Data: Tabular (matching its
+// declared ShapeTabular) while still exposing a "probe" JSON field for the
+// exit-status tests that decode the rendered envelope.
+type probeTabularData struct {
+	Probe string `json:"probe"`
+}
+
+func (p probeTabularData) Columns() []string { return []string{"PROBE"} }
+func (p probeTabularData) Rows() [][]string  { return [][]string{{p.Probe}} }
+
 func (c exitDeclCmd) Execute(_ context.Context, _ Input, _ Prompter) (Result, error) {
-	return Result{Kind: "probe", Data: map[string]string{"probe": "ok"}}, nil
+	return Result{Kind: "probe", Data: probeTabularData{Probe: "ok"}}, nil
 }
 
 // TestValidateSuccessExitCodes pins the declaration invariant: zero exactly

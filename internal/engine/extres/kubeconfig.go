@@ -56,6 +56,7 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		// rejects everything else, including "name", pre-Plan.
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
 		Delivery:     runtime.DeliveryOnceOnly,
+		Shape:        runtime.ShapeBytes,
 	}
 }
 

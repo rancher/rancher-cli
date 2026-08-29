@@ -533,6 +533,7 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeTabular,
 	}
 }
 

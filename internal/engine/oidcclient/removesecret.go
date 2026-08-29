@@ -43,6 +43,7 @@ func (removeSecretCmd) Describe() runtime.Descriptor {
 		Network:     true,
 		Auth:        true,
 		Capability:  capability(),
+		Shape:       runtime.ShapeText,
 	}
 }
 

@@ -51,6 +51,7 @@ func (configEditCmd) Describe() runtime.Descriptor {
 		Usage:       "Edit the config file in $VISUAL or $EDITOR (needs a TTY)",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config edit"},
+		Shape:       runtime.ShapeText,
 	}
 }
 

@@ -58,6 +58,7 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 		},
 		Network: true,
 		Auth:    true,
+		Shape:   runtime.ShapeText,
 	}
 }
 

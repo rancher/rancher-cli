@@ -32,6 +32,7 @@ func (configAddServerCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
 		},
 		Examples: []string{"rancher config add-server qa1 --url https://qa1.example.com"},
+		Shape:    runtime.ShapeText,
 	}
 }
 

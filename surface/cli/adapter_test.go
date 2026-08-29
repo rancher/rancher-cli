@@ -244,15 +244,24 @@ func (c *sliceEchoCmd) Describe() runtime.Descriptor {
 			{Name: "set", Type: "stringSlice"},
 			{Name: "monitoring", Type: "bool"},
 		},
+		Shape: runtime.ShapeTabular,
 	}
 }
+
+// emptyTabularData is a Tabular fixture with no rows — the table-format
+// closed-world contract requires Tabular Data even for a payload that
+// carries nothing to display.
+type emptyTabularData struct{}
+
+func (emptyTabularData) Columns() []string { return []string{"NAME"} }
+func (emptyTabularData) Rows() [][]string  { return nil }
 
 func (c *sliceEchoCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	c.got = in.Strings("set")
 	c.setPresent = in.IsSet("set")
 	c.boolOn = in.Bool("monitoring")
 	c.boolSet = in.IsSet("monitoring")
-	return runtime.Result{Kind: "Echo", Data: map[string]any{}}, nil
+	return runtime.Result{Kind: "Echo", Data: emptyTabularData{}}, nil
 }
 
 // TestAdaptedStringSliceFlagRoundTrip pins MC-6a/MC-5a through the real

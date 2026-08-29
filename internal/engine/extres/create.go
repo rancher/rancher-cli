@@ -43,6 +43,7 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 		Auth:         true,
 		OutputPolicy: runtime.OnceOnlyOutputPolicy(),
 		Delivery:     runtime.DeliveryOnceOnly,
+		Shape:        runtime.ShapeText,
 	}
 }
 

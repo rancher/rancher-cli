@@ -61,6 +61,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		}},
 		Network: true,
 		Auth:    true,
+		Shape:   runtime.ShapeText,
 	}
 }
 

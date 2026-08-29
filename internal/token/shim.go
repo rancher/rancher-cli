@@ -65,6 +65,10 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 		Examples: []string{
 			"rancher token --server https://rancher.example.com --user my-cluster",
 		},
+		// Same policy as auth get-token: a bare ExecCredential object on
+		// stdout, no envelope to vary with -o.
+		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table", "json"}},
+		Shape:        runtime.ShapeExecJSON,
 	}
 }
 

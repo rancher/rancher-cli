@@ -51,6 +51,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"}},
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

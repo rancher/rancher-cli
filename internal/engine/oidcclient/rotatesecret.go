@@ -48,6 +48,7 @@ func (rotateSecretCmd) Describe() runtime.Descriptor {
 		Capability:   capability(),
 		OutputPolicy: runtime.OnceOnlyOutputPolicy(),
 		Delivery:     runtime.DeliveryOnceOnly,
+		Shape:        runtime.ShapeText,
 	}
 }
 

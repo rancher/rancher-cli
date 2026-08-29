@@ -29,6 +29,11 @@ func (completionCmd) Describe() runtime.Descriptor {
 			"rancher completion fish > ~/.config/fish/completions/rancher.fish",
 		},
 		CommandType: runtime.Local,
+		// The shell script is a bare byte stream that never varies with -o;
+		// every format but the default table would silently accept and then
+		// ignore it.
+		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
+		Shape:        runtime.ShapeBytes,
 	}
 }
 

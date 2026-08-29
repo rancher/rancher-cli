@@ -135,40 +135,29 @@ func encodeJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
+// renderTable is -o table (and the "" default): the closed-world contract
+// requires Data to implement Tabular — there is no pretty-JSON fallback. A
+// non-Tabular Data value here is a command bug: the command's declared
+// OutputShape promised Tabular and its Data does not honor that.
 func renderTable(w io.Writer, env *Envelope) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
-		// Fallback: pretty JSON so table mode never loses data.
-		tree, hit, err := scrubbedTree(env.Data)
-		if err != nil {
-			return err
-		}
-		if !hit {
-			return encodeJSON(w, env.Data)
-		}
-		return encodeJSON(w, tree)
+		return fmt.Errorf("table format requires Data to implement output.Tabular; got %T", env.Data)
 	}
 	return writeTable(w, t.Columns(), t.Rows())
 }
 
 // renderWide is -o wide: it prefers WideTabular's superset columns/rows and
 // falls back to plain Tabular (byte-identical to -o table) for every payload
-// that carries no wide-only columns — presentation, not a scope change.
+// that carries no wide-only columns — presentation, not a scope change. Like
+// renderTable, there is no pretty-JSON fallback for non-Tabular Data.
 func renderWide(w io.Writer, env *Envelope) error {
 	if wt, ok := env.Data.(WideTabular); ok {
 		return writeTable(w, wt.WideColumns(), wt.WideRows())
 	}
 	t, ok := env.Data.(Tabular)
 	if !ok {
-		// Fallback: pretty JSON so wide mode never loses data, same as table.
-		tree, hit, err := scrubbedTree(env.Data)
-		if err != nil {
-			return err
-		}
-		if !hit {
-			return encodeJSON(w, env.Data)
-		}
-		return encodeJSON(w, tree)
+		return fmt.Errorf("wide format requires Data to implement output.Tabular; got %T", env.Data)
 	}
 	return writeTable(w, t.Columns(), t.Rows())
 }

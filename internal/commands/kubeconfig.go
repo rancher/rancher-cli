@@ -40,6 +40,11 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Network:     true,
 		Auth:        true,
+		// RawBytes is a bare kubeconfig YAML document — it never varies with
+		// -o, so every format but the default table would silently accept
+		// and then ignore it (the create kubeconfig precedent).
+		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
+		Shape:        runtime.ShapeBytes,
 	}
 }
 

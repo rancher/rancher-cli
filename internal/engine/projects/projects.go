@@ -152,6 +152,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		Destructive: "false",
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

@@ -65,6 +65,37 @@ type ArgSpec struct {
 	Env      []string `json:"env,omitempty"`     // env vars that back this flag, if any
 }
 
+// OutputShape is a command's declared success-result shape: the closed-world
+// contract every registered command commits to for its default-format
+// rendering. ShapeUnspecified is the zero value and is never valid on a
+// registered descriptor — an omitted field does not silently become
+// Tabular; Registry.Validate rejects it at wiring time.
+type OutputShape int
+
+const (
+	ShapeUnspecified OutputShape = iota // zero value — invalid, never valid on a registered descriptor
+	ShapeTabular                        // Data implements output.Tabular
+	ShapeText                           // Result.Text is set (Data may still accompany it for -o json)
+	ShapeBytes                          // Result.RawBytes (kubeconfig, completion)
+	ShapeExecJSON                       // Result.Raw (exec-credential only)
+)
+
+// String renders the shape name for diagnostics and the schema manifest.
+func (s OutputShape) String() string {
+	switch s {
+	case ShapeTabular:
+		return "tabular"
+	case ShapeText:
+		return "text"
+	case ShapeBytes:
+		return "bytes"
+	case ShapeExecJSON:
+		return "execJSON"
+	default:
+		return "unspecified"
+	}
+}
+
 // Descriptor is a command's self-description (no contract/stability — those come
 // from the resolver at schema-generation time). Args are positional; Flags are
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
@@ -116,6 +147,12 @@ type Descriptor struct {
 	// independent: a DeliveryOnceOnly command may still accept every
 	// format (create kubeconfig's RawBytes payload is format-independent).
 	Delivery Delivery
+	// Shape declares the command's success Result shape (the closed-world
+	// conformance contract): ShapeTabular, ShapeText, ShapeBytes, or
+	// ShapeExecJSON. Registry.Validate rejects the zero value
+	// (ShapeUnspecified) on every registered descriptor, and renderResult
+	// verifies the actual Result against it at run time.
+	Shape OutputShape
 }
 
 // Delivery classifies how a command's successful Result must be delivered.

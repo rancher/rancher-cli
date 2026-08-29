@@ -56,6 +56,7 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 		Examples:    []string{"rancher auth status -o json"},
 		Network:     true,
 		Auth:        true,
+		Shape:       runtime.ShapeText,
 	}
 }
 

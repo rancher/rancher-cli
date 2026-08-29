@@ -38,6 +38,7 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"tab-completion shows no candidates.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config status"},
+		Shape:       runtime.ShapeText,
 	}
 }
 

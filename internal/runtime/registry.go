@@ -175,6 +175,11 @@ type SchemaCommand struct {
 	// Delivery is a projection of Descriptor.Delivery. Absent means
 	// ordinary delivery.
 	Delivery string `json:"delivery,omitempty"`
+	// Shape is a projection of Descriptor.Shape: the command's declared
+	// success-result shape (tabular, text, bytes, execJSON). Always present
+	// — Registry.Validate rejects an undeclared (unspecified) shape on
+	// every registered command.
+	Shape string `json:"shape"`
 }
 
 // Verb states for SchemaKind.Verbs (SE-17): available and refused verbs are
@@ -380,6 +385,9 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("command %q: outputPolicy allows unknown format %q", d.Name, f)
 			}
 		}
+		if d.Shape == ShapeUnspecified {
+			return fmt.Errorf("command %q: output shape must be declared (ShapeUnspecified is never valid)", d.Name)
+		}
 		if d.Delivery != "" {
 			if d.Delivery != DeliveryOnceOnly {
 				return fmt.Errorf("command %q: unknown delivery classification %q", d.Name, d.Delivery)
@@ -463,6 +471,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			Prime:            d.Capability.Tier == CapabilityPrime,
 			OutputPolicy:     d.OutputPolicy.AllowedFormats,
 			Delivery:         string(d.Delivery),
+			Shape:            d.Shape.String(),
 		}
 		if sc.Prime {
 			sc.LearnMore = clierr.LearnMorePrimeURL

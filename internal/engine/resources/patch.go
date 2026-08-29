@@ -63,6 +63,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Auth:         true,
 		ProjectScope: kinds.ProjectScopable(c.k),
 		Capability:   c.k.Capability,
+		Shape:        runtime.ShapeText,
 	}
 }
 

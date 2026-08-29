@@ -408,6 +408,58 @@ func tableFormat(format string) bool {
 	return format == "" || format == "table"
 }
 
+// textRenderFormat reports whether format renders a ShapeText Result's Text
+// field verbatim: table/default, plus "wide" — for a ShapeText command,
+// -o wide is table-family (no separate wide body exists for text).
+func textRenderFormat(format string) bool {
+	return tableFormat(format) || format == "wide"
+}
+
+// checkResultShape verifies res's actual payload against d's declared
+// OutputShape — the closed-world conformance contract every registered
+// command commits to. A mismatch is a command bug, the same posture as
+// payloadExclusivityRule: the command populated the wrong Result field (or
+// none) for the shape its own Descriptor declares.
+//
+// The check is scoped to the render path the requested format actually
+// takes. ShapeTabular and the RawBytes/Raw payloads (ShapeBytes,
+// ShapeExecJSON) back every format identically — Tabular Data renders the
+// same envelope-or-table content regardless of -o, and the RawBytes/Raw
+// branches in renderResult never look at format at all — so those three
+// checks apply unconditionally. ShapeText is different: Text is read only
+// by the table-family render path (textRenderFormat); -o json/-o yaml
+// render the envelope over Data exactly as before, and -o name/-o template
+// do the same (render.go's existing "-o name over non-Tabular Data emits
+// nothing" contract), so an unpopulated Text is not a shape violation
+// there — checking it under those formats would reject an unimplemented
+// command's Data-only rendering even though nothing about that rendering
+// is actually broken.
+func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
+	switch d.Shape {
+	case ShapeTabular:
+		if _, ok := res.Data.(output.Tabular); !ok {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("command bug: %s declares ShapeTabular but its Data does not implement output.Tabular", d.Name))
+		}
+	case ShapeText:
+		if textRenderFormat(format) && res.Text == "" {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("command bug: %s declares ShapeText but returned no Text", d.Name))
+		}
+	case ShapeBytes:
+		if res.RawBytes == nil {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("command bug: %s declares ShapeBytes but returned no RawBytes", d.Name))
+		}
+	case ShapeExecJSON:
+		if !res.Raw {
+			return clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("command bug: %s declares ShapeExecJSON but Result.Raw is not set", d.Name))
+		}
+	}
+	return nil
+}
+
 // envelopeCarriesWarnings reports whether the output format serializes the full
 // stdout envelope — and therefore the top-level "warnings" key — to the user:
 // only json and yaml do. Every other format (table, name, template, "") writes
@@ -417,7 +469,10 @@ func envelopeCarriesWarnings(format string) bool {
 	return format == "json" || format == "yaml"
 }
 
-func renderResult(streams IO, res Result) *clierr.Error {
+func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
+	if ce := checkResultShape(d, res, streams.Format); ce != nil {
+		return ce
+	}
 	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
 	// any combination is a command bug.
 	claimed := 0
@@ -433,7 +488,7 @@ func renderResult(streams IO, res Result) *clierr.Error {
 	if claimed > 1 || (res.Summary != "" && claimed > 0) {
 		return clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
 	}
-	if res.Text != "" && tableFormat(streams.Format) {
+	if res.Text != "" && textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
@@ -527,7 +582,7 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if d.Delivery == DeliveryOnceOnly {
 		return finishOnceOnlyResult(streams, d, res)
 	}
-	if ce := renderResult(streams, res); ce != nil {
+	if ce := renderResult(streams, d, res); ce != nil {
 		return 0, ce
 	}
 	return res.ExitStatus, nil
@@ -556,7 +611,7 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 	buffered := streams
 	var buf bytes.Buffer
 	buffered.Out = &buf
-	if ce := renderResult(buffered, res); ce != nil {
+	if ce := renderResult(buffered, d, res); ce != nil {
 		return 0, renderErr(streams, committedContextError(res.CommittedContext, false, ce.Message))
 	}
 	n, err := streams.Out.Write(buf.Bytes())
