@@ -146,6 +146,25 @@ func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	assert.Empty(t, creds, "--all clears the whole cache")
 }
 
+// TestLogoutAllSurfacesExecCacheLoosePermissionNotice asserts the same drain
+// end to end: `auth logout --all` deletes its exec-credential cache via
+// config.DeleteAllExecCache, whose own throwaway *fileStore must drain its
+// notice buffer so a loose-permission notice on token-cache.yaml reaches
+// Result.Warnings instead of going out of scope with the throwaway store.
+func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	dir, store := seedLogout(t, "acme", "acme")
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+	require.Len(t, res.Warnings, 1, "the exec-cache store's loose-permission notice must reach Result.Warnings")
+	assert.Contains(t, res.Warnings[0], "group/world-readable")
+}
+
 // Round-3 repro: --all's per-server host-scoped delete (round 2) missed a
 // legacy bare entry (no Server field) and an entry cached against a server
 // no longer in config.yaml — neither is reachable by any per-server delete.
@@ -424,16 +443,30 @@ func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	t.Parallel()
 	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
-	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"}, nil, nil)
+	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"}, nil, nil, nil)
 	require.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
 	assert.NotErrorAs(t, err, &ce, "cancellation must not be dressed as a clierr delete failure")
 
-	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil)
+	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil, nil)
 	require.ErrorAs(t, real, &ce)
 	details, ok := ce.Details.(LogoutAllPartialFailure)
 	require.True(t, ok)
 	assert.Contains(t, details.TextDetails()[0], "already logged out")
+}
+
+// TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep pins that a
+// notice recorded by a step that already succeeded (a keychain-unreachable
+// degrade during one server's delete, say) before a LATER step in the same
+// --all run fails rides the resulting error instead of being discarded with
+// the Result the pipeline never gets to build.
+func TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep(t *testing.T) {
+	t.Parallel()
+	err := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil,
+		[]string{"keychain unreachable, deleted the file store only"})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, ce.Warnings())
 }
 
 // TestLogoutAllPartialFailureTextDetailsBracketedLines pins the two
@@ -477,7 +510,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	t.Parallel()
 	inner := clierr.Retryable(clierr.CodeLockTimeout,
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")
-	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"}, nil, nil)
+	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"}, nil, nil, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)

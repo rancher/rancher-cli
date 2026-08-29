@@ -108,7 +108,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// A broken config.yaml therefore cannot block a warm cache hit — this is
 	// the guarantee the shim exists to provide for unattended exec-credential
 	// plugin invocations, and it is proven end-to-end by token-shim.txtar.
-	probedKey, noticed, r, hit := shimProbeFlagCache(dir, name, server, cluster, p)
+	probedKey, noticed, r, hit, warn := shimProbeFlagCache(dir, name, server, cluster, p)
 	if hit {
 		return r, nil
 	}
@@ -127,7 +127,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		}
 	}
 
-	return tokenCmd{dir: dir, store: store}.runWithParams(ctx, runParams{
+	res, err := tokenCmd{dir: dir, store: store}.runWithParams(ctx, runParams{
 		Server: server,
 		// The slot namespaces the legacy user under the "legacy:" prefix, which
 		// the native get-token command rejects as a --name value, so shim entries
@@ -143,19 +143,30 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		ProbedNoticed:   noticed,
 		legacyShim:      true,
 	}, p)
+	// warn (the fast-path probe's loose-permission finding, if any) is
+	// independent of hit/miss: the probe already returned before this point,
+	// so it must ride whatever Result the slow path goes on to build.
+	if err == nil && warn != "" {
+		res.Warnings = append(res.Warnings, warn)
+	}
+	return res, err
 }
 
 // shimProbeFlagCache is the shim's fast-path cache probe: reads token-cache.yaml
 // directly via config.ReadOnlyCachedCred — no config.yaml parse required. The
 // probe itself is probeCacheWith (shared with probeFlagCache), so key
 // computation, hit construction, and the hit/miss/notice classification stay
-// in one place. Returns (key, noticed, result, hit). noticed is true when the
-// probe fired a "cache read failed" notice (a real, non-ErrNoToken error);
-// the caller sets ProbedNoticed so runWithParams's resolved-key re-check is
-// quiet only when the fast path already emitted a notice — a clean miss does
-// NOT silence a distinct error on the resolved key (notice-zero fix).
-func shimProbeFlagCache(dir, name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
-	return probeCacheWith(name, server, cluster, func(k string) (string, time.Time, error) {
+// in one place. Returns (key, noticed, result, hit, warn). noticed is true
+// when the probe fired a "cache read failed" notice (a real, non-ErrNoToken
+// error); the caller sets ProbedNoticed so runWithParams's resolved-key
+// re-check is quiet only when the fast path already emitted a notice — a
+// clean miss does NOT silence a distinct error on the resolved key
+// (notice-zero fix). warn is ReadOnlyCachedCred's standalone-function
+// return notice (a loose-permission finding on token-cache.yaml) — already
+// folded into r.Warnings on a hit; the caller must still carry it forward
+// on a miss, since r is discarded there.
+func shimProbeFlagCache(dir, name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
+	return probeCacheWith(name, server, cluster, func(k string) (string, time.Time, string, error) {
 		return config.ReadOnlyCachedCred(dir, k)
 	}, p)
 }

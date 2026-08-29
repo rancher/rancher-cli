@@ -107,15 +107,31 @@ type fileStore struct {
 	cachePath     string
 	cacheLockPath string
 	mu            sync.Mutex
+	// notices is shared with any store wrapping this one (keyringStore's
+	// cache is a fileStore instance) so DrainNotices sees every notice
+	// recorded by either layer in true record order, from one buffer
+	// rather than merging two.
+	notices *noticeBuffer
 }
 
 func NewFileStore(dir string) CredStore {
+	return newFileStore(dir, &noticeBuffer{})
+}
+
+// newFileStore builds a fileStore recording onto nb — the shared-buffer
+// constructor keyringStore uses for its file-backed cache; NewFileStore
+// gives a standalone fileStore its own buffer.
+func newFileStore(dir string, nb *noticeBuffer) *fileStore {
 	return &fileStore{
 		path:          filepath.Join(dir, "credentials.yaml"),
 		cachePath:     filepath.Join(dir, "token-cache.yaml"),
 		cacheLockPath: filepath.Join(dir, "token-cache.lock"),
+		notices:       nb,
 	}
 }
+
+// DrainNotices implements runtime.NoticeSource.
+func (f *fileStore) DrainNotices() []string { return f.notices.DrainNotices() }
 
 // setTokenHook is a test-only synchronization point, invoked (when non-nil)
 // between SetToken's read and write. Lets tests pin the exact stale-snapshot
@@ -167,31 +183,37 @@ func (f *fileStore) withCacheLock(fn func() error) error {
 // credential access, so without this the same warning would repeat all run.
 var warnedLoosePerm sync.Map // path -> struct{}
 
-// warnLoosePerm notices on stderr when a credential file is group/world
-// readable, so a plaintext token in a 0644 file does not sit unremarked (CS-1).
-// It warns at most once per path per process. On Windows this Unix-perm
-// check is SKIPPED via permCheckApplicable (NTFS ignores mode bits;
-// Mode().Perm() is synthetic there and would false-positive on every
-// file) — the owner-only DACL set by hardenACL at write time is the
-// guarantee on that platform.
-func warnLoosePerm(path string) {
+// warnLoosePerm reports a non-empty notice when a credential file is
+// group/world readable, so a plaintext token in a 0644 file does not sit
+// unremarked (CS-1). It notices at most once per path per process; every
+// later call for the same path returns "". On Windows this Unix-perm check
+// is SKIPPED via permCheckApplicable (NTFS ignores mode bits; Mode().Perm()
+// is synthetic there and would false-positive on every file) — the
+// owner-only DACL set by hardenACL at write time is the guarantee on that
+// platform. The caller decides where the notice goes: a fileStore method
+// records it on its own buffer, while ReadOnlyCachedCred (no store
+// receiver, a standalone read on the token shim's fast path) returns it to
+// its own caller instead.
+func warnLoosePerm(path string) string {
 	if fi, err := os.Stat(path); err == nil {
-		warnLoosePermFI(path, fi)
+		return warnLoosePermFI(path, fi)
 	}
+	return ""
 }
 
-// warnLoosePermFI is warnLoosePerm's core: checks fi's permissions and warns
-// at most once per path. Split out so callers that already hold an os.FileInfo
-// (e.g. after os.Open + handle.Stat()) avoid a second syscall.
-func warnLoosePermFI(path string, fi os.FileInfo) {
+// warnLoosePermFI is warnLoosePerm's core: checks fi's permissions and
+// notices at most once per path. Split out so callers that already hold an
+// os.FileInfo (e.g. after os.Open + handle.Stat()) avoid a second syscall.
+func warnLoosePermFI(path string, fi os.FileInfo) string {
 	if !permCheckApplicable() {
-		return
+		return ""
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		if _, seen := warnedLoosePerm.LoadOrStore(path, struct{}{}); !seen {
-			writeWarningLine(os.Stderr, fmt.Sprintf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path))
+			return fmt.Sprintf("%s is group/world-readable (%o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
 		}
 	}
+	return ""
 }
 
 func (f *fileStore) read() (map[string]string, error) {
@@ -203,7 +225,7 @@ func (f *fileStore) read() (map[string]string, error) {
 		}
 		return nil, err
 	}
-	warnLoosePerm(f.path)
+	f.notices.record(warnLoosePerm(f.path))
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
@@ -271,7 +293,7 @@ func (f *fileStore) readCache() (map[string]cachedCred, error) {
 		}
 		return nil, err
 	}
-	warnLoosePerm(f.cachePath)
+	f.notices.record(warnLoosePerm(f.cachePath))
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
@@ -455,6 +477,12 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 type keyringStore struct {
 	cache   CredStore
 	pinHint string // non-empty when selected via the auto pin (Task 2 uses it)
+	// notices is the SAME buffer as cache's (both constructed from one
+	// newNoticeBuffer() call below) — one buffer, not two merged on drain,
+	// so DrainNotices sees a loose-permission notice from the wrapped file
+	// cache and a keychain-unreachable notice from this store in true
+	// record order.
+	notices *noticeBuffer
 }
 
 // newPinnedKeyringStore builds a keyring-backed store. When pinned is true the
@@ -465,8 +493,12 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	if pinned {
 		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set %s=file)", PinPath(dir), EnvCredentialStore)
 	}
-	return &keyringStore{cache: NewFileStore(dir), pinHint: hint}
+	nb := &noticeBuffer{}
+	return &keyringStore{cache: newFileStore(dir, nb), pinHint: hint, notices: nb}
 }
+
+// DrainNotices implements runtime.NoticeSource.
+func (k *keyringStore) DrainNotices() []string { return k.notices.DrainNotices() }
 
 // keyringUnreachable reports whether err is a backend-unreachable keyring
 // failure — a transport/connection-class error (Linux: godbus "no session
@@ -548,7 +580,7 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 		// copy, if any, could not be checked. auth logout's DeleteLoginToken
 		// independently surfaces keyring errors, so nothing is silently
 		// left behind on that path.
-		writeWarningLine(os.Stderr, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
+		k.notices.record(fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).
@@ -595,13 +627,19 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // way to reach a cache entry cached against a server no longer configured —
 // still misses orphaned/bare entries that match no configured server. See
 // DeleteAllExecCache, which `--all` calls once instead.
-func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, deletedCache []string, err error) {
-	fromBackends, err = DeleteLoginToken(ctx, dir, ref, policy)
-	deletedCache, cerr := DeleteExecCacheForServer(NewFileStore(dir), ref.URL)
+func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, deletedCache, notices []string, err error) {
+	fromBackends, notices, err = DeleteLoginToken(ctx, dir, ref, policy)
+	// cacheStore is a throwaway *fileStore never exposed to any caller as a
+	// NoticeSource — the same reasoning DeleteLoginToken's own throwaway fs
+	// documents below: a loose-permission notice on token-cache.yaml would
+	// otherwise be drained by no one and silently lost.
+	cacheStore := newFileStore(dir, &noticeBuffer{})
+	deletedCache, cerr := DeleteExecCacheForServer(cacheStore, ref.URL)
 	if cerr != nil {
 		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
 	}
-	return fromBackends, deletedCache, err
+	notices = append(notices, cacheStore.DrainNotices()...)
+	return fromBackends, deletedCache, notices, err
 }
 
 // DeleteLoginToken deletes a server's login token from the keychain, file
@@ -612,11 +650,8 @@ func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, polic
 // DeleteTokenEverywhere (single-server logout) and by `logout --all` (which deletes
 // every configured server's token this way, then wipes the exec-credential
 // cache once via DeleteAllExecCache instead of per server).
-func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) ([]string, error) {
-	var (
-		from []string
-		errs []error
-	)
+func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) (from, notices []string, err error) {
+	var errs []error
 	if kerr := keyring.Delete(keyringService, ref.Name); kerr == nil {
 		from = append(from, "keychain")
 	} else if errors.Is(kerr, keyring.ErrNotFound) {
@@ -624,12 +659,17 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	} else if keyringUnreachable(kerr) {
 		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
 		// keychain must not turn `auth logout` into a hard failure when
-		// the file store still deletes cleanly.
-		writeWarningLine(os.Stderr, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr))
+		// the file store still deletes cleanly. No store receiver exists
+		// here (DeleteLoginToken is a package-level function) to buffer
+		// this on, so it rides the return value straight to the caller
+		// instead — the command body appends it to Result.Warnings, or it
+		// rides the resulting error via WithWarnings if a later step
+		// fails.
+		notices = append(notices, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr))
 	} else {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}
-	fs := NewFileStore(dir)
+	fs := newFileStore(dir, &noticeBuffer{})
 	switch _, terr := fs.GetToken(ref); {
 	case terr == nil:
 		if derr := fs.DeleteToken(ref); derr != nil {
@@ -675,7 +715,11 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	if lerr != nil {
 		errs = append(errs, lerr)
 	}
-	return from, errors.Join(errs...)
+	// fs is a throwaway *fileStore never exposed to any caller as a
+	// NoticeSource — its own buffer (a loose-permission notice on
+	// credentials.yaml, say) would otherwise be drained by no one.
+	notices = append(notices, fs.DrainNotices()...)
+	return from, notices, errors.Join(errs...)
 }
 
 // deleteHelperRecords erases every record through eraseHelperCredential:
@@ -718,20 +762,26 @@ func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error)
 // entries (a legacy bare entry with no Server field, or one cached against a
 // server later removed from config.yaml) that no per-server delete — keyed to
 // a currently-configured server's host — could ever reach.
-func DeleteAllExecCache(dir string) ([]string, error) {
-	fs := NewFileStore(dir)
+//
+// notices carries any notice the throwaway *fileStore this function
+// constructs records on its own buffer (a loose-permission finding on
+// token-cache.yaml, say) — that buffer is never exposed to any caller as a
+// NoticeSource, so it must be drained and returned here instead of left to
+// go out of scope unread, on every return path including the error ones.
+func DeleteAllExecCache(dir string) (keys, notices []string, err error) {
+	fs := newFileStore(dir, &noticeBuffer{})
 	cached, err := fs.ListCachedCreds()
 	if err != nil {
-		return nil, err
+		return nil, fs.DrainNotices(), err
 	}
 	if err := fs.DeleteAllCachedCreds(); err != nil {
-		return nil, err
+		return nil, fs.DrainNotices(), err
 	}
-	keys := make([]string, 0, len(cached))
+	keys = make([]string, 0, len(cached))
 	for _, c := range cached {
 		keys = append(keys, c.Key)
 	}
-	return keys, nil
+	return keys, fs.DrainNotices(), nil
 }
 
 // DeleteExecCacheForServer deletes every exec-credential cache entry whose

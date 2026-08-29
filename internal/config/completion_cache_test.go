@@ -1,6 +1,9 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -8,6 +11,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestReadOnlyCachedCredNoticesLoosePermissions pins ReadOnlyCachedCred's
+// standalone-function notice return (no store receiver exists to buffer it
+// on): a group/world-readable token-cache.yaml notices once, and the
+// second read for the same path is silent — the same dedupe fileStore's
+// own loose-permission check applies, since both share the underlying
+// warnLoosePermFI implementation.
+func TestReadOnlyCachedCredNoticesLoosePermissions(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred("k", "tok", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+
+	tok, _, notice, err := config.ReadOnlyCachedCred(dir, "k")
+	require.NoError(t, err)
+	assert.Equal(t, "tok", tok)
+	assert.Contains(t, notice, "group/world-readable")
+
+	_, _, notice2, err := config.ReadOnlyCachedCred(dir, "k")
+	require.NoError(t, err)
+	assert.Empty(t, notice2, "notice must fire once per path per process")
+}
 
 // TestReadOnlyCachedCredsNeverWrites is a pure file-store test: ReadOnlyCachedCreds
 // reads token-cache.yaml directly and never touches the keyring.

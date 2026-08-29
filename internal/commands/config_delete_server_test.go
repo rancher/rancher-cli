@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
+	"sigs.k8s.io/yaml"
 )
 
 // seedDeleteServer sets up a temp config dir with a real FileStore and
@@ -46,8 +49,8 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	deleteErr := errors.New("keychain locked")
-	cmd.delete = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
-		return nil, nil, deleteErr
+	cmd.delete = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, []string, error) {
+		return nil, nil, nil, deleteErr
 	}
 
 	_, err = cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
@@ -202,8 +205,8 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
-		return nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
+	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
+		return nil, nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
 	}}
 	_, err := cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
@@ -224,8 +227,8 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
-	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
-		return nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
+	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
+		return nil, nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
 			"locking the credential-helper records (another rancher process may be logging in/out): context deadline exceeded")
 	}
 
@@ -236,4 +239,55 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
 	assert.Contains(t, ce.Message, "server config left untouched")
+}
+
+// TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure pins the
+// merge-order-under-failure scenario: a notice recorded by an earlier,
+// successful step (a keychain-unreachable degrade during the token delete)
+// rides the error produced when a LATER step (the exec-credential cache
+// delete) fails — the pipeline discards the command's Result on error, so
+// WithWarnings is the notice's only ride. Default format prints the warning
+// ahead of the error text; json/yaml carry it in the same error envelope's
+// top-level warnings field, never inside data.error.
+func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
+	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
+
+	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
+	cacheErr := errors.New("exec-credential cache: read token-cache.yaml: disk full")
+	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
+		return []string{"file"}, nil,
+			[]string{"keychain unreachable, deleted the file store only"},
+			cacheErr
+	}
+
+	_, err := cmd.Execute(t.Context(), args{a: []string{"acme"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, ce.Warnings())
+
+	var textBuf, jsonBuf, yamlBuf bytes.Buffer
+	require.NoError(t, runtime.RenderError(&textBuf, "", ce))
+	require.NoError(t, runtime.RenderError(&jsonBuf, "json", ce))
+	require.NoError(t, runtime.RenderError(&yamlBuf, "yaml", ce))
+
+	assert.Equal(t,
+		"# warning: keychain unreachable, deleted the file store only\n"+
+			"error (GENERIC): failed to delete credentials for \"acme\"; server config left untouched: "+cacheErr.Error()+"\n",
+		textBuf.String(), "the warning must print ahead of the error text on the default format")
+
+	var jsonEnv struct {
+		Warnings []string `json:"warnings"`
+		Data     struct {
+			Error map[string]any `json:"error"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(jsonBuf.Bytes(), &jsonEnv))
+	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, jsonEnv.Warnings)
+	assert.NotContains(t, jsonEnv.Data.Error, "warnings", "a warning must never appear under data.error")
+
+	var yamlEnv struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, yaml.Unmarshal(yamlBuf.Bytes(), &yamlEnv))
+	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, yamlEnv.Warnings)
 }

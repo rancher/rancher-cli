@@ -1249,6 +1249,140 @@ func TestRenderErrNoWarningsAddsNoLines(t *testing.T) {
 	assert.False(t, hasWarnings)
 }
 
+// stubNoticeSource is a test NoticeSource: DrainNotices returns the queued
+// notices once and empties thereafter, mirroring the real drain-once
+// contract without any store behind it.
+type stubNoticeSource struct{ notices []string }
+
+func (s *stubNoticeSource) DrainNotices() []string {
+	out := s.notices
+	s.notices = nil
+	return out
+}
+
+// TestRenderErrMergesNoticeSourceAheadOfWarnings pins the merge order: a
+// drained NoticeSource notice (recorded earliest) leads the error's own
+// WithWarnings ride, each in its own record order — under both the default
+// text form and the json/yaml envelope.
+func TestRenderErrMergesNoticeSourceAheadOfWarnings(t *testing.T) {
+	t.Parallel()
+	ce := clierr.New(clierr.CodeGeneric, "boom").WithWarnings("error-carried-1", "error-carried-2")
+
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		notices := &stubNoticeSource{notices: []string{"notice-1", "notice-2"}}
+		var errBuf bytes.Buffer
+		_ = renderErr(IO{Err: &errBuf, Format: "", Notices: notices}, ce)
+		assert.Equal(t,
+			"# warning: notice-1\n# warning: notice-2\n# warning: error-carried-1\n# warning: error-carried-2\nerror (GENERIC): boom\n",
+			errBuf.String())
+	})
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		notices := &stubNoticeSource{notices: []string{"notice-1", "notice-2"}}
+		var errBuf bytes.Buffer
+		_ = renderErr(IO{Err: &errBuf, Format: "json", Notices: notices}, ce)
+		var env struct {
+			Warnings []string `json:"warnings"`
+		}
+		require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+		assert.Equal(t, []string{"notice-1", "notice-2", "error-carried-1", "error-carried-2"}, env.Warnings)
+	})
+}
+
+// TestRenderErrDrainsNoticeSourceWithNoErrorWarnings asserts that a
+// NoticeSource notice reaches the error path on its own, with no
+// error-carried WithWarnings involved, at the renderErr seam.
+func TestRenderErrDrainsNoticeSourceWithNoErrorWarnings(t *testing.T) {
+	t.Parallel()
+	notices := &stubNoticeSource{notices: []string{"keychain unavailable; credentials will be stored in plaintext"}}
+	ce := clierr.New(clierr.CodeAuth, "not logged in")
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: "json", Notices: notices}, ce)
+	env := decodeEnvelope(t, errBuf.Bytes())
+	warnings, ok := env["warnings"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"keychain unavailable; credentials will be stored in plaintext"}, warnings)
+	assert.Empty(t, notices.notices, "drain must be destructive — nothing left to drain a second time")
+}
+
+// TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess pins the success-path
+// drain for a plain (non-once-only) command: a notice recorded on the
+// invocation's NoticeSource leads Result.Warnings — under the default
+// format it mirrors to stderr ahead of any Result.Warnings entry, and under
+// -o json it lands inside the same envelope's warnings field, in that
+// order. Draining is destructive.
+func TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess(t *testing.T) {
+	t.Parallel()
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		notices := &stubNoticeSource{notices: []string{"notice-1"}}
+		cmd := fakeRead{
+			d:   Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeText},
+			res: Result{Kind: "Thing", Text: "thing rendered\n", Warnings: []string{"result-warning"}},
+		}
+		var out, errBuf bytes.Buffer
+		_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "", Notices: notices}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Equal(t, "# warning: notice-1\n# warning: result-warning\n", errBuf.String())
+		assert.Empty(t, notices.notices)
+	})
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		notices := &stubNoticeSource{notices: []string{"notice-1"}}
+		cmd := fakeRead{
+			d:   Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeTabular},
+			res: Result{Kind: "Thing", Data: fooTabularData{Foo: "bar"}, Warnings: []string{"result-warning"}},
+		}
+		var out, errBuf bytes.Buffer
+		_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json", Notices: notices}, safety.Binding{})
+		require.Nil(t, ce)
+		assert.Empty(t, errBuf.String())
+		env := decodeEnvelope(t, out.Bytes())
+		warnings, ok := env["warnings"].([]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{"notice-1", "result-warning"}, warnings)
+		assert.Empty(t, notices.notices)
+	})
+}
+
+// TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat pins the
+// warning-delivery fix for the raw-output shapes: ShapeBytes (RawBytes) and
+// ShapeExecJSON (Raw) results never had an envelope to carry Warnings, and
+// the RawBytes/Raw branches used to return before the stderr mirror loop
+// ran at all — silently dropping them under every format, not just
+// json/yaml. Both branches now mirror unconditionally.
+func TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"", "table", "json"} {
+		t.Run("RawBytes format="+format, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d:   Descriptor{Name: "kubeconfig", CommandType: Local, Shape: ShapeBytes},
+				res: Result{RawBytes: []byte("apiVersion: v1\n"), Warnings: []string{"server URL is not https"}},
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Equal(t, "apiVersion: v1\n", out.String(), "RawBytes stays verbatim regardless of -o")
+			assert.Contains(t, errBuf.String(), "# warning: server URL is not https\n")
+		})
+		t.Run("Raw format="+format, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{
+				d:   Descriptor{Name: "auth get-token", CommandType: Local, Shape: ShapeExecJSON},
+				res: Result{Raw: true, Kind: "ExecCredential", Data: map[string]string{"token": "t"}, Warnings: []string{"cache read failed: boom"}},
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.NotContains(t, out.String(), "warning", "the bare ExecCredential JSON never carries a warnings key")
+			assert.Contains(t, errBuf.String(), "# warning: cache read failed: boom\n")
+		})
+	}
+}
+
 // TestValidateInputStringSlicePerEntry pins MC-6a's validateInput
 // semantics: Required means at least one occurrence; Enum membership is
 // checked on every entry.

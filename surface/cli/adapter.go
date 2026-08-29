@@ -190,7 +190,20 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, c *ucli.Command) error {
-			status, ce := runtime.Run(ctx, rc, cmdInput{c}, buildIO(c), b)
+			io := buildIO(c)
+			// A local command wired through Adapt has no store today
+			// (schema, completion), but resolveDeps is cheap (a lazy
+			// store, no I/O until a credential call) — wiring the seam
+			// here means a future local command that grows a store
+			// dependency never ships without it. A resolution failure
+			// degrades gracefully: this path never needed a store to
+			// begin with.
+			if _, store, err := resolveDeps(c); err == nil {
+				if ns, ok := store.(runtime.NoticeSource); ok {
+					io.Notices = ns
+				}
+			}
+			status, ce := runtime.Run(ctx, rc, cmdInput{c}, io, b)
 			if ce != nil {
 				return exit(ce)
 			}

@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 // partialWriteErr always fails, returning n bytes written before the error —
@@ -166,6 +168,75 @@ func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)
 	assert.True(t, details.PartialOutput)
+}
+
+// TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite pins the
+// notice-preservation invariant: a notice drained from the invocation's
+// NoticeSource before the buffered render must land in the replacement
+// committed-context error's envelope warnings — not vanish with the
+// discarded stdout buffer — under both a zero-byte and a partial final
+// write, and under both json and yaml (the two formats whose only copy of
+// the notice is embedded in the buffered envelope bytes rather than
+// mirrored straight to the real stderr).
+func TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite(t *testing.T) {
+	t.Parallel()
+	cc := &CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json"}
+	const notice = "keychain unavailable; credentials will be stored in plaintext"
+
+	for _, format := range []string{"json", "yaml"} {
+		for _, tc := range []struct {
+			name string
+			out  *partialWriteErr
+		}{
+			{"zero bytes accepted", &partialWriteErr{n: 0}},
+			{"partial bytes accepted", &partialWriteErr{n: 5}},
+		} {
+			t.Run(format+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
+				cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+				notices := &stubNoticeSource{notices: []string{notice}}
+				var errBuf bytes.Buffer
+				status, ce := Run(t.Context(), cmd, mapInput{},
+					IO{Out: tc.out, Err: &errBuf, Format: format, Apply: true, Notices: notices}, safety.Binding{})
+				require.NotNil(t, ce)
+				assert.Zero(t, status)
+				assert.Equal(t, []string{notice}, ce.Warnings(),
+					"the queued notice must ride the replacement committed-context error")
+
+				var env map[string]any
+				if format == "json" {
+					require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+				} else {
+					require.NoError(t, yaml.Unmarshal(errBuf.Bytes(), &env))
+				}
+				assert.Equal(t, []any{notice}, env["warnings"],
+					"the notice must land in the committed-context error envelope, not vanish with the discarded buffer")
+			})
+		}
+	}
+}
+
+// TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope pins the
+// success-path counterpart: a notice recorded before a once-only command's
+// buffered render lands in Result.Warnings and is fully delivered as part
+// of the json envelope actually written to real stdout — nothing left to
+// recover, and draining is destructive (a second drain sees nothing).
+func TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope(t *testing.T) {
+	t.Parallel()
+	cc := &CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json"}
+	res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+	notices := &stubNoticeSource{notices: []string{"first-pin notice"}}
+	var out, errBuf bytes.Buffer
+	status, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true, Notices: notices}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Zero(t, status)
+	env := decodeEnvelope(t, out.Bytes())
+	assert.Equal(t, []any{"first-pin notice"}, env["warnings"])
+	assert.Empty(t, errBuf.String())
+	assert.Empty(t, notices.notices, "drain must be destructive")
 }
 
 // restrictiveOnceOnlyDesc mirrors the four structured once-only descriptors:

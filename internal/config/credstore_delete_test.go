@@ -124,7 +124,7 @@ func TestDeleteLoginTokenErasesThroughRecordedHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, st.SetToken(execRef(), "id:s"))
 
-	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto")
+	from, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto")
 	require.NoError(t, err)
 	assert.Contains(t, from, "helper:fake")
 
@@ -147,7 +147,7 @@ func TestDeleteLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 
 	// Helper now fails: delete must error and RETAIN the entry for retry.
 	t.Setenv("FAKEHELPER_MODE", "fail")
-	_, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
+	_, _, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
 	require.Error(t, derr)
 	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
 		require.Len(t, s.forServer("prod"), 1, "failed erase keeps the helper record")
@@ -156,7 +156,7 @@ func TestDeleteLoginTokenFailedEraseKeepsHelperRecord(t *testing.T) {
 
 	// Helper heals: retry deletes and clears.
 	t.Setenv("FAKEHELPER_MODE", "ok")
-	from, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
+	from, _, derr := DeleteLoginToken(t.Context(), dir, ref, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
@@ -177,7 +177,7 @@ func TestDeleteSameNameTwoURLsErasesBoth(t *testing.T) {
 
 	// Delete with only the CURRENT URL: the recorded old identity must be
 	// erased too — replayed verbatim from the helper records, not reconstructed.
-	from, derr := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
+	from, _, derr := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
 
@@ -207,7 +207,7 @@ func TestDeleteMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	require.NoError(t, st2.SetToken(ref, "id:s"))
 
 	t.Setenv("FAKEHELPER2_MODE", "fail")
-	_, derr := DeleteLoginToken(t.Context(), dir, ref, "auto")
+	_, _, derr := DeleteLoginToken(t.Context(), dir, ref, "auto")
 	require.Error(t, derr)
 
 	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error {
@@ -227,7 +227,7 @@ func TestDeleteLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	// DeleteLoginToken must error (not silently skip) and must not attempt to
 	// exec anything. The helper-records file is empty, so file/keychain deletes also
 	// report nothing — only the validation error is returned.
-	_, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:../evil")
+	_, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "../evil", "error must name the invalid helper")
 }
@@ -246,7 +246,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 		return nil
 	}))
 
-	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
+	from, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
 	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
 	// deletion (friction-4 semantics) — the replay and the cleanup below
@@ -271,7 +271,7 @@ func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 	useFakeHelper(t, "ok")
 	dir := t.TempDir()
 
-	from, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:fake")
+	from, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:fake")
 	require.NoError(t, err)
 	assert.NotContains(t, from, "helper:fake", "a no-op erase is not a deletion")
 	assert.Empty(t, from)
@@ -300,7 +300,7 @@ func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	defer restore()
 	done := make(chan error, 1)
 	go func() {
-		_, derr := DeleteLoginToken(ctx, dir, execRef(), "exec:fake")
+		_, _, derr := DeleteLoginToken(ctx, dir, execRef(), "exec:fake")
 		done <- derr
 	}()
 	<-flockWaiting // let the delete reach the records-lock wait

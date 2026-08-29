@@ -56,6 +56,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		targets      []string
 		deletedFrom  map[string][]string
 		deletedCache []string
+		notices      []string
 		urlByName    = map[string]string{}
 	)
 	if err := config.WithLock(cmdCtx, l.dir, func() error {
@@ -72,9 +73,9 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
 		if all {
-			deletedFrom, deletedCache, err = l.deleteAll(cmdCtx, cfg, targets, policy)
+			deletedFrom, deletedCache, notices, err = l.deleteAll(cmdCtx, cfg, targets, policy)
 		} else {
-			deletedFrom, deletedCache, err = l.deleteTargets(cmdCtx, cfg, targets, policy)
+			deletedFrom, deletedCache, notices, err = l.deleteTargets(cmdCtx, cfg, targets, policy)
 		}
 		return err
 	}); err != nil {
@@ -85,7 +86,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	sort.Strings(deletedCache)
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
 		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
-	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache))}, nil
+	}, Text: renderLogoutText(urlByName, deletedFrom, len(deletedCache)), Warnings: notices}, nil
 }
 
 // renderLogoutText is the TTY view of a logout: which servers, which
@@ -162,20 +163,21 @@ func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) 
 // point), reporting the token backends touched per server so a partial
 // failure names what was already deleted, plus every cache key removed
 // across all targets.
-func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
+func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
-	var deletedCache []string
+	var deletedCache, notices []string
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, cache, derr := config.DeleteTokenEverywhere(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		from, cache, ns, derr := config.DeleteTokenEverywhere(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		notices = append(notices, ns...)
 		if derr != nil {
-			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, deletedCache)
+			return nil, nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, deletedCache, notices)
 		}
 		deletedFrom[s] = from
 		deletedCache = append(deletedCache, cache...)
 		done = append(done, s)
 	}
-	return deletedFrom, deletedCache, nil
+	return deletedFrom, deletedCache, notices, nil
 }
 
 // deleteAll is `logout --all`'s delete path: it deletes every target's login
@@ -185,20 +187,23 @@ func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, target
 // orphaned/bare cache entries that match no configured server (which no
 // per-server delete, keyed to a currently-configured server's host, could
 // ever reach). See DeleteAllExecCache's doc for why.
-func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, error) {
+func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
+	var notices []string
 	done := make([]string, 0, len(targets))
 	for _, s := range targets {
-		from, derr := config.DeleteLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		from, ns, derr := config.DeleteLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
+		notices = append(notices, ns...)
 		if derr != nil {
-			return nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, nil)
+			return nil, nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, nil, notices)
 		}
 		deletedFrom[s] = from
 		done = append(done, s)
 	}
-	deletedCache, err := config.DeleteAllExecCache(l.dir)
+	deletedCache, cacheNotices, err := config.DeleteAllExecCache(l.dir)
+	notices = append(notices, cacheNotices...)
 	if err != nil {
-		return nil, nil, deleteFailure("failed to delete exec-credential cache", err, done, deletedFrom, nil)
+		return nil, nil, nil, deleteFailure("failed to delete exec-credential cache", err, done, deletedFrom, nil, notices)
 	}
 
 	// Reach helper credentials whose server name never made it into
@@ -211,9 +216,9 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
 	}
 	if rerr != nil {
-		return nil, nil, deleteFailure("failed to delete orphaned helper credentials", rerr, done, deletedFrom, deletedCache)
+		return nil, nil, nil, deleteFailure("failed to delete orphaned helper credentials", rerr, done, deletedFrom, deletedCache, notices)
 	}
-	return deletedFrom, deletedCache, nil
+	return deletedFrom, deletedCache, notices, nil
 }
 
 // LogoutAllPartialFailure is deleteAll's structured payload for a
@@ -258,10 +263,14 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 // LogoutAllPartialFailure details so nothing already deleted is vaporized
 // just because a later step in the same --all run failed — its TextDetails
 // projection's first line already names what was already logged out, so no
-// separate hint repeats the same fact.
-func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string) error {
+// separate hint repeats the same fact. notices carries every notice
+// (keychain-unreachable degrades, say) already recorded by a step that ran
+// successfully before this one failed — the pipeline discards Result on an
+// error return, so this is their only ride back to the operator.
+func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string, notices []string) error {
 	return wrapUnlessCanceled(err, func(err error) error {
 		return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
-			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache})
+			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache}).
+			WithWarnings(notices...)
 	})
 }

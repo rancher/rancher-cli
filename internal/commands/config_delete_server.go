@@ -17,7 +17,7 @@ type configDeleteServerCmd struct {
 	// (the authcheck preflight-seam pattern, authcheck.go); defaults to
 	// config.DeleteTokenEverywhere — the single delete point (ARCHITECTURE.md), whose
 	// only other caller is auth logout.
-	delete func(ctx context.Context, dir string, ref config.ServerRef, policy string) (fromBackends, deletedCache []string, err error)
+	delete func(ctx context.Context, dir string, ref config.ServerRef, policy string) (fromBackends, deletedCache, notices []string, err error)
 }
 
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
@@ -56,6 +56,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		currentCleared bool
 		deletedFrom    []string
 		deletedCache   []string
+		notices        []string
 	)
 	if err := config.WithLock(cmdCtx, d.dir, func() error {
 		cfg, err := config.Load(config.FilePath(d.dir))
@@ -68,11 +69,12 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 			return serverNotFoundWithCandidates(cfg, name)
 		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
-		deletedFrom, deletedCache, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
+		deletedFrom, deletedCache, notices, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 		if err != nil {
 			return wrapUnlessCanceled(err, func(err error) error {
 				return clierr.Wrap(err,
-					fmt.Sprintf("failed to delete credentials for %q; server config left untouched: %v", name, err))
+					fmt.Sprintf("failed to delete credentials for %q; server config left untouched: %v", name, err)).
+					WithWarnings(notices...)
 			})
 		}
 		delete(cfg.Servers, name)
@@ -93,7 +95,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		"deletedFrom":          map[string][]string{"backend": deletedFrom},
 		"deletedCache":         deletedCache,
 		"currentServerCleared": currentCleared,
-	}}
+	}, Warnings: notices}
 	var lines []string
 	if currentCleared {
 		lines = append(lines, "was current — pointer cleared")

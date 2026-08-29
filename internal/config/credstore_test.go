@@ -1,9 +1,7 @@
 package config
 
 import (
-	"bytes"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,34 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
-
-// captureStderr redirects os.Stderr for the duration of fn and returns the
-// bytes written to it. The pipe is drained concurrently so fn may write more
-// than the pipe buffer, and os.Stderr is restored even when fn panics.
-// Swapping os.Stderr is process-global: callers must not run in parallel
-// tests.
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stderr
-	os.Stderr = w
-	done := make(chan string, 1)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		_ = r.Close()
-		done <- buf.String()
-	}()
-	finish := sync.OnceFunc(func() {
-		_ = w.Close()
-		os.Stderr = orig
-	})
-	defer finish()
-	fn()
-	finish()
-	return <-done
-}
 
 func TestFileStoreRoundTrip(t *testing.T) {
 	s := NewFileStore(t.TempDir())
@@ -220,32 +190,31 @@ func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
 		t.Skip("loose-permission warning is intentionally disabled on Windows (permcheck_windows.go); ACL enforcement is the guarantee there")
 	}
 
-	// Loose (0644): warns once, then deduped for the same path.
+	// Loose (0644): notices once, then deduped for the same path. The
+	// notice rides the store's own NoticeSource buffer now, not stderr
+	// directly.
 	looseDir := t.TempDir()
 	loose := NewFileStore(looseDir)
+	looseNotices := loose.(NoticeSource)
 	require.NoError(t, loose.SetToken(ServerRef{Name: "acme"}, "id:sec"))
 	require.NoError(t, os.Chmod(filepath.Join(looseDir, "credentials.yaml"), 0o644))
 
-	out := captureStderr(t, func() {
-		_, err := loose.GetToken(ServerRef{Name: "acme"})
-		require.NoError(t, err)
-	})
-	assert.Contains(t, out, "group/world-readable", "0644 credentials must warn")
+	_, err := loose.GetToken(ServerRef{Name: "acme"})
+	require.NoError(t, err)
+	notices := looseNotices.DrainNotices()
+	require.Len(t, notices, 1)
+	assert.Contains(t, notices[0], "group/world-readable", "0644 credentials must notice")
 
-	out = captureStderr(t, func() {
-		_, err := loose.GetToken(ServerRef{Name: "acme"})
-		require.NoError(t, err)
-	})
-	assert.NotContains(t, out, "group/world-readable", "warning must fire once per path per process")
+	_, err = loose.GetToken(ServerRef{Name: "acme"})
+	require.NoError(t, err)
+	assert.Empty(t, looseNotices.DrainNotices(), "notice must fire once per path per process")
 
 	// Tight (0600), fresh path: silent.
 	tight := NewFileStore(t.TempDir())
 	require.NoError(t, tight.SetToken(ServerRef{Name: "acme"}, "id:sec")) // written 0600
-	out = captureStderr(t, func() {
-		_, err := tight.GetToken(ServerRef{Name: "acme"})
-		require.NoError(t, err)
-	})
-	assert.NotContains(t, out, "group/world-readable", "0600 credentials must be silent")
+	_, err = tight.GetToken(ServerRef{Name: "acme"})
+	require.NoError(t, err)
+	assert.Empty(t, tight.(NoticeSource).DrainNotices(), "0600 credentials must be silent")
 }
 
 func TestCacheKeyScoping(t *testing.T) {
@@ -322,7 +291,7 @@ func TestDeleteTokenEverywhereRemovesFromBothBackends(t *testing.T) {
 	dir := t.TempDir()
 	_ = keyring.Set(keyringService, "prod", "in-keychain")
 	_ = NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file")
-	from, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	from, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,12 +313,55 @@ func TestDeleteTokenEverywhereAlsoDeletesExecCache(t *testing.T) {
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
 	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
 
-	_, deletedCache, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, deletedCache, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err)
 	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
 
 	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"))
 	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single delete point must also delete the exec-credential cache")
+}
+
+// TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice asserts
+// that DeleteTokenEverywhere's exec-credential-cache delete drains its
+// throwaway *fileStore's own notice buffer: a loose-permission notice on
+// token-cache.yaml must reach the function's returned notices, not go out
+// of scope with the throwaway store. TestDeleteTokenEverywhereAlsoDeletesExecCache
+// never chmods the cache file loose, so it would not catch a regression here.
+func TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	keyring.MockInit()
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+
+	_, deletedCache, notices, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	require.NoError(t, err)
+	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
+	require.Len(t, notices, 1, "the throwaway exec-cache store's loose-permission notice must reach the caller")
+	assert.Contains(t, notices[0], "group/world-readable")
+}
+
+// TestDeleteAllExecCacheSurfacesLoosePermissionNotice pins the same fix for
+// DeleteAllExecCache (logout --all's single-wipe path): its own throwaway
+// *fileStore's notice buffer must be drained and returned, not dropped.
+func TestDeleteAllExecCacheSurfacesLoosePermissionNotice(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+
+	keys, notices, err := DeleteAllExecCache(dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, keys)
+	require.Len(t, notices, 1, "the throwaway store's loose-permission notice must reach the caller")
+	assert.Contains(t, notices[0], "group/world-readable")
 }
 
 func TestDeleteTokenEverywhereFailsOnUnreadableFileStore(t *testing.T) {
@@ -359,7 +371,7 @@ func TestDeleteTokenEverywhereFailsOnUnreadableFileStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err == nil {
 		t.Fatal("DeleteTokenEverywhere must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
@@ -435,24 +447,24 @@ func TestKeyringDeleteTokenDeletesFileStore(t *testing.T) {
 
 // TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile: DeleteLoginToken
 // now shares keyringStore.DeleteToken's XP-6 degrade — an unreachable
-// keychain warns rather than turning `auth logout` into a hard failure,
-// as long as the file store deletes cleanly.
+// keychain warns rather than turning `auth logout` into a hard failure, as
+// long as the file store deletes cleanly. DeleteLoginToken has no store
+// receiver to buffer this notice on, so it rides the return value instead
+// of stderr directly — the caller (config_delete_server.go, logout.go)
+// appends it to Result.Warnings or a failing error's WithWarnings ride.
 func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain boom"))
 	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 
-	var from []string
-	var err error
-	out := captureStderr(t, func() {
-		from, _, err = DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	})
+	from, _, notices, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store deletes")
 	assert.Contains(t, from, "file", "file backend must still be deleted")
 	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
-	assert.Contains(t, out, "keychain unreachable", "the unreachable keychain must still be visibly warned about")
+	require.Len(t, notices, 1)
+	assert.Contains(t, notices[0], "keychain unreachable", "the unreachable keychain must still be visibly warned about")
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
@@ -521,9 +533,10 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 // TestKeyringUnreachableDeleteDeletesFile: delete under an unreachable
 // keychain still deletes the file store and reports success (spec XP-6:
 // same as a miss; logout's DeleteLoginToken independently surfaces
-// keyring errors) — and WARNS visibly, naming the unreachable keychain
+// keyring errors) — and records a notice naming the unreachable keychain
 // and the file-only delete, so the undeletable keychain copy (if any) is
-// never silent.
+// never silent. The notice rides the store's own NoticeSource buffer, not
+// stderr directly.
 func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
@@ -532,13 +545,13 @@ func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	out := captureStderr(t, func() {
-		require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
-	})
+	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
 	_, err := fs.GetToken(ServerRef{Name: "prod"})
 	require.ErrorIs(t, err, ErrNoToken)
-	assert.Contains(t, out, "keychain unreachable")
-	assert.Contains(t, out, "file store only")
+	notices := s.(NoticeSource).DrainNotices()
+	require.Len(t, notices, 1)
+	assert.Contains(t, notices[0], "keychain unreachable")
+	assert.Contains(t, notices[0], "file store only")
 }
 
 // TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized

@@ -419,6 +419,13 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				if err != nil {
 					return exit(clierr.New(clierr.CodeGeneric, err.Error()))
 				}
+				// The store is the drain handle for every notice recorded
+				// outside a Result (a lazy first-pin notice, a keychain
+				// degrade) — wired here so renderErr/renderResult can drain
+				// it ahead of rendering.
+				if ns, ok := store.(runtime.NoticeSource); ok {
+					io.Notices = ns
+				}
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)

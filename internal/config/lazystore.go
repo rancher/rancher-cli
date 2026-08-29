@@ -1,10 +1,8 @@
 package config
 
 import (
-	"fmt"
-	"io"
-	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +18,16 @@ type lazyStore struct {
 	once    sync.Once
 	store   CredStore
 	err     error
+	// resolved flips true (via atomic.Bool, not a plain bool guarded by
+	// once alone) only after store/err are fully written, so DrainNotices
+	// can safely read them from any goroutine without forcing resolution
+	// itself — checking resolved is a query, never a trigger.
+	resolved atomic.Bool
+	// notices holds the first-pin/plaintext-fallback notice recorded during
+	// resolution — a lazyStore is constructed once per invocation, never
+	// shared with another store, so it owns this buffer outright (contrast
+	// keyringStore, which shares one with its wrapped file cache).
+	notices *noticeBuffer
 }
 
 // NewLazyStore validates the EFFECTIVE policy eagerly (an unknown
@@ -32,21 +40,43 @@ func NewLazyStore(policy, dir string) (CredStore, error) {
 	if err := checkPolicy(p); err != nil {
 		return nil, err
 	}
-	return &lazyStore{resolve: func() (CredStore, error) {
+	nb := &noticeBuffer{}
+	return &lazyStore{notices: nb, resolve: func() (CredStore, error) {
 		store, notice, err := openStoreResolved(p, dir)
 		// The lazy path resolves inside a credential operation (SetToken,
-		// GetToken, …), outside any pipeline Result — the notice cannot reach
-		// an envelope here. Write it to stderr directly in # warning: format.
-		if notice != "" {
-			writeWarningLine(os.Stderr, notice)
-		}
+		// GetToken, …), outside any pipeline Result — record it on this
+		// store's own buffer instead of writing to stderr directly; the
+		// invocation's NoticeSource drain (renderErr/renderResult) picks it
+		// up wherever this store is wired onto IO.Notices.
+		nb.record(notice)
 		return store, err
 	}}, nil
 }
 
 func (l *lazyStore) backend() (CredStore, error) {
-	l.once.Do(func() { l.store, l.err = l.resolve() })
+	l.once.Do(func() {
+		l.store, l.err = l.resolve()
+		l.resolved.Store(true)
+	})
 	return l.store, l.err
+}
+
+// DrainNotices implements runtime.NoticeSource. It never forces resolution:
+// an invocation that never calls a credential method must see zero
+// store-init side effects (LS-1) even though the pipeline always drains
+// before rendering. Once resolution has happened (by any caller, at any
+// point before this call), the underlying backend's own notices — a later
+// loose-permission finding, say, not just the first-pin notice recorded
+// during resolution — are drained too, in the order they would naturally
+// occur (the pin notice is always recorded before resolved flips true).
+func (l *lazyStore) DrainNotices() []string {
+	out := l.notices.DrainNotices()
+	if l.resolved.Load() {
+		if ns, ok := l.store.(NoticeSource); ok {
+			out = append(out, ns.DrainNotices()...)
+		}
+	}
+	return out
 }
 
 func (l *lazyStore) GetToken(ref ServerRef) (string, error) {
@@ -126,13 +156,4 @@ func (l *lazyStore) ListCachedCreds() ([]CachedCredInfo, error) {
 		return nil, err
 	}
 	return s.ListCachedCreds()
-}
-
-// writeWarningLine writes a single # warning: line to w. It is the canonical
-// format for user-visible notices in this package when a pipeline Result is not
-// available (e.g. the lazy-store resolution path). Keeping the format string
-// here avoids duplicating the literal across multiple call sites and lets a
-// wording change apply uniformly.
-func writeWarningLine(w io.Writer, msg string) {
-	_, _ = fmt.Fprintf(w, "# warning: %s\n", msg)
 }

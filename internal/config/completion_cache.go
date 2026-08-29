@@ -91,7 +91,14 @@ func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
 // for the config-free fast path: the shim's dominant invocation is a warm
 // cache hit, and pruning requires a config.yaml read (for the store policy)
 // that the fast path exists specifically to avoid.
-func ReadOnlyCachedCred(dir, key string) (string, time.Time, error) {
+//
+// The returned notice (a loose-permission finding, at most once per path per
+// process) is a standalone function's return value, not a buffered
+// NoticeSource write — there is no store receiver here to buffer it on. The
+// shim's caller appends a non-empty notice to Result.Warnings; it is fired
+// regardless of hit or miss, since the permission check runs before the key
+// lookup.
+func ReadOnlyCachedCred(dir, key string) (token string, expiry time.Time, notice string, err error) {
 	path := filepath.Join(dir, "token-cache.yaml")
 	// Open once and use handle.Stat() for the permission warning so this
 	// fast path — a fresh OS process on every kubectl exec-credential
@@ -99,35 +106,36 @@ func ReadOnlyCachedCred(dir, key string) (string, time.Time, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", time.Time{}, ErrNoToken
+			return "", time.Time{}, "", ErrNoToken
 		}
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 	defer func() { _ = f.Close() }()
 
-	// Warn on loose permissions like fileStore.readCache does — this is the
-	// shim's dominant read path, and unlike the completion readers sharing
-	// loadCacheMap, its stderr is not TAB-completion output.
+	// Notice on loose permissions like fileStore.readCache does — this is
+	// the shim's dominant read path, and unlike the completion readers
+	// sharing loadCacheMap, its stdout is not a TAB-completion candidate
+	// list, so a notice here is safe to surface.
 	if fi, serr := f.Stat(); serr == nil {
-		warnLoosePermFI(path, fi)
+		notice = warnLoosePermFI(path, fi)
 	}
 
 	b, rerr := io.ReadAll(f)
 	if rerr != nil {
-		return "", time.Time{}, rerr
+		return "", time.Time{}, notice, rerr
 	}
 	var m map[string]cachedCred
 	if uerr := yaml.Unmarshal(b, &m); uerr != nil {
-		return "", time.Time{}, uerr
+		return "", time.Time{}, notice, uerr
 	}
 	cred, ok := m[key]
 	if !ok {
-		return "", time.Time{}, ErrNoToken
+		return "", time.Time{}, notice, ErrNoToken
 	}
 	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
-		return "", time.Time{}, ErrNoToken
+		return "", time.Time{}, notice, ErrNoToken
 	}
-	return cred.Token, cred.Expiry, nil
+	return cred.Token, cred.Expiry, notice, nil
 }
 
 // ReadFileTokenSilent reads the login token for serverName from credentials.yaml

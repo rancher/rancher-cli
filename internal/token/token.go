@@ -368,9 +368,16 @@ func computeCacheProbeKey(name, server, cluster string) (string, bool) {
 // (do NOT suppress the resolved-key notice) from a noticed error (suppress).
 //
 // The probe itself is probeCacheWith (shared with shimProbeFlagCache),
-// parameterized on the store-backed read.
+// parameterized on the store-backed read. The store buffers its own
+// notices (drained elsewhere via its NoticeSource) rather than returning
+// one inline, so this read closure's own notice is always "" and the
+// discarded 5th return value is never meaningful here.
 func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
-	return probeCacheWith(name, server, cluster, t.store.GetCachedCred, p)
+	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, func(k string) (string, time.Time, string, error) {
+		tok, expiry, err := t.store.GetCachedCred(k)
+		return tok, expiry, "", err
+	}, p)
+	return key, noticed, r, hit
 }
 
 // probeCacheWith is the one flag-only cache probe: compute the key via
@@ -378,21 +385,28 @@ func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompte
 // by probeFlagCache (store-backed) and shimProbeFlagCache (direct read-only
 // file probe) so hit construction and the notice-once/notice-zero
 // classification — noticed is true only for a real, non-ErrNoToken error —
-// cannot drift between the two paths.
-func probeCacheWith(name, server, cluster string, read func(string) (string, time.Time, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
+// cannot drift between the two paths. warn is a notice read returned
+// alongside the token (a loose-permission finding on the shim's direct file
+// read, say) — fired independently of hit/miss, since read may notice
+// before it even knows whether the key is present.
+func probeCacheWith(name, server, cluster string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
 	key, ok := computeCacheProbeKey(name, server, cluster)
 	if !ok {
-		return "", false, runtime.Result{}, false
+		return "", false, runtime.Result{}, false, ""
 	}
-	tok, expiry, err := read(key)
+	tok, expiry, warn, err := read(key)
 	if err == nil {
-		return key, false, runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}, true
+		r := runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}
+		if warn != "" {
+			r.Warnings = append(r.Warnings, warn)
+		}
+		return key, false, r, true, warn
 	}
 	noticed = !errors.Is(err, config.ErrNoToken)
 	if noticed {
 		p.Notice("cache read failed: " + err.Error())
 	}
-	return key, noticed, runtime.Result{}, false
+	return key, noticed, runtime.Result{}, false, warn
 }
 
 type deleteTokenCmd struct {

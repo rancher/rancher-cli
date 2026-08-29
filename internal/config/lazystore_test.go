@@ -1,11 +1,9 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -38,6 +36,55 @@ func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, 1, calls)
+}
+
+// TestLazyStoreDrainNoticesRacesFirstResolution races DrainNotices against
+// the credential call that triggers first resolution: the "resolved"
+// atomic.Bool exists specifically so DrainNotices can read the resolved
+// backend without forcing resolution itself and without racing the write of
+// l.store/l.err inside once.Do. Run under -race (make validate always does)
+// to catch a torn read; the many iterations also give DrainNotices a real
+// chance to land on both sides of the resolution window, not just win a
+// scheduling fluke once. Whichever side it lands on, the result must be
+// exactly one of two valid states — the pre-resolution empty read, or the
+// fully-resolved backend's own notice — never anything else (a partial
+// slice, a length mismatch, or the backend's notice with a resolution that
+// somehow never finished).
+func TestLazyStoreDrainNoticesRacesFirstResolution(t *testing.T) {
+	for i := range 200 {
+		dir := t.TempDir()
+		backendNotices := &noticeBuffer{}
+		backendNotices.record("backend notice")
+		fs := newFileStore(dir, backendNotices)
+
+		l := &lazyStore{notices: &noticeBuffer{}, resolve: func() (CredStore, error) {
+			return fs, nil
+		}}
+
+		var wg sync.WaitGroup
+		var drained []string
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = l.GetToken(ServerRef{Name: "x"}) // triggers first resolution
+		}()
+		go func() {
+			defer wg.Done()
+			drained = l.DrainNotices()
+		}()
+		wg.Wait()
+
+		switch len(drained) {
+		case 0:
+			// DrainNotices ran (or the resolved check landed) before
+			// resolution completed — the valid pre-resolution empty read.
+		case 1:
+			assert.Equal(t, []string{"backend notice"}, drained,
+				"iteration %d: a non-empty drain must be exactly the fully-resolved backend's own notice", i)
+		default:
+			t.Fatalf("iteration %d: DrainNotices returned an impossible torn read: %v", i, drained)
+		}
+	}
 }
 
 // TestLazyStoreDeferredErrorIsStable: a failed resolution surfaces the SAME
@@ -135,7 +182,8 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 
 // TestLoginSequenceFreshAutoUnusableKeychain: same sequence with an
 // unusable keychain. RepinForLogin returns the lazy store unchanged;
-// SetToken resolves it — file pin, exactly one plaintext notice, no
+// SetToken resolves it — file pin, exactly one plaintext notice recorded on
+// the lazy store's own NoticeSource buffer (not stderr directly), no
 // first-pin-keychain notice, token in credentials.yaml. The single
 // probe count proves keyringUsableOnce's memo is shared between
 // RepinForLogin and the deferred resolution.
@@ -148,24 +196,21 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return false }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	var store CredStore
-	captured := captureStderr(t, func() {
-		lazy, lazyErr := NewLazyStore("", dir)
-		require.NoError(t, lazyErr)
-		var pinWarning string
-		var repinErr error
-		store, pinWarning, repinErr = RepinForLogin(dir, "", lazy)
-		require.NoError(t, repinErr)
-		assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
-		assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
-		require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
-	})
-	buf := bytes.NewBufferString(captured)
+	lazy, lazyErr := NewLazyStore("", dir)
+	require.NoError(t, lazyErr)
+	store, pinWarning, repinErr := RepinForLogin(dir, "", lazy)
+	require.NoError(t, repinErr)
+	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
+	assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
+
+	notices := store.(NoticeSource).DrainNotices()
 
 	assert.Equal(t, 1, probes)
 	assert.Equal(t, "file", ReadPin(dir))
-	assert.Equal(t, 1, strings.Count(buf.String(), "# warning: keychain unavailable; credentials will be stored in plaintext"), "must be exactly one plaintext-fallback notice on stderr")
-	assert.NotContains(t, buf.String(), "pinned credential store: keychain")
+	require.Len(t, notices, 1, "must be exactly one plaintext-fallback notice")
+	assert.Contains(t, notices[0], "keychain unavailable; credentials will be stored in plaintext")
+	assert.NotContains(t, notices[0], "pinned credential store: keychain")
 	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)

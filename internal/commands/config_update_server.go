@@ -91,6 +91,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	var (
 		out                       updateOutcome
 		deletedFrom, deletedCache []string
+		notices                   []string
 	)
 	if err := config.WithLock(ctx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
@@ -107,11 +108,12 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// pointed at the new address with the old token still live.
 			policy := config.EffectivePolicy(cfg.CredentialStore)
 			ref := config.ServerRef{Name: name, URL: src.canonicalURL}
-			deletedFrom, deletedCache, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
+			deletedFrom, deletedCache, notices, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
 			if err != nil {
 				return wrapUnlessCanceled(err, func(err error) error {
 					return clierr.Wrap(err,
-						fmt.Sprintf("failed to clear credentials for %q; server config left untouched: %v", name, err))
+						fmt.Sprintf("failed to clear credentials for %q; server config left untouched: %v", name, err)).
+						WithWarnings(notices...)
 				})
 			}
 		}
@@ -124,7 +126,8 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// token is already gone.
 			return clierr.Wrap(err, fmt.Sprintf(
 				"credentials for %q were cleared, but writing the updated server entry failed: %v",
-				name, err)).WithHint(fmt.Sprintf("rancher auth login %s", shquote(name)))
+				name, err)).WithHint(fmt.Sprintf("rancher auth login %s", shquote(name))).
+				WithWarnings(notices...)
 		}
 		return err
 	}); err != nil {
@@ -149,6 +152,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if probe.versionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.versionWarning)
 	}
+	res.Warnings = append(res.Warnings, notices...)
 	if out.unchanged {
 		res.Text = "server " + out.name + " unchanged\n"
 		return res, nil

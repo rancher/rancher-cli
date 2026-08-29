@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -225,6 +227,33 @@ func TestLegacyTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "cached-tok", cred.Status.Token)
+}
+
+// TestLegacyTokenCacheHitSurfacesLoosePermissionNotice pins that
+// ReadOnlyCachedCred's notice return value (no store receiver exists on the
+// shim's fast path to buffer it on instead) reaches the operator via
+// Result.Warnings on a warm cache hit, exactly like any other warning on an
+// ExecJSON shape.
+func TestLegacyTokenCacheHitSurfacesLoosePermissionNotice(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
+	}
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	serverID := config.CanonicalServerIdentity("https://r.ex")
+	key := config.CacheKey("legacy:alice", serverID, "c-1")
+	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
+	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
+
+	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(t.Context(),
+		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
+		ui.Discard())
+	require.NoError(t, err)
+	cred := res.Data.(*execCredential)
+	assert.Equal(t, "cached-tok", cred.Status.Token)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "group/world-readable")
 }
 
 // errGetTokenStore wraps a CredStore and hard-fails GetToken for one server

@@ -53,6 +53,34 @@ type IO struct {
 	// bearing commands may leave it nil. A requirement-bearing command
 	// reaching Run with a nil checker is mis-wiring and fails loudly.
 	Capability CapabilityChecker
+
+	// Notices drains operator-facing advisories recorded outside any
+	// Result by this invocation's credential-store dependency (a first-pin
+	// notice, a keychain-degrade warning) — wired from the resolved store
+	// wherever one exists; nil for a command with no store dependency
+	// (schema, a bare local command). renderErr and renderResult are the
+	// only two drain points, each emptying it into that one render.
+	Notices NoticeSource
+}
+
+// NoticeSource drains buffered operator-facing notices in the order they
+// were recorded, destructively: a call returns only what was recorded since
+// the previous drain. Implemented by a credential store so that resolving it
+// lazily — possibly racing a command-body goroutine — never loses a notice
+// recorded outside any Result. Draining must not itself force a lazy store to
+// resolve: a command that never touches credentials must still see zero
+// store-init side effects.
+type NoticeSource interface {
+	DrainNotices() []string
+}
+
+// drainNotices drains streams.Notices, or reports no notices when the
+// invocation carries none.
+func drainNotices(streams IO) []string {
+	if streams.Notices == nil {
+		return nil
+	}
+	return streams.Notices.DrainNotices()
 }
 
 // Run executes one command through the single middleware path. b is the
@@ -473,9 +501,45 @@ func envelopeCarriesWarnings(format string) bool {
 	return format == "json" || format == "yaml"
 }
 
-func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
+// mirrorWarnings writes each entry of warnings to w as a "# warning: <w>"
+// line, skipping an entry already counted in silent — a value-matched
+// multiset (not positional; see Result.TextOnlyWarnings' doc for why
+// position cannot be trusted), decremented per skip so a repeated value
+// mirrors past its silenced count. silent may be nil (no suppression). The
+// one implementation behind every stderr warning mirror in the pipeline:
+// renderResult's Text, RawBytes, Raw, and envelope branches, and
+// renderEffect's text and envelope branches.
+func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int) {
+	for _, warn := range warnings {
+		if silent[warn] > 0 {
+			silent[warn]--
+			continue
+		}
+		_, _ = fmt.Fprintf(w, "# warning: %s\n", warn)
+	}
+}
+
+// renderResult renders res per d's declared shape, having first drained
+// streams' NoticeSource and merged it ahead of res.Warnings (recorded
+// earliest, delivered first — the same merge order RenderError applies on
+// the error path). The returned notices are the drained entries NOT YET
+// irrevocably delivered by a write independent of streams.Out succeeding:
+// nil when the branch taken mirrors warnings straight to the real stderr
+// (Text, RawBytes, Raw, and every non-json/yaml envelope format) or when
+// nothing was recorded; the drained slice itself when nothing was written
+// at all (an early command-bug return) or when the only place the notices
+// landed is inside the json/yaml bytes just handed to streams.Out — bytes a
+// once-only caller may still discard if the real stdout write that follows
+// fails. An ordinary (non-buffered) caller's streams.Out IS real stdout, so
+// it has nothing left to do with a non-nil return on success; only a
+// caller writing into a discardable buffer (finishOnceOnlyResult) needs to
+// act on it.
+func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error) {
+	notices := drainNotices(streams)
+	res.Warnings = append(append([]string{}, notices...), res.Warnings...)
+
 	if ce := checkResultShape(d, res, streams.Format); ce != nil {
-		return ce
+		return notices, ce
 	}
 	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
 	// any combination is a command bug.
@@ -490,19 +554,19 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 		claimed++
 	}
 	if claimed > 1 || (res.Summary != "" && claimed > 0) {
-		return clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
+		return notices, clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
 	}
 	// Summary rides only over a real table: the JSON-fallback-era use (a
 	// Summary line papering over non-Tabular Data) is gone along with the
 	// fallback itself.
 	if res.Summary != "" {
 		if _, ok := res.Data.(output.Tabular); !ok {
-			return clierr.New(clierr.CodeGeneric, "command bug: Summary requires Tabular Data")
+			return notices, clierr.New(clierr.CodeGeneric, "command bug: Summary requires Tabular Data")
 		}
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
-			return clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 		// Mirror every Warnings entry to stderr except the ones Text
 		// already embeds verbatim (TextOnlyWarnings, matched by value —
@@ -513,29 +577,31 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 		for _, w := range res.TextOnlyWarnings {
 			silent[w]++
 		}
-		for _, w := range res.Warnings {
-			if silent[w] > 0 {
-				silent[w]--
-				continue
-			}
-			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
-		}
-		return nil
+		mirrorWarnings(streams.Err, res.Warnings, silent)
+		return nil, nil
 	}
 	if res.RawBytes != nil {
 		if _, err := streams.Out.Write(res.RawBytes); err != nil {
-			return clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
-		return nil
+		// RawBytes carries no envelope under any format (kubeconfig,
+		// completion): stderr is the only delivery path Warnings has, so it
+		// mirrors unconditionally rather than only for the non-json/yaml
+		// formats the envelope branch below gates on.
+		mirrorWarnings(streams.Err, res.Warnings, nil)
+		return nil, nil
 	}
 	// Raw results (exec-credential) bypass the envelope: kubectl parses a single
 	// bare JSON object from the plugin's stdout.
 	if res.Raw {
 		enc := json.NewEncoder(streams.Out)
 		if err := enc.Encode(res.Data); err != nil {
-			return clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
-		return nil
+		// Same rationale as RawBytes above: kubectl surfaces exec-credential
+		// stderr, and no envelope exists here under any format.
+		mirrorWarnings(streams.Err, res.Warnings, nil)
+		return nil, nil
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
@@ -545,11 +611,11 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
-			return clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 	}
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
-		return clierr.New(clierr.CodeGeneric, err.Error())
+		return notices, clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
 	// envelope-level warning would otherwise reach the user only when the
@@ -560,11 +626,14 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 	// expansion — no envelope). json/yaml carry warnings inside the envelope;
 	// mirroring there would double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		for _, w := range res.Warnings {
-			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
-		}
+		mirrorWarnings(streams.Err, res.Warnings, nil)
+		return nil, nil
 	}
-	return nil
+	// json/yaml: the notices are embedded only in the envelope bytes just
+	// written to streams.Out, not mirrored anywhere else — report them back
+	// so a caller writing into a discardable buffer can recover them if the
+	// real write that follows fails.
+	return notices, nil
 }
 
 // renderEffect renders a --dry-run preview. table/default/wide (wide is
@@ -573,6 +642,11 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 // envelope unchanged, as do the raw formats (name/template), which read the
 // envelope's target field.
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
+	// A dry-run Plan can still touch a lazily-resolving credential store
+	// (reading the current server's CA, say); drain ahead of eff.Warnings
+	// so that notice is not silently stranded in the source until whatever
+	// later invocation happens to drain it.
+	eff.Warnings = append(drainNotices(streams), eff.Warnings...)
 	if textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(dryRunText(eff))); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
@@ -581,9 +655,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 		// — mirror them to stderr here so they are not silently dropped,
 		// the same contract renderResult's Text branch applies to
 		// Result.Warnings.
-		for _, w := range eff.Warnings {
-			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
-		}
+		mirrorWarnings(streams.Err, eff.Warnings, nil)
 		return nil
 	}
 	env := output.NewEnvelope("Effect", eff)
@@ -597,9 +669,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// convention renderResult uses for those formats; json/yaml carry warnings
 	// inside the envelope and must not double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		for _, w := range env.Warnings {
-			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
-		}
+		mirrorWarnings(streams.Err, env.Warnings, nil)
 	}
 	return nil
 }
@@ -630,9 +700,13 @@ func dryRunText(eff safety.Effect) string {
 	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...)
 }
 
-// renderErr writes ce to stderr in the invocation's requested format.
+// renderErr writes ce to stderr in the invocation's requested format, after
+// draining streams' NoticeSource: a notice recorded earlier in this
+// invocation (e.g. a lazy store's first-pin notice surfacing on the failure
+// path) leads ce's own error-carried warnings — RenderError's notices
+// parameter is documented as recorded-earliest-first for exactly this call.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
-	_ = RenderError(streams.Err, streams.Format, ce)
+	_ = RenderError(streams.Err, streams.Format, ce, drainNotices(streams)...)
 	return ce
 }
 
@@ -643,12 +717,18 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // value renders as text rather than being guessed at as an envelope). Shared
 // by the pipeline's own error rendering and every pre-pipeline failure in
 // surface/cli that must format an error before a command has resolved its own
-// parsed --output value. ce's warning ride (WithWarnings) rides the envelope's
-// top-level "warnings" field for json/yaml, or "# warning:" stderr lines
-// ahead of the error text otherwise — never inside the error payload itself,
-// so a warning cannot print twice.
-func RenderError(w io.Writer, format string, ce *clierr.Error) error {
-	warnings := ce.Warnings()
+// parsed --output value (those callers pass no notices — nothing has resolved
+// a credential store yet at that point).
+//
+// notices and ce's own warning ride (WithWarnings) are merged in one fixed
+// order — notices first (recorded earliest, e.g. a NoticeSource drained
+// ahead of the failing step), then ce.Warnings() (attached by the failing
+// step itself) — and placed at the envelope's top-level "warnings" field for
+// json/yaml, or as "# warning:" stderr lines ahead of the error text
+// otherwise. Never inside the error payload itself, so a warning cannot
+// print twice.
+func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string) error {
+	warnings := append(append([]string{}, notices...), ce.Warnings()...)
 	if envelopeCarriesWarnings(format) {
 		env := output.ErrorEnvelope(ce)
 		env.Warnings = warnings
@@ -725,8 +805,16 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if d.Delivery == DeliveryOnceOnly {
 		return finishOnceOnlyResult(streams, d, res)
 	}
-	if ce := renderResult(streams, d, res); ce != nil {
-		return 0, ce
+	// streams.Out here is the invocation's real stdout (never a discardable
+	// buffer — only finishOnceOnlyResult writes into one), so a nil error
+	// means whatever renderResult returned as "not yet delivered" already
+	// landed for real. A non-nil error keeps this function's existing
+	// unrendered contract (see doc above) — notices ride the returned ce's
+	// warning field regardless, so they are captured rather than dropped
+	// even though this path never puts them on stderr.
+	notices, ce := renderResult(streams, d, res)
+	if ce != nil {
+		return 0, ce.WithWarnings(notices...)
 	}
 	return res.ExitStatus, nil
 }
@@ -749,17 +837,34 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if res.CommittedContext == nil {
 		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)))
+			fmt.Sprintf("command bug: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)).
+			WithWarnings(drainNotices(streams)...))
 	}
 	buffered := streams
 	var buf bytes.Buffer
 	buffered.Out = &buf
-	if ce := renderResult(buffered, d, res); ce != nil {
-		return 0, renderErr(streams, committedContextError(res.CommittedContext, false, ce.Message))
+	// pending is nil when renderResult already delivered every notice for
+	// real (mirrored straight to the real streams.Err, unaffected by the Out
+	// swap above) — non-nil only when the notices' one and only delivery so
+	// far is inside buf, which the caller below might still discard.
+	pending, ce := renderResult(buffered, d, res)
+	if ce != nil {
+		// Nothing was written anywhere (checkResultShape and the
+		// exclusivity/Summary checks all return before any write): every
+		// drained notice is still unaccounted for.
+		return 0, renderErr(streams, committedContextError(res.CommittedContext, false, ce.Message).
+			WithWarnings(pending...))
 	}
 	n, err := streams.Out.Write(buf.Bytes())
 	if err != nil {
-		return 0, renderErr(streams, committedContextError(res.CommittedContext, n > 0, err.Error()))
+		// buf held the only copy of any json/yaml-embedded notice; it is
+		// about to be discarded, so pending rides the replacement error
+		// instead. A pending nil here (the text/RawBytes/Raw/non-json-yaml
+		// branches) means nothing to add — those notices already reached
+		// the real stderr inside the renderResult call above, independent
+		// of this failing stdout write.
+		return 0, renderErr(streams, committedContextError(res.CommittedContext, n > 0, err.Error()).
+			WithWarnings(pending...))
 	}
 	return res.ExitStatus, nil
 }
