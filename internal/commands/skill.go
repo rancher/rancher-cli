@@ -135,7 +135,8 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	if failed {
 		return runtime.Result{}, clierr.New(clierr.CodeGeneric,
 			"skill install changed only part of the selected targets").
-			WithDetails(skillinstall.Report{Outcomes: outcomes, Warnings: warnings})
+			WithDetails(skillinstall.Report{Outcomes: outcomes}).
+			WithWarnings(warnings...)
 	}
 	return runtime.Result{Kind: "skillOutcomes", Data: skillOutcomes(outcomes), Warnings: warnings}, nil
 }

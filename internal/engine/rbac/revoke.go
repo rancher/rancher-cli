@@ -32,6 +32,23 @@ type RevokePartialFailure struct {
 	Unattempted []string      `json:"unattempted"`
 }
 
+// TextDetails projects what this run actually deleted, the binding it failed
+// on, and what it never attempted, onto indented lines, closing with the
+// standing recovery note: a partial revoke never undoes what already
+// succeeded, so a re-run only needs to reach the rest.
+func (p RevokePartialFailure) TextDetails() []string {
+	var lines []string
+	if len(p.Deleted) > 0 {
+		lines = append(lines, "deleted: "+strings.Join(p.Deleted, ", "))
+	}
+	lines = append(lines, fmt.Sprintf("failed: %s (%s: %s)", p.Failed.Name, p.Failed.Code, p.Failed.Message))
+	if len(p.Unattempted) > 0 {
+		lines = append(lines, "not attempted: "+strings.Join(p.Unattempted, ", "))
+	}
+	lines = append(lines, "deleted bindings are gone — re-run revoke to remove the rest")
+	return lines
+}
+
 type revokeCmd struct {
 	clients engine.ClusterClientFactory
 }

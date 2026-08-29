@@ -228,18 +228,40 @@ type LogoutAllPartialFailure struct {
 	DeletedCache []string            `json:"deletedCache,omitempty"`
 }
 
+// TextDetails projects which servers were already logged out, which
+// credential backends were already removed per server, and how many cached
+// kubectl credentials went, closing with the standing recovery note: a
+// failed --all run never undoes what it already deleted.
+func (p LogoutAllPartialFailure) TextDetails() []string {
+	lines := []string{"already logged out: " + strings.Join(p.LoggedOut, ", ")}
+	servers := make([]string, 0, len(p.DeletedFrom))
+	for s := range p.DeletedFrom {
+		servers = append(servers, s)
+	}
+	sort.Strings(servers)
+	for _, s := range servers {
+		lines = append(lines, fmt.Sprintf("credentials removed: %s: %s", s, strings.Join(p.DeletedFrom[s], ", ")))
+	}
+	if len(p.DeletedCache) > 0 {
+		lines = append(lines, "cached kubectl credentials removed: "+strings.Join(p.DeletedCache, ", "))
+	}
+	lines = append(lines, "those credentials are gone regardless of this failure — re-run auth logout --all to finish")
+	return lines
+}
+
 // deleteFailure shapes a delete-step failure: the caller's own cancellation
 // (Ctrl-C during a contended lock wait inside the delete) passes through
 // unchanged so errors.Is(err, context.Canceled) keeps working — dressing it
 // as a delete failure would send the user diagnosing helper problems.
 // Anything else keeps its classification (a lock timeout stays LOCK_TIMEOUT
-// and retryable) under the step-prefixed message and the already-done hint,
-// plus the LogoutAllPartialFailure details so nothing already deleted is
-// vaporized just because a later step in the same --all run failed.
+// and retryable) under the step-prefixed message, plus the
+// LogoutAllPartialFailure details so nothing already deleted is vaporized
+// just because a later step in the same --all run failed — its TextDetails
+// projection's first line already names what was already logged out, so no
+// separate hint repeats the same fact.
 func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string) error {
 	return wrapUnlessCanceled(err, func(err error) error {
 		return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
-			WithHint(fmt.Sprintf("already logged out: %v", done)).
 			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache})
 	})
 }

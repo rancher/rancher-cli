@@ -179,6 +179,33 @@ func TestClassifyNullableDetailsOnEmptyChain(t *testing.T) {
 	assert.Empty(t, details.NotAfter)
 }
 
+// TestDetailsTextDetailsAllFieldsPresent pins the full projection order:
+// certificate, issuer, fingerprint, valid — each only when the underlying
+// field is present.
+func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
+	d := Details{
+		Kind:        KindExpired,
+		Subject:     "CN=rancher.example",
+		Issuer:      "CN=test-ca",
+		Fingerprint: "deadbeef",
+		NotBefore:   "2020-01-01T00:00:00Z",
+		NotAfter:    "2020-02-01T00:00:00Z",
+	}
+	assert.Equal(t, []string{
+		"certificate: CN=rancher.example",
+		"issuer: CN=test-ca",
+		"fingerprint: deadbeef",
+		"valid: 2020-01-01T00:00:00Z to 2020-02-01T00:00:00Z",
+	}, d.TextDetails())
+}
+
+// TestDetailsTextDetailsNullableFieldsOmitLines pins the nullable-details
+// case (classifyKind's empty-chain path): every field but Kind may be
+// absent, and an absent field prints no line — never an empty label.
+func TestDetailsTextDetailsNullableFieldsOmitLines(t *testing.T) {
+	assert.Empty(t, Details{Kind: KindInvalidChain}.TextDetails())
+}
+
 func TestClassifyInvalidChainDefaultsUnrecognizedReason(t *testing.T) {
 	err := &tls.CertificateVerificationError{
 		Err: x509.CertificateInvalidError{Reason: x509.TooManyIntermediates},

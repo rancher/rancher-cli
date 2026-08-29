@@ -321,6 +321,28 @@ func TestRevokePartialFailure(t *testing.T) {
 	assert.Contains(t, raw, "deleted")
 	assert.Contains(t, raw, "failed")
 	assert.Contains(t, raw, "unattempted")
+
+	assert.Equal(t, []string{
+		"deleted: crtb-alpha",
+		"failed: crtb-beta (CONFLICT: rv conflict)",
+		"not attempted: crtb-gamma",
+		"deleted bindings are gone — re-run revoke to remove the rest",
+	}, pf.TextDetails())
+}
+
+// TestRevokePartialFailureTextDetailsOmitsEmptyLines pins the two
+// conditional lines: "deleted" and "not attempted" print only when their
+// slice is non-empty — the first delete in a batch has nothing deleted yet,
+// and the last has nothing left unattempted.
+func TestRevokePartialFailureTextDetailsOmitsEmptyLines(t *testing.T) {
+	t.Parallel()
+	pf := RevokePartialFailure{
+		Failed: RevokeFailure{Name: "crtb-alpha", Code: clierr.CodeConflict, Message: "rv conflict"},
+	}
+	assert.Equal(t, []string{
+		"failed: crtb-alpha (CONFLICT: rv conflict)",
+		"deleted bindings are gone — re-run revoke to remove the rest",
+	}, pf.TextDetails())
 }
 
 func TestRevokeStaleHashIDOccupiedConflict(t *testing.T) {

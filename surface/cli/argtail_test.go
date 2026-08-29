@@ -289,3 +289,35 @@ func TestParseArgTailRepeatableFlagArity(t *testing.T) {
 		assert.Equal(t, 1, site.Index)
 	})
 }
+
+// TestScanOutputFormat is table-driven over every accepted -o/--output
+// spelling, the "--" cutoff, a trailing valueless flag, repeated
+// occurrences (last wins), and root- vs. leaf-position placement.
+func TestScanOutputFormat(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		argv []string
+		want string
+	}{
+		{"no flag at all", []string{"get", "pod"}, ""},
+		{"space form, root position", []string{"-o", "json", "get", "pod"}, "json"},
+		{"space form, leaf position", []string{"get", "pod", "-o", "json"}, "json"},
+		{"equals form short", []string{"get", "pod", "-o=yaml"}, "yaml"},
+		{"long space form", []string{"get", "pod", "--output", "yaml"}, "yaml"},
+		{"long equals form", []string{"get", "pod", "--output=yaml"}, "yaml"},
+		{"stops at the first --", []string{"get", "pod", "--", "-o", "json"}, ""},
+		{"trailing valueless flag selects no format", []string{"get", "pod", "-o"}, ""},
+		{"trailing valueless flag before --", []string{"get", "pod", "-o", "--", "pos"}, ""},
+		{"repeated flag: last wins", []string{"-o", "json", "get", "pod", "-o", "yaml"}, "yaml"},
+		{"repeated flag: trailing valueless wins", []string{"-o", "json", "get", "pod", "-o"}, ""},
+		{"unrecognized value passes through untrusted", []string{"get", "pod", "-o", "csv"}, "csv"},
+		{"non-flag tokens ignored", []string{"get", "pod", "positional-o"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, scanOutputFormat(tc.argv))
+		})
+	}
+}

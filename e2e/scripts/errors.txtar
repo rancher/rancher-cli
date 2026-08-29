@@ -26,12 +26,17 @@ stderr 'rancher schema'
 jsonquery stderr data.error.code VALIDATION
 stderr 'rancher schema'
 
-# CW-1: the stderr error envelope is JSON even under -o yaml / -o table
+# -o yaml renders the same structured error envelope as -o json, serialized
+# as YAML — not JSON dressed up as one.
 ! exec rancher get project definitely-absent --cluster testcluster -o yaml
-jsonquery stderr data.error.code NOT_FOUND
+stderr 'code: NOT_FOUND'
+stderr 'kind: Error'
 
+# -o table (and every other non-json/non-yaml format) renders the short
+# operator-facing text form instead of an envelope.
 ! exec rancher get project definitely-absent --cluster testcluster -o table
-jsonquery stderr data.error.code NOT_FOUND
+stderr 'error \(NOT_FOUND\):'
+! stderr 'apiVersion'
 
 # NOT_LOGGED_IN: a generated command with no stored login and no env
 # override must not surface as an unhinted GENERIC

@@ -464,11 +464,11 @@ func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
 	return nil
 }
 
-// envelopeCarriesWarnings reports whether the output format serializes the full
-// stdout envelope — and therefore the top-level "warnings" key — to the user:
-// only json and yaml do. Every other format (table, name, template, "") writes
-// the data portion only, so warnings that land only in the envelope would
-// otherwise be silently dropped.
+// envelopeCarriesWarnings reports whether the output format serializes the
+// full structured envelope to the user — code, hint, details, and the
+// top-level "warnings" key alike: only json and yaml do. Every other format
+// (table, name, template, "") writes a plain-text projection instead, so a
+// field that lives only in the envelope would otherwise be silently dropped.
 func envelopeCarriesWarnings(format string) bool {
 	return format == "json" || format == "yaml"
 }
@@ -630,12 +630,83 @@ func dryRunText(eff safety.Effect) string {
 	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...)
 }
 
-// renderErr writes the structured error envelope to stderr. Errors are ALWAYS
-// rendered as JSON regardless of -o: the output format governs stdout data
-// only, so scripts and agents never lose the machine-readable code/hint (CW-1).
+// renderErr writes ce to stderr in the invocation's requested format.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
-	_ = output.Render(streams.Err, "json", output.ErrorEnvelope(ce))
+	_ = RenderError(streams.Err, streams.Format, ce)
 	return ce
+}
+
+// RenderError writes ce to w in format: the structured envelope, byte-for-byte
+// what json/yaml have always emitted, for those two formats — yaml serializes
+// as YAML, not JSON dressed up as one — and a short operator-facing text block
+// for every other format, including an unrecognized one (an untrusted format
+// value renders as text rather than being guessed at as an envelope). Shared
+// by the pipeline's own error rendering and every pre-pipeline failure in
+// surface/cli that must format an error before a command has resolved its own
+// parsed --output value. ce's warning ride (WithWarnings) rides the envelope's
+// top-level "warnings" field for json/yaml, or "# warning:" stderr lines
+// ahead of the error text otherwise — never inside the error payload itself,
+// so a warning cannot print twice.
+func RenderError(w io.Writer, format string, ce *clierr.Error) error {
+	warnings := ce.Warnings()
+	if envelopeCarriesWarnings(format) {
+		env := output.ErrorEnvelope(ce)
+		env.Warnings = warnings
+		return output.Render(w, format, env)
+	}
+	var b strings.Builder
+	for _, warn := range warnings {
+		fmt.Fprintf(&b, "# warning: %s\n", warn)
+	}
+	b.WriteString(errorText(ce))
+	_, err := w.Write([]byte(b.String()))
+	return err
+}
+
+// errorText renders ce as the default-format stderr block: a header line
+// naming the code (and "retryable" when the error is retryable), an indented
+// hint line when present, an indented candidates line — each candidate
+// rendered "name (id)" — when present, and finally the details payload's own
+// projected lines (detailsTextLines) when one is attached.
+func errorText(ce *clierr.Error) string {
+	retry := ""
+	if ce.Retryable {
+		retry = ", retryable"
+	}
+	header := fmt.Sprintf("error (%s%s): %s", ce.Code, retry, ce.Message)
+
+	var lines []string
+	if ce.Hint != "" {
+		lines = append(lines, "hint: "+ce.Hint)
+	}
+	if len(ce.Candidates) > 0 {
+		names := make([]string, len(ce.Candidates))
+		for i, c := range ce.Candidates {
+			names[i] = fmt.Sprintf("%s (%s)", c.Name, c.ID)
+		}
+		lines = append(lines, "candidates: "+strings.Join(names, ", "))
+	}
+	lines = append(lines, detailsTextLines(ce.Details)...)
+	return TextLines(header, lines...)
+}
+
+// detailsFallbackLine is the neutral line rendered when a details payload
+// reached the renderer without going through clierr.Error.WithDetails (an
+// Error literal setting Details directly, for example) — a command bug, not
+// a supported way to ship an unreviewed details type.
+const detailsFallbackLine = "additional detail recorded — re-run with -o json to inspect"
+
+// detailsTextLines projects an error's Details field onto its default-format
+// text lines: the payload's own TextDetails() when it implements the
+// interface, detailsFallbackLine otherwise, nothing when Details is unset.
+func detailsTextLines(details any) []string {
+	if details == nil {
+		return nil
+	}
+	if td, ok := details.(clierr.TextDetails); ok {
+		return td.TextDetails()
+	}
+	return []string{detailsFallbackLine}
 }
 
 // finishResult enforces the SuccessExitCodes declaration, renders the

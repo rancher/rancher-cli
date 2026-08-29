@@ -446,4 +446,30 @@ func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, details.Committed)
 	assert.Contains(t, details.Recovery, "rotate the same name again")
+	// The header already carries "(GENERIC, retryable)" for this error; the
+	// projection's own recover line must echo the SAME recovery verbatim,
+	// never a generic "do not retry" that would contradict it.
+	assert.Equal(t, []string{
+		"committed: OIDCClient my-app — the change may already be on the server",
+		"recover: " + details.Recovery,
+	}, details.TextDetails())
+}
+
+// TestRotateSecretUnchangedValueProjectsCommittedDetails pins the
+// should-be-impossible rotate-unchanged terminal error: non-retryable, and
+// its projection echoes the same re-check recovery TextDetails renders —
+// never an invitation to retry a rotation whose value never actually moved.
+func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
+	t.Parallel()
+	recovery := recoveryHint("my-app")
+	ce := rotateUnchangedValueError("my-app", "client-secret-1", recovery)
+	assert.False(t, ce.Retryable)
+	details, ok := ce.Details.(clierr.CommittedContextDetails)
+	require.True(t, ok)
+	assert.True(t, details.Committed)
+	assert.Equal(t, recovery, details.Recovery)
+	assert.Equal(t, []string{
+		"committed: OIDCClient my-app — the change may already be on the server",
+		"recover: " + recovery,
+	}, details.TextDetails())
 }

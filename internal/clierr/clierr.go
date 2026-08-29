@@ -2,6 +2,7 @@ package clierr
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 )
@@ -27,12 +28,27 @@ const (
 // never embeds a campaign-specific link.
 const LearnMorePrimeURL = "https://www.rancher.com/products/rancher-prime"
 
+// TextDetails is the projection a details payload owes the default-format
+// error text: the indented lines rendered after the message/hint/candidates
+// block. WithDetails accepts only a value implementing it, so an unprojected
+// details type fails to compile rather than silently rendering nothing on
+// the default format.
+type TextDetails interface {
+	TextDetails() []string
+}
+
 // PrimeRequiredDetails is PRIME_REQUIRED's structured details payload: the
 // detector key and the server the check ran against, so an agent gets a
 // stable machine shape rather than prose parsing.
 type PrimeRequiredDetails struct {
 	Feature string `json:"feature"`
 	Server  string `json:"server"`
+}
+
+// TextDetails projects the checked feature and server onto one indented
+// line.
+func (d PrimeRequiredDetails) TextDetails() []string {
+	return []string{fmt.Sprintf("feature: %s (checked against server %s)", d.Feature, d.Server)}
 }
 
 // CommittedContextDetails is the details payload for a non-retryable error
@@ -51,6 +67,22 @@ type CommittedContextDetails struct {
 	SecretName    string `json:"secretName,omitempty"`
 	PartialOutput bool   `json:"partialOutput,omitempty"`
 	Recovery      string `json:"recovery"`
+}
+
+// TextDetails projects the committed resource, an optional partial-output
+// note, and the non-mutating recovery step onto indented lines. Retry
+// guidance comes from the error's own Retryable/Recovery fields, never a
+// generic line here — a blind "do not retry" would contradict a producer
+// whose stated recovery is exactly a re-run.
+func (d CommittedContextDetails) TextDetails() []string {
+	lines := []string{
+		fmt.Sprintf("committed: %s %s — the change may already be on the server", d.ResourceKind, d.ResourceName),
+	}
+	if d.PartialOutput {
+		lines = append(lines, "partial output may already be on stdout")
+	}
+	lines = append(lines, "recover: "+d.Recovery)
+	return lines
 }
 
 // exitCodes maps a code to its process exit status.
@@ -97,8 +129,9 @@ type Error struct {
 	// Details carries an optional command-specific structured payload
 	// (e.g. revoke's partial-failure split). Shape is owned by the
 	// producing command; consumers decode by command context.
-	Details any   `json:"details,omitempty"`
-	cause   error // not serialized; enables errors.Is/As chaining
+	Details  any      `json:"details,omitempty"`
+	cause    error    // not serialized; enables errors.Is/As chaining
+	warnings []string // not serialized directly; rides the envelope's top-level "warnings", never data.error
 }
 
 func New(code, message string) *Error { return &Error{Code: code, Message: message} }
@@ -128,8 +161,8 @@ func CodeExits() map[string]int {
 func (e *Error) WithHint(h string) *Error { e.Hint = h; return e }
 
 // WithMessage returns a copy of e with msg as its message; every other
-// field (code, hint, cause, retryable, candidates, details) carries over,
-// so a caller amending the text cannot silently drop the rest.
+// field (code, hint, cause, retryable, candidates, details, warnings)
+// carries over, so a caller amending the text cannot silently drop the rest.
 func (e *Error) WithMessage(msg string) *Error {
 	c := *e
 	c.Message = msg
@@ -139,7 +172,30 @@ func (e *Error) WithMessage(msg string) *Error {
 func (e *Error) WithCause(err error) *Error          { e.cause = err; return e }
 func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
 func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
-func (e *Error) WithDetails(d any) *Error            { e.Details = d; return e }
+
+// WithDetails attaches d as the error's structured details payload: d must
+// implement TextDetails, so a details type with no reviewed default-format
+// projection fails to compile rather than shipping silent on stderr. The
+// full value still marshals into the envelope unchanged for -o json/-o yaml.
+func (e *Error) WithDetails(d TextDetails) *Error { e.Details = d; return e }
+
+// WithWarnings appends w to the error's warning ride: advisories that belong
+// on the same channel as a success result's Warnings, but attached to a
+// command that ultimately failed. The field is never serialized as part of
+// the Error value itself (it carries no json tag and the field is
+// unexported) — a renderer reads it through Warnings() and places it at the
+// envelope's top level or as "# warning:" stderr lines, never under
+// data.error, so a warning cannot print twice.
+func (e *Error) WithWarnings(w ...string) *Error {
+	e.warnings = append(e.warnings, w...)
+	return e
+}
+
+// Warnings returns a copy of the error's warning ride, in the order they
+// were added.
+func (e *Error) Warnings() []string {
+	return append([]string{}, e.warnings...)
+}
 
 // Retryable builds a new Error with the given code and message with Retryable
 // set to true. It is shorthand for New(code, message).WithRetryable(true).

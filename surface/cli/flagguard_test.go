@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ucli "github.com/urfave/cli/v3"
 )
 
 func TestCheckFlagValuesIncident(t *testing.T) {
@@ -105,4 +109,47 @@ func TestCheckFlagValuesV1CompletionSuppressed(t *testing.T) {
 	argv := []string{"create", "cluster", "--cloud-credential", "--k8s-version"}
 	ce := checkFlagValues(flags, argv, completionActive())
 	assert.Nil(t, ce, "guard must not fire during v1 completion")
+}
+
+// TestCheckFlagValuesBeforeHookRendersPerParsedFormat pins the Before hook's
+// row of the pre-pipeline format table: flags have already parsed
+// successfully by the time checkFlagValues fires, so its rendering follows
+// the invocation's own parsed --output value directly (no raw-argv scan).
+func TestCheckFlagValuesBeforeHookRendersPerParsedFormat(t *testing.T) {
+	incidentArgv := []string{
+		"rancher", "create", "cluster", "--cloud-credential", "--k8s-version", "v1.35.7+rke2r1",
+	}
+
+	t.Run("no -o: text", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		CaptureArgv(incidentArgv[1:])
+		runErr := root.Run(t.Context(), incidentArgv)
+		require.Error(t, runErr)
+		assert.Contains(t, errOut.String(), "error (VALIDATION):")
+		assert.Contains(t, errOut.String(), "--cloud-credential")
+		assert.NotContains(t, errOut.String(), "apiVersion")
+	})
+
+	t.Run("-o json: envelope", func(t *testing.T) {
+		root, err := BuildRoot("v-test")
+		require.NoError(t, err)
+		var out, errOut bytes.Buffer
+		root.Writer = &out
+		root.ErrWriter = &errOut
+		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+
+		argv := append(append([]string{}, incidentArgv...), "-o", "json")
+		CaptureArgv(argv[1:])
+		runErr := root.Run(t.Context(), argv)
+		require.Error(t, runErr)
+		var env errEnvelope
+		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
+		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+	})
 }

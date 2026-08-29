@@ -23,6 +23,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"time"
@@ -55,6 +56,27 @@ type Details struct {
 	Issuer      string `json:"issuer,omitempty"`
 	NotBefore   string `json:"notBefore,omitempty"`
 	NotAfter    string `json:"notAfter,omitempty"`
+}
+
+// TextDetails projects the candidate/offending certificate's facts onto
+// indented lines, each conditional on its own field: every certificate field
+// may be absent when no candidate anchor could be extracted from the
+// presented chain, and an absent field prints no line at all.
+func (d Details) TextDetails() []string {
+	var lines []string
+	if d.Subject != "" {
+		lines = append(lines, "certificate: "+d.Subject)
+	}
+	if d.Issuer != "" {
+		lines = append(lines, "issuer: "+d.Issuer)
+	}
+	if d.Fingerprint != "" {
+		lines = append(lines, "fingerprint: "+d.Fingerprint)
+	}
+	if d.NotBefore != "" && d.NotAfter != "" {
+		lines = append(lines, fmt.Sprintf("valid: %s to %s", d.NotBefore, d.NotAfter))
+	}
+	return lines
 }
 
 // Classify reports whether err is a TLS certificate verification failure and,

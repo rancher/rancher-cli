@@ -97,4 +97,10 @@ func TestRemoveSecretExecTimeoutIsNonRetryable(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, details.Committed)
 	assert.Contains(t, details.Recovery, "re-run only while the key remains")
+	// Non-retryable: the projection's recover line must never invite an
+	// unconditional retry — it names the read-first condition verbatim.
+	assert.Equal(t, []string{
+		"committed: OIDCClient my-app — the change may already be on the server",
+		"recover: " + details.Recovery,
+	}, details.TextDetails())
 }

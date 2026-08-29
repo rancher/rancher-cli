@@ -621,17 +621,17 @@ func TestRunRejectsResultWithBothRawFields(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
-func TestQuietErrorStillRendersJSON(t *testing.T) {
+// TestQuietErrorStillRendersText pins that a quiet stdout format (-o name,
+// whose stdout is bare identifiers) still surfaces an error on stderr — as
+// text, since name is not json/yaml.
+func TestQuietErrorStillRendersText(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), flaggedReadCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: "name"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.NotEmpty(t, errBuf.String(), "error must not be silent under -o name")
-	env := decodeEnvelope(t, errBuf.Bytes())
-	assert.Equal(t, "Error", env["kind"])
-	data := env["data"].(map[string]any)
-	assert.NotEmpty(t, data["error"], "error envelope must contain error details")
+	assert.Contains(t, errBuf.String(), "error (VALIDATION):")
 }
 
 func TestRenderResultTextMode(t *testing.T) {
@@ -1079,13 +1079,11 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 			assert.Equal(t, tc.hint, ce.Hint)
 			assert.Empty(t, out.String(), "nothing may reach stdout for an invalid -o")
 
-			env := decodeEnvelope(t, errBuf.Bytes())
-			assert.Equal(t, "Error", env["kind"])
-			data, ok := env["data"].(map[string]any)
-			require.True(t, ok)
-			errObj, ok := data["error"].(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, clierr.CodeValidation, errObj["code"])
+			// The invalid value itself is untrusted, so it can never select
+			// envelope rendering: every case here renders as text, the error
+			// that complains about the format IS the format.
+			assert.Contains(t, errBuf.String(), "error (VALIDATION): "+tc.message)
+			assert.Contains(t, errBuf.String(), "hint: "+tc.hint)
 		})
 	}
 }
@@ -1106,30 +1104,149 @@ func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
 	assert.Contains(t, ce.Message, `--output="csv"`)
 }
 
-func TestRenderErrAlwaysJSON(t *testing.T) {
+// TestRenderErrFormatAware pins renderErr's format switch: default, table,
+// wide, name, and template all render the short operator-facing text block
+// to stderr; json and yaml render the structured envelope, each in its own
+// encoding (yaml as YAML, not JSON dressed up as one).
+func TestRenderErrFormatAware(t *testing.T) {
 	t.Parallel()
-	for _, format := range []string{"", "json", "yaml", "name", "table", "template={{.error.code}}"} {
-		t.Run("format="+format, func(t *testing.T) {
-			var errBuf bytes.Buffer
-			ce := clierr.New(clierr.CodeNotFound, "nope").WithHint("look elsewhere")
-			_ = renderErr(IO{Err: &errBuf, Format: format}, ce)
+	ce := clierr.New(clierr.CodeNotFound, `cluster "web-prd" not found`).
+		WithHint("run: rancher get cluster").
+		WithCandidates([]clierr.Candidate{{Name: "web-prod", ID: "c-1"}, {Name: "web-prd2", ID: "c-2"}})
+	wantText := "error (NOT_FOUND): cluster \"web-prd\" not found\n" +
+		"  hint: run: rancher get cluster\n" +
+		"  candidates: web-prod (c-1), web-prd2 (c-2)\n"
 
-			var env struct {
-				Kind string `json:"kind"`
-				Data struct {
-					Error struct {
-						Code string `json:"code"`
-						Hint string `json:"hint"`
-					} `json:"error"`
-				} `json:"data"`
-			}
-			require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env),
-				"stderr must be the JSON envelope regardless of -o (CW-1)")
-			assert.Equal(t, "Error", env.Kind)
-			assert.Equal(t, clierr.CodeNotFound, env.Data.Error.Code)
-			assert.Equal(t, "look elsewhere", env.Data.Error.Hint)
+	for _, format := range []string{"", "table", "wide", "name", "template={{.error.code}}"} {
+		t.Run("text format="+format, func(t *testing.T) {
+			t.Parallel()
+			var errBuf bytes.Buffer
+			_ = renderErr(IO{Err: &errBuf, Format: format}, ce)
+			assert.Equal(t, wantText, errBuf.String())
 		})
 	}
+
+	for _, format := range []string{"json", "yaml"} {
+		t.Run("envelope format="+format, func(t *testing.T) {
+			t.Parallel()
+			var errBuf bytes.Buffer
+			_ = renderErr(IO{Err: &errBuf, Format: format}, ce)
+			var env map[string]any
+			if format == "json" {
+				require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+			} else {
+				require.NoError(t, yaml.Unmarshal(errBuf.Bytes(), &env))
+			}
+			assert.Equal(t, "Error", env["kind"])
+			data, ok := env["data"].(map[string]any)
+			require.True(t, ok)
+			errObj, ok := data["error"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeNotFound, errObj["code"])
+			assert.Equal(t, "run: rancher get cluster", errObj["hint"])
+		})
+	}
+}
+
+// TestRenderErrRetryableHeader pins the header's retryable marker: a
+// retryable error's header carries ", retryable" after the code; a
+// non-retryable error's does not.
+func TestRenderErrRetryableHeader(t *testing.T) {
+	t.Parallel()
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, clierr.Retryable(clierr.CodeLockTimeout, "locked"))
+	assert.Equal(t, "error (LOCK_TIMEOUT, retryable): locked\n", errBuf.String())
+
+	errBuf.Reset()
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, clierr.New(clierr.CodeLockTimeout, "locked"))
+	assert.Equal(t, "error (LOCK_TIMEOUT): locked\n", errBuf.String())
+}
+
+// stubTextDetails is a minimal clierr.TextDetails implementation for
+// exercising the details block in isolation from any real producer's shape.
+type stubTextDetails struct{ lines []string }
+
+func (s stubTextDetails) TextDetails() []string { return s.lines }
+
+// TestRenderErrDetailsBlock pins that a details payload implementing
+// clierr.TextDetails renders its projected lines after hint/candidates, and
+// that no details payload at all adds no lines.
+func TestRenderErrDetailsBlock(t *testing.T) {
+	t.Parallel()
+	ce := clierr.New(clierr.CodeConflict, "boom").
+		WithHint("retry").
+		WithDetails(stubTextDetails{lines: []string{"committed: Widget w1 — the change may already be on the server", "recover: get widget w1 -o json"}})
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
+	assert.Equal(t, "error (CONFLICT): boom\n"+
+		"  hint: retry\n"+
+		"  committed: Widget w1 — the change may already be on the server\n"+
+		"  recover: get widget w1 -o json\n", errBuf.String())
+
+	errBuf.Reset()
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, clierr.New(clierr.CodeConflict, "boom"))
+	assert.Equal(t, "error (CONFLICT): boom\n", errBuf.String())
+}
+
+// TestRenderErrFallsBackForUnprojectedDetails pins the command-bug defense:
+// a Details value that reached the error through some path other than
+// WithDetails (an Error literal setting the field directly, bypassing the
+// typed setter) renders the neutral fallback line instead of nothing, or a
+// panic, or leaking an unprojected internal shape onto stderr.
+func TestRenderErrFallsBackForUnprojectedDetails(t *testing.T) {
+	t.Parallel()
+	ce := &clierr.Error{Code: clierr.CodeGeneric, Message: "boom", Details: "raw value bypassing WithDetails"}
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
+	assert.Equal(t, "error (GENERIC): boom\n  "+detailsFallbackLine+"\n", errBuf.String())
+}
+
+// TestRenderErrWarningsDefaultFormat pins the default-format merge: the
+// error's warning ride prints as "# warning:" lines ahead of the error text,
+// in the order they were added, never inside the error block itself.
+func TestRenderErrWarningsDefaultFormat(t *testing.T) {
+	t.Parallel()
+	ce := clierr.New(clierr.CodeGeneric, "boom").WithWarnings("first", "second")
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
+	assert.Equal(t, "# warning: first\n# warning: second\nerror (GENERIC): boom\n", errBuf.String())
+}
+
+// TestRenderErrWarningsEnvelope pins the json/yaml merge: the warning ride
+// lands at the envelope's top-level "warnings" field, never under
+// data.error, so a scripted caller sees it exactly where a success result's
+// Warnings would be.
+func TestRenderErrWarningsEnvelope(t *testing.T) {
+	t.Parallel()
+	ce := clierr.New(clierr.CodeGeneric, "boom").WithWarnings("first", "second")
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: "json"}, ce)
+	var env struct {
+		Warnings []string `json:"warnings"`
+		Data     struct {
+			Error map[string]any `json:"error"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+	assert.Equal(t, []string{"first", "second"}, env.Warnings)
+	assert.NotContains(t, env.Data.Error, "warnings")
+}
+
+// TestRenderErrNoWarningsAddsNoLines pins the zero-warnings case: no
+// warning ride means no "# warning:" lines and no envelope "warnings" key.
+func TestRenderErrNoWarningsAddsNoLines(t *testing.T) {
+	t.Parallel()
+	ce := clierr.New(clierr.CodeGeneric, "boom")
+
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
+	assert.Equal(t, "error (GENERIC): boom\n", errBuf.String())
+
+	errBuf.Reset()
+	_ = renderErr(IO{Err: &errBuf, Format: "json"}, ce)
+	env := decodeEnvelope(t, errBuf.Bytes())
+	_, hasWarnings := env["warnings"]
+	assert.False(t, hasWarnings)
 }
 
 // TestValidateInputStringSlicePerEntry pins MC-6a's validateInput

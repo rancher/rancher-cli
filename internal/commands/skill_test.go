@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 )
 
@@ -138,8 +140,9 @@ func TestSkillInstallBatchPreflightAllOrNothing(t *testing.T) {
 }
 
 // Execution-time failure mid-batch: remaining targets attempted; the
-// structured error carries per-target outcomes AND cleanup warnings —
-// a sweep warning must survive the error path, not just Result.Warnings.
+// structured error carries per-target outcomes (Details) AND cleanup
+// warnings (the error's own warning ride) — a sweep warning must survive
+// the error path, not just Result.Warnings.
 func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	home := skillHome(t, ".agents", ".claude")
 	skillinstall.SetSource(skillTestSource(t))
@@ -171,8 +174,9 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	require.Len(t, report.Outcomes, 2)
 	actions := []string{report.Outcomes[0].Action, report.Outcomes[1].Action}
 	assert.ElementsMatch(t, []string{"failed", "changed"}, actions)
-	require.Len(t, report.Warnings, 1)
-	assert.Contains(t, report.Warnings[0], ".rancher-skill-staging-cafe")
+	warnings := ce.Warnings()
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], ".rancher-skill-staging-cafe")
 	// filesystem state matches the outcomes
 	var changed, failed int
 	for _, o := range report.Outcomes {
@@ -184,6 +188,17 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	}
 	assert.Equal(t, 1, changed)
 	assert.Equal(t, 1, failed)
+
+	// Default-format text: the cleanup warning (WithWarnings) prints as a
+	// "# warning:" line ahead of the error, then the outcomes projection
+	// (Details.TextDetails) — one channel each, never both under data.error.
+	var errBuf bytes.Buffer
+	_ = runtime.RenderError(&errBuf, "", ce)
+	text := errBuf.String()
+	assert.Contains(t, text, "# warning: ")
+	assert.Contains(t, text, ".rancher-skill-staging-cafe")
+	assert.Contains(t, text, "error (GENERIC): skill install changed only part of the selected targets")
+	assert.Contains(t, text, "full report: rancher skill status, or re-run with -o json")
 }
 
 // TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements

@@ -135,7 +135,6 @@ graph TD
     cli --> config
     cli --> credhelper
     cli --> clierr
-    cli --> output
     cli --> httpx
     cli --> safety
 

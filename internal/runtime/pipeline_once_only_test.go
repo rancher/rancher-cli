@@ -122,6 +122,29 @@ func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 	}
 }
 
+// TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails pins
+// the create-token shape of the post-commit render-failure fixture: the
+// TextDetails projection names the committed Token and echoes the
+// producer's own non-mutating recovery line verbatim, contradicting neither
+// a retry (the error is never retryable) nor the stated recovery.
+func TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails(t *testing.T) {
+	t.Parallel()
+	cc := &CommittedContext{ResourceKind: "Token", ResourceName: "t-abc123", Recovery: "delete token t-abc123, then create again"}
+	res := Result{Kind: "TokenCreated", Data: map[string]string{"name": "t-abc123"}, CommittedContext: cc}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc123"}, exec: onceOnlyExec(res)}
+	var errBuf bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &partialWriteErr{n: 0}, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.False(t, ce.Retryable, "a post-commit render failure must never look retryable")
+	details, ok := ce.Details.(clierr.CommittedContextDetails)
+	require.True(t, ok)
+	assert.Equal(t, []string{
+		"committed: Token t-abc123 — the change may already be on the server",
+		"recover: delete token t-abc123, then create again",
+	}, details.TextDetails())
+}
+
 // TestFinishOnceOnlyResultFailingStdoutAndStderr proves the failure is
 // best-effort: even when stderr ALSO fails to accept the emitted envelope,
 // the pipeline still returns the correct classified error and exit code —

@@ -36,11 +36,33 @@ type Outcome struct {
 }
 
 // Report is the details payload on a partial-failure error: the per-target
-// outcomes plus any cleanup warnings, so neither is lost off the success
-// path (success carries warnings via Result.Warnings instead).
+// outcomes. Cleanup warnings ride the error's own WithWarnings instead of a
+// field here — one channel, no details/top-level duplicate.
 type Report struct {
 	Outcomes []Outcome `json:"outcomes"`
-	Warnings []string  `json:"warnings,omitempty"`
+}
+
+// TextDetails projects the first three outcomes onto one line each, a
+// "… and N more" line when there are more, and a pointer at the full report
+// — the default format stays one screen even for a large batch.
+func (r Report) TextDetails() []string {
+	shown := min(len(r.Outcomes), 3)
+	lines := make([]string, 0, shown+2)
+	for _, o := range r.Outcomes[:shown] {
+		label := o.Action
+		if label == "" {
+			label = string(o.Verdict)
+		}
+		if o.Reason != "" {
+			label += ", " + o.Reason
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", o.Target.Dir, label))
+	}
+	if n := len(r.Outcomes) - shown; n > 0 {
+		lines = append(lines, fmt.Sprintf("… and %d more", n))
+	}
+	lines = append(lines, "full report: rancher skill status, or re-run with -o json")
+	return lines
 }
 
 const (

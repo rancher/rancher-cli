@@ -77,9 +77,40 @@ func TestPrimeRequiredDisjointFromSuccessExits(t *testing.T) {
 	assert.NotContains(t, []int{0, 7}, exit)
 }
 
+// TestExitCodeTableUnaffectedByTextRendering pins the full code→exit
+// mapping: how an error's text is written on stderr never changes its
+// process exit status.
+func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
+	want := map[string]int{
+		CodeValidation:           2,
+		CodeConfirmationRequired: 2,
+		CodeDryRunNotApplicable:  2,
+		CodeAmbiguousSelection:   2,
+		CodeNotLoggedIn:          2,
+		CodeAuth:                 3,
+		CodeNotFound:             4,
+		CodeConflict:             5,
+		CodeRBAC:                 6,
+		CodeLockTimeout:          8,
+		CodePrimeRequired:        9,
+		CodeTLSTrust:             10,
+		CodeGeneric:              1,
+	}
+	assert.Equal(t, want, CodeExits())
+}
+
+// stubDetails is a minimal TextDetails implementation for exercising
+// WithDetails' envelope serialization independent of any real producer's
+// shape.
+type stubDetails struct {
+	Deleted []string `json:"deleted"`
+}
+
+func (stubDetails) TextDetails() []string { return nil }
+
 func TestErrorDetailsSerialization(t *testing.T) {
-	e := New(CodeConflict, "partial failure").WithDetails(map[string]any{
-		"deleted": []string{"a"},
+	e := New(CodeConflict, "partial failure").WithDetails(stubDetails{
+		Deleted: []string{"a"},
 	})
 	b, err := json.Marshal(e)
 	require.NoError(t, err)
@@ -93,6 +124,41 @@ func TestErrorDetailsSerialization(t *testing.T) {
 	b2, err := json.Marshal(New(CodeNotFound, "x"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(b2), "details")
+}
+
+// TestWithWarningsNotSerializedDirectly pins that the warning ride never
+// appears through a direct json.Marshal of *Error — only a renderer reading
+// Warnings() places it, at the envelope's top level, never under data.error.
+func TestWithWarningsNotSerializedDirectly(t *testing.T) {
+	e := New(CodeGeneric, "boom").WithWarnings("cert expires soon")
+	assert.Equal(t, []string{"cert expires soon"}, e.Warnings())
+	b, err := json.Marshal(e)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "cert expires soon")
+	assert.NotContains(t, string(b), "warnings")
+}
+
+// TestWithWarningsAccumulates pins that repeated calls append, in order.
+func TestWithWarningsAccumulates(t *testing.T) {
+	e := New(CodeGeneric, "boom").WithWarnings("a", "b").WithWarnings("c")
+	assert.Equal(t, []string{"a", "b", "c"}, e.Warnings())
+}
+
+// TestWithWarningsPreservedByWithMessageAndWrap pins that re-messaging an
+// error (WithMessage, or Wrap's re-classification) never drops warnings
+// already attached to it.
+func TestWithWarningsPreservedByWithMessageAndWrap(t *testing.T) {
+	t.Run("WithMessage", func(t *testing.T) {
+		e := New(CodeGeneric, "boom").WithWarnings("a")
+		got := e.WithMessage("new message")
+		assert.Equal(t, []string{"a"}, got.Warnings())
+	})
+
+	t.Run("Wrap of a classified error", func(t *testing.T) {
+		inner := New(CodeConflict, "boom").WithWarnings("a")
+		got := Wrap(inner, "new message")
+		assert.Equal(t, []string{"a"}, got.Warnings())
+	})
 }
 
 // TestWrapPreservesClassification pins the exercise-8/9-fixes review fix:

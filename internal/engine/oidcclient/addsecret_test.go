@@ -195,6 +195,13 @@ func TestAddSecretExecTimeoutIsNonRetryable(t *testing.T) {
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)
 	assert.True(t, details.Committed)
+	// Non-retryable: the projection's recover line must never claim a
+	// blind retry is safe — it names a re-check, then a rotate-by-name.
+	assert.Equal(t, []string{
+		"committed: OIDCClient my-app — the change may already be on the server",
+		"recover: " + details.Recovery,
+	}, details.TextDetails())
+	assert.Contains(t, details.Recovery, "rotate that key by name")
 }
 
 func TestAddSecretOutputPolicyRejectsNameWithZeroRequests(t *testing.T) {

@@ -17,7 +17,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
-	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -402,8 +401,10 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
+			// Flags have already parsed successfully at this point, so the
+			// invocation's own --output value is trusted directly.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
-				_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+				_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
 				return ctx, exit(ce)
 			}
 			return ctx, nil

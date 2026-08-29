@@ -246,6 +246,46 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 	return CompletionSite{Kind: SitePositional, Index: positional, Partial: currentWord}
 }
 
+// scanOutputFormat performs a raw-argv scan for an -o/--output value when no
+// parsed flag can be trusted yet — an unmatched command or a flag-parse
+// failure can fire before urfave finishes parsing this invocation's own
+// --output. It recognizes all four accepted spellings (-o v, -o=v, --output
+// v, --output=v) via the same canonical-name/arity primitives ParseArgTail
+// and checkFlagValues already use — no second flag grammar — stops at the
+// first "--" (positionals after the delimiter never select an error's
+// rendering), and a trailing output flag with no following token selects no
+// format (an empty result, same as never having typed one). A later
+// occurrence overrides an earlier one, matching urfave's own last-flag-wins
+// semantics for a repeated flag.
+func scanOutputFormat(argv []string) string {
+	value := ""
+	for i := 0; i < len(argv); i++ {
+		token := argv[i]
+		if token == "--" {
+			break
+		}
+		if !strings.HasPrefix(token, "-") {
+			continue
+		}
+		if eq := strings.Index(token, "="); eq > 0 {
+			if resolveFlagCanonical(token[:eq], globalArgSpecs) == "output" {
+				value = token[eq+1:]
+			}
+			continue
+		}
+		if resolveFlagCanonical(token, globalArgSpecs) != "output" {
+			continue
+		}
+		if i+1 < len(argv) && argv[i+1] != "--" {
+			value = argv[i+1]
+			i++
+		} else {
+			value = ""
+		}
+	}
+	return value
+}
+
 func resolveFlagCanonical(s string, flags []runtime.ArgSpec) string {
 	name := strings.TrimLeft(s, "-")
 	if eq := strings.Index(name, "="); eq >= 0 {

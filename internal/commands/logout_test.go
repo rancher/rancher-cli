@@ -338,6 +338,13 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	assert.Contains(t, details.DeletedFrom["acme"], "file", "acme's credential was really deleted before the failing step")
 	assert.NotNil(t, details.DeletedCache, "the exec-cache wipe completed before the failing step")
 
+	lines := details.TextDetails()
+	require.NotEmpty(t, lines)
+	assert.Equal(t, "already logged out: acme", lines[0])
+	assert.Contains(t, lines, "credentials removed: acme: file")
+	assert.Equal(t, "those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+		lines[len(lines)-1])
+
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
 	assert.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
 }
@@ -424,7 +431,41 @@ func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 
 	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil)
 	require.ErrorAs(t, real, &ce)
-	assert.Contains(t, ce.Hint, "already logged out")
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok)
+	assert.Contains(t, details.TextDetails()[0], "already logged out")
+}
+
+// TestLogoutAllPartialFailureTextDetailsBracketedLines pins the two
+// conditional lines: a deletedFrom entry prints one "credentials removed:"
+// line per server, sorted by name; "cached kubectl credentials removed"
+// prints only when non-empty.
+func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
+	t.Parallel()
+	t.Run("no deletedFrom entries and no cache", func(t *testing.T) {
+		t.Parallel()
+		pf := LogoutAllPartialFailure{LoggedOut: []string{"prod"}}
+		assert.Equal(t, []string{
+			"already logged out: prod",
+			"those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+		}, pf.TextDetails())
+	})
+
+	t.Run("multiple servers sorted, and non-empty cache", func(t *testing.T) {
+		t.Parallel()
+		pf := LogoutAllPartialFailure{
+			LoggedOut:    []string{"prod", "staging"},
+			DeletedFrom:  map[string][]string{"staging": {"keychain"}, "prod": {"keychain", "file"}},
+			DeletedCache: []string{"k1", "k2"},
+		}
+		assert.Equal(t, []string{
+			"already logged out: prod, staging",
+			"credentials removed: prod: keychain, file",
+			"credentials removed: staging: keychain",
+			"cached kubectl credentials removed: k1, k2",
+			"those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+		}, pf.TextDetails())
+	})
 }
 
 // TestDeleteFailurePreservesLockTimeout pins the exercise-8/9-fixes review
@@ -443,7 +484,9 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
 	assert.Contains(t, ce.Message, "failed to log out")
-	assert.Contains(t, ce.Hint, "already logged out")
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok)
+	assert.Contains(t, details.TextDetails()[0], "already logged out")
 }
 
 // TestLogoutTextAndCurrentServerClearedReported verifies the TTY story: logout

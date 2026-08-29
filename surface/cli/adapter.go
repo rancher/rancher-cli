@@ -8,7 +8,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -181,8 +180,11 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
+			// Flags have already parsed successfully at this point, so the
+			// invocation's own --output value is trusted directly — no raw-argv
+			// scan needed here, unlike commandNotFound/onUsageError below.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
-				_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+				_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
 				return ctx, exit(ce)
 			}
 			return ctx, nil
@@ -369,29 +371,33 @@ func usageErrorHint(c *ucli.Command, err error) string {
 // name (registered as root's and every group's CommandNotFound). Without it,
 // urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
 // for '<name>'" on stderr and exits 3 — indistinguishable from the AUTH exit
-// code documented for exit 3, and with no JSON envelope for a script to
-// parse. CommandNotFoundFunc has no error return, so the VALIDATION envelope
-// and the process exit both happen here directly, mirroring how urfave's own
-// ShowRootCommandHelpAndExit calls OsExiter.
+// code documented for exit 3, and with no structured error for a script to
+// parse. CommandNotFoundFunc has no error return, so rendering and the
+// process exit both happen here directly, mirroring how urfave's own
+// ShowRootCommandHelpAndExit calls OsExiter. No flag has parsed successfully
+// yet at this point, so the rendering format comes from a raw-argv scan
+// (scanOutputFormat), not a parsed --output value.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 	hint := notFoundHint(c, name)
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
 		WithHint(hint)
-	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
 	ucli.OsExiter(ce.ExitCode())
 }
 
 // onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,
 // bad value, missing value). Without it, urfave prints a plain-text
-// "Incorrect Usage: ..." line and falls through to help text — no JSON
-// envelope for a script to parse, mirroring the gap commandNotFound closes
-// for unmatched command names. Wired on the root command and on every leaf
-// and group command via the adapters, since urfave checks OnUsageError on
-// the command node whose own flags failed to parse, not the root's.
+// "Incorrect Usage: ..." line and falls through to help text — no structured
+// error for a script to parse, mirroring the gap commandNotFound closes for
+// unmatched command names. Wired on the root command and on every leaf and
+// group command via the adapters, since urfave checks OnUsageError on the
+// command node whose own flags failed to parse, not the root's. This
+// command's own flags failed to parse, so — like commandNotFound — the
+// rendering format comes from a raw-argv scan, not a parsed --output value.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 	hint := usageErrorHint(c, err)
 	ce := clierr.New(clierr.CodeValidation, err.Error()).
 		WithHint(hint)
-	_ = output.Render(c.Root().ErrWriter, "json", output.ErrorEnvelope(ce))
+	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
 	return exit(ce)
 }
