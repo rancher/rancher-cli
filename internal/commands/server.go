@@ -95,7 +95,9 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 		return runtime.Result{}, err
 	}
 	return runtime.Result{Kind: "ServerSwitch",
-		Data: map[string]string{"current": name}}, nil
+		Data: map[string]string{"current": name},
+		Text: "current server set to " + name + "\n",
+	}, nil
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`

@@ -76,6 +76,8 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 	assert.Equal(t, safety.ActionDelete, eff.Action)
 	assert.True(t, eff.Destructive)
 	assert.Contains(t, eff.Target, "(2)")
+	assert.Equal(t, "projectroletemplatebinding", eff.DisplayKind)
+	assert.NotEmpty(t, eff.DisplayName)
 	assert.False(t, eff.ConflictDetection, "multi-binding revoke: no single rv precondition applies")
 	require.Len(t, eff.Warnings, 1)
 	assert.Equal(t, "2 bindings are deleted sequentially; on failure some may already be deleted", eff.Warnings[0])
@@ -89,6 +91,8 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 	assert.Equal(t, []string{"prtb-pm", "prtb-po", "prtb-pm", "prtb-po"}, client.deletedNames)
 	deleted, _ := res.Data.(map[string]any)["deleted"].([]string)
 	assert.ElementsMatch(t, []string{"prtb-pm", "prtb-po"}, deleted)
+	assert.Equal(t, "projectroletemplatebinding/prtb-pm deleted\n"+
+		"projectroletemplatebinding/prtb-po deleted\n", res.Text)
 }
 
 func TestRevokeSingleRole(t *testing.T) {
@@ -116,15 +120,18 @@ func TestRevokeSingleRole(t *testing.T) {
 	require.NotNil(t, exec)
 
 	assert.Equal(t, "projectroletemplatebindings/prtb-pm", eff.Target)
+	assert.Equal(t, "projectroletemplatebinding", eff.DisplayKind)
+	assert.Equal(t, "prtb-pm", eff.DisplayName)
 	assert.Equal(t, "rv-pm", eff.ResourceVersion)
 	assert.True(t, eff.ConflictDetection, "single-binding revoke: rv precondition applies")
 	assert.Empty(t, eff.Warnings, "no sequential-deletion warning for a single binding")
 
-	_, err = exec(t.Context())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	// dry-run (Plan) + real delete (exec) both on prtb-pm only.
 	assert.Equal(t, []string{"prtb-pm", "prtb-pm"}, client.deletedNames)
 	assert.Equal(t, []string{"rv-pm", "rv-pm"}, client.deletedRVs)
+	assert.Equal(t, "projectroletemplatebinding/prtb-pm deleted\n", res.Text)
 }
 
 func TestRevokeByPrincipalMatchesUserPrincipalName(t *testing.T) {

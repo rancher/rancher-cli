@@ -62,8 +62,21 @@ type DiffEntry struct {
 // gate in the pipeline. Server is stamped by the surface adapter (Branch 2);
 // Cluster is set by the command's Plan.
 type Effect struct {
-	Action            Action      `json:"action"`
-	Target            string      `json:"target"`
+	Action Action `json:"action"`
+	Target string `json:"target"`
+	// DisplayKind is the canonical CLI kind from the kind table (e.g.
+	// "globalrolebinding", "management-token", "provisioning-cluster") —
+	// NEVER an API plural or a Kubernetes kind. Every default-format
+	// mutation text renders from DisplayKind, never from Target (an API
+	// resource plural unsuited for display). A Plan that omits it is a
+	// command bug (checkPlan).
+	DisplayKind string `json:"displayKind"`
+	// DisplayName is the resource name, or a generateName prefix plus "*"
+	// for a preview whose real name is not yet known (dry-run text only —
+	// the committed success identity is derived from the returned object
+	// and never carries the "*" suffix). A Plan that omits it is a command
+	// bug (checkPlan).
+	DisplayName       string      `json:"displayName"`
 	Server            string      `json:"server,omitempty"`
 	Cluster           string      `json:"cluster,omitempty"`
 	Diff              []DiffEntry `json:"diff,omitempty"`

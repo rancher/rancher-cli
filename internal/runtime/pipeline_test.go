@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -157,7 +158,7 @@ func TestRunMutatingUnaffectedWhenReadOnlyFalse(t *testing.T) {
 	called := 0
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x"},
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) {
 			called++
 			return Result{Kind: "ScaleResult"}, nil
@@ -175,7 +176,7 @@ func TestRunRejectsInvalidAction(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.Action("destroy"), Target: "x"},
+		eff:  safety.Effect{Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -190,7 +191,7 @@ func TestRunRejectsNonDestructiveDelete(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionDelete, Target: "x", Destructive: false},
+		eff:  safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: false},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -205,7 +206,7 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x"},
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -225,7 +226,7 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -242,27 +243,75 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 		"note-a must appear exactly once across stdout+stderr")
 }
 
-// TestRenderEffectWarningsTableStderrOnlyDryRunTableHasNoTextRendererYet pins
-// the current, temporary state of dry-run's default-format preview: Effect
-// is not Tabular and carries no dedicated text renderer, so table-format
-// -o dry-run now fails render (a command bug, not a silent drop) instead of
-// the old pretty-JSON fallback. json/yaml (TestRenderEffectWarningsJSONOnce)
-// and the raw formats (TestRenderEffectRawFormatsWarningsToStderr) still
-// deliver Effect.Warnings correctly; only the table/default text body is
-// unbuilt.
-func TestRenderEffectWarningsTableStderrOnlyDryRunTableHasNoTextRendererYet(t *testing.T) {
+// TestRenderEffectTableRendersDryRunTextWarningsToStderr pins the pipeline-
+// owned dry-run text renderer: table/default format renders the
+// action/kind/name/gate text body on stdout, and Effect.Warnings reach the
+// operator via the stderr "# warning:" channel — never duplicated into the
+// text body itself.
+func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
-		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		d: mutatingDesc(),
+		eff: safety.Effect{
+			Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x",
+			Server: "prod", Cluster: "c-x", Warnings: []string{"note-a"},
+		},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &errBuf, Format: "", DryRun: true},
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable})
-	require.NotNil(t, ce)
-	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	require.Nil(t, ce)
+	assert.Equal(t, "update widget/x\n"+
+		"  server: prod\n"+
+		"  cluster: c-x\n"+
+		"  dry run — re-run with --apply to execute\n", out.String())
+	assert.Equal(t, "# warning: note-a\n", errBuf.String())
+}
+
+// TestRenderEffectWideMatchesTable pins that -o wide renders the dry-run
+// preview byte-identical to table/default — there is no separate wide body
+// for an Effect preview.
+func TestRenderEffectWideMatchesTable(t *testing.T) {
+	t.Parallel()
+	newCmd := func() fakeMutating {
+		return fakeMutating{
+			d:    mutatingDesc(),
+			eff:  safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: true},
+			exec: unusedExec(t),
+		}
+	}
+	var tableOut, wideOut bytes.Buffer
+	_, ce := Run(t.Context(), newCmd(), mapInput{},
+		IO{Out: &tableOut, Err: io.Discard, Format: "table", DryRun: true}, safety.Binding{})
+	require.Nil(t, ce)
+	_, ce = Run(t.Context(), newCmd(), mapInput{},
+		IO{Out: &wideOut, Err: io.Discard, Format: "wide", DryRun: true}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Equal(t, tableOut.String(), wideOut.String())
+	assert.Contains(t, tableOut.String(), "dry run — re-run with --apply --yes to execute")
+}
+
+// TestDryRunTextDiffLines pins the change-summary content: each Effect.Diff
+// entry becomes one line, in order.
+func TestDryRunTextDiffLines(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d: mutatingDesc(),
+		eff: safety.Effect{
+			Action: safety.ActionUpdate, Target: "x", DisplayKind: "deployment", DisplayName: "nginx",
+			Diff: []safety.DiffEntry{{Path: "/spec/replicas", From: float64(1), To: float64(3)}},
+		},
+		exec: unusedExec(t),
+	}
+	var out bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: io.Discard, Format: "", DryRun: true}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Equal(t, "update deployment/nginx\n"+
+		"  /spec/replicas: 1 -> 3\n"+
+		"  dry run — re-run with --apply to execute\n", out.String())
 }
 
 // TestRenderEffectRawFormatsWarningsToStderr covers the round-4 High+Low-1 fix:
@@ -278,7 +327,7 @@ func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 			t.Parallel()
 			cmd := fakeMutating{
 				d:    mutatingDesc(),
-				eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"cascade-warning"}},
+				eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"cascade-warning"}},
 				exec: unusedExec(t),
 			}
 			var out, errBuf bytes.Buffer
@@ -304,7 +353,7 @@ func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	newCmd := func() fakeMutating {
 		return fakeMutating{
 			d:    mutatingDesc(),
-			eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a", "note-b"}},
+			eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
 			exec: unusedExec(t),
 		}
 	}
@@ -336,7 +385,7 @@ func TestRunApplyRendersEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a"}},
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
 		exec: func(context.Context) (Result, error) {
 			return Result{Kind: "ScaleResult"}, nil
 		},
@@ -361,7 +410,7 @@ func TestRunApplyCombinesEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", Warnings: []string{"note-a", "note-b"}},
+		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
 		exec: func(context.Context) (Result, error) {
 			return Result{Kind: "UpdateResult"}, nil
 		},
@@ -384,7 +433,7 @@ func TestRunExecClosureResultRendered(t *testing.T) {
 	called := 0
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionCreate, Target: "x"},
+		eff: safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) {
 			called++
 			return Result{Kind: "X", Data: map[string]string{"k": "v"}}, nil
@@ -403,7 +452,7 @@ func TestRunStampsEffectServer(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    Descriptor{Name: "create widget", CommandType: Mutating},
-		eff:  safety.Effect{Action: safety.ActionCreate, Cluster: "c-x"},
+		eff:  safety.Effect{Action: safety.ActionCreate, Cluster: "c-x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) { return Result{Kind: "Widget"}, nil },
 	}
 	var out bytes.Buffer
@@ -1124,13 +1173,52 @@ func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
 	summary := "wait: condition=Ready satisfied after 53s"
 	cmd := fakeRead{
 		d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
-		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}, Summary: summary},
+		res: Result{Kind: "Cluster", Data: widgetTable{Name: "c-abc"}, Summary: summary},
 	}
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.Nil(t, ce)
 	env := decodeEnvelope(t, out.Bytes())
 	assert.Equal(t, summary, env["summary"])
+}
+
+// TestResultSummaryRequiresTabularData pins the runtime rule that Summary
+// rides only over Tabular Data — the JSON-fallback-era pattern of a Summary
+// line papering over non-Tabular Data is a command bug now that the
+// fallback itself is gone.
+func TestResultSummaryRequiresTabularData(t *testing.T) {
+	t.Parallel()
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}, Summary: "wait: satisfied"},
+	}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, "Summary requires Tabular Data")
+}
+
+// TestResultSummaryPrintsUnderWideToo pins that the Summary annotation line
+// prints over the table under both table/default AND wide, not table only.
+func TestResultSummaryPrintsUnderWideToo(t *testing.T) {
+	t.Parallel()
+	summary := "wait: condition=Ready satisfied after 53s"
+	newCmd := func() fakeRead {
+		return fakeRead{
+			d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
+			res: Result{Kind: "Cluster", Data: nodeMetricsRows{{"name": "node-1"}}, Summary: summary},
+		}
+	}
+	for _, format := range []string{"table", "wide"} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), newCmd(), mapInput{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Contains(t, out.String(), summary)
+		})
+	}
 }
 
 // TestResultEmptySummaryAbsentFromJSONEnvelope proves that an empty

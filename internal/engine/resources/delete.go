@@ -106,6 +106,8 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 	eff := safety.Effect{
 		Action:            safety.ActionDelete,
 		Target:            k.GVR.Resource + "/" + name,
+		DisplayKind:       k.Name,
+		DisplayName:       name,
 		Cluster:           effectCluster,
 		ResourceVersion:   rv,
 		ConflictDetection: true,
@@ -122,7 +124,11 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: title + "Delete", Data: map[string]any{"deleted": name}}, nil
+		return runtime.Result{
+			Kind: title + "Delete",
+			Data: map[string]any{"deleted": name},
+			Text: runtime.MutationText(k.Name, name, "deleted"),
+		}, nil
 	}
 	return eff, exec, nil
 }

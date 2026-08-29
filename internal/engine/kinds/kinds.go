@@ -961,6 +961,14 @@ func validateKinds(ts []Kind) error {
 		if k.K8sKind == "" {
 			return fmt.Errorf("kind %q has empty K8sKind", k.Name)
 		}
+		// Name is every generic create/patch/delete Effect's DisplayKind
+		// (engine.PlanCreate/PlanUpdate/resources.PlanFromFetched pass it
+		// straight through) — an empty value here would pass unnoticed
+		// until checkPlan rejects the resulting Effect as a command bug on
+		// the kind's first real mutation.
+		if k.Name == "" {
+			return fmt.Errorf("kind %q has empty Name", k.Key)
+		}
 	}
 	// Key uniqueness is its own pass: the self-Key exemption in the collision
 	// pass below would otherwise mask two kinds sharing a Key.

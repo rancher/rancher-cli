@@ -1,11 +1,23 @@
 package oidcclient
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 )
+
+// alwaysProceedCapabilityChecker satisfies runtime.IO.Capability for tests
+// that drive a command through the full runtime.Run pipeline (rather than
+// calling Plan/exec directly): every oidc-client command declares the
+// oidc-provider Prime capability, so Run refuses to dispatch without a
+// checker wired, regardless of what the check would actually decide.
+type alwaysProceedCapabilityChecker struct{}
+
+func (alwaysProceedCapabilityChecker) Check(context.Context, runtime.CapabilityRequirement) runtime.CapabilityDecision {
+	return runtime.CapabilityDecision{Outcome: runtime.CapabilityProceed}
+}
 
 // TestRecoveryHint pins the single shared spelling every verb's recovery
 // text is built from — a future wording change only has to happen here.

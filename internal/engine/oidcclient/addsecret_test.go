@@ -98,6 +98,47 @@ func TestAddSecretExecSuccessDeliversTheOneNewKey(t *testing.T) {
 	assert.Equal(t, "new-secret-value", data["clientSecret"])
 	require.NotNil(t, res.CommittedContext)
 	assert.Equal(t, "client-secret-2", res.CommittedContext.SecretName)
+	assert.Equal(t, "oidcclient/my-app patched\n"+
+		"  secret client-secret-2 added\n"+
+		"  client secret: new-secret-value   (shown once — store it now)\n", res.Text)
+}
+
+// TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce
+// drives add-secret through the REAL pipeline (runtime.Run, not a direct
+// exec() call) under default format with --apply --yes: runMutating
+// prepends the Plan-time Effect.Warnings ("creates a new client secret on
+// ...") in front of the exec-time Result.Warnings (the shown-once note),
+// so the shown-once note does NOT land at Warnings[0] once merged. This
+// proves the note is still excluded from the table-family stderr mirror
+// only by value, not by position, while the unrelated Plan-time advisory
+// still reaches stderr as any other warning would.
+func TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *testing.T) {
+	withFastPoll(t)
+	afterAnnotated := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+	_ = unstructured.SetNestedField(afterAnnotated.Object, "true", "metadata", "annotations", annotationSecretCreate)
+	afterConsumed := oidcClientObj("my-app", "client-abc", map[string]any{
+		"client-secret-1": map[string]any{}, "client-secret-2": map[string]any{},
+	})
+	client := &fakeOIDCClient{
+		pollResponses: []*unstructured.Unstructured{afterAnnotated, afterConsumed},
+		secretResp: &unstructured.Unstructured{Object: map[string]any{
+			"data": map[string]any{"client-secret-2": b64("new-secret-value")},
+		}},
+	}
+	cmd := NewAddSecret(stubOIDCFactory{c: client})
+
+	var out, errBuf bytes.Buffer
+	status, ce := runtime.Run(t.Context(), cmd, oidcInput{args: []string{"my-app"}},
+		runtime.IO{Out: &out, Err: &errBuf, Format: "", Apply: true, Yes: true, Capability: alwaysProceedCapabilityChecker{}},
+		safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta})
+	require.Nil(t, ce)
+	assert.Zero(t, status)
+
+	assert.Contains(t, errBuf.String(), "# warning: creates a new client secret on my-app\n",
+		"the Plan-time safety advisory must still reach stderr after the merge")
+	assert.NotContains(t, errBuf.String(), "shown exactly once",
+		"the shown-once note must not double-print to stderr")
+	assert.Contains(t, out.String(), "client secret: new-secret-value   (shown once — store it now)")
 }
 
 // TestAddSecretExecAmbiguousTransitionsAreTerminal pins the two ambiguous

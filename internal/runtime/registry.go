@@ -251,6 +251,8 @@ func effectSchema() EffectSchema {
 		Fields: []EffectField{
 			{Name: "action", Type: "string"},
 			{Name: "target", Type: "string"},
+			{Name: "displayKind", Type: "string"},
+			{Name: "displayName", Type: "string"},
 			{Name: "server", Type: "string"},
 			{Name: "cluster", Type: "string"},
 			{Name: "diff", Type: "array"},

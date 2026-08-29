@@ -32,21 +32,13 @@ func seedDeleteConfig(t *testing.T) string {
 // delete-server on a fresh auto profile must delete the token WITHOUT
 // probing or writing a credstore pin. RED before the lazy-store swap
 // (eager OpenStore pins on every command), GREEN after.
-//
-// config delete-server declares ShapeText but its executor does not yet
-// set Result.Text, so rendering now fails with a shape-mismatch command
-// bug — ExitErrHandler is overridden so that failure returns a normal Go
-// error instead of the process exiting (urfave's default ExitCoder
-// handling calls os.Exit, which would kill the test binary silently).
-// Execute deletes the credential and rewrites the config BEFORE
-// constructing its Result, so the pin/token assertions below still hold.
 func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 	dir := seedDeleteConfig(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-	require.Error(t, root.Run(t.Context(), []string{"rancher", "config", "delete-server", "acme"}))
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "config", "delete-server", "acme"}))
 
 	_, statErr := os.Stat(config.PinPath(dir))
 	assert.True(t, os.IsNotExist(statErr), "delete-server must not write a credstore pin")

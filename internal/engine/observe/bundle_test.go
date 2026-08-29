@@ -72,6 +72,39 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 	assert.Equal(t, path, data.Path)
 	assert.Positive(t, data.Errors)
 	assert.Positive(t, data.Skipped)
+	assert.Contains(t, res.Text, "support bundle written: "+path)
+	assert.Contains(t, res.Text, fmt.Sprintf("skipped: %d, errors: %d", data.Skipped, data.Errors))
+}
+
+// TestFormatIECBytes pins the IEC byte formatter's exact output at each unit
+// boundary — the raw byte count stays in Data for -o json; this is only the
+// operator-facing text rendering.
+func TestFormatIECBytes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KiB"},
+		{1536, "1.5 KiB"},
+		{1024 * 1024, "1.0 MiB"},
+		{3355443, "3.2 MiB"},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, formatIECBytes(c.n))
+	}
+}
+
+// TestRenderBundleText pins support-bundle's exact default-format text,
+// base case and the skipped/errors conditional line.
+func TestRenderBundleText(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "support bundle written: /tmp/b.tar.gz\n  5 items, 1.0 KiB\n",
+		renderBundleText("/tmp/b.tar.gz", 5, 1024, 0, 0))
+	assert.Equal(t, "support bundle written: /tmp/b.tar.gz\n  5 items, 1.0 KiB\n  skipped: 2, errors: 1\n",
+		renderBundleText("/tmp/b.tar.gz", 5, 1024, 2, 1))
 }
 
 // TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError is the exercise bug 6

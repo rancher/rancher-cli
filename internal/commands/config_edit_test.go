@@ -91,6 +91,7 @@ func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testi
 	res, err := cmd.Execute(t.Context(), args{}, &fakePrompter{canPrompt: true})
 	require.NoError(t, err)
 	assert.Equal(t, "ConfigEdit", res.Kind)
+	assert.Equal(t, "config updated ("+config.FilePath(dir)+")\n", res.Text)
 
 	got, err := os.ReadFile(config.FilePath(dir))
 	require.NoError(t, err)

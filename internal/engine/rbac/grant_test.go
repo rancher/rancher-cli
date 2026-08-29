@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // roleGet returns a minimal role object for seeding fakeClient.gets at key
@@ -200,6 +202,61 @@ func TestGrantGlobalScope(t *testing.T) {
 	for _, e := range eff.Diff {
 		assert.Nil(t, e.From)
 	}
+}
+
+// generateNameFakeClient simulates server-side generateName resolution on
+// top of fakeClient: the dry-run create returns the submitted object
+// unchanged (a real server's dry-run response also carries a throwaway
+// generated suffix, which is exactly why grant discards it for the preview
+// identity — see eff.DisplayName below); the REAL (non-dry-run) create
+// returns an object carrying committedName, standing in for the server's
+// actual generateName assignment.
+type generateNameFakeClient struct {
+	*fakeClient
+	committedName string
+}
+
+func (g *generateNameFakeClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if dryRun {
+		return g.fakeClient.Create(ctx, gvr, ns, obj, dryRun)
+	}
+	committed := obj.DeepCopy()
+	committed.SetName(g.committedName)
+	return g.fakeClient.Create(ctx, gvr, ns, committed, dryRun)
+}
+
+// TestGrantCommittedIdentityNeverCarriesPreviewWildcard pins the
+// generateName rule end to end: the dry-run preview identity carries the
+// "grb-*" wildcard (never a real name), but the COMMITTED success text
+// derives from the real create's returned object and never carries "*".
+func TestGrantCommittedIdentityNeverCarriesPreviewWildcard(t *testing.T) {
+	t.Parallel()
+	inner := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets:  map[string]*unstructured.Unstructured{"/admin": roleGet("admin")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"globalrolebindings": {},
+		},
+		allowCreate: true,
+	}
+	client := &generateNameFakeClient{fakeClient: inner, committedName: "grb-x7k"}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		bools:   map[string]bool{"global": true},
+		strings: map[string]string{"role": "admin"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	assert.Equal(t, "globalrolebinding", eff.DisplayKind)
+	assert.Equal(t, "grb-*", eff.DisplayName, "preview identity carries the wildcard")
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "globalrolebinding/grb-x7k created\n", res.Text)
+	assert.NotContains(t, res.Text, "*", "committed identity must never carry the preview wildcard")
 }
 
 func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {

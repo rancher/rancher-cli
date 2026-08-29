@@ -24,11 +24,30 @@ func TestAddServerCreatesEntryAndBootstrapsPointer(t *testing.T) {
 	assert.Equal(t, "qa1", data["name"])
 	assert.Equal(t, "qa1", data["currentServer"])
 	assert.Equal(t, false, data["unchanged"])
+	assert.Equal(t, "server qa1 added\n  url: https://qa1.example.com\n  current server set to qa1\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, "qa1", cfg.CurrentServer)
 	assert.Equal(t, "https://qa1.example.com", cfg.Servers["qa1"].URL)
+}
+
+// TestAddServerTextCAPinnedNoPointerLine pins the two conditional text lines
+// independently: a CA-pinned add gets "ca: pinned", and an add that finds
+// the pointer already valid (a prior entry already current) omits the
+// "current server set to" line entirely.
+func TestAddServerTextCAPinnedNoPointerLine(t *testing.T) {
+	dir, _ := filePolicyDir(t)
+	c := newAddServerCmd(dir)
+	// Seed an existing current server so this add's pointer bootstrap is a
+	// no-op (the pointer is already valid).
+	_, err := c.Execute(context.Background(), args{s: map[string]string{"url": "https://prod.example.com"}, a: []string{"prod"}}, nil)
+	require.NoError(t, err)
+
+	res, err := c.Execute(context.Background(),
+		args{s: map[string]string{"url": "https://qa1.example.com", "cacert": testCAPem1}, a: []string{"qa1"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "server qa1 added\n  url: https://qa1.example.com\n  ca: pinned\n", res.Text)
 }
 
 func TestAddServerIdenticalReRunIsUnchanged(t *testing.T) {
@@ -42,6 +61,7 @@ func TestAddServerIdenticalReRunIsUnchanged(t *testing.T) {
 	res, err := c.Execute(context.Background(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, true, res.Data.(map[string]any)["unchanged"])
+	assert.Equal(t, "server qa1 unchanged\n", res.Text)
 }
 
 func TestAddServerDifferentURLConflicts(t *testing.T) {

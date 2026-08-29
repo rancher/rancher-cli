@@ -235,7 +235,7 @@ func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (saf
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, dryRun, exec, err := engine.PlanCreateObserved(ctx, client, k.GVR, k.DefaultNamespace, obj, engine.LocalCluster, k.K8sKind, false)
+	eff, dryRun, exec, err := engine.PlanCreateObserved(ctx, client, k.GVR, k.DefaultNamespace, obj, engine.LocalCluster, k.Name, k.K8sKind, false)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

@@ -164,10 +164,12 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 
 	target := bindKind.GVR.Resource + "/" + names[0]
+	displayName := names[0]
 	var rv string
 	var warnings []string
 	if len(names) > 1 {
 		target = fmt.Sprintf("%s (%d) for %s", bindKind.GVR.Resource, len(names), args[0])
+		displayName = fmt.Sprintf("(%d) for %s", len(names), args[0])
 		warnings = append(warnings, fmt.Sprintf(
 			"%d bindings are deleted sequentially; on failure some may already be deleted", len(names)))
 	} else {
@@ -180,6 +182,8 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	eff := safety.Effect{
 		Action:            safety.ActionDelete,
 		Target:            target,
+		DisplayKind:       bindKind.Name,
+		DisplayName:       displayName,
 		Cluster:           effCluster,
 		ResourceVersion:   rv,
 		ConflictDetection: len(names) == 1,
@@ -189,13 +193,15 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		deleted := make([]string, 0, len(names))
+		var text strings.Builder
 		for i, name := range names {
 			if err := client.Delete(ctx, bindKind.GVR, scope.NS, name, rvByName[name], false); err != nil {
 				return runtime.Result{}, partialFailure(err, name, deleted, names[i+1:])
 			}
 			deleted = append(deleted, name)
+			text.WriteString(runtime.MutationText(bindKind.Name, name, "deleted"))
 		}
-		return runtime.Result{Kind: bindKind.K8sKind + "Delete", Data: map[string]any{"deleted": deleted}}, nil
+		return runtime.Result{Kind: bindKind.K8sKind + "Delete", Data: map[string]any{"deleted": deleted}, Text: text.String()}, nil
 	}
 	return eff, exec, nil
 }

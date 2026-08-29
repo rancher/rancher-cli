@@ -64,8 +64,18 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	if probe.versionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.versionWarning)
 	}
-	if out.pointerRepaired {
-		res.Summary = "current server set to " + out.name
+	if !out.created {
+		res.Text = "server " + out.name + " unchanged\n"
+		return res, nil
 	}
+	var lines []string
+	lines = append(lines, "url: "+out.canonicalURL)
+	if caPresence(out.caSelector) != "none" {
+		lines = append(lines, "ca: pinned")
+	}
+	if out.pointerRepaired {
+		lines = append(lines, "current server set to "+out.name)
+	}
+	res.Text = runtime.TextLines("server "+out.name+" added", lines...)
 	return res, nil
 }

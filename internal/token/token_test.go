@@ -101,16 +101,18 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
-		_, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}}, ui.Discard())
+		res, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
+		assert.Equal(t, "all cached credentials deleted\n", res.Text)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 
 	t.Run("named delete removes the entry", func(t *testing.T) {
 		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
-		_, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
+		res, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
+		assert.Equal(t, "cached credential acme/u/c deleted\n", res.Text)
 		_, _, gerr := store.GetCachedCred("acme/u/c")
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
@@ -145,6 +147,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		require.NoError(t, err)
 		deleted := res.Data.(map[string]any)["deleted"].([]string)
 		assert.Empty(t, deleted, "already-deleted / unknown names must be a no-op success")
+		assert.Equal(t, "no matching cached credential\n", res.Text, "ShapeText requires non-empty Text even on the idempotent no-op path")
 	})
 }
 

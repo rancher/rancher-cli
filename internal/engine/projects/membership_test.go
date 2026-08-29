@@ -108,6 +108,10 @@ func TestAddNamespaceSetsLabelAndAnnotation(t *testing.T) {
 	annotation, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectLabel)
 	assert.Equal(t, "c-x:p-1", annotation)
 	require.NotEmpty(t, eff.Diff)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "namespace/team-a patched\n  added to project p-1\n", res.Text)
 }
 
 func TestAddNamespaceToDifferentProjectIsValidation(t *testing.T) {
@@ -148,13 +152,17 @@ func TestRemoveNamespaceClearsLabelAndAnnotation(t *testing.T) {
 	}
 	cmd := NewRemoveNamespace(stubFactory{c: client})
 
-	eff, _, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"team-a"}})
+	eff, exec, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"team-a"}})
 	require.NoError(t, err)
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
 	_, found, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectLabel)
 	assert.False(t, found)
 	_, found, _ = unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectLabel)
 	assert.False(t, found)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "namespace/team-a patched\n  removed from project p-1\n", res.Text)
 }
 
 func TestRemoveNamespaceFromDifferentProjectIsValidation(t *testing.T) {

@@ -442,7 +442,7 @@ func TestLoginExplicitNameWithUnsetPointerSucceedsWithAdvisory(t *testing.T) {
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.Equal(t, "", data["currentServer"], "currentServer is always present, even empty")
-	assert.Contains(t, res.Summary, "rancher config use-server 'prod'")
+	assert.Contains(t, res.Text, "rancher config use-server 'prod'")
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, err)
@@ -465,8 +465,8 @@ func TestLoginExplicitNameNeverSwitchesValidPointer(t *testing.T) {
 	// look like a bare, unremarkable success: the pointer still names a
 	// DIFFERENT server, so every next command keeps operating against
 	// "prod" unless the operator switches — advise it plainly.
-	assert.Contains(t, res.Summary, "the current server remains 'prod'")
-	assert.Contains(t, res.Summary, "rancher config use-server 'qa'")
+	assert.Contains(t, res.Text, "the current server remains 'prod'")
+	assert.Contains(t, res.Text, "rancher config use-server 'qa'")
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

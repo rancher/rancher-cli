@@ -36,7 +36,7 @@ func onceOnlyExec(res Result) ExecuteFunc {
 
 func runOnceOnly(t *testing.T, out, errW *bytes.Buffer, res Result, format string) (int, *clierr.Error) {
 	t.Helper()
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 	return Run(t.Context(), cmd, mapInput{}, IO{Out: out, Err: errW, Format: format, Apply: true},
 		safety.Binding{})
 }
@@ -100,7 +100,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 			t.Parallel()
 			var errBuf bytes.Buffer
 			res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-			cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate}, exec: onceOnlyExec(res)}
+			cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 			status, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: tc.out, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
 			require.NotNil(t, ce)
@@ -130,7 +130,7 @@ func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 	t.Parallel()
 	cc := &CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json"}
 	res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 
 	failOut := &partialWriteErr{n: 3}
 	failErr := &partialWriteErr{n: 0}
@@ -200,7 +200,7 @@ func TestRunOutputPolicyAcceptsEveryAllowedFormat(t *testing.T) {
 					ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json",
 				},
 			}
-			cmd := fakeMutating{d: restrictiveOnceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate}, exec: onceOnlyExec(res)}
+			cmd := fakeMutating{d: restrictiveOnceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 			status, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: &out, Err: &errBuf, Format: format, Apply: true, Yes: true}, safety.Binding{})
 			require.Nil(t, ce)
@@ -216,3 +216,48 @@ type widgetTable struct{ Name string }
 
 func (w widgetTable) Columns() []string { return []string{"NAME"} }
 func (w widgetTable) Rows() [][]string  { return [][]string{{w.Name}} }
+
+// onceOnlyTextDesc is a ShapeText DeliveryOnceOnly descriptor — the shape
+// every once-only credential command (create token, create oidc-client,
+// oidc-client add-secret/rotate-secret) declares.
+func onceOnlyTextDesc() Descriptor {
+	d := onceOnlyDesc()
+	d.Shape = ShapeText
+	d.OutputPolicy = OnceOnlyOutputPolicy()
+	return d
+}
+
+// TestFinishOnceOnlyResultWideRendersExactText pins that "-o wide renders
+// exactly the Text" for once-only ShapeText commands: the shown-once secret
+// must reach the operator once, on stdout, identically under table and
+// wide — never duplicated onto the stderr warning channel (TextOnlyWarnings
+// suppresses only the already-embedded entry, matched by value; an
+// unrelated warning still mirrors to stderr as usual).
+func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
+	t.Parallel()
+	text := "token/t-abc created\n  bearer token: tok:xxxx   (shown once — store it now)\n"
+	for _, format := range []string{"", "table", "wide"} {
+		t.Run("format "+format, func(t *testing.T) {
+			t.Parallel()
+			var out, errBuf bytes.Buffer
+			res := Result{
+				Kind:             "TokenCreated",
+				Data:             map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
+				Text:             text,
+				Warnings:         []string{"this token value is shown exactly once — store it now", "unrelated-warning"},
+				TextOnlyWarnings: []string{"this token value is shown exactly once — store it now"},
+				CommittedContext: &CommittedContext{
+					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
+				},
+			}
+			cmd := fakeMutating{d: onceOnlyTextDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+			status, ce := Run(t.Context(), cmd, mapInput{},
+				IO{Out: &out, Err: &errBuf, Format: format, Apply: true, Yes: true}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Zero(t, status)
+			assert.Equal(t, text, out.String())
+			assert.Equal(t, "# warning: unrelated-warning\n", errBuf.String(),
+				"the shown-once note must not also print as a stderr warning, but an unrelated one still must")
+		})
+	}
+}

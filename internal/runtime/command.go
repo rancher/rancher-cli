@@ -207,7 +207,24 @@ type Result struct {
 	// json/yaml carry Warnings inside the envelope; no stderr write, no
 	// double print.
 	Warnings []string
-	Raw      bool
+	// TextOnlyWarnings names the exact Warnings entries (matched by value,
+	// not position) whose content is already reflected verbatim in Text —
+	// the once-only credential commands' shown-once advisory, e.g. "this
+	// token value is shown exactly once — store it now", which also
+	// appears inline in Text as "bearer token: ...   (shown once — store
+	// it now)". renderResult's Text branch excludes a matching Warnings
+	// entry from the stderr mirror wherever it lands, so the operator sees
+	// the note once, not twice. A mutating command's Plan-time
+	// Effect.Warnings are PREPENDED to Result.Warnings before rendering
+	// (runMutating), so a once-only command's shown-once note is not
+	// reliably first — matching by value, not by leading position, is
+	// required for correctness. Every other Warnings entry, including
+	// ones from Plan time, still mirrors to stderr normally. json/yaml are
+	// unaffected: they always serialize the full Warnings slice into the
+	// envelope unchanged. Empty (the default) for every command whose Text
+	// does not already embed a warning's content.
+	TextOnlyWarnings []string
+	Raw              bool
 	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope
 	// and no encoding — used by `kubeconfig`, whose stdout must be a bare
 	// YAML document. Mutually exclusive with Raw; renderResult rejects a

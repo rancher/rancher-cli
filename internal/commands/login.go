@@ -365,6 +365,10 @@ func (l loginCmd) authenticateAndStore(
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added,
 	}}
 	res.Warnings = warnings
+	var lines []string
+	if added {
+		lines = append(lines, "server "+name+" added")
+	}
 	// Login never switches the pointer — only registration's
 	// bootstrap/repair rule does, and that never reaches THIS path (an
 	// already-registered entry). Advise whenever the pointer doesn't name
@@ -373,11 +377,12 @@ func (l loginCmd) authenticateAndStore(
 	// next command still operates against a different server.
 	switch {
 	case !currentValid:
-		res.Summary = fmt.Sprintf("the current server is not set — switch to it with: rancher config use-server %s", shquote(name))
+		lines = append(lines, fmt.Sprintf("the current server is not set — switch to it with: rancher config use-server %s", shquote(name)))
 	case currentServer != name:
-		res.Summary = fmt.Sprintf("the current server remains %s — switch to %s with: rancher config use-server %s",
-			shquote(currentServer), shquote(name), shquote(name))
+		lines = append(lines, fmt.Sprintf("the current server remains %s — switch to %s with: rancher config use-server %s",
+			shquote(currentServer), shquote(name), shquote(name)))
 	}
+	res.Text = runtime.TextLines(fmt.Sprintf("logged in to %s (%s)", name, serverURL), lines...)
 	return res, nil
 }
 

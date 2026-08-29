@@ -169,13 +169,17 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if scope.Kind == ScopeGlobal {
 		effCluster = engine.LocalCluster
 	}
-	eff, exec, err := engine.PlanCreate(ctx, client, bindKind.GVR, scope.NS, obj, effCluster, bindKind.K8sKind, bindKind.Sensitive)
+	eff, exec, err := engine.PlanCreate(ctx, client, bindKind.GVR, scope.NS, obj, effCluster, bindKind.Name, bindKind.K8sKind, bindKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 	// generateName: the dry-run name is a throwaway server suffix; show
-	// the prefix pattern (same reasoning as project add-member did).
+	// the prefix pattern (same reasoning as project add-member did). The
+	// committed success text is unaffected — PlanCreate's exec closure
+	// derives it from the REAL create's returned object name, never from
+	// this preview override.
 	eff.Target = bindKind.GVR.Resource + "/" + prefix + "*"
+	eff.DisplayName = prefix + "*"
 	eff.Diff = grantDiff(fields)
 	if rs.Provision {
 		eff.Warnings = append(eff.Warnings, fmt.Sprintf(

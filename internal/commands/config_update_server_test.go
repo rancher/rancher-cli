@@ -109,6 +109,9 @@ func TestUpdateServerURLChangeClearsCredentials(t *testing.T) {
 	// "backend"), not a flat list — both report DeleteTokenEverywhere's
 	// output and should look alike on the wire.
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
+	assert.Equal(t, "server qa1 updated\n"+
+		"  url: https://new.example.com (changed)\n"+
+		"  credentials cleared — log in again: rancher auth login 'qa1'\n", res.Text)
 
 	_, gerr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://new.example.com"})
 	require.ErrorIs(t, gerr, config.ErrNoToken)
@@ -129,6 +132,7 @@ func TestUpdateServerCAOnlyKeepsCredentials(t *testing.T) {
 	data := res.Data.(map[string]any)
 	assert.Equal(t, []string{"ca"}, data["changed"])
 	assert.Equal(t, false, data["credentialsCleared"])
+	assert.Equal(t, "server qa1 updated\n  ca: pinned (changed)\n", res.Text)
 
 	tok, gerr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://qa1.example.com"})
 	require.NoError(t, gerr)
@@ -145,6 +149,7 @@ func TestUpdateServerClearCacertReturnsSystemRoots(t *testing.T) {
 	res, err := c.Execute(context.Background(), args{b: map[string]bool{"clear-cacert": true}, a: []string{"qa1"}}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ca"}, res.Data.(map[string]any)["changed"])
+	assert.Equal(t, "server qa1 updated\n  ca: cleared (changed)\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -163,6 +168,7 @@ func TestUpdateServerSameValueIsNoOpNoDeletion(t *testing.T) {
 	assert.Equal(t, true, data["unchanged"])
 	assert.Equal(t, []string{}, data["changed"])
 	assert.Equal(t, false, data["credentialsCleared"])
+	assert.Equal(t, "server qa1 unchanged\n", res.Text)
 
 	tok, gerr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://qa1.example.com"})
 	require.NoError(t, gerr)

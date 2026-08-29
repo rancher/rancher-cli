@@ -60,6 +60,22 @@ func TestGetServersTabular(t *testing.T) {
 	assert.Equal(t, []string{"", "beta", "https://b"}, rows[1])
 }
 
+// TestServerSwitchSetsCurrentAndRendersText pins `config use-server`'s exact
+// text: "current server set to <name>".
+func TestServerSwitchSetsCurrentAndRendersText(t *testing.T) {
+	dir := t.TempDir()
+	writeServersConfig(t, dir)
+
+	res, err := NewServerSwitch(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"beta"}}, ui.Discard())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"current": "beta"}, res.Data)
+	assert.Equal(t, "current server set to beta\n", res.Text)
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "beta", cfg.CurrentServer)
+}
+
 // TestServerSwitchCompleteArgsDelegatesToServerNames proves only the
 // wiring: sort order is a ConfigView-level fact, pinned once at
 // newConfigView in surface/cli.

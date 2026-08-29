@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -148,12 +149,31 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if probe.versionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.versionWarning)
 	}
-	switch {
-	case out.credentialsCleared:
-		res.Summary = fmt.Sprintf("credentials cleared — rancher auth login %s", shquote(name))
-	case out.pointerRepaired:
-		res.Summary = "current server set to " + out.name
+	if out.unchanged {
+		res.Text = "server " + out.name + " unchanged\n"
+		return res, nil
 	}
+	var lines []string
+	if slices.Contains(changed, "url") {
+		lines = append(lines, "url: "+out.canonicalURL+" (changed)")
+	}
+	if slices.Contains(changed, "ca") {
+		if caPresence(out.caSelector) != "none" {
+			lines = append(lines, "ca: pinned (changed)")
+		} else {
+			lines = append(lines, "ca: cleared (changed)")
+		}
+	}
+	if out.credentialsCleared {
+		lines = append(lines, fmt.Sprintf("credentials cleared — log in again: rancher auth login %s", shquote(out.name)))
+	}
+	if len(deletedCache) > 0 {
+		lines = append(lines, fmt.Sprintf("%d cached kubectl credentials removed", len(deletedCache)))
+	}
+	if out.pointerRepaired {
+		lines = append(lines, "current server set to "+out.name)
+	}
+	res.Text = runtime.TextLines("server "+out.name+" updated", lines...)
 	return res, nil
 }
 

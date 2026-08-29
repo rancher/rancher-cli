@@ -103,19 +103,22 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 		"regoin":     "typo",
 	}}
 
-	eff, dryRun, exec, err := PlanCreateObserved(t.Context(), client, gvr, "fleet-default", obj, LocalCluster, "DigitaloceanConfig", false)
+	eff, dryRun, exec, err := PlanCreateObserved(t.Context(), client, gvr, "fleet-default", obj, LocalCluster, "digitaloceanconfig", "DigitaloceanConfig", false)
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, []bool{true}, client.dryRuns)
 	assert.Same(t, serverView, dryRun)
 	assert.Equal(t, safety.ActionCreate, eff.Action)
 	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
+	assert.Equal(t, "digitaloceanconfig", eff.DisplayKind)
+	assert.Equal(t, "web-pool", eff.DisplayName)
 	assert.Empty(t, eff.Diff, "create previews are diff-less (MC-11)")
 	assert.False(t, eff.Destructive)
 
-	_, err = exec(t.Context())
+	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []bool{true, false}, client.dryRuns)
+	assert.Equal(t, "digitaloceanconfig/web-pool created\n", res.Text)
 }
 
 func TestPlanCreate(t *testing.T) {
@@ -123,11 +126,13 @@ func TestPlanCreate(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, exec, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", false)
+	eff, exec, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", false)
 	require.NoError(t, err)
 	assert.True(t, client.lastCreateDryRun, "Plan must call Create with dryRun=true")
 	assert.Equal(t, safety.ActionCreate, eff.Action)
 	assert.Equal(t, "projects/p-1", eff.Target)
+	assert.Equal(t, "project", eff.DisplayKind)
+	assert.Equal(t, "p-1", eff.DisplayName)
 	assert.Equal(t, "c-x", eff.Cluster) // Effect targets the downstream cluster, not the proxy
 	assert.True(t, eff.ConflictDetection)
 	assert.False(t, eff.Destructive)
@@ -139,6 +144,7 @@ func TestPlanCreate(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, client.lastCreateDryRun, "exec must call Create with dryRun=false")
 	assert.Equal(t, "Project", res.Kind)
+	assert.Equal(t, "project/p-1 created\n", res.Text)
 }
 
 func TestPlanUpdate(t *testing.T) {
@@ -147,11 +153,13 @@ func TestPlanUpdate(t *testing.T) {
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x", "resourceVersion": "9"},
 	}}
 	diff := []safety.DiffEntry{{Path: "/spec/x", From: nil, To: "y"}}
-	eff, exec, err := PlanUpdate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", diff, true)
+	eff, exec, err := PlanUpdate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", diff, true)
 	require.NoError(t, err)
 	assert.True(t, client.lastUpdateDryRun, "Plan must call Update with dryRun=true")
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
 	assert.Equal(t, "projects/p-1", eff.Target)
+	assert.Equal(t, "project", eff.DisplayKind)
+	assert.Equal(t, "p-1", eff.DisplayName)
 	assert.Equal(t, "c-x", eff.Cluster)
 	assert.Equal(t, "9", eff.ResourceVersion) // the RV precondition carried on the object
 	assert.True(t, eff.ConflictDetection)
@@ -163,20 +171,21 @@ func TestPlanUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, client.lastUpdateDryRun, "exec must call Update with dryRun=false")
 	assert.Equal(t, "Project", res.Kind)
+	assert.Equal(t, "project/p-1 patched\n", res.Text)
 }
 
 func TestPlanUpdatePropagatesError(t *testing.T) {
 	client := &stubClient{updateErr: assert.AnError}
 	_, _, err := PlanUpdate(t.Context(), client, testGVR, "c-x",
 		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}},
-		"c-x", "Project", nil, false)
+		"c-x", "project", "Project", nil, false)
 	require.Error(t, err)
 }
 
 func TestPlanCreatePropagatesError(t *testing.T) {
 	client := &stubClient{createErr: assert.AnError}
 	_, _, err := PlanCreate(t.Context(), client, testGVR, "c-x",
-		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "Project", false)
+		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "project", "Project", false)
 	require.Error(t, err)
 }
 
@@ -189,7 +198,7 @@ func TestPlanCreateDestructiveParameter(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "Project", true)
+	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", true)
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive)
 }

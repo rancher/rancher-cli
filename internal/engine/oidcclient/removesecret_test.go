@@ -71,6 +71,8 @@ func TestRemoveSecretExecSuccess(t *testing.T) {
 	assert.Equal(t, "client-abc", data["clientID"])
 	assert.Equal(t, "client-secret-2", data["secretName"])
 	assert.Nil(t, res.CommittedContext, "remove delivers no once-only value")
+	assert.Equal(t, "oidcclient/my-app patched\n"+
+		"  secret client-secret-2 removed — anything using it stops working\n", res.Text)
 }
 
 // TestRemoveSecretExecTimeoutIsNonRetryable pins remove's contract: the

@@ -142,7 +142,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
 	// per-kind destructiveness.
-	eff, exec, err := engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, resultKind(c.k), diff, c.k.Sensitive)
+	eff, exec, err := engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, c.k.Name, resultKind(c.k), diff, c.k.Sensitive)
 	if err != nil {
 		return eff, exec, err
 	}

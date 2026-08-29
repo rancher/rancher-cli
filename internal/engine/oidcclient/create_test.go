@@ -284,8 +284,17 @@ func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 	assert.Equal(t, "OIDCClient", res.CommittedContext.ResourceKind)
 	assert.Equal(t, "my-app", res.CommittedContext.ResourceName)
 	assert.Equal(t, "client-secret-1", res.CommittedContext.SecretName)
+	// The shown-once note rides BOTH Text (below) and -o json's Warnings
+	// (no discovery-degradation warning here); TextOnlyWarnings names it
+	// by value so the table/wide render doesn't also mirror it to stderr.
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "shown exactly once")
+	assert.Equal(t, res.Warnings, res.TextOnlyWarnings)
+	assert.Equal(t, "oidcclient/my-app created\n"+
+		"  client id: client-abc\n"+
+		"  client secret: super-secret-value   (shown once — store it now)\n"+
+		"  secret name: client-secret-1\n"+
+		"  issuer: https://rancher.example/oidc\n", res.Text)
 }
 
 // TestCreateExecDegradedDiscovery pins the four degrade cases: malformed
@@ -323,8 +332,14 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, "https://rancher.example/oidc", data["issuer"], "degraded issuer derives from the effective base")
 			assert.NotContains(t, data, "endpoints")
+			// Both warnings ride -o json's Warnings, shown-once first;
+			// TextOnlyWarnings names only the shown-once note by value, so
+			// the table/wide render skips exactly that one and still
+			// mirrors the discovery warning normally.
 			require.Len(t, res.Warnings, 2)
+			assert.Contains(t, res.Warnings[0], "shown exactly once")
 			assert.Contains(t, res.Warnings[1], "discovery")
+			assert.Equal(t, []string{res.Warnings[0]}, res.TextOnlyWarnings)
 		})
 	}
 }

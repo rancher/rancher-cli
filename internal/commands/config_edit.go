@@ -165,7 +165,11 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 				fmt.Sprintf("writing config failed; your edits are preserved at %s: %v", tempPath, writeErr))
 		}
 		_ = os.Remove(tempPath)
-		return runtime.Result{Kind: "ConfigEdit", Data: map[string]any{"path": realPath}}, nil
+		return runtime.Result{
+			Kind: "ConfigEdit",
+			Data: map[string]any{"path": realPath},
+			Text: "config updated (" + realPath + ")\n",
+		}, nil
 	}
 }
 

@@ -61,7 +61,7 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	after := before.DeepCopy()
 	SetMembership(after, cluster, projectID)
 
-	return planMembershipUpdate(ctx, client, before, after, cluster)
+	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("added to project %s", projectID))
 }
 
 type removeNamespaceCmd struct {
@@ -111,7 +111,7 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 	after := before.DeepCopy()
 	ClearMembership(after)
 
-	return planMembershipUpdate(ctx, client, before, after, cluster)
+	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("removed from project %s", projectID))
 }
 
 // membershipArgs validates the shared add/remove-namespace input shape: a
@@ -153,11 +153,25 @@ func loadMembershipTarget(ctx context.Context, clients engine.ClusterClientFacto
 
 // planMembershipUpdate diffs before/after and previews the update through the
 // shared PlanUpdate. An unchanged namespace (re-adding to its own project)
-// yields an empty diff rather than an error.
-func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, before, after *unstructured.Unstructured, cluster string) (safety.Effect, runtime.ExecuteFunc, error) {
+// yields an empty diff rather than an error. contextLine is the bespoke,
+// already-worded detail line appended, indented, below the shared
+// "namespace/<ns> patched" text once the mutation commits.
+func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, before, after *unstructured.Unstructured, cluster, contextLine string) (safety.Effect, runtime.ExecuteFunc, error) {
 	diff := engine.DiffObjects(before.Object, after.Object)
 	rv := before.GetResourceVersion()
 	after.SetResourceVersion(rv)
 	nsKind, _ := kinds.Lookup("namespace")
-	return engine.PlanUpdate(ctx, client, nsKind.GVR, "", after, cluster, "Namespace", diff, false)
+	eff, exec, err := engine.PlanUpdate(ctx, client, nsKind.GVR, "", after, cluster, nsKind.Name, "Namespace", diff, false)
+	if err != nil {
+		return eff, exec, err
+	}
+	wrapped := func(ctx context.Context) (runtime.Result, error) {
+		res, err := exec(ctx)
+		if err != nil {
+			return res, err
+		}
+		res.Text += "  " + contextLine + "\n"
+		return res, nil
+	}
+	return eff, wrapped, nil
 }

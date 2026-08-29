@@ -78,6 +78,9 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 	assert.Equal(t, "https://acme.ex", data["url"])
 	assert.True(t, data["currentServerCleared"].(bool), "current server pointer cleared when the deleted server was current")
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
+	assert.Equal(t, "server acme deleted\n"+
+		"  was current — pointer cleared\n"+
+		"  credentials removed (file)\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -100,6 +103,7 @@ func TestConfigDeleteServerDoesNotClearCurrentServerWhenDifferentServerDeleted(t
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.False(t, data["currentServerCleared"].(bool), "current server (\"other\") is untouched when a different server is deleted")
+	assert.Equal(t, "server acme deleted\n  credentials removed (file)\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -128,6 +132,9 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, data["deletedCache"])
+	assert.Equal(t, "server acme deleted\n"+
+		"  credentials removed (file)\n"+
+		"  1 cached kubectl credentials removed\n", res.Text)
 
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
 	assert.ErrorIs(t, err, config.ErrNoToken)

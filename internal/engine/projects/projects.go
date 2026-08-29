@@ -208,5 +208,5 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	// The write goes through the management proxy (LocalCluster) because
 	// Project is a management.cattle.io resource namespaced by cluster ID,
 	// but the Effect targets the downstream cluster the project belongs to.
-	return engine.PlanCreate(ctx, client, gvr, cluster, obj, cluster, "Project", false)
+	return engine.PlanCreate(ctx, client, gvr, cluster, obj, cluster, "project", "Project", false)
 }

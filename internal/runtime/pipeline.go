@@ -180,6 +180,10 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("command bug: invalid effect action %q", eff.Action))
 	}
+	if eff.DisplayKind == "" || eff.DisplayName == "" {
+		return clierr.New(clierr.CodeGeneric,
+			"command bug: effect has an empty DisplayKind or DisplayName")
+	}
 	if eff.Action == safety.ActionDelete && !eff.Destructive {
 		return clierr.New(clierr.CodeGeneric, "command bug: delete effect must be destructive")
 	}
@@ -488,11 +492,32 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 	if claimed > 1 || (res.Summary != "" && claimed > 0) {
 		return clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
 	}
+	// Summary rides only over a real table: the JSON-fallback-era use (a
+	// Summary line papering over non-Tabular Data) is gone along with the
+	// fallback itself.
+	if res.Summary != "" {
+		if _, ok := res.Data.(output.Tabular); !ok {
+			return clierr.New(clierr.CodeGeneric, "command bug: Summary requires Tabular Data")
+		}
+	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(res.Text)); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
+		// Mirror every Warnings entry to stderr except the ones Text
+		// already embeds verbatim (TextOnlyWarnings, matched by value —
+		// see that field's doc for why position cannot be trusted): one
+		// channel, no double-print for those; every other warning,
+		// including a mutation's Plan-time advisory, still reaches stderr.
+		silent := map[string]int{}
+		for _, w := range res.TextOnlyWarnings {
+			silent[w]++
+		}
 		for _, w := range res.Warnings {
+			if silent[w] > 0 {
+				silent[w]--
+				continue
+			}
 			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
 		}
 		return nil
@@ -515,7 +540,10 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
 	env.Summary = res.Summary
-	if tableFormat(streams.Format) && res.Summary != "" {
+	// The Summary annotation line prints over the table under both ""/
+	// "table" and "wide" — `get --wait`'s wide output is table-family too,
+	// not a separate body, so the wait line belongs on it as well.
+	if textRenderFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
@@ -539,7 +567,25 @@ func renderResult(streams IO, d Descriptor, res Result) *clierr.Error {
 	return nil
 }
 
+// renderEffect renders a --dry-run preview. table/default/wide (wide is
+// table-family here too — there is no separate wide body for a preview)
+// render the pipeline-owned dryRunText body; json/yaml keep today's Effect
+// envelope unchanged, as do the raw formats (name/template), which read the
+// envelope's target field.
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
+	if textRenderFormat(streams.Format) {
+		if _, err := streams.Out.Write([]byte(dryRunText(eff))); err != nil {
+			return clierr.New(clierr.CodeGeneric, err.Error())
+		}
+		// Effect.Warnings are deliberately excluded from dryRunText's body
+		// — mirror them to stderr here so they are not silently dropped,
+		// the same contract renderResult's Text branch applies to
+		// Result.Warnings.
+		for _, w := range eff.Warnings {
+			_, _ = fmt.Fprintf(streams.Err, "# warning: %s\n", w)
+		}
+		return nil
+	}
 	env := output.NewEnvelope("Effect", eff)
 	env.Warnings = append(env.Warnings, eff.Warnings...)
 	if err := output.Render(streams.Out, streams.Format, env); err != nil {
@@ -556,6 +602,32 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 		}
 	}
 	return nil
+}
+
+// dryRunText renders --dry-run's default-format preview body: the action and
+// DisplayKind/DisplayName identity (a generateName preview may carry a
+// trailing "*" — never the committed success identity), the target
+// server/cluster when set, a change summary from the Effect's diff entries,
+// and the confirmation gate line naming the flags a real run needs.
+// Effect.Warnings are deliberately NOT part of this body (see renderEffect).
+func dryRunText(eff safety.Effect) string {
+	var lines []string
+	if eff.Server != "" {
+		lines = append(lines, "server: "+eff.Server)
+	}
+	if eff.Cluster != "" {
+		lines = append(lines, "cluster: "+eff.Cluster)
+	}
+	for _, d := range eff.Diff {
+		lines = append(lines, fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To))
+	}
+	gate := "dry run — re-run with --apply"
+	if eff.Destructive {
+		gate += " --yes"
+	}
+	gate += " to execute"
+	lines = append(lines, gate)
+	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...)
 }
 
 // renderErr writes the structured error envelope to stderr. Errors are ALWAYS

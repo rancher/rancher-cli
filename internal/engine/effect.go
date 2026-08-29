@@ -20,8 +20,11 @@ import (
 // envelope kind.
 // effectCluster is the cluster the mutation semantically targets — NOT the
 // proxy the client connects through (see PlanCreate's original PE-5 note).
+// displayKind is the kind table's canonical CLI name — the ONLY source for
+// default-format text (never resultKind, which is the envelope Result.Kind
+// and may be a Kubernetes/API identity such as "Cluster" or "Secret").
 // destructive is the caller's per-kind policy.
-func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
 	out, err := client.Create(ctx, gvr, ns, obj, true)
 	if err != nil {
 		return safety.Effect{}, nil, nil, err
@@ -29,6 +32,8 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 	eff := safety.Effect{
 		Action:            safety.ActionCreate,
 		Target:            gvr.Resource + "/" + out.GetName(),
+		DisplayKind:       displayKind,
+		DisplayName:       out.GetName(),
 		Cluster:           effectCluster,
 		ConflictDetection: true,
 		Reversible:        true,
@@ -39,7 +44,15 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: resultKind, Data: created.Object}, nil
+		// The committed identity is the RETURNED object's name — the real,
+		// server-assigned name (including a generateName result) — never
+		// the dry-run preview's Effect.DisplayName, which a generateName
+		// caller (grant) may have rewritten to a "prefix*" placeholder.
+		return runtime.Result{
+			Kind: resultKind,
+			Data: created.Object,
+			Text: runtime.MutationText(displayKind, created.GetName(), "created"),
+		}, nil
 	}
 	return eff, out, exec, nil
 }
@@ -48,8 +61,8 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 // Effect plus the closure that performs the real create — the observed
 // variant with the dry-run response discarded. See PlanCreateObserved for
 // the parameter contract.
-func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff, _, exec, err := PlanCreateObserved(ctx, client, gvr, ns, obj, effectCluster, resultKind, destructive)
+func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	eff, _, exec, err := PlanCreateObserved(ctx, client, gvr, ns, obj, effectCluster, displayKind, resultKind, destructive)
 	return eff, exec, err
 }
 
@@ -57,16 +70,19 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 // plus the closure that performs the real update. The mutation is fully decided
 // by the caller: obj is the already-transformed object carrying the
 // resourceVersion precondition, diff is the precomputed field-level change, and
-// destructive is the caller's per-kind policy. The Effect carries no
+// destructive is the caller's per-kind policy. displayKind is the kind table's
+// canonical CLI name (see PlanCreateObserved). The Effect carries no
 // contract/stability (see PlanCreateObserved). Mirrors PlanCreate so create
 // and update share one shape.
-func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
 	if _, err := client.Update(ctx, gvr, ns, obj, true); err != nil {
 		return safety.Effect{}, nil, err
 	}
 	eff := safety.Effect{
 		Action:            safety.ActionUpdate,
 		Target:            gvr.Resource + "/" + obj.GetName(),
+		DisplayKind:       displayKind,
+		DisplayName:       obj.GetName(),
 		Cluster:           effectCluster,
 		Diff:              diff,
 		ResourceVersion:   obj.GetResourceVersion(),
@@ -79,7 +95,11 @@ func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: resultKind, Data: updated.Object}, nil
+		return runtime.Result{
+			Kind: resultKind,
+			Data: updated.Object,
+			Text: runtime.MutationText(displayKind, updated.GetName(), "patched"),
+		}, nil
 	}
 	return eff, exec, nil
 }

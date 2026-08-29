@@ -1,6 +1,7 @@
 package oidcclient
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -168,6 +169,52 @@ func TestRotateSecretExecSuccessDeliversNewValue(t *testing.T) {
 	assert.Equal(t, "new-value", data["clientSecret"])
 	assert.Equal(t, "client-secret-1", data["secretName"])
 	require.NotNil(t, res.CommittedContext)
+	assert.Equal(t, "oidcclient/my-app patched\n"+
+		"  secret client-secret-1 rotated\n"+
+		"  client secret: new-value   (shown once — store it now)\n", res.Text)
+}
+
+// TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce
+// drives rotate-secret through the REAL pipeline (runtime.Run, not a direct
+// exec() call) under default format with --apply --yes: runMutating
+// prepends the Plan-time Effect.Warnings ("regenerates secret ...; the
+// current value stops working") in front of the exec-time Result.Warnings
+// (the shown-once note), so the shown-once note does NOT land at
+// Warnings[0] once merged. This proves the note is excluded from the
+// table-family stderr mirror only by value, not by position, while the
+// unrelated Plan-time advisory — the one warning an operator must not
+// lose — still reaches stderr.
+func TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *testing.T) {
+	withFastPoll(t)
+	planObj := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+	stillAnnotated := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+	_ = unstructured.SetNestedField(stillAnnotated.Object, "client-secret-1", "metadata", "annotations", annotationSecretRegenerate)
+	consumed := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+
+	client := &fakeOIDCClient{pollResponses: []*unstructured.Unstructured{planObj, stillAnnotated, consumed}}
+	secretReadCount := 0
+	client.secretRespFunc = func() *unstructured.Unstructured {
+		secretReadCount++
+		if secretReadCount == 1 {
+			return &unstructured.Unstructured{Object: map[string]any{"data": map[string]any{"client-secret-1": b64("old-value")}}}
+		}
+		return &unstructured.Unstructured{Object: map[string]any{"data": map[string]any{"client-secret-1": b64("new-value")}}}
+	}
+	cmd := NewRotateSecret(stubOIDCFactory{c: client})
+
+	var out, errBuf bytes.Buffer
+	status, ce := runtime.Run(t.Context(), cmd, oidcInput{args: []string{"my-app", "client-secret-1"}},
+		runtime.IO{Out: &out, Err: &errBuf, Format: "", Apply: true, Yes: true, Capability: alwaysProceedCapabilityChecker{}},
+		safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta})
+	require.Nil(t, ce)
+	assert.Zero(t, status)
+
+	assert.Contains(t, errBuf.String(),
+		"# warning: regenerates secret client-secret-1 on my-app; the current value stops working\n",
+		"the Plan-time safety advisory must still reach stderr after the merge")
+	assert.NotContains(t, errBuf.String(), "shown exactly once",
+		"the shown-once note must not double-print to stderr")
+	assert.Contains(t, out.String(), "client secret: new-value   (shown once — store it now)")
 }
 
 // hangingSecretAfterFirstRead's secrets-GVR Get returns normally the first

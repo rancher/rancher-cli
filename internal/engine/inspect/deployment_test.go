@@ -51,6 +51,9 @@ func TestInspectDeploymentFetchesPodsBySelector(t *testing.T) {
 	data, ok := res.Data.(deploymentResult)
 	require.True(t, ok)
 	require.Len(t, data.Pods, 1)
+	assert.Equal(t, "deployment/web (namespace ns1, cluster c-abc)\n"+
+		"  replicas: 0/0 ready\n"+
+		"  pod web-abc: Running\n", res.Text)
 }
 
 func TestInspectDeploymentHonorsMatchExpressions(t *testing.T) {
@@ -77,6 +80,9 @@ func TestInspectDeploymentHonorsMatchExpressions(t *testing.T) {
 	assert.Equal(t, "DeploymentInspection", res.Kind)
 	require.Len(t, client.listSelectors, 1)
 	assert.Equal(t, "app in (api,web)", client.listSelectors[0])
+	assert.Equal(t, "deployment/web (namespace ns1, cluster c-abc)\n"+
+		"  replicas: 0/0 ready\n"+
+		"  pods: none\n", res.Text)
 }
 
 // TestInspectDeploymentPodListDeniedNullsPods is the deployment anchor: a
@@ -107,6 +113,10 @@ func TestInspectDeploymentPodListDeniedNullsPods(t *testing.T) {
 		{Section: sectionPods, State: stateUnavailable, Code: clierr.CodeRBAC},
 	}, data.Degraded)
 	require.Equal(t, []string{"pods unavailable: forbidden"}, res.Warnings)
+	assert.Equal(t, "deployment/web (namespace ns1, cluster c-abc)\n"+
+		"  replicas: 0/0 ready\n"+
+		"  pods: none\n"+
+		"  degraded: pods unavailable (RBAC)\n", res.Text)
 
 	var payload struct {
 		Pods     []map[string]any `json:"pods"`

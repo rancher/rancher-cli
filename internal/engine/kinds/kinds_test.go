@@ -271,6 +271,38 @@ func TestValidateKindsRejectsEmptyK8sKind(t *testing.T) {
 	assert.ErrorContains(t, err, "K8sKind")
 }
 
+// TestValidateKindsRejectsEmptyName pins the generic-family half of the
+// dry-run display-identity conformance guarantee: every kind's Name feeds
+// straight through to its generated create/patch/delete Effect's
+// DisplayKind, so a row with an empty Name must fail closed-world
+// validation rather than surface later as a checkPlan command-bug error on
+// the kind's first real mutation.
+func TestValidateKindsRejectsEmptyName(t *testing.T) {
+	t.Parallel()
+	k := Kind{Key: "test", Name: "", K8sKind: "Test"}
+	err := validateKinds([]Kind{k})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "Name")
+}
+
+// TestAllKindsHaveNonEmptyName walks the REAL, registered kind table (the
+// generic-family closed-world conformance walk): every row's Name is
+// non-empty. Combined with PlanCreate/PlanUpdate/PlanFromFetched always
+// setting Effect.DisplayKind from a kind's Name, and checkPlan rejecting
+// an empty DisplayKind/DisplayName as a command bug, this proves every
+// generated create/patch/delete command has a valid dry-run and success
+// display identity by construction — no per-command exercise needed for
+// the ~130 generated commands, unlike the bespoke Plans, which each
+// assert the same fact directly on their own Effect (grant, revoke,
+// project add/remove-namespace, the OIDC client secret lifecycle, create
+// token).
+func TestAllKindsHaveNonEmptyName(t *testing.T) {
+	t.Parallel()
+	for _, k := range All() {
+		assert.NotEmpty(t, k.Name, "kind %q must have a non-empty Name", k.Key)
+	}
+}
+
 // TestUserRowDeletableAndCompletable pins the user kind row's flags: the row
 // must be Deletable and Completable after the grant-cleanup slice, and must
 // carry no NoDeleteReason (that field belongs to non-deletable kinds only).

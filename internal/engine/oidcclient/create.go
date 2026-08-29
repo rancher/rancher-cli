@@ -150,7 +150,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// wait/secret-read/discovery stages PlanCreate's generic shape does not
 	// express. The Effect it builds (server-side dry-run preview) is the
 	// part this command reuses.
-	eff, _, err := engine.PlanCreate(ctx, client, k.GVR, "", obj, engine.LocalCluster, "OIDCClient", k.Sensitive)
+	eff, _, err := engine.PlanCreate(ctx, client, k.GVR, "", obj, engine.LocalCluster, k.Name, "OIDCClient", k.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -224,10 +224,27 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		data["endpoints"] = endpoints
 	}
 
+	text := runtime.MutationText("oidcclient", name, "created",
+		"client id: "+clientID,
+		"client secret: "+plaintext+"   (shown once — store it now)",
+		"secret name: "+secretName,
+		"issuer: "+issuer,
+	)
+	// The shown-once note is ALSO delivered inline in Text (above);
+	// TextOnlyWarnings names it by value so renderResult skips mirroring it
+	// to stderr under table/wide (one channel, no double-print) regardless
+	// of where Plan-time Effect.Warnings merging places it in the slice —
+	// any discovery-degradation warning still mirrors normally. -o
+	// json/yaml serialize the full Warnings slice into the envelope either
+	// way.
+	shownOnce := "this client secret is shown exactly once — store it now"
+	allWarnings := append([]string{shownOnce}, warnings...)
 	return runtime.Result{
 		Kind:             "OIDCClientCreated",
 		Data:             data,
-		Warnings:         append([]string{"this client secret is shown exactly once — store it now"}, warnings...),
+		Text:             text,
+		TextOnlyWarnings: []string{shownOnce},
+		Warnings:         allWarnings,
 		CommittedContext: &runtime.CommittedContext{ResourceKind: "OIDCClient", ResourceName: name, SecretName: secretName, Recovery: recovery},
 	}, nil
 }

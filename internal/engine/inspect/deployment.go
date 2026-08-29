@@ -2,11 +2,13 @@ package inspect
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type deploymentCmd struct {
@@ -84,6 +86,7 @@ func (c *deploymentCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	return runtime.Result{
 		Kind:     "DeploymentInspection",
 		Data:     deploymentResult{Deployment: dep.Object, Pods: pods, Degraded: degraded},
+		Text:     renderDeploymentText(name, ns, clusterID, dep.Object, pods, degraded),
 		Warnings: warnings,
 	}, nil
 }
@@ -94,4 +97,36 @@ type deploymentResult struct {
 	// Degraded names the sections this run could not read in full. Absent
 	// when every collector succeeded.
 	Degraded []sectionOutcome `json:"degraded,omitempty"`
+}
+
+// renderDeploymentText builds `inspect deployment`'s default-format text
+// (sibling of inspect cluster/pod's own text renderers): the deployment
+// identity, the replica summary, one line per matched pod in list order (or
+// "pods: none" when the selector matched nothing), and one line per
+// degraded finding (the block is omitted entirely when there are none).
+func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []map[string]any, degraded []sectionOutcome) string {
+	ready, _, _ := unstructured.NestedInt64(dep, "status", "readyReplicas")
+	desired, _, _ := unstructured.NestedInt64(dep, "spec", "replicas")
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("replicas: %d/%d ready", ready, desired))
+	switch {
+	case len(pods) == 0:
+		lines = append(lines, "pods: none")
+	default:
+		for _, p := range pods {
+			podName, _, _ := unstructured.NestedString(p, "metadata", "name")
+			phase, _, _ := unstructured.NestedString(p, "status", "phase")
+			lines = append(lines, fmt.Sprintf("pod %s: %s", podName, phase))
+		}
+	}
+	for _, f := range degraded {
+		finding := f.Section + " " + f.State
+		if f.Target != "" {
+			finding += " for " + f.Target
+		}
+		finding += " (" + f.Code + ")"
+		lines = append(lines, "degraded: "+finding)
+	}
+	return runtime.TextLines(fmt.Sprintf("deployment/%s (namespace %s, cluster %s)", name, ns, cluster), lines...)
 }

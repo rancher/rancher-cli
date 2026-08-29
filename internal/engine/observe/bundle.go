@@ -222,7 +222,35 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	return runtime.Result{
 		Kind: "SupportBundle",
 		Data: bundleResult{Path: path, Items: len(items), Skipped: skipped, Errors: errored, Bytes: bytesWritten},
+		Text: renderBundleText(path, len(items), bytesWritten, skipped, errored),
 	}, nil
+}
+
+// renderBundleText builds support-bundle's default-format text: the written
+// path, an items/size summary (size IEC-formatted for operators — the raw
+// byte count stays in Data for -o json), and a last line naming skipped/
+// errored counts, present only when either is non-zero.
+func renderBundleText(path string, items int, bytesWritten int64, skipped, errored int) string {
+	lines := []string{fmt.Sprintf("%d items, %s", items, formatIECBytes(bytesWritten))}
+	if skipped != 0 || errored != 0 {
+		lines = append(lines, fmt.Sprintf("skipped: %d, errors: %d", skipped, errored))
+	}
+	return runtime.TextLines("support bundle written: "+path, lines...)
+}
+
+// formatIECBytes renders n using IEC binary units (KiB/MiB/GiB/...), one
+// decimal place, e.g. "3.2 MiB" — plain "<n> B" below 1024.
+func formatIECBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for next := n / unit; next >= unit; next /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func itemStatus(err error) string {

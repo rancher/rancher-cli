@@ -434,7 +434,8 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 		if err := d.store.DeleteAllCachedCreds(); err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": "all"}}, nil
+		return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": "all"},
+			Text: "all cached credentials deleted\n"}, nil
 	}
 	if len(keys) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -465,7 +466,18 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 			deleted = append(deleted, info.Key)
 		}
 	}
-	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}}, nil
+	var b strings.Builder
+	for _, key := range deleted {
+		b.WriteString("cached credential " + key + " deleted\n")
+	}
+	if len(deleted) == 0 {
+		// Deletion is idempotent (an unknown or already-deleted name is a
+		// no-op success, per the doc above); ShapeText requires non-empty
+		// Text on every default-format success, so the zero-deleted case
+		// needs its own line too.
+		b.WriteString("no matching cached credential\n")
+	}
+	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}, Text: b.String()}, nil
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `auth delete-token <TAB>`

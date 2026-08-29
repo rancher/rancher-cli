@@ -189,8 +189,13 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	assert.Equal(t, "token-xyz", data["name"])
 	assert.Equal(t, "ext/token-xyz:secretvalue", data["bearerToken"])
 	assert.Equal(t, "2026-08-01T00:00:00Z", data["expiresAt"])
+	// The shown-once note rides BOTH Text (below) and -o json's Warnings;
+	// TextOnlyWarnings names it by value so the table/wide render doesn't
+	// also mirror it to stderr.
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "shown exactly once")
+	assert.Equal(t, res.Warnings, res.TextOnlyWarnings)
+	assert.Equal(t, "token/token-xyz created\n  bearer token: ext/token-xyz:secretvalue   (shown once — store it now)\n  expires: 2026-08-01T00:00:00Z\n", res.Text)
 
 	require.Len(t, client.dryRuns, 2, "one dry-run from Plan, one real create from exec")
 	assert.False(t, client.dryRuns[1])

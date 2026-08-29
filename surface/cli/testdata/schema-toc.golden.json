@@ -17,6 +17,14 @@
         "type": "string"
       },
       {
+        "name": "displayKind",
+        "type": "string"
+      },
+      {
+        "name": "displayName",
+        "type": "string"
+      },
+      {
         "name": "server",
         "type": "string"
       },

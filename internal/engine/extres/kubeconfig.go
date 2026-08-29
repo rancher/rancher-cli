@@ -152,7 +152,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, _, err := engine.PlanCreate(ctx, client, kubeconfigKind.GVR, "", obj, engine.LocalCluster, "Kubeconfig", kubeconfigKind.Sensitive)
+	eff, _, err := engine.PlanCreate(ctx, client, kubeconfigKind.GVR, "", obj, engine.LocalCluster, kubeconfigKind.Name, "Kubeconfig", kubeconfigKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

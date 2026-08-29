@@ -37,6 +37,18 @@ var provisioningClusterGVR = func() schema.GroupVersionResource {
 	return row.GVR
 }()
 
+// provisioningClusterDisplayKind is the same row's canonical CLI kind name
+// ("provisioning-cluster") — the display identity `create cluster`'s
+// default-format text and dry-run preview use, matching the wording
+// `delete provisioning-cluster` already uses for the same resource.
+var provisioningClusterDisplayKind = func() string {
+	row, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		panic("provisioningcluster kind row not found")
+	}
+	return row.Name
+}()
+
 // creatorIDAnnotation is rancher-webhook's creator identity annotation.
 // The webhook's mutator stamps it from userInfo on real creates but skips
 // dry-run, while its validator requires the match on dry-run too — so the
@@ -391,7 +403,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		stampedUserID = ann[creatorIDAnnotation]
 	}
 
-	eff, exec, err := engine.PlanCreate(ctx, client, provisioningClusterGVR, clusterNamespace, obj, engine.LocalCluster, "Cluster", false)
+	eff, exec, err := engine.PlanCreate(ctx, client, provisioningClusterGVR, clusterNamespace, obj, engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", false)
 	if err != nil {
 		if stampWarning != "" {
 			// The pipeline's error normalization unwraps to the innermost

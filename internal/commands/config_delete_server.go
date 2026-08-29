@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -86,13 +87,25 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 
 	sort.Strings(deletedFrom)
 	sort.Strings(deletedCache)
-	return runtime.Result{Kind: "DeletedServer", Data: map[string]any{
+	res := runtime.Result{Kind: "DeletedServer", Data: map[string]any{
 		"server":               name,
 		"url":                  srv.URL,
 		"deletedFrom":          map[string][]string{"backend": deletedFrom},
 		"deletedCache":         deletedCache,
 		"currentServerCleared": currentCleared,
-	}}, nil
+	}}
+	var lines []string
+	if currentCleared {
+		lines = append(lines, "was current — pointer cleared")
+	}
+	if len(deletedFrom) > 0 {
+		lines = append(lines, "credentials removed ("+strings.Join(deletedFrom, ", ")+")")
+	}
+	if len(deletedCache) > 0 {
+		lines = append(lines, fmt.Sprintf("%d cached kubectl credentials removed", len(deletedCache)))
+	}
+	res.Text = runtime.TextLines("server "+name+" deleted", lines...)
+	return res, nil
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config delete-server <TAB>`
