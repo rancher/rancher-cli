@@ -125,3 +125,20 @@ func TestReadLineHonorsContextCancellation(t *testing.T) {
 	_, err := p.ReadLine(ctx)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+// TestReadLineCancellationEndsPromptLine asserts a cancelled read terminates
+// the pending prompt line on the error writer, so the error text that renders
+// next starts on its own line instead of after "Select [1]: ".
+func TestReadLineCancellationEndsPromptLine(t *testing.T) {
+	t.Parallel()
+	var errBuf bytes.Buffer
+	blocked, w := io.Pipe()
+	defer func() { _ = w.Close() }()
+	p := New(&errBuf, blocked, false, true)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := p.ReadLine(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, "\n", errBuf.String(), "the open prompt line must be terminated")
+}

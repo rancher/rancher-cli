@@ -130,6 +130,12 @@ func (p *Prompter) readLine(ctx context.Context) (string, error) {
 	}()
 	select {
 	case <-ctx.Done():
+		// A cancelled read (Ctrl-C at a prompt) leaves the prompt line
+		// unterminated; end it so whatever renders next — the error text —
+		// starts on its own line.
+		p.mu.Lock()
+		_, _ = fmt.Fprintln(p.err)
+		p.mu.Unlock()
 		return "", ctx.Err()
 	case r := <-ch:
 		return r.line, r.err
