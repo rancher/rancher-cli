@@ -22,7 +22,7 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `auth login <name> [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new. Never switches the current server — only a fresh add can bootstrap it when unset. |
+| `auth login <name> [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Never switches the current server — only a fresh add can bootstrap it when unset. |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; does not touch the exec-credential cache |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |

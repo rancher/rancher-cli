@@ -589,7 +589,13 @@ func TestLoginDelegatedIdenticalURLDifferentCacertConflicts(t *testing.T) {
 	assert.NotContains(t, ce.Hint, "--url")
 }
 
-func TestLoginDelegatedDifferentURLConflicts(t *testing.T) {
+// TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe pins that a known
+// name whose registered URL disagrees with --url is refused immediately,
+// with a code and wording distinct from the shared registration commit's own
+// CONFLICT (TestCommitCreateExistingDifferentURLConflictsWithUpdateHint) —
+// this check runs before any network call, so a name reused for the wrong
+// server is never even dialed.
+func TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
 	seedServer(t, dir, "prod", "https://old.ex", "", false)
@@ -598,11 +604,48 @@ func TestLoginDelegatedDifferentURLConflicts(t *testing.T) {
 		stdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeConflict, ce.Code)
-	assert.Contains(t, ce.Hint, "update-server")
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "server prod is registered at https://old.ex", ce.Message)
+	assert.Equal(t, "rancher config update-server 'prod' --url 'https://new.ex'", ce.Hint)
 
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Equal(t, "https://old.ex", cfg.Servers["prod"].URL, "the entry must never be re-pointed")
 	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
 	assert.Error(t, tokErr, "sugar never mutates an existing entry; no auth ran")
+}
+
+// TestLoginDelegatedCanonicallyEqualURLDifferentSpellingFallsThrough pins
+// that the hijack check compares CANONICAL identity, not literal spelling —
+// re-login-with-add using a differently-cased/ported spelling of the same
+// server stays the existing idempotent no-op, never the new VALIDATION.
+func TestLoginDelegatedCanonicallyEqualURLDifferentSpellingFallsThrough(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.ex", "", true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "HTTPS://R.EX:443"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Equal(t, false, res.Data.(map[string]any)["added"])
+}
+
+// TestLoginDelegatedInvalidURLOnKnownNameFallsThroughToRegistrationError
+// pins that the hijack check only acts on a URL it could canonicalize — a
+// malformed --url on a known name still surfaces prepareRegistration's own
+// invalid-URL error, not the new VALIDATION message.
+func TestLoginDelegatedInvalidURLOnKnownNameFallsThroughToRegistrationError(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://old.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "not-a-url"}, b: map[string]bool{"token-stdin": true}, a: []string{"prod"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "invalid server URL")
+	assert.NotContains(t, ce.Message, "is registered at")
 }
 
 func TestLoginDelegatedRejectsLegacyPrefixedName(t *testing.T) {

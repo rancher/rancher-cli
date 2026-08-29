@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -218,6 +219,21 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	}
 
 	existing, known := cfg0.Servers[name]
+	// A known name whose canonicalized URL disagrees is a different server
+	// hiding behind a trusted name — refuse before any network call, rather
+	// than let a hijacking or a typo silently re-point the entry (or dial
+	// the wrong host first and only then fail deep inside registration). A
+	// canonicalization failure here is not this check's concern — it falls
+	// through so prepareRegistration's own invalid-URL error surfaces
+	// unchanged.
+	if known {
+		if canonical, cerr := credhelper.CanonicalServerURL(url); cerr == nil && canonical != existing.URL {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("server %s is registered at %s", name, existing.URL)).
+				WithHint(fmt.Sprintf("rancher config update-server %s --url %s", shquote(name), shquote(canonical)))
+		}
+	}
+
 	// Known name, --cacert absent: prepare with the EXISTING entry's
 	// effective selector — the flag's absence is never treated as a switch
 	// to system roots (that would silently strip a private CA on a plain
