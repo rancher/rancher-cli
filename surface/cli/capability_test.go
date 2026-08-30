@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -206,6 +207,89 @@ func TestCapabilityCheckerOneEditionFetchSharedAcrossChecks(t *testing.T) {
 	c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
 	c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
 	assert.Equal(t, 1, versionHits, "the checker's clientFactory must fetch /rancherversion at most once")
+}
+
+// extDiscoveryFake stands in for a Rancher server's ext.cattle.io API
+// discovery: the two-step APIGroup -> preferred-version APIResourceList
+// walk checkExtDiscovery performs. resources is the list served at the
+// preferred version; groupStatus/resourceStatus let a case fail either step.
+func extDiscoveryFake(t *testing.T, resources []string, groupStatus, resourceStatus int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apis/ext.cattle.io":
+			w.WriteHeader(groupStatus)
+			if groupStatus == http.StatusOK {
+				_, _ = w.Write([]byte(`{"kind":"APIGroup","name":"ext.cattle.io","preferredVersion":{"groupVersion":"ext.cattle.io/v1","version":"v1"}}`))
+			}
+		case "/apis/ext.cattle.io/v1":
+			w.WriteHeader(resourceStatus)
+			if resourceStatus == http.StatusOK {
+				items := make([]string, len(resources))
+				for i, name := range resources {
+					items[i] = fmt.Sprintf(`{"name":%q,"namespaced":false,"kind":"Whatever"}`, name)
+				}
+				_, _ = w.Write(fmt.Appendf(nil, `{"kind":"APIResourceList","groupVersion":"ext.cattle.io/v1","resources":[%s]}`, strings.Join(items, ",")))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestCapabilityCheckerExtDiscoveryProceed proves the positive case: the
+// named resource is listed in the group's preferred-version discovery.
+func TestCapabilityCheckerExtDiscoveryProceed(t *testing.T) {
+	t.Parallel()
+	srv := extDiscoveryFake(t, []string{"tokens", "passwordchangerequests"}, http.StatusOK, http.StatusOK)
+	c := checkerFor(t, srv)
+	dec := c.Check(t.Context(), runtime.CapabilityRequirement{
+		Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
+	})
+	assert.Equal(t, runtime.CapabilityProceed, dec.Outcome)
+}
+
+// TestCapabilityCheckerExtDiscoveryUnsupported proves the negative case: a
+// readable discovery document that affirmatively lacks the resource is
+// CapabilityUnsupported, not Unknown — an older server that never carries
+// this workflow, not a signal read failure.
+func TestCapabilityCheckerExtDiscoveryUnsupported(t *testing.T) {
+	t.Parallel()
+	srv := extDiscoveryFake(t, []string{"tokens", "kubeconfigs"}, http.StatusOK, http.StatusOK)
+	c := checkerFor(t, srv)
+	dec := c.Check(t.Context(), runtime.CapabilityRequirement{
+		Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
+	})
+	assert.Equal(t, runtime.CapabilityUnsupported, dec.Outcome)
+}
+
+// TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown proves the
+// unknown-never-blocks rule for both discovery steps: a group that cannot be
+// read at all (older server, no ext.cattle.io group whatsoever) and a
+// resource list that cannot be read after a readable group both fold into
+// CapabilityUnknown, never CapabilityUnsupported.
+func TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown(t *testing.T) {
+	t.Parallel()
+	t.Run("group discovery unreadable", func(t *testing.T) {
+		t.Parallel()
+		srv := extDiscoveryFake(t, nil, http.StatusNotFound, http.StatusOK)
+		c := checkerFor(t, srv)
+		dec := c.Check(t.Context(), runtime.CapabilityRequirement{
+			Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
+		})
+		assert.Equal(t, runtime.CapabilityUnknown, dec.Outcome)
+	})
+	t.Run("resource list unreadable", func(t *testing.T) {
+		t.Parallel()
+		srv := extDiscoveryFake(t, nil, http.StatusOK, http.StatusForbidden)
+		c := checkerFor(t, srv)
+		dec := c.Check(t.Context(), runtime.CapabilityRequirement{
+			Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
+		})
+		assert.Equal(t, runtime.CapabilityUnknown, dec.Outcome)
+	})
 }
 
 // TestCapabilityCheckerEnabledFeatureSkipsEditionFetch makes sure the common

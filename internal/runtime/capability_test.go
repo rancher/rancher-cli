@@ -155,6 +155,33 @@ func TestRunCapabilityPrimeRequiredReturnsStructuredError(t *testing.T) {
 	assert.Equal(t, clierr.CodePrimeRequired, errField["code"])
 }
 
+// extDiscoveryDesc mirrors primeDesc for the ext.cattle.io-discovery tier.
+func extDiscoveryDesc(name string) Descriptor {
+	return Descriptor{Name: name, CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow"}}
+}
+
+// TestRunCapabilityUnsupportedReturnsStructuredError proves
+// CapabilityExtDiscovery's negative outcome: a plain refusal naming the
+// requirement's Unsupported description, CAPABILITY_UNSUPPORTED (not
+// PRIME_REQUIRED), and the structured details an agent can decode.
+func TestRunCapabilityUnsupportedReturnsStructuredError(t *testing.T) {
+	t.Parallel()
+	cmd := refusingExecuteRead{d: extDiscoveryDesc("get widget"), t: t}
+	checker := &stubChecker{dec: CapabilityDecision{Outcome: CapabilityUnsupported, Server: "https://rancher.example"}}
+	var out, errBuf bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: &errBuf, Format: "json", Capability: checker}, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
+	assert.Equal(t, 11, ce.ExitCode())
+	assert.Contains(t, ce.Message, "the user-password workflow")
+	details, ok := ce.Details.(clierr.CapabilityUnsupportedDetails)
+	require.True(t, ok, "Details must carry the structured CapabilityUnsupportedDetails shape")
+	assert.Equal(t, "passwordchangerequests", details.Feature)
+	assert.Equal(t, "https://rancher.example", details.Server)
+}
+
 func TestRunCapabilitySkippedForOrdinaryCommands(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly}, res: Result{Kind: "Widget"}}

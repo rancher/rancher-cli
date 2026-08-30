@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -40,6 +41,11 @@ func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityReq
 	}
 	dec := runtime.CapabilityDecision{Outcome: runtime.CapabilityUnknown, Server: server}
 
+	if req.Tier == runtime.CapabilityExtDiscovery {
+		dec.Outcome = c.checkExtDiscovery(ctx, req.Feature)
+		return dec
+	}
+
 	var enabled, prime *bool
 	if cl, err := c.f.Cluster(ctx, engine.LocalCluster); err == nil {
 		if k, ok := kinds.Lookup("feature"); ok {
@@ -64,6 +70,68 @@ func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityReq
 	dec.Outcome = decideCapability(enabled, prime, edition)
 	dec.EditionPrime = edition == provider.EditionPrime
 	return dec
+}
+
+// extDiscoveryGroup is the API group every ext resource this CLI knows about
+// (tokens, kubeconfigs, and the user-password workflow's
+// passwordchangerequests) lives under.
+const extDiscoveryGroup = "ext.cattle.io"
+
+// apiGroup is the subset of a Kubernetes APIGroup discovery document this
+// checker reads; unknown fields are ignored.
+type apiGroup struct {
+	PreferredVersion struct {
+		GroupVersion string `json:"groupVersion"`
+	} `json:"preferredVersion"`
+}
+
+// apiResourceList is the subset of a Kubernetes APIResourceList discovery
+// document this checker reads; unknown fields are ignored.
+type apiResourceList struct {
+	Resources []struct {
+		Name string `json:"name"`
+	} `json:"resources"`
+}
+
+// checkExtDiscovery resolves the ext.cattle.io group's preferred served
+// version — never a pinned one; the served version varies by Rancher
+// release, same rationale as the token/kubeconfig kind rows' empty GVR
+// Version — and reads that version's discovery document to report whether
+// resource is listed. A readable document is authoritative either way
+// (CapabilityProceed or CapabilityUnsupported); any read/decode failure —
+// network, RBAC, a server whose ext.cattle.io group does not even exist yet
+// — folds into CapabilityUnknown, never CapabilityUnsupported: an unreadable
+// signal must never be misread as a confirmed absence.
+func (c *capabilityChecker) checkExtDiscovery(ctx context.Context, resource string) runtime.CapabilityOutcome {
+	root, err := c.f.Root()
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	groupBody, err := root.GetJSON(ctx, "/apis/"+extDiscoveryGroup)
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	var group apiGroup
+	if err := json.Unmarshal(groupBody, &group); err != nil {
+		return runtime.CapabilityUnknown
+	}
+	if group.PreferredVersion.GroupVersion == "" {
+		return runtime.CapabilityUnknown
+	}
+	resBody, err := root.GetJSON(ctx, "/apis/"+group.PreferredVersion.GroupVersion)
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	var list apiResourceList
+	if err := json.Unmarshal(resBody, &list); err != nil {
+		return runtime.CapabilityUnknown
+	}
+	for _, r := range list.Resources {
+		if r.Name == resource {
+			return runtime.CapabilityProceed
+		}
+	}
+	return runtime.CapabilityUnsupported
 }
 
 // featureState reads a Feature object's effective-enabled value and its

@@ -426,6 +426,11 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime", d.Name)).
 			WithHint("this capability requires Rancher Prime — " + clierr.LearnMorePrimeURL).
 			WithDetails(clierr.PrimeRequiredDetails{Feature: req.Feature, Server: dec.Server})
+	case CapabilityUnsupported:
+		return clierr.New(clierr.CodeCapabilityUnsupported,
+			fmt.Sprintf("this server does not support %s", req.Unsupported)).
+			WithHint("upgrade the connected server to a version that carries this workflow").
+			WithDetails(clierr.CapabilityUnsupportedDetails{Feature: req.Feature, Server: dec.Server})
 	default: // CapabilityProceed, CapabilityUnknown
 		return nil
 	}
@@ -433,26 +438,33 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 
 // ValidCapabilityShape reports the malformation in req as a CodeGeneric
 // error, or nil when req is valid: the complete zero value, or a known Tier
-// with a non-empty Feature. It does not hide behind IsSet (Tier != "") — a
-// half-set value ({Feature set, Tier ""}) would otherwise read as absent and
-// skip every gate that keys on IsSet, including the coverage rule's
+// with a non-empty Feature (and, for CapabilityExtDiscovery, a non-empty
+// Unsupported). It does not hide behind IsSet (Tier != "") — a half-set
+// value ({Feature set, Tier ""}) would otherwise read as absent and skip
+// every gate that keys on IsSet, including the coverage rule's
 // Capability-bearing filter. Shared by Registry.Validate, kinds'
 // validateKinds, and both pipeline boundaries in Run, so a malformed value
 // is rejected identically wherever it can appear. name identifies the owning
 // command or kind in the message.
 func ValidCapabilityShape(req CapabilityRequirement, name string) *clierr.Error {
 	switch {
-	case req.Tier == "" && req.Feature == "":
+	case req.Tier == "" && req.Feature == "" && req.Unsupported == "":
 		return nil
 	case req.Tier == "":
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: capability requirement has Feature %q with no Tier", name, req.Feature))
-	case req.Tier != CapabilityPrime:
+			fmt.Sprintf("%s: capability requirement has Feature/Unsupported set with no Tier", name))
+	case req.Tier != CapabilityPrime && req.Tier != CapabilityExtDiscovery:
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("%s: unknown capability tier %q", name, req.Tier))
 	case req.Feature == "":
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("%s: capability tier %q requires a detector Feature key", name, req.Tier))
+	case req.Tier == CapabilityPrime && req.Unsupported != "":
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: capability tier %q does not use Unsupported", name, req.Tier))
+	case req.Tier == CapabilityExtDiscovery && req.Unsupported == "":
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: capability tier %q requires Unsupported", name, req.Tier))
 	default:
 		return nil
 	}

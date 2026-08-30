@@ -57,14 +57,15 @@ func TestAllCodesNonEmpty(t *testing.T) {
 // TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count pins the full enum: 10 originals plus
-// LOCK_TIMEOUT, PRIME_REQUIRED, and TLS_TRUST.
+// LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, and CAPABILITY_UNSUPPORTED.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 13)
+	assert.Len(t, codes, 14)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
 	assert.Contains(t, codes, CodeTLSTrust)
+	assert.Contains(t, codes, CodeCapabilityUnsupported)
 }
 
 // TestPrimeRequiredDisjointFromSuccessExits pins exit 9's explicit
@@ -82,19 +83,20 @@ func TestPrimeRequiredDisjointFromSuccessExits(t *testing.T) {
 // process exit status.
 func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
 	want := map[string]int{
-		CodeValidation:           2,
-		CodeConfirmationRequired: 2,
-		CodeDryRunNotApplicable:  2,
-		CodeAmbiguousSelection:   2,
-		CodeNotLoggedIn:          2,
-		CodeAuth:                 3,
-		CodeNotFound:             4,
-		CodeConflict:             5,
-		CodeRBAC:                 6,
-		CodeLockTimeout:          8,
-		CodePrimeRequired:        9,
-		CodeTLSTrust:             10,
-		CodeGeneric:              1,
+		CodeValidation:            2,
+		CodeConfirmationRequired:  2,
+		CodeDryRunNotApplicable:   2,
+		CodeAmbiguousSelection:    2,
+		CodeNotLoggedIn:           2,
+		CodeAuth:                  3,
+		CodeNotFound:              4,
+		CodeConflict:              5,
+		CodeRBAC:                  6,
+		CodeLockTimeout:           8,
+		CodePrimeRequired:         9,
+		CodeTLSTrust:              10,
+		CodeCapabilityUnsupported: 11,
+		CodeGeneric:               1,
 	}
 	assert.Equal(t, want, CodeExits())
 }

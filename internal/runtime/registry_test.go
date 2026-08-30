@@ -139,6 +139,34 @@ func TestValidatePassesWellFormedCapability(t *testing.T) {
 	assert.NoError(t, reg.Validate())
 }
 
+func TestValidateRejectsExtDiscoveryWithoutUnsupported(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "passwordchangerequests"}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "requires Unsupported")
+}
+
+func TestValidateRejectsPrimeWithUnsupportedSet(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
+		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature", Unsupported: "widgets"}}})
+	err := reg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "does not use Unsupported")
+}
+
+func TestValidatePassesWellFormedExtDiscoveryCapability(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry(stubResolver{})
+	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeTabular,
+		Capability: CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow"}}})
+	assert.NoError(t, reg.Validate())
+}
+
 // TestValidateRejectsFeatureWithoutTier pins the full-shape validator at the
 // registry boundary: a half-set value ({Feature set, Tier ""}) reads as
 // absent under IsSet and would otherwise vanish from every gate — it must

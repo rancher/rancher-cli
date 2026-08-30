@@ -17,27 +17,44 @@ const (
 )
 
 // CapabilityTier is the enum of gated capability tiers a command or kind may
-// require. One value exists today; a future tier is added here, never as a
-// second boolean. The enum is an extension POINT, not a claim of shared
-// machinery: today's detector, outcomes, and error shape are deliberately
-// Prime-specific, and a second tier brings its own decide function, outcome,
-// and pipeline branch — the type exists so that addition is type-checked.
+// require. A future tier is added here, never as a second boolean. The enum
+// is an extension POINT, not a claim of shared machinery: each tier brings
+// its own decide function, outcome, and pipeline branch — the type exists so
+// that addition is type-checked.
 type CapabilityTier string
 
-// CapabilityPrime is the only capability tier today: the command requires a
-// Rancher Prime-licensed server.
-const CapabilityPrime CapabilityTier = "prime"
+const (
+	// CapabilityPrime: the command requires a Rancher Prime-licensed server.
+	// Its detector reads a v3 Feature resource's effective-enabled value and
+	// status.prime classification (see CapabilityDisabled/CapabilityPrimeRequired).
+	CapabilityPrime CapabilityTier = "prime"
+	// CapabilityExtDiscovery: the command requires a server-side ext.cattle.io
+	// workflow that older servers do not carry at all (no Feature flag gates
+	// it — the resource is simply absent). Its detector reads the
+	// ext.cattle.io/v1 API discovery document for the named resource (see
+	// CapabilityUnsupported).
+	CapabilityExtDiscovery CapabilityTier = "extDiscovery"
+)
 
-// CapabilityRequirement is the single structured value a Prime-backed kind
-// row or a bespoke command's Descriptor declares once. Every generated verb
-// derives it from the kind row; the manifest's prime marker, help wording,
-// and COMMANDS.md label are all projections of this value, never separately
+// CapabilityRequirement is the single structured value a gated kind row or a
+// bespoke command's Descriptor declares once. Every generated verb derives
+// it from the kind row; the manifest's prime marker, help wording, and
+// COMMANDS.md label are all projections of this value, never separately
 // authored booleans. The zero value means no requirement.
 type CapabilityRequirement struct {
 	Tier CapabilityTier
-	// Feature is the detector key: the v3 Feature resource name the runtime
-	// checker probes. Required whenever Tier is set.
+	// Feature is the detector key. For CapabilityPrime it is the v3 Feature
+	// resource name the runtime checker GETs. For CapabilityExtDiscovery it
+	// is the ext.cattle.io API resource plural name (e.g.
+	// "passwordchangerequests") the checker looks up in discovery. Required
+	// whenever Tier is set.
 	Feature string
+	// Unsupported is the plain-language capability description used in the
+	// CAPABILITY_UNSUPPORTED refusal message, e.g. "the user-password
+	// workflow". Required when Tier is CapabilityExtDiscovery; unused (and
+	// rejected as malformed) for CapabilityPrime, whose refusal wording is
+	// generic across every Prime-gated command.
+	Unsupported string
 }
 
 // IsSet reports whether a capability requirement is declared at all.

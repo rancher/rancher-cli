@@ -35,6 +35,14 @@ const (
 	// surfaces a detector-side error — the target request executes and its
 	// own result/error is handled as if no detector existed.
 	CapabilityUnknown
+	// CapabilityUnsupported is CapabilityExtDiscovery's negative outcome: a
+	// readable discovery document that affirmatively lacks the named
+	// resource — the server is a version that never carries this workflow,
+	// not a feature flag that could be turned on. Returns the
+	// CAPABILITY_UNSUPPORTED error. A discovery document that could not be
+	// read at all is CapabilityUnknown, never this outcome — the
+	// unknown-never-blocks rule holds identically across tiers.
+	CapabilityUnsupported
 )
 
 // PrimeSentence is the exact wording every rendered surface uses to project

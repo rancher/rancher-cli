@@ -9,19 +9,20 @@ import (
 )
 
 const (
-	CodeNotLoggedIn          = "NOT_LOGGED_IN"
-	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
-	CodeDryRunNotApplicable  = "DRY_RUN_NOT_APPLICABLE"
-	CodeAmbiguousSelection   = "AMBIGUOUS_SELECTION"
-	CodeConflict             = "CONFLICT"
-	CodeLockTimeout          = "LOCK_TIMEOUT"
-	CodeAuth                 = "AUTH"
-	CodeNotFound             = "NOT_FOUND"
-	CodeRBAC                 = "RBAC"
-	CodeValidation           = "VALIDATION"
-	CodeGeneric              = "GENERIC"
-	CodePrimeRequired        = "PRIME_REQUIRED"
-	CodeTLSTrust             = "TLS_TRUST"
+	CodeNotLoggedIn           = "NOT_LOGGED_IN"
+	CodeConfirmationRequired  = "CONFIRMATION_REQUIRED"
+	CodeDryRunNotApplicable   = "DRY_RUN_NOT_APPLICABLE"
+	CodeAmbiguousSelection    = "AMBIGUOUS_SELECTION"
+	CodeConflict              = "CONFLICT"
+	CodeLockTimeout           = "LOCK_TIMEOUT"
+	CodeAuth                  = "AUTH"
+	CodeNotFound              = "NOT_FOUND"
+	CodeRBAC                  = "RBAC"
+	CodeValidation            = "VALIDATION"
+	CodeGeneric               = "GENERIC"
+	CodePrimeRequired         = "PRIME_REQUIRED"
+	CodeTLSTrust              = "TLS_TRUST"
+	CodeCapabilityUnsupported = "CAPABILITY_UNSUPPORTED"
 )
 
 // LearnMorePrimeURL is the one stable, product-owned destination a
@@ -50,6 +51,21 @@ type PrimeRequiredDetails struct {
 // line.
 func (d PrimeRequiredDetails) TextDetails() []string {
 	return []string{fmt.Sprintf("feature: %s (checked against server %s)", d.Feature, d.Server)}
+}
+
+// CapabilityUnsupportedDetails is CAPABILITY_UNSUPPORTED's structured
+// details payload — the discovery-based detector key and the server the
+// check ran against, mirroring PrimeRequiredDetails' shape for a
+// non-Prime capability gate (the ext.cattle.io API-discovery tier).
+type CapabilityUnsupportedDetails struct {
+	Feature string `json:"feature"`
+	Server  string `json:"server"`
+}
+
+// TextDetails projects the checked capability and server onto one indented
+// line.
+func (d CapabilityUnsupportedDetails) TextDetails() []string {
+	return []string{fmt.Sprintf("capability: %s (checked against server %s)", d.Feature, d.Server)}
 }
 
 // CommittedContextDetails is the details payload for a non-retryable error
@@ -99,10 +115,11 @@ var exitCodes = map[string]int{
 	CodeRBAC:                 6,
 	// 7 is not an error exit: `skill status` claims it as a success status
 	// (drift detected), and SuccessExitCodes must stay disjoint from this map.
-	CodeLockTimeout:   8,
-	CodePrimeRequired: 9,
-	CodeTLSTrust:      10,
-	CodeGeneric:       1,
+	CodeLockTimeout:           8,
+	CodePrimeRequired:         9,
+	CodeTLSTrust:              10,
+	CodeCapabilityUnsupported: 11,
+	CodeGeneric:               1,
 }
 
 // ShellQuote quotes s for a POSIX sh command line: wrapped in single quotes,
@@ -211,7 +228,8 @@ func AllCodes() []string {
 	return []string{
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
-		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust, CodeGeneric,
+		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust,
+		CodeCapabilityUnsupported, CodeGeneric,
 	}
 }
 
