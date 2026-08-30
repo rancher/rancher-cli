@@ -64,6 +64,9 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 var dryRunBespokeEffectCommands = map[string]string{
 	"grant":  "internal/engine/rbac/grant_test.go: TestGrantGlobalScope, TestGrantClusterScope, TestGrantProjectUserByID assert DisplayKind on every scope; TestGrantCommittedIdentityNeverCarriesPreviewWildcard asserts the committed text never carries \"*\"",
 	"revoke": "internal/engine/rbac/revoke_test.go: TestRevokeSingleRole and TestRevokeAllRolesAtScope assert DisplayKind/DisplayName and the exact per-binding committed text",
+	"create user": "internal/engine/user/create_test.go: TestCreatePlanDisplayIdentity asserts DisplayKind/DisplayName; " +
+		"TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity asserts the committed identity is the real server-assigned name, never the dry-run preview placeholder",
+	"create password-change-request": "internal/engine/extres/createpasswordchangerequest_test.go: TestCreatePasswordChangeRequestPlanDisplayIdentity asserts DisplayKind/DisplayName (the request resource itself carries no name, so DisplayName names the target user)",
 }
 
 // dryRunGenericFamilyPrefixes names the two generated command families

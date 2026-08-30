@@ -35,6 +35,17 @@ func NewResolver() map[string]safety.Binding {
 		// five machine-config kinds — no single row for either.
 		"create resource":       {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"create machine-config": {Contract: safety.ContractInternal, Stability: safety.Beta},
+		// create user and create password-change-request front Rancher's
+		// documented user-management workflow: the two-resource User +
+		// password-Secret create, and the ext.cattle.io
+		// PasswordChangeRequest resource — the same public surface family
+		// as the ext token/kubeconfig commands above. Public/stable by
+		// that membership, unlike the inspect composites below (pure CLI
+		// value-adds). PasswordChangeRequest has no backing kind row: the
+		// resource is create-only (no get/list/delete verb in its own
+		// discovery), so a row could never serve the generic verbs.
+		"create user":                    {Contract: safety.ContractPublic, Stability: safety.Stable},
+		"create password-change-request": {Contract: safety.ContractPublic, Stability: safety.Stable},
 
 		// Composites are CLI value-adds, not API resources: internal/beta regardless
 		// of the underlying kinds they read. inspect project is a deliberate

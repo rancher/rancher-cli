@@ -25,6 +25,11 @@ var capabilityCoverageExtraOps = map[string][]string{
 	"inspect deployment":    {"deployment"},
 	"inspect project":       {"project"},
 	"inspect user":          {"user"},
+	// create user touches the user kind row directly (the composite's User
+	// half) alongside its own ext.cattle.io-discovery Capability
+	// requirement — mapped here so a future Capability gate on the user
+	// kind itself would also flag this op for review, same as inspect user.
+	"create user": {"user"},
 }
 
 // capabilityCoverageAllowlist is the closed, reviewed set of registered ops
@@ -35,34 +40,35 @@ var capabilityCoverageExtraOps = map[string][]string{
 // the retired tripwire (TestNoKindDeclaresCapabilityUntilCreateGatingLands)
 // had.
 var capabilityCoverageAllowlist = map[string]string{
-	"auth login":              "local auth, no kind row",
-	"auth logout":             "local auth, no kind row",
-	"auth status":             "local auth, no kind row",
-	"auth get-token":          "local auth, no kind row",
-	"auth list-tokens":        "local auth, no kind row",
-	"auth delete-token":       "local auth, no kind row",
-	"token":                   "legacy top-level token shim (bare), no kind row",
-	"config add-server":       "local config, no kind row",
-	"config update-server":    "local config, no kind row",
-	"config delete-server":    "local config, no kind row",
-	"config edit":             "local config, no kind row",
-	"config list-servers":     "local config, no kind row",
-	"config path":             "local config, no kind row",
-	"config set-completion":   "local config, no kind row",
-	"config status":           "local config, no kind row",
-	"config use-server":       "local config, no kind row",
-	"skill install":           "agent-skill install, no kind row",
-	"skill status":            "agent-skill status, no kind row",
-	"skill uninstall":         "agent-skill uninstall, no kind row",
-	"schema":                  "fixed introspection command, no kind row",
-	"completion":              "fixed shell-completion command, no kind row",
-	"get cloud-credential":    "bespoke discovery read, no kind row",
-	"get kubernetes-versions": "bespoke discovery read, no kind row",
-	"images":                  "inspect-adjacent discovery read, no kind row",
-	"kubeconfig":              "top-level kubeconfig read (session identity, not a kind row)",
-	"logs":                    "bespoke log read, no kind row",
-	"usage":                   "bespoke discovery read, no kind row",
-	"support-bundle":          "diagnostic bundle collector, no kind row",
+	"auth login":                     "local auth, no kind row",
+	"auth logout":                    "local auth, no kind row",
+	"auth status":                    "local auth, no kind row",
+	"auth get-token":                 "local auth, no kind row",
+	"auth list-tokens":               "local auth, no kind row",
+	"auth delete-token":              "local auth, no kind row",
+	"token":                          "legacy top-level token shim (bare), no kind row",
+	"config add-server":              "local config, no kind row",
+	"config update-server":           "local config, no kind row",
+	"config delete-server":           "local config, no kind row",
+	"config edit":                    "local config, no kind row",
+	"config list-servers":            "local config, no kind row",
+	"config path":                    "local config, no kind row",
+	"config set-completion":          "local config, no kind row",
+	"config status":                  "local config, no kind row",
+	"config use-server":              "local config, no kind row",
+	"skill install":                  "agent-skill install, no kind row",
+	"skill status":                   "agent-skill status, no kind row",
+	"skill uninstall":                "agent-skill uninstall, no kind row",
+	"schema":                         "fixed introspection command, no kind row",
+	"completion":                     "fixed shell-completion command, no kind row",
+	"get cloud-credential":           "bespoke discovery read, no kind row",
+	"get kubernetes-versions":        "bespoke discovery read, no kind row",
+	"images":                         "inspect-adjacent discovery read, no kind row",
+	"kubeconfig":                     "top-level kubeconfig read (session identity, not a kind row)",
+	"logs":                           "bespoke log read, no kind row",
+	"usage":                          "bespoke discovery read, no kind row",
+	"support-bundle":                 "diagnostic bundle collector, no kind row",
+	"create password-change-request": "ext.cattle.io PasswordChangeRequest is create-only (no get/list/delete verb), so it carries no kind row — its own ext.cattle.io-discovery Capability requirement is declared directly on the command",
 }
 
 // registeredCommand is the minimal shape the coverage rule needs from a

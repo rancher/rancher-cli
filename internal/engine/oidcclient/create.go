@@ -353,11 +353,7 @@ func createTimeoutError(name string) *clierr.Error {
 // decide whether to retry must see the classification the underlying read
 // actually carried, not always false.
 func committedPartialSuccess(err error, kind, name, secretName, recovery string) *clierr.Error {
-	details := clierr.CommittedContextDetails{
+	return engine.CommittedPartialSuccess(err, clierr.CommittedContextDetails{
 		Committed: true, ResourceKind: kind, ResourceName: name, SecretName: secretName, Recovery: recovery,
-	}
-	if ce, ok := err.(*clierr.Error); ok {
-		return clierr.New(ce.Code, ce.Message).WithHint(ce.Hint).WithRetryable(ce.Retryable).WithDetails(details)
-	}
-	return clierr.New(clierr.CodeGeneric, err.Error()).WithDetails(details)
+	})
 }

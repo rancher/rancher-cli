@@ -762,6 +762,42 @@
     {
       "args": [
         {
+          "desc": "user `id` (see: rancher get users)",
+          "name": "user",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "public",
+      "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires the connected server's user-password workflow (the same one `create user` uses).",
+      "destructive": "true",
+      "examples": [
+        "echo -n \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --password-stdin --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "name": "password-stdin",
+          "type": "bool"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "create",
+      "name": "create password-change-request",
+      "network": true,
+      "shape": "text",
+      "stability": "stable",
+      "toolset": "core",
+      "usage": "Change a local user's password"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "required": true,
           "type": "string"
@@ -955,6 +991,56 @@
       "stability": "stable",
       "toolset": "core",
       "usage": "Create a token on the server"
+    },
+    {
+      "args": [
+        {
+          "desc": "local username (the server assigns the object's own id)",
+          "name": "username",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "public",
+      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords carrying the password — the server hashes it on write (never the CLI). Requires the connected server's user-password workflow (ext.cattle.io PasswordChangeRequest support is the declared marker).",
+      "destructive": "true",
+      "examples": [
+        "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "name": "password-stdin",
+          "type": "bool"
+        },
+        {
+          "desc": "display name (default: the username)",
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "desc": "account enabled state (server default true)",
+          "enum": [
+            "true",
+            "false"
+          ],
+          "name": "enabled",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "create",
+      "name": "create user",
+      "network": true,
+      "shape": "text",
+      "stability": "stable",
+      "toolset": "core",
+      "usage": "Create a local user"
     },
     {
       "aliases": [
@@ -9047,11 +9133,13 @@
     "VALIDATION",
     "PRIME_REQUIRED",
     "TLS_TRUST",
+    "CAPABILITY_UNSUPPORTED",
     "GENERIC"
   ],
   "exitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
+    "CAPABILITY_UNSUPPORTED": 11,
     "CONFIRMATION_REQUIRED": 2,
     "CONFLICT": 5,
     "DRY_RUN_NOT_APPLICABLE": 2,
@@ -9207,6 +9295,8 @@
         "create resource",
         "create token",
         "create kubeconfig",
+        "create password-change-request",
+        "create user",
         "create oidc-client",
         "create cluster",
         "create machine-config"

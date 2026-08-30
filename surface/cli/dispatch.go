@@ -904,6 +904,12 @@ var bespokeSingleKindOps = map[string]string{
 	"oidc-client add-secret":    "oidcclient",
 	"oidc-client rotate-secret": "oidcclient",
 	"oidc-client remove-secret": "oidcclient",
+	// create password-change-request's <user> positional names an EXISTING
+	// user by id — completes against the user kind exactly like get/patch/
+	// delete user's own positional. create user's <username> positional is
+	// deliberately absent here: it is a NEW username the operator is
+	// choosing, never an existing one to complete against.
+	"create password-change-request": "user",
 }
 
 // bespokeSingleKindPositional completes a bespoke op's positionals for a

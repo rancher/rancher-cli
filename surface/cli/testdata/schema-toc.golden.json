@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 178,
+  "commandCount": 180,
   "effectSchema": {
     "actions": [
       "create",
@@ -58,6 +58,7 @@
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
+    "CAPABILITY_UNSUPPORTED": 11,
     "CONFIRMATION_REQUIRED": 2,
     "CONFLICT": 5,
     "DRY_RUN_NOT_APPLICABLE": 2,
@@ -198,6 +199,14 @@
         {
           "name": "create kubeconfig",
           "usage": "Create a kubeconfig with an embedded token"
+        },
+        {
+          "name": "create password-change-request",
+          "usage": "Change a local user's password"
+        },
+        {
+          "name": "create user",
+          "usage": "Create a local user"
         },
         {
           "name": "create oidc-client",

@@ -19,6 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/engine/user"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/token"
@@ -75,6 +76,8 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateToken(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateKubeconfig(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreatePasswordChangeRequest(d.clients, d.src) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return user.NewCreate(d.clients, d.src) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return oidcclient.NewCreate(d.clients, d.roots, d.serverBase) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateCluster(d.clients, d.roots) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
@@ -532,7 +535,15 @@ var derivedOpKinds = map[string]string{
 // resolve public, and a public op must be here or back a public kind row —
 // so widening the public surface is always a reviewed edit to this file or
 // the kind table, never silent.
-var bespokePublicOps = map[string]bool{"grant": true, "revoke": true}
+var bespokePublicOps = map[string]bool{
+	"grant":  true,
+	"revoke": true,
+	// The user-management workflow: the two-resource User+Secret create
+	// and the create-only ext.cattle.io PasswordChangeRequest — the same
+	// public surface family as the ext token/kubeconfig commands.
+	"create user":                    true,
+	"create password-change-request": true,
+}
 
 // lookupRow resolves a kind-table key to its row, shared by the derived-op
 // and delete-override loops so the lookup-and-fail shape and its error

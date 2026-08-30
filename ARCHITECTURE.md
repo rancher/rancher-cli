@@ -56,6 +56,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (mint the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
+| `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) — the sanctioned two-resource public-API user-password workflow, never Norman. |
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded — deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
@@ -96,6 +97,7 @@ graph TD
     provisioning["internal/engine/provisioning"]
     extres["internal/engine/extres"]
     oidcclient["internal/engine/oidcclient"]
+    user["internal/engine/user"]
     managementtoken["internal/engine/managementtoken"]
     observe["internal/engine/observe"]
     rbac["internal/engine/rbac"]
@@ -128,6 +130,7 @@ graph TD
     cli --> managementtoken
     cli --> extres
     cli --> oidcclient
+    cli --> user
     cli --> observe
     cli --> resources
     cli --> inspect
@@ -225,6 +228,12 @@ graph TD
     oidcclient --> runtime
     oidcclient --> safety
     oidcclient --> clierr
+
+    user --> engine
+    user --> kinds
+    user --> runtime
+    user --> safety
+    user --> clierr
 
     managementtoken --> engine
     managementtoken --> kinds
