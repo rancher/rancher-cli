@@ -6,18 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // FuzzCanonicalServerURL fuzzes the credential-identity function against
 // arbitrary server URLs. Never call t.Parallel() here — it panics inside
 // f.Fuzz.
-//
-// Assertions (b2) reparseability and (c) idempotence ship DISABLED: a `%25`
-// anywhere in the host (e.g. an IPv6 zone id) canonicalizes to a result
-// that cannot re-parse (a tracked genuine bug in canonical.go's host
-// handling; its fix re-enables both assertions).
-// The seeds below exercise that class and must stay green under every
-// assertion that ships enabled.
 func FuzzCanonicalServerURL(f *testing.F) {
 	f.Add("https://example.com")
 	f.Add("HTTPS://EXAMPLE.com:443")
@@ -25,6 +19,7 @@ func FuzzCanonicalServerURL(f *testing.F) {
 	f.Add("https://[::1]:8443")
 	f.Add("https://[fe80::1%25eth0]:443") // known-bug shape: zone id
 	f.Add("http://a%25b")                 // known-bug minimal shape
+	f.Add("http://[::%25%200]")           // escaped space alongside the zone escape
 	f.Add("ftp://example.com")
 	f.Add("")
 	f.Add("://nope")
@@ -54,5 +49,14 @@ func FuzzCanonicalServerURL(f *testing.F) {
 				assert.True(t, strings.HasPrefix(result, "https://"), "result=%q", result)
 			}
 		}
+
+		// (b2) the output re-parses.
+		_, rerr := url.Parse(result)
+		require.NoError(t, rerr, "result=%q", result)
+
+		// (c) canonicalization is idempotent.
+		again, aerr := CanonicalServerURL(result)
+		require.NoError(t, aerr, "result=%q", result)
+		assert.Equal(t, result, again)
 	})
 }

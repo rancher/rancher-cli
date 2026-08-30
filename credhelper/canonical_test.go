@@ -1,6 +1,7 @@
 package credhelper
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,12 +20,23 @@ func TestCanonicalServerURL(t *testing.T) {
 		{"drops path query fragment", "https://example.com/v3?x=1#f", "https://example.com"},
 		{"ipv6 with default port", "https://[::1]:443", "https://[::1]"},
 		{"ipv6 with custom port", "https://[::1]:8443", "https://[::1]:8443"},
+		{"plain host control", "https://example.com", "https://example.com"},
+		{"ipv6 zone id keeps its %25 escape", "https://[fe80::1%25eth0]:443", "https://[fe80::1%25eth0]"},
+		{"minimal percent-in-host", "http://a%25b", "http://a%25b"},
+		{"escaped space in zone id round-trips", "http://[::%25%200]", "http://[::%25%200]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := CanonicalServerURL(tc.in)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+
+			_, perr := url.Parse(got)
+			require.NoError(t, perr, "canonical output %q must re-parse", got)
+
+			again, aerr := CanonicalServerURL(got)
+			require.NoError(t, aerr)
+			assert.Equal(t, got, again, "canonicalization must be idempotent")
 		})
 	}
 }
