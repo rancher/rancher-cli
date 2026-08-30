@@ -785,8 +785,9 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // invocation's NoticeSource and computed its stderr style: notices are the
 // caller's drained entries (recorded-earliest-first), passed through
 // unchanged; the source is never touched again, and the styles are not
-// recomputed. finishOnceOnlyResult uses it after renderResult has already
-// drained; every other error path goes through renderErr.
+// recomputed. finishResult and finishOnceOnlyResult use it after
+// renderResult has already drained; every other error path goes through
+// renderErr.
 func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notices []string) *clierr.Error {
 	_ = RenderErrorStyled(streams.Err, streams.Format, ce, errStyle, notices...)
 	return ce
@@ -889,11 +890,13 @@ func detailsTextLines(details any) []string {
 // finishResult enforces the SuccessExitCodes declaration, renders the
 // result, and surfaces the declared status. An undeclared status is an
 // internal error rendered through renderErr like every other pipeline
-// error. For an ORDINARY command a render failure is returned unrendered
-// (write-failure parity with the previous renderResult contract); a
-// Delivery: DeliveryOnceOnly command instead renders through
-// finishOnceOnlyResult, which buffers the render and emits a committed-
-// context error to stderr on failure — see that function's doc.
+// error. For an ORDINARY command a render failure — a shape-contract
+// violation (checkResultShape) or a stdout write failure — is rendered to
+// stderr exactly once here, so a non-zero exit is never silent regardless
+// of what already committed server-side. A Delivery: DeliveryOnceOnly
+// command instead renders through finishOnceOnlyResult, which buffers the
+// render and emits a committed-context error to stderr on failure — see
+// that function's doc.
 func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if !allowedExitStatus(d.SuccessExitCodes, res.ExitStatus) {
 		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
@@ -905,13 +908,11 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	// streams.Out here is the invocation's real stdout (never a discardable
 	// buffer — only finishOnceOnlyResult writes into one), so a nil error
 	// means whatever renderResult returned as "not yet delivered" already
-	// landed for real. A non-nil error keeps this function's existing
-	// unrendered contract (see doc above) — notices ride the returned ce's
-	// warning field regardless, so they are captured rather than dropped
-	// even though this path never puts them on stderr.
+	// landed for real.
 	notices, ce := renderResult(streams, d, res)
 	if ce != nil {
-		return 0, ce.WithWarnings(notices...)
+		_, errStyle := stylesFor(streams)
+		return 0, renderErrDrained(streams, ce.WithWarnings(notices...), errStyle, nil)
 	}
 	return res.ExitStatus, nil
 }

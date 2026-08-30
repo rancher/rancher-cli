@@ -102,6 +102,18 @@ func TestLogoutAll(t *testing.T) {
 	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer — a credential-less entry is a valid state")
 }
 
+// TestLogoutAllOnEmptyConfigReturnsText pins that logging out of every
+// server when none are configured is still a reportable success: ShapeText
+// requires non-empty Text on every default-format success, and a config
+// with zero servers is the one path where deletedFrom's per-server loop
+// produces nothing to report.
+func TestLogoutAllOnEmptyConfigReturnsText(t *testing.T) {
+	dir, _ := seedLogout(t, "")
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.Text, "logout --all on an empty config must still produce operator-facing text")
+}
+
 func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	// acme.ex and other.ex per seedLogout; cache two entries, one per host,

@@ -819,6 +819,48 @@ func TestRenderResultShapeMismatchIsCommandBug(t *testing.T) {
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
 			assert.Contains(t, ce.Message, "command bug")
 			assert.Empty(t, out.String(), "a shape-mismatch result must never partially render")
+			assert.NotEmpty(t, errBuf.String(), "a shape-mismatch error must still be rendered to stderr")
+		})
+	}
+}
+
+// TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit pins a
+// pipeline-wide guarantee: a mutating command whose executor already
+// committed state, but whose returned Result fails shape validation, must
+// still exit non-zero with a rendered diagnostic on stderr — never a silent
+// exit 1 with zero bytes on both streams after the change has already
+// landed server-side. Any future render path that returns an error from
+// renderResult without rendering it first will fail this matrix.
+func TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		shape  OutputShape
+		res    Result
+		format string
+	}{
+		{name: "ShapeText no Text", shape: ShapeText, res: Result{Kind: "Thing"}, format: ""},
+		{name: "ShapeTabular non-Tabular Data", shape: ShapeTabular, res: Result{Kind: "Thing", Data: map[string]string{"a": "b"}}, format: "json"},
+		{name: "ShapeBytes no RawBytes", shape: ShapeBytes, res: Result{}, format: "json"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var committed bool
+			cmd := fakeMutating{
+				d:   Descriptor{Name: "patch thing", CommandType: Mutating, Shape: tc.shape},
+				eff: safety.Effect{Action: safety.ActionUpdate, DisplayKind: "thing", DisplayName: "t1"},
+				exec: func(context.Context) (Result, error) {
+					committed = true
+					return tc.res, nil
+				},
+			}
+			var out, errBuf bytes.Buffer
+			status, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: tc.format, Apply: true}, safety.Binding{})
+			require.True(t, committed, "the mutation must have already executed before the shape check runs")
+			require.NotNil(t, ce)
+			assert.Equal(t, 0, status)
+			assert.NotEmpty(t, errBuf.String(), "a post-commit render failure must still be reported on stderr")
 		})
 	}
 }

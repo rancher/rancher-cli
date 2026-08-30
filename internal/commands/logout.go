@@ -128,6 +128,13 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 	if cacheCount > 0 {
 		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
 	}
+	if b.Len() == 0 {
+		// The only way names and cacheCount are both empty is --all against a
+		// config with zero servers and no cache: ShapeText requires non-empty
+		// Text on every default-format success, so this case needs its own
+		// line too.
+		b.WriteString("no servers configured to log out of\n")
+	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
