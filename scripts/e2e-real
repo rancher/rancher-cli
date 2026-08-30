@@ -203,10 +203,11 @@ JSON
 
   if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
     cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
-    umask 177
-    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3]},open(sys.argv[4],"w"))' \
-      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${STATE_FILE}"
-    umask 022
+    (
+      umask 177
+      python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3]},open(sys.argv[4],"w"))' \
+        "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${STATE_FILE}"
+    )
   fi
 fi
 
