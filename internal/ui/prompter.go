@@ -78,14 +78,58 @@ func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, erro
 	}
 	p.writeErr(label)
 	if f, ok := p.in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		data, err := term.ReadPassword(int(f.Fd()))
-		p.writeErr("\n")
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
+		return p.readPasswordTTY(ctx, int(f.Fd()))
 	}
 	return p.readLine(ctx)
+}
+
+// readPasswordTTY reads a password from fd with echo disabled, honoring ctx
+// cancellation. term.ReadPassword blocks on the fd with no way to interrupt
+// it directly, so the read runs in a goroutine; on cancellation the terminal
+// echo state is restored before returning so the shell prompt that follows is
+// not left silent. The goroutine may still be blocked on the fd after this
+// function returns (interrupting the blocking read itself is not possible)
+// — its eventual result is dropped into the buffered channel and never read
+// again.
+func (p *Prompter) readPasswordTTY(ctx context.Context, fd int) (string, error) {
+	state, err := term.GetState(fd)
+	if err != nil {
+		return "", err
+	}
+	data, err := selectCancelable(ctx,
+		func() ([]byte, error) { return term.ReadPassword(fd) },
+		func() { _ = term.Restore(fd, state) },
+	)
+	p.writeErr("\n")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// selectCancelable runs read in a goroutine and returns its result, or
+// aborts on ctx cancellation after invoking onCancel (e.g. to restore
+// terminal state). The goroutine may still be running read after
+// selectCancelable returns on the cancellation path; its result is
+// discarded into the buffered channel.
+func selectCancelable[T any](ctx context.Context, read func() (T, error), onCancel func()) (T, error) {
+	type res struct {
+		v   T
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		v, err := read()
+		ch <- res{v: v, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		onCancel()
+		var zero T
+		return zero, ctx.Err()
+	case r := <-ch:
+		return r.v, r.err
+	}
 }
 
 // writeErr writes s to err under mu — held only for the write itself, never

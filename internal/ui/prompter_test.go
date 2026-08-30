@@ -96,6 +96,40 @@ func TestDiscardRefuses(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoInput)
 }
 
+// TestSelectCancelableReturnsCancellationAndRunsOnCancel asserts the
+// select seam behind readPasswordTTY: a cancelled ctx returns ctx.Err()
+// immediately and runs onCancel, without waiting for the blocked read.
+func TestSelectCancelableReturnsCancellationAndRunsOnCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	var onCancelCalled bool
+	block := make(chan struct{})
+	defer close(block)
+	_, err := selectCancelable(ctx, func() (string, error) {
+		<-block
+		return "too late", nil
+	}, func() { onCancelCalled = true })
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.True(t, onCancelCalled, "onCancel must run on the cancellation path")
+}
+
+// TestSelectCancelableReturnsReadResult asserts the non-cancelled path
+// returns the read's value and error untouched, without invoking onCancel.
+func TestSelectCancelableReturnsReadResult(t *testing.T) {
+	t.Parallel()
+	var onCancelCalled bool
+	got, err := selectCancelable(t.Context(), func() (string, error) {
+		return "s3cret", nil
+	}, func() { onCancelCalled = true })
+
+	require.NoError(t, err)
+	assert.Equal(t, "s3cret", got)
+	assert.False(t, onCancelCalled)
+}
+
 // blockingReader blocks on Read until the test goroutine is torn down.
 type blockingReader struct{}
 
