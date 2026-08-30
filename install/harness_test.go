@@ -300,7 +300,7 @@ func writeRelease(s *stub, tag string, draft bool) {
 	var sums strings.Builder
 
 	for _, name := range []string{"rancher", "rancher-credential-vault"} {
-		for _, plat := range []string{"linux-amd64", "linux-arm64", "linux-s390x", "darwin-amd64", "darwin-arm64"} {
+		for _, plat := range installerPlatforms {
 			assetName := name + "-" + plat
 			body := []byte("#!/bin/sh\necho \"" + name + " version " + tag + "\"\n")
 			s.assets[tag+"/"+assetName] = body

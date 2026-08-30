@@ -265,25 +265,30 @@ func TestPreWithoutAnyParserErrors(t *testing.T) {
 	assert.Contains(t, errOut, "--pre needs jq or python3")
 }
 
+// platformMappingCases is install.sh's uname-to-GOOS/GOARCH map, table-tested
+// by TestPlatformMapping via a fake uname prepended to PATH. Defined at
+// package level so TestPlatformMatrixConformance can cross-check its accepted
+// platforms against the release matrix without duplicating the table.
+var platformMappingCases = []struct {
+	kernel, machine string
+	want            string // "" = must be rejected
+}{
+	{"Linux", "x86_64", "linux/amd64"},
+	{"Linux", "amd64", "linux/amd64"},
+	{"Linux", "aarch64", "linux/arm64"},
+	{"Linux", "arm64", "linux/arm64"},
+	{"Linux", "s390x", "linux/s390x"},
+	{"Darwin", "x86_64", "darwin/amd64"},
+	{"Darwin", "arm64", "darwin/arm64"},
+	{"Darwin", "s390x", ""},
+	{"MINGW64_NT-10.0", "x86_64", ""},
+	{"Linux", "riscv64", ""},
+}
+
 // Platform map, table-tested via a fake uname prepended to PATH.
 func TestPlatformMapping(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		kernel, machine string
-		want            string // "" = must be rejected
-	}{
-		{"Linux", "x86_64", "linux/amd64"},
-		{"Linux", "amd64", "linux/amd64"},
-		{"Linux", "aarch64", "linux/arm64"},
-		{"Linux", "arm64", "linux/arm64"},
-		{"Linux", "s390x", "linux/s390x"},
-		{"Darwin", "x86_64", "darwin/amd64"},
-		{"Darwin", "arm64", "darwin/arm64"},
-		{"Darwin", "s390x", ""},
-		{"MINGW64_NT-10.0", "x86_64", ""},
-		{"Linux", "riscv64", ""},
-	}
-	for _, tc := range cases {
+	for _, tc := range platformMappingCases {
 		s := newStub(t)
 		writeRelease(s, "v1.2.3", false)
 		s.setLatest("v1.2.3")
