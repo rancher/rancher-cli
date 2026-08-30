@@ -1,0 +1,152 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "ext-group",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "APIGroup",
+        "name": "ext.cattle.io",
+        "preferredVersion": {
+          "groupVersion": "ext.cattle.io/v1",
+          "version": "v1"
+        },
+        "versions": [
+          {
+            "groupVersion": "ext.cattle.io/v1",
+            "version": "v1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ext-v1-resources",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "groupVersion": "ext.cattle.io/v1",
+        "kind": "APIResourceList",
+        "resources": [
+          {
+            "group": "ext.cattle.io",
+            "kind": "GroupMembershipRefreshRequest",
+            "name": "groupmembershiprefreshrequests",
+            "namespaced": false,
+            "singularName": "groupmembershiprefreshrequest",
+            "verbs": [
+              "create"
+            ],
+            "version": "v1"
+          },
+          {
+            "group": "ext.cattle.io",
+            "kind": "Kubeconfig",
+            "name": "kubeconfigs",
+            "namespaced": false,
+            "singularName": "kubeconfig",
+            "verbs": [
+              "create",
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "update",
+              "watch"
+            ],
+            "version": "v1"
+          },
+          {
+            "group": "ext.cattle.io",
+            "kind": "PasswordChangeRequest",
+            "name": "passwordchangerequests",
+            "namespaced": false,
+            "singularName": "passwordchangerequest",
+            "verbs": [
+              "create"
+            ],
+            "version": "v1"
+          },
+          {
+            "group": "ext.cattle.io",
+            "kind": "SelfUser",
+            "name": "selfusers",
+            "namespaced": false,
+            "singularName": "selfuser",
+            "verbs": [
+              "create"
+            ],
+            "version": "v1"
+          },
+          {
+            "group": "ext.cattle.io",
+            "kind": "Token",
+            "name": "tokens",
+            "namespaced": false,
+            "singularName": "token",
+            "verbs": [
+              "create",
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "update",
+              "watch"
+            ],
+            "version": "v1"
+          },
+          {
+            "group": "ext.cattle.io",
+            "kind": "UserActivity",
+            "name": "useractivities",
+            "namespaced": false,
+            "singularName": "useractivity",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ],
+            "version": "v1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "password-namespace",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "annotations": {
+            "cattle.io/status": "\u003cscrubbed\u003e",
+            "field.cattle.io/projectId": "\u003cscrubbed\u003e",
+            "lifecycle.cattle.io/create.namespace-auth": "\u003cscrubbed\u003e",
+            "management.cattle.io/no-default-sa-token": "\u003cscrubbed\u003e"
+          },
+          "creationTimestamp": "\u003cts\u003e",
+          "labels": {
+            "field.cattle.io/projectId": "\u003cscrubbed\u003e",
+            "kubernetes.io/metadata.name": "\u003cscrubbed\u003e"
+          },
+          "name": "cattle-local-user-passwords",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "finalizers": [
+            "kubernetes"
+          ]
+        },
+        "status": {
+          "phase": "Active"
+        }
+      }
+    }
+  ]
+}

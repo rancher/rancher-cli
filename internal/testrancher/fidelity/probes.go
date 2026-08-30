@@ -32,7 +32,45 @@ func All() []Probe {
 	probes = append(probes, tokProbes()...)
 	probes = append(probes, mutProbes()...)
 	probes = append(probes, capabilityProbes()...)
+	probes = append(probes, userPasswordWorkflowProbes()...)
 	return probes
+}
+
+// userPasswordWorkflowProbes asserts the facts `create user`/`create
+// password-change-request`'s capability gate depends on: the ext.cattle.io
+// discovery documents the checker parses (group-level preferred version,
+// then the resource list naming passwordchangerequests) — read by a
+// standard, non-admin identity, since the discovery is readable regardless
+// of the caller's RBAC and the checker relies on that — and the
+// cattle-local-user-passwords namespace the password Secret is written
+// into. A golden diff here on a future server version means this workflow's
+// wire shape changed and the capability gate/create-user composite need a
+// fresh look, not that the fidelity suite itself broke.
+func userPasswordWorkflowProbes() []Probe {
+	return []Probe{
+		{
+			Name:       "user-password-workflow/discovery-and-namespace",
+			OracleOnly: true,
+			Observations: []Observation{
+				{Name: "ext-group", Request: RequestSpec{Method: http.MethodGet, Path: "/apis/ext.cattle.io", Identity: IdentityStandard}},
+				{Name: "ext-v1-resources", Request: RequestSpec{Method: http.MethodGet, Path: "/apis/ext.cattle.io/v1", Identity: IdentityStandard}},
+				{Name: "password-namespace", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/api/v1/namespaces/cattle-local-user-passwords", Identity: IdentityAdmin}},
+			},
+			// The namespace's annotations/labels carry the boot's generated
+			// "local" project id (e.g. field.cattle.io/projectId:
+			// "local:p-<random>"), which is server-generated per boot and
+			// not stable across boots. What this probe asserts is the
+			// namespace's existence/phase, not its incidental
+			// project-scoping metadata, so both maps are scrubbed whole
+			// rather than fighting the per-boot id with a placeholder (the
+			// dotted NormalizeRule path syntax cannot address a key that
+			// itself contains dots, e.g. "field.cattle.io/projectId").
+			Normalize: []NormalizeRule{
+				{Path: "metadata.annotations.*", Replace: "<scrubbed>"},
+				{Path: "metadata.labels.*", Replace: "<scrubbed>"},
+			},
+		},
+	}
 }
 
 // capabilityProbes pins the two wire reads the Prime capability detector's

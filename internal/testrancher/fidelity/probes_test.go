@@ -34,6 +34,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"mut/dryrun-create", "mut/dryrun-invalid", "mut/stale-rv-update",
 		"mut/rv-precondition-delete", "mut/dryrun-then-apply",
 		"capability/edition-and-oidc-provider-classification",
+		"user-password-workflow/discovery-and-namespace",
 	}
 	var got []string
 	for _, p := range All() {
