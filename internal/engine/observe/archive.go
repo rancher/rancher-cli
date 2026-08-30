@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -17,72 +16,102 @@ type ArchiveEntry struct {
 	Data []byte
 }
 
-// writeEntries writes sorted entries as a gzip-compressed tar to w,
-// returning the total uncompressed content size.
-func writeEntries(w io.Writer, entries []ArchiveEntry) (int64, error) {
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
-
-	var total int64
-	for _, e := range entries {
-		if err := tw.WriteHeader(&tar.Header{Name: e.Path, Mode: 0600, Size: int64(len(e.Data))}); err != nil {
-			return total, err
-		}
-		if _, err := tw.Write(e.Data); err != nil {
-			return total, err
-		}
-		total += int64(len(e.Data))
-	}
-	if err := tw.Close(); err != nil {
-		return total, err
-	}
-	if err := gz.Close(); err != nil {
-		return total, err
-	}
-	return total, nil
+// ArchiveWriter streams entries into a gzip-compressed tar one at a time,
+// so a collector holds at most the one entry currently in flight rather
+// than the whole collection — a fleet-wide bundle's memory footprint stays
+// bounded by the largest single entry, not the sum of everything collected.
+type ArchiveWriter struct {
+	file   *os.File
+	gz     *gzip.Writer
+	tw     *tar.Writer
+	path   string
+	total  int64
+	err    error
+	closed bool
 }
 
-// WriteArchive creates path with O_CREATE|O_EXCL and 0600, then writes
-// entries as a gzip-compressed tar sorted by Path for a deterministic
-// layout. An existing file — or a symlink, which O_EXCL refuses since the
-// link itself exists — is VALIDATION naming the path, never truncated or
-// followed.
-//
-// A failure ANYWHERE on the write path (tar/gzip write or close) removes
-// the file before returning: this invocation exclusively created it via
-// O_EXCL, so nothing else can be holding it, and leaving a truncated file
-// behind would make the O_EXCL refusal above permanently block every retry
-// at the same path. Returns the total uncompressed content size.
-func WriteArchive(path string, entries []ArchiveEntry) (int64, error) {
-	return writeArchiveWith(path, entries, writeEntries)
+// CreateArchive opens path with O_CREATE|O_EXCL and 0600 and returns a
+// writer ready for Add. An existing file — or a symlink, which O_EXCL
+// refuses since the link itself exists — is VALIDATION naming the path,
+// never truncated or followed.
+func CreateArchive(path string) (*ArchiveWriter, error) {
+	return createArchiveWith(path, func(w io.Writer) io.Writer { return w })
 }
 
-// writeArchiveWith is the injectable core of WriteArchive; the write function
-// is passed explicitly so tests can inject a failing writer without mutating
-// package-level state.
-func writeArchiveWith(path string, entries []ArchiveEntry, write func(io.Writer, []ArchiveEntry) (int64, error)) (int64, error) {
-	sorted := append([]ArchiveEntry{}, entries...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-
+// createArchiveWith is the injectable core of CreateArchive; wrap lets
+// tests substitute a failing io.Writer around the underlying file without
+// mutating package-level state.
+func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWriter, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		if os.IsExist(err) {
-			return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("%s already exists", path)).
+			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("%s already exists", path)).
 				WithHint("choose a different -f path, or remove the existing file")
 		}
-		return 0, err
+		return nil, err
 	}
+	gz := gzip.NewWriter(wrap(f))
+	return &ArchiveWriter{file: f, gz: gz, tw: tar.NewWriter(gz), path: path}, nil
+}
 
-	total, writeErr := write(f, sorted)
-	closeErr := f.Close()
+// Add streams one entry into the archive immediately. Once Add has failed,
+// every later Add is a no-op returning that same error — a collector can
+// keep calling Add without checking every return and let Close report and
+// clean up the failure.
+func (w *ArchiveWriter) Add(entry ArchiveEntry) error {
+	if w.err != nil {
+		return w.err
+	}
+	if err := w.tw.WriteHeader(&tar.Header{Name: entry.Path, Mode: 0600, Size: int64(len(entry.Data))}); err != nil {
+		w.err = err
+		return err
+	}
+	if _, err := w.tw.Write(entry.Data); err != nil {
+		w.err = err
+		return err
+	}
+	w.total += int64(len(entry.Data))
+	return nil
+}
 
-	if writeErr != nil {
-		_ = os.Remove(path)
-		return 0, writeErr
+// Close finalizes the tar/gzip streams and the file. A failure here or from
+// an earlier Add removes the partially written file: this invocation
+// exclusively created it via O_EXCL, so nothing else can be holding it, and
+// leaving a truncated file behind would permanently block every retry at
+// the same path. Returns the total uncompressed content size.
+func (w *ArchiveWriter) Close() (int64, error) {
+	// A repeated Close must report the first call's outcome without
+	// re-closing the writers: closing the finalized tar stream errors, and
+	// treating that error as a write failure would remove a valid archive.
+	if w.closed {
+		if w.err != nil {
+			return 0, w.err
+		}
+		return w.total, nil
 	}
-	if closeErr != nil {
-		_ = os.Remove(path)
-		return 0, closeErr
+	w.closed = true
+	if w.err == nil {
+		w.err = w.tw.Close()
 	}
-	return total, nil
+	if w.err == nil {
+		w.err = w.gz.Close()
+	}
+	if closeErr := w.file.Close(); w.err == nil {
+		w.err = closeErr
+	}
+	if w.err != nil {
+		_ = os.Remove(w.path)
+		return 0, w.err
+	}
+	return w.total, nil
+}
+
+// Discard abandons the archive after a failure unrelated to Add or Close —
+// a caller that cannot finish assembling the entries it already streamed —
+// closing the underlying handles and removing the partial file.
+func (w *ArchiveWriter) Discard() {
+	_ = w.tw.Close()
+	_ = w.gz.Close()
+	_ = w.file.Close()
+	_ = os.Remove(w.path)
 }

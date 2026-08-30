@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -136,7 +137,11 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		return runtime.Result{}, err
 	}
 
-	var entries []ArchiveEntry
+	bw, err := CreateArchive(path)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	var items []manifestItem
 
 	if discoveryErr != nil {
@@ -144,19 +149,19 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	}
 
 	settingsValues, settingsData := collectSettings(ctx, local)
-	entries = append(entries, ArchiveEntry{Path: "rancher/settings.json", Data: settingsData})
+	_ = bw.Add(ArchiveEntry{Path: "rancher/settings.json", Data: settingsData})
 	items = append(items, manifestItem{Name: "rancher/settings.json", Status: statusCollected})
 
 	featuresData, ferr := collectFeatures(ctx, local)
 	items = append(items, manifestItem{Name: "rancher/features.json", Status: itemStatus(ferr)})
 	if ferr == nil {
-		entries = append(entries, ArchiveEntry{Path: "rancher/features.json", Data: featuresData})
+		_ = bw.Add(ArchiveEntry{Path: "rancher/features.json", Data: featuresData})
 	}
 
 	schemaData, serr := json.Marshal(c.schema())
 	items = append(items, manifestItem{Name: "rancher/schema.json", Status: itemStatus(serr)})
 	if serr == nil {
-		entries = append(entries, ArchiveEntry{Path: "rancher/schema.json", Data: schemaData})
+		_ = bw.Add(ArchiveEntry{Path: "rancher/schema.json", Data: schemaData})
 	}
 
 	// Partial re-decode of the already-marshaled manifest, on purpose: it
@@ -173,24 +178,27 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		"cliVersion":    cliVer,
 		"serverVersion": settingsValues["server-version"],
 	})
-	entries = append(entries, ArchiveEntry{Path: "rancher/version.json", Data: versionData})
+	_ = bw.Add(ArchiveEntry{Path: "rancher/version.json", Data: versionData})
 	items = append(items, manifestItem{Name: "rancher/version.json", Status: statusCollected})
 
 	for _, clusterID := range clusters {
-		clusterEntries, clusterItems, namespaces := collectCluster(ctx, c.clients, local, clusterID, targets, tail, since)
-		entries = append(entries, clusterEntries...)
+		clusterItems, namespaces := collectCluster(ctx, c.clients, local, clusterID, targets, tail, since, bw)
 		items = append(items, clusterItems...)
 
 		for _, ns := range namespaces {
-			data, eerr := collectEvents(ctx, c.clients, clusterID, ns)
-			items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: itemStatus(eerr)})
+			data, total, included, eerr := collectEvents(ctx, c.clients, clusterID, ns)
+			status := itemStatus(eerr)
+			if eerr == nil && included < total {
+				status = fmt.Sprintf("collected (truncated to %d of %d, newest first)", included, total)
+			}
+			items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: status})
 			if eerr == nil {
-				entries = append(entries, ArchiveEntry{Path: fmt.Sprintf("clusters/%s/events-%s.json", clusterID, ns), Data: data})
+				_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/events-%s.json", clusterID, ns), Data: data})
 			}
 		}
 	}
 
-	entries = append(entries, ArchiveEntry{Path: "README.txt", Data: []byte(readmeText)})
+	_ = bw.Add(ArchiveEntry{Path: "README.txt", Data: []byte(readmeText)})
 
 	manifest := bundleManifest{
 		CLIVersion:    cliVer,
@@ -200,11 +208,12 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	}
 	manifestData, err := json.Marshal(manifest)
 	if err != nil {
+		bw.Discard()
 		return runtime.Result{}, err
 	}
-	entries = append(entries, ArchiveEntry{Path: "manifest.json", Data: manifestData})
+	_ = bw.Add(ArchiveEntry{Path: "manifest.json", Data: manifestData})
 
-	bytesWritten, err := WriteArchive(path, entries)
+	bytesWritten, err := bw.Close()
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -389,12 +398,11 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 }
 
 // collectCluster gathers one cluster's cluster.json/nodes.json plus every
-// applicable target's logs, returning the archive entries, their manifest
-// items, and the set of namespaces any attempted target resolved to (for
-// the caller's per-namespace events collection) — cattle-system is always
-// included, per the design spec.
-func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64) ([]ArchiveEntry, []manifestItem, []string) {
-	var entries []ArchiveEntry
+// applicable target's logs, streaming each into bw as it is collected, and
+// returns the manifest items and the set of namespaces any attempted
+// target resolved to (for the caller's per-namespace events collection) —
+// cattle-system is always included, per the design spec.
+func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string) {
 	var items []manifestItem
 	namespaces := map[string]bool{"cattle-system": true}
 
@@ -407,7 +415,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 			"state":      clusterState,
 			"conditions": clusterConds,
 		})
-		entries = append(entries, ArchiveEntry{Path: fmt.Sprintf("clusters/%s/cluster.json", clusterID), Data: data})
+		_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/cluster.json", clusterID), Data: data})
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: statusCollected})
 	}
 
@@ -426,7 +434,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 				})
 			}
 			data, _ := json.Marshal(rows)
-			entries = append(entries, ArchiveEntry{Path: fmt.Sprintf("clusters/%s/nodes.json", clusterID), Data: data})
+			_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/nodes.json", clusterID), Data: data})
 			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: statusCollected})
 		}
 	}
@@ -447,7 +455,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		}
 		namespaces[resolved.Namespace] = true
 		items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: statusCollected})
-		entries = append(entries, collectTargetLogs(ctx, t, resolved, tail, since)...)
+		collectTargetLogs(ctx, t, resolved, tail, since, bw)
 	}
 
 	nsList := make([]string, 0, len(namespaces))
@@ -455,46 +463,80 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		nsList = append(nsList, ns)
 	}
 	sort.Strings(nsList)
-	return entries, items, nsList
+	return items, nsList
 }
 
-// collectTargetLogs fetches every matched pod/container's current log, plus
-// a best-effort previous-container log (silently omitted when there is
-// none — a fresh container has never restarted, which is the common case,
-// not a failure).
-func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64) []ArchiveEntry {
-	var entries []ArchiveEntry
+// collectTargetLogs streams every matched pod/container's current log into
+// bw, plus a best-effort previous-container log (silently omitted when
+// there is none — a fresh container has never restarted, which is the
+// common case, not a failure).
+func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64, bw *ArchiveWriter) {
 	for i := range resolved.Pods {
 		podName := resolved.Pods[i].GetName()
 		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
 			base := fmt.Sprintf("logs/%s/%s/%s-%s", resolved.ClusterID, t.Name, podName, cname)
 			if out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since}); err == nil {
-				entries = append(entries, ArchiveEntry{Path: base + ".log", Data: []byte(out)})
+				_ = bw.Add(ArchiveEntry{Path: base + ".log", Data: []byte(out)})
 			}
 			if out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true}); err == nil {
-				entries = append(entries, ArchiveEntry{Path: base + "-previous.log", Data: []byte(out)})
+				_ = bw.Add(ArchiveEntry{Path: base + "-previous.log", Data: []byte(out)})
 			}
 		}
 	}
-	return entries
 }
 
-func collectEvents(ctx context.Context, clients engine.ClusterClientFactory, clusterID, namespace string) ([]byte, error) {
+// defaultEventCap bounds the per-namespace event payload the same way logs
+// are already bounded by tail lines: an unbounded event list on a noisy
+// cluster must not blow up the bundle's memory or size.
+const defaultEventCap = 500
+
+// collectEvents fetches a namespace's events and keeps at most
+// defaultEventCap of them, newest first by lastTimestamp/eventTime/creation
+// (whichever is present), so a caller can tell whether the returned payload
+// was truncated from total to included.
+func collectEvents(ctx context.Context, clients engine.ClusterClientFactory, clusterID, namespace string) (data []byte, total, included int, err error) {
 	client, err := clients.Cluster(ctx, clusterID)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	list, err := client.List(ctx, eventKind.GVR, namespace, "")
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
-	rows := make([]map[string]any, 0, len(list.Items))
-	for i := range list.Items {
-		rows = append(rows, list.Items[i].Object)
+	total = len(list.Items)
+	items := list.Items
+	slices.SortFunc(items, func(a, b unstructured.Unstructured) int {
+		return eventTimestamp(b).Compare(eventTimestamp(a))
+	})
+	if len(items) > defaultEventCap {
+		items = items[:defaultEventCap]
 	}
-	return json.Marshal(rows)
+	included = len(items)
+	rows := make([]map[string]any, 0, included)
+	for i := range items {
+		rows = append(rows, items[i].Object)
+	}
+	data, err = json.Marshal(rows)
+	return data, total, included, err
+}
+
+// eventTimestamp reads the first present field among lastTimestamp,
+// eventTime, and metadata.creationTimestamp — an Event may carry any subset
+// of them depending on the emitting controller — falling back to the zero
+// time (sorts last) when none parse as RFC3339.
+func eventTimestamp(u unstructured.Unstructured) time.Time {
+	for _, path := range [][]string{{"lastTimestamp"}, {"eventTime"}, {"metadata", "creationTimestamp"}} {
+		s, ok, _ := unstructured.NestedString(u.Object, path...)
+		if !ok || s == "" {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 const readmeText = `This is a Rancher CLI support bundle.

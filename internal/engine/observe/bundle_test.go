@@ -283,6 +283,50 @@ func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
 	assert.True(t, hasManifest, "the local-only bundle must still ship")
 }
 
+// TestSupportBundleEventsAreCappedNewestFirst proves the per-namespace event
+// payload is bounded even when the cluster reports far more events than
+// defaultEventCap: the archived file keeps only the newest defaultEventCap
+// entries, and the manifest names both the kept and total counts so a
+// reader can see truncation happened.
+func TestSupportBundleEventsAreCappedNewestFirst(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	const total = defaultEventCap + 10
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	items := make([]unstructured.Unstructured, 0, total)
+	for i := range total {
+		items = append(items, unstructured.Unstructured{Object: map[string]any{
+			"metadata":      map[string]any{"name": fmt.Sprintf("ev-%d", i)},
+			"lastTimestamp": base.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
+			"message":       fmt.Sprintf("event %d", i),
+		}})
+	}
+
+	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-1"},
+	}})
+	downstream := newFakeClient().withListNS(eventKind.GVR, "cattle-system", &unstructured.UnstructuredList{Items: items})
+	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+
+	path := filepath.Join(dir, "bundle.tar.gz")
+	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "", flagClusters: "c-1"}})
+	require.NoError(t, err)
+
+	m := manifestFrom(t, path)
+	item := findItem(t, m, "events-cattle-system", "c-1")
+	assert.Equal(t, fmt.Sprintf("collected (truncated to %d of %d, newest first)", defaultEventCap, total), item.Status)
+
+	contents := readArchive(t, path)
+	eventsJSON, ok := contents["clusters/c-1/events-cattle-system.json"]
+	require.True(t, ok)
+	var rows []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(eventsJSON), &rows))
+	assert.Len(t, rows, defaultEventCap)
+	assert.Contains(t, eventsJSON, fmt.Sprintf("event %d", total-1), "the newest event must survive truncation")
+	assert.NotContains(t, eventsJSON, `"event 0"`, "the oldest event must be dropped by truncation")
+}
+
 func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
 	// Not t.Parallel(): changes the process cwd.
 	fixed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
