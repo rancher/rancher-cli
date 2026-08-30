@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -1051,6 +1052,7 @@ type extLoginFakeOpts struct {
 	revokeStatus  int    // revoke DELETE response status (0 -> 200)
 	mintBodyCh    chan []byte
 	revokedPathCh chan string
+	mintBlock     chan struct{} // if set, the mint handler blocks reading this until closed
 }
 
 func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
@@ -1070,6 +1072,9 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]string{"token": opts.sessionToken})
 
 		case r.URL.Path == token.MintTokensPath && r.Method == http.MethodPost:
+			if opts.mintBlock != nil {
+				<-opts.mintBlock
+			}
 			if opts.mintBodyCh != nil {
 				b, _ := io.ReadAll(r.Body)
 				opts.mintBodyCh <- b
@@ -1137,6 +1142,38 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "token-sess2:sessionsecret", tok, "no ext group: the session token itself is stored (legacy semantics)")
 	assert.Contains(t, errBuf.String(), "does not serve ext.cattle.io")
+}
+
+// TestLoginProviderFlowMintTimeoutIsBoundedAndNotMistakenForExtAbsent
+// asserts the ext token mint call is bounded by httpx's client-level
+// timeout rather than hanging on an unresponsive server, and that a timeout
+// surfaces as a plain error distinct from the 404 (ext group absent)
+// fallback shape — the two must never collapse into the same behavior.
+func TestLoginProviderFlowMintTimeoutIsBoundedAndNotMistakenForExtAbsent(t *testing.T) {
+	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout,
+	// which would race other parallel subtests' real requests.
+	restore := httpx.SetDefaultTimeoutForTest(20 * time.Millisecond)
+	defer restore()
+
+	block := make(chan struct{})
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", mintBlock: block})
+	defer close(block)
+
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+
+	start := time.Now()
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.NotErrorIs(t, err, token.ErrExtGroupAbsent, "a timeout must not be mistaken for the ext-group-absent fallback")
+	assert.Less(t, elapsed, 5*time.Second, "the mint request must be bounded by the client timeout, not hang on the unresponsive handler")
+
+	_, err = store.GetToken(config.ServerRef{Name: "prod"})
+	assert.Error(t, err, "a failed mint must not leave a token stored")
 }
 
 func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T) {

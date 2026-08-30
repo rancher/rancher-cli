@@ -106,7 +106,7 @@ func completionNetworkEnabled() bool {
 // is constructed directly from httpx, never through resolveDeps (AC-20/AC-22).
 // Called exactly once per live dispatch (finding 9).
 func newCompletionClient(caPEM string) (*http.Client, error) {
-	return httpx.New(httpx.Options{CACert: caPEM})
+	return httpx.New(httpx.Options{CACert: caPEM, Timeout: completionTimeout()})
 }
 
 // k8sItemsList is the minimal envelope for a Kubernetes-style list response

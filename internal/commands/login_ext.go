@@ -39,7 +39,7 @@ const v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 // a bare config.ResolveCA(in.String("cacert")) would on a same-server
 // re-login with no --cacert flag.
 func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
-	client, err := httpx.New(httpx.Options{CACert: caPEM})
+	client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: httpx.DefaultTimeout})
 	if err != nil {
 		return "", err
 	}

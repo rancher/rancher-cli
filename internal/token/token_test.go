@@ -26,6 +26,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -397,6 +398,59 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, int32(1), authProviderHits.Load(), "a rejected mint must fall through to the interactive flow")
+}
+
+// TestGetTokenMintTimeoutSurfacesAsGenericTransportError asserts a stalled
+// mint request is bounded by httpx's client-level timeout rather than
+// hanging forever, and that the resulting error keeps MintDerivedToken's
+// existing classification: a *clierr.Error with CodeGeneric, the same shape
+// any other transport failure at this call site already takes (a timeout is
+// not errMintDenied, so it must NOT fall back to the interactive flow the
+// way a rejected 401/403 mint does).
+func TestGetTokenMintTimeoutSurfacesAsGenericTransportError(t *testing.T) {
+	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout.
+	restore := httpx.SetDefaultTimeoutForTest(20 * time.Millisecond)
+	defer restore()
+
+	var authProviderHits atomic.Int32
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
+			authProviderHits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
+		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+			<-block
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	// close(block) before srv.Close(): Close waits for in-flight handlers to
+	// return, and the mint handler is still parked on <-block after the
+	// client gives up — closing the server first would deadlock.
+	defer func() { close(block); srv.Close() }()
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	start := time.Now()
+	_, err := cmd.Execute(t.Context(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
+		ui.Discard())
+	elapsed := time.Since(start)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is not errMintDenied and must not trigger the interactive fallback")
+	assert.Less(t, elapsed, 5*time.Second, "the mint request must be bounded by the client timeout, not hang on the blocked handler")
 }
 
 // TestGetTokenFallsBackToInteractiveWithNoStoredCredential covers the "no

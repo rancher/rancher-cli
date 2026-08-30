@@ -64,7 +64,7 @@ func fetchVersionResponse(ctx context.Context, eff config.Effective) (rancherVer
 	if err != nil {
 		return rancherVersionResponse{}, err
 	}
-	client, err := httpx.New(httpx.Options{CACert: caPEM})
+	client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: requestTimeout})
 	if err != nil {
 		return rancherVersionResponse{}, err
 	}

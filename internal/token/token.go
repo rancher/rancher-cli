@@ -267,7 +267,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		usernameDefault: params.UsernameDefault,
 	}
 
-	client, err := httpx.New(httpx.Options{CACert: caPEM, Insecure: input.skipVerify})
+	client, err := httpx.New(httpx.Options{CACert: caPEM, Insecure: input.skipVerify, Timeout: httpx.DefaultTimeout})
 	if err != nil {
 		return runtime.Result{}, err
 	}

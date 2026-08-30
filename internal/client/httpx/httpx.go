@@ -16,6 +16,26 @@ type Options struct {
 	Timeout  time.Duration
 }
 
+// DefaultTimeout is the client-level request bound callers reach for when
+// they have no tighter, already-established timeout of their own (auth and
+// token-mint round trips run unattended under kubectl's exec-credential
+// plugin, so a caller must never rely on dial/TLS-handshake timeouts alone
+// to cap an unresponsive server). Callers that already bound the request
+// via a shorter context deadline (a per-path timeout var, tested and
+// shrinkable) pass that value instead — it always wins since it fires
+// first, and DefaultTimeout serves those callers only as a backstop against
+// a future refactor that drops the context wrap. A package var, not a
+// constant, so tests can shrink it via SetDefaultTimeoutForTest.
+var DefaultTimeout = 30 * time.Second
+
+// SetDefaultTimeoutForTest shrinks DefaultTimeout and returns a restore
+// func. Callers must not run in parallel with tests issuing real requests.
+func SetDefaultTimeoutForTest(d time.Duration) (restore func()) {
+	old := DefaultTimeout
+	DefaultTimeout = d
+	return func() { DefaultTimeout = old }
+}
+
 func New(o Options) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,

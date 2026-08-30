@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -125,6 +126,31 @@ func TestRancherVersionUnreachableReturnsError(t *testing.T) {
 
 	_, err := RancherVersion(t.Context(), eff)
 	require.Error(t, err)
+}
+
+// TestRancherVersionTimesOutOnUnresponsiveServer asserts the request is
+// bounded by requestTimeout rather than hanging forever, and that a timeout
+// surfaces through the same error path as any other connectivity failure
+// (TestRancherVersionUnreachableReturnsError) — not a new shape.
+func TestRancherVersionTimesOutOnUnresponsiveServer(t *testing.T) {
+	// Not t.Parallel(): shrinks the package-global requestTimeout.
+	restore := SetRequestTimeoutForTest(20 * time.Millisecond)
+	defer restore()
+
+	block := make(chan struct{})
+	defer close(block)
+	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
+		<-block
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.0"}`))
+	})
+
+	start := time.Now()
+	_, err := RancherVersion(t.Context(), effFor(t, srv))
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Less(t, elapsed, 5*time.Second, "the request must be bounded by requestTimeout, not hang on the unresponsive handler")
 }
 
 // TestRancherVersionPathValuedCA pins that a file-path CA (the common case
