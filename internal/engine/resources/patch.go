@@ -149,7 +149,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	for _, e := range c.enrich {
 		e(orig, patched, &eff)
 	}
-	return eff, exec, nil
+	return eff, engine.RedactMutationResult(exec, c.k.RedactPaths, c.k.Sensitive), nil
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,-f} rule and decodes the

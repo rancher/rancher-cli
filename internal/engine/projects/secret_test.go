@@ -228,3 +228,50 @@ func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNo
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings, "status.backingNamespace was explicitly set (even though it equals the project id) — no propagation warning")
 }
+
+func TestCreateSecretResultRedactsPayload(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		client *memberClient
+		in     memberIn
+	}{
+		{
+			name:   "bare namespace form",
+			client: &memberClient{},
+			in: memberIn{
+				s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "token=abc"},
+				a: []string{"app-secret"},
+			},
+		},
+		{
+			name: "project-scoped form",
+			client: &memberClient{
+				projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
+				gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
+			},
+			in: memberIn{
+				s: map[string]string{"project": "p-1", "cluster": "c-x", "from-literal": "token=abc"},
+				b: map[string]bool{"project-scoped": true},
+				a: []string{"shared-cred"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewCreateSecret(stubFactory{c: tt.client})
+			_, exec, err := planMember(t, cmd, tt.in)
+			require.NoError(t, err)
+
+			res, err := exec(t.Context())
+			require.NoError(t, err)
+			obj, ok := res.Data.(map[string]any)
+			require.True(t, ok, "committed secret must render as an object")
+			assert.NotContains(t, obj, "stringData",
+				"the server echoes the submitted payload back on create; it must not reach output")
+			assert.NotContains(t, obj, "data")
+			assert.Equal(t, "Secret", obj["kind"], "redaction must not drop the rest of the object")
+		})
+	}
+}

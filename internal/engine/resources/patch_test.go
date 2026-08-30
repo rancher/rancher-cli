@@ -193,6 +193,82 @@ func TestPatchSecretDiffIsRedacted(t *testing.T) {
 	assert.True(t, found, "diff must contain the password path, got %+v", eff.Diff)
 }
 
+// TestPatchRedactsUserPasswordFromResult pins the patch-response redaction
+// seam: a User's password reaches the server in the patch (the fake client
+// echoes back exactly what was submitted, as a real server does), but the
+// committed Result never carries it — mirroring create's redaction of the
+// same field.
+func TestPatchRedactsUserPasswordFromResult(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"User","metadata":{"name":"u-test","resourceVersion":"1"},"username":"alice","password":"hunter2"}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client}
+	cmd := NewPatch(mustKind(t, "user"), fac, nil)
+
+	_, exec, err := planPatch(t, cmd, input{args: []string{"u-test"}, s: map[string]string{
+		"patch": `[{"op":"replace","path":"/username","value":"alice2"}]`,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	obj, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	_, present := obj["password"]
+	assert.False(t, present, "password must be scrubbed from the patch response")
+	assert.Equal(t, "alice2", obj["username"], "unrelated fields survive redaction")
+}
+
+// TestPatchRedactsManagementTokenFromResult mirrors the User case for
+// management-token's root-level token field.
+func TestPatchRedactsManagementTokenFromResult(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Token","metadata":{"name":"t-test","resourceVersion":"1"},"userId":"u-1","token":"secretvalue"}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client}
+	cmd := NewPatch(mustKind(t, "managementtoken"), fac, nil)
+
+	_, exec, err := planPatch(t, cmd, input{args: []string{"t-test"}, s: map[string]string{
+		"patch": `[{"op":"replace","path":"/userId","value":"u-2"}]`,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	obj, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	_, present := obj["token"]
+	assert.False(t, present, "token must be scrubbed from the patch response")
+	assert.Equal(t, "u-2", obj["userId"], "unrelated fields survive redaction")
+}
+
+// TestPatchRedactsSecretPayloadFromResult proves the Sensitive-gated
+// data/stringData guard applies to a patch's committed result, the same way
+// it already applies to the patch's preview diff and to create's response.
+func TestPatchRedactsSecretPayloadFromResult(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db-creds","namespace":"default","resourceVersion":"5"},"data":{"password":"b2xk"}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "secret"), fac, nil)
+
+	_, exec, err := planPatch(t, cmd, input{args: []string{"db-creds"}, s: map[string]string{
+		"cluster": "prod", "namespace": "default",
+		"patch": `[{"op":"replace","path":"/data/password","value":"bmV3"}]`,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	obj, ok := res.Data.(map[string]any)
+	require.True(t, ok)
+	_, present := obj["data"]
+	assert.False(t, present, "data must be scrubbed from the patch response")
+}
+
 func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c1","resourceVersion":"1"},"spec":{"a":"x"}}`)

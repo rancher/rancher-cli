@@ -151,7 +151,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 				return res, nil
 			}
 		}
-		return eff, exec, nil
+		return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
 	}
 
 	if nsFlag == "" {
@@ -179,5 +179,5 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return eff, exec, nil
+	return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
 }
