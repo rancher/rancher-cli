@@ -162,6 +162,30 @@ against `SHA256SUMS`, and (optionally) verify provenance with
 `gh attestation verify <file> --repo rancher/rancher-cli
 --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml`.
 
+#### Windows
+
+`install.sh` covers Linux and macOS only; on Windows, install by hand:
+
+1. Download the `windows` release assets: the CLI binary and
+   `rancher-credential-vault`.
+2. Rename them to `rancher.exe` and `rancher-credential-vault.exe`. Both
+   names matter: the kubeconfig exec plugin invokes the bare command
+   `rancher`, and a credential store helper is invoked as
+   `rancher-credential-<name>` — on Windows, Go's process lookup only
+   resolves a bare name against a `PATHEXT` extension (`.exe`) on `PATH`.
+3. Verify both executables against `SHA256SUMS` (PowerShell) — the
+   helper matters as much as the CLI: it is the process that receives
+   your vault credentials, so never install it unverified:
+
+       Get-FileHash rancher.exe -Algorithm SHA256
+       Get-FileHash rancher-credential-vault.exe -Algorithm SHA256
+
+   Compare each output against its matching line in `SHA256SUMS`.
+4. Optionally verify build provenance for both:
+   `gh attestation verify rancher.exe --repo rancher/rancher-cli --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml`,
+   then the same command with `rancher-credential-vault.exe`.
+5. Only after both files verify, place them in a directory on `PATH`.
+
 ## Shell completion
 
 PowerShell (Windows PowerShell 5.1 or PowerShell 7) — pipe into the session so
@@ -399,6 +423,17 @@ raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
 forensics).
 
+Five commands are exceptions to the versioned-envelope rule, all for the
+same reason: their consumer parses a specific format, not the envelope.
+`completion`, `kubeconfig`, and `create kubeconfig` reject `-o json`/
+`-o yaml` outright (a table-only `OutputPolicy`) — a shell completion
+script and a kubeconfig YAML file have their own formats to satisfy.
+`auth get-token` and `token` accept `-o json` but emit a raw Kubernetes
+`ExecCredential` object with no envelope wrapper, verbatim to what
+kubectl's exec-credential plugin protocol requires. `rancher schema
+-o json`'s per-command `outputPolicy` field is the authoritative
+machine-readable source for which formats any given command accepts.
+
 ## Color
 
 `--color`: `auto` (default) · `always` · `never` — controls whether
@@ -415,14 +450,17 @@ terminal.
 
 ## Machine hints
 
-An error's `data.error.hint` field, when present, is a single bare command
-targeting POSIX sh — no `run:` or other prose prefix, every argument a real,
-shell-quoted value. It is emitted only when the CLI can fully interpolate
-it; guidance that needs a value the CLI does not have (an unknown URL, a
-name that does not exist) goes in the message body instead, with no `hint`
-field at all. Treat `hint` as paste-valid verbatim; anything narrated in
-prose belongs to the message, not the hint. Windows agents adapt the
-command themselves — the same posture as the rest of the machine contract.
+An error's `data.error.hint` field, when present, is short operator
+guidance — it MAY be a runnable command targeting POSIX sh, but is not
+guaranteed to be one: today's corpus includes bare commands alongside
+prose, `<placeholder>` values, `[optional]` flags, and OR alternatives.
+Hints must be valid verbatim where they carry only concrete,
+already-known values; guidance that needs a value the CLI does not have
+(an unknown URL, a name that does not exist) goes in the message body
+instead, with no `hint` field at all. Agents must not execute a hint
+blindly — inspect it the same way any other emitted text is inspected
+before treating it as argv. Windows agents adapt a runnable hint
+themselves — the same posture as the rest of the machine contract.
 
 ## Read-only mode
 

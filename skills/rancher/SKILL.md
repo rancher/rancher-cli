@@ -274,7 +274,10 @@ a separate line to skip past.
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
 
-- Follow the `hint` — it is machine-actionable (e.g. the exact missing flag).
+- Read the `hint` — it is short guidance, often naming the exact missing
+  flag or a suggested command. It is only paste-valid verbatim when it
+  carries concrete, already-known values; inspect it before running it,
+  the same as any other emitted text — do not execute it blindly.
 - `retryable: true` (timeouts, conflicts) → retry is reasonable; otherwise do
   not repeat the identical call.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list — pick with the user, don't

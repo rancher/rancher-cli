@@ -6,9 +6,11 @@ A greenfield rewrite of the Rancher CLI, built so a terminal coding agent
 (Claude Code, Codex, …) can drive Rancher as a first-class user — and
 operators get the same commands with readable table output.
 
-- **Structured, versioned output** — every command emits one JSON envelope
-  under `-o json` (YAML under `-o yaml`), versioned as `cli.rancher.io/v1`;
-  the default is readable text for an operator at a terminal.
+- **Structured, versioned output** — nearly every command emits one JSON
+  envelope under `-o json` (YAML under `-o yaml`), versioned as
+  `cli.rancher.io/v1`; the default is readable text for an operator at a
+  terminal. Five terminal-integration commands are exceptions — details:
+  [REFERENCE.md](REFERENCE.md#output-formats).
 - **Self-describing surface** — `rancher schema` lists every command, flag,
   contract, and gate; agents orient themselves without docs.
 - **Machine-readable errors** — the same envelope as a success, under
@@ -47,8 +49,8 @@ Both install the `rancher` CLI and its credential helper to `~/.local/bin`
 (rootless, no shell-profile edits; the script prints the `PATH` line if
 needed). Checksums are always verified; build provenance is verified when
 an authenticated `gh` CLI is available. The script covers Linux and macOS —
-on Windows, download the `windows` release assets and verify them by hand.
-The CLI supports Rancher `>= 2.14`
+on Windows, see [REFERENCE.md](REFERENCE.md#windows) for the manual install
+steps. The CLI supports Rancher `>= 2.14`
 ([details](REFERENCE.md#supported-server-version)); install internals and
 manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 
@@ -190,8 +192,9 @@ Read-only mode: [REFERENCE.md](REFERENCE.md#read-only-mode).
 
 ## Output & exit codes
 
-Every command emits one JSON document per invocation under `-o json` — an
-`apiVersion`-versioned envelope agents can depend on:
+Nearly every command emits one JSON document per invocation under `-o json`
+— an `apiVersion`-versioned envelope agents can depend on (exceptions:
+[REFERENCE.md](REFERENCE.md#output-formats)):
 
 ```json
 {

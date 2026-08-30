@@ -25,10 +25,10 @@ conformance test (`internal/commands/migrating_test.go` +
 | `context switch` | REMOVED — scope is per-invocation; set the active server pointer with `rancher config use-server` |
 | `context current` | REMOVED — scope is per-invocation; `rancher config status` shows the current server; `rancher config list-servers` lists all (active marked with *) |
 | `clusters ls` | → `rancher get clusters` |
-| `clusters create` | DROPPED — the `cluster` kind is read/patch only (`Deletable: false`, no fixed create-cluster command); use the Rancher UI/API to create a cluster |
+| `clusters create` | → `rancher create cluster <name> --import` (imported), `--custom` (custom cluster), or `--machine-config <kind/name> --cloud-credential <id>` (node-driver) |
 | `clusters import` | DROPPED — same reason as `clusters create` |
 | `clusters add-node` | DROPPED — RKE1 node-driver docker-command workflow; no CAPI/RKE2 equivalent surfaced |
-| `clusters delete` (alias `rm`) | DROPPED — the `cluster` kind is `Deletable: false`; no fixed delete-cluster command |
+| `clusters delete` (alias `rm`) | → `rancher delete provisioning-cluster <name> --apply --yes` — the `cluster` kind itself is `Deletable: false`; deletion goes through the backing `provisioningcluster` kind |
 | `clusters export` | DROPPED — no export/backup command surfaced |
 | `clusters kubeconfig` (alias `kf`) | → `rancher kubeconfig --cluster <id>` |
 | `clusters add-member-role` | → `rancher grant <subject> --role <r> --cluster <c> --apply --yes` |
@@ -53,7 +53,7 @@ conformance test (`internal/commands/migrating_test.go` +
 | `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
 | `kubectl …` | → one-time `rancher kubeconfig --cluster <id>` + native `kubectl` (merge recipe below); `auth get-token` handles credentials transparently |
 | `server current` | → `rancher config status` / `rancher config list-servers` (active marked with *) |
-| `server delete` | DROPPED — no config command removes a stored server; edit the config file directly |
+| `server delete` | → `rancher config delete-server <name>` |
 | `server ls` | → `rancher config list-servers` |
 | `server switch` | → `rancher config use-server` |
 | `settings ls` | → `rancher get settings` |
