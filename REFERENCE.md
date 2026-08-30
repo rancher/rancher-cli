@@ -74,13 +74,13 @@ filters namespaced kinds. No scope is persisted or ambient — see
 ## Install internals
 
 `install.sh` unpacks each release into its own versioned directory under
-`~/.local/share/rancher-cli`, then repoints the `rancher` and
-`rancher-credential-vault` symlinks in the bin dir as the final steps.
-Each link is replaced atomically, so an interrupted install never leaves a
-broken binary on `PATH`. A kill between the two link updates leaves the
-pair split (fresh install: the helper link is missing; upgrade: the two
-links point at different versions); rerunning the installer repairs
-either state.
+`~/.local/share/rancher-cli` and activates it by atomically switching one
+`current` symlink. The `rancher` and `rancher-credential-vault` links in
+the bin dir point through `current`, so an upgrade updates both binaries
+in a single switch — the pair can never end up on different versions. On
+a fresh install the two bin-dir links are created separately; a kill
+between them can leave the helper link missing, and rerunning the
+installer repairs that state.
 An install receipt at `~/.config/rancher-cli/install-receipt.json`
 records what is installed; rerunning the installer silently replaces
 managed links and prints a notice when taking over a previous manual
