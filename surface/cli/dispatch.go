@@ -241,14 +241,37 @@ func dispatchSite(
 }
 
 // enumCandidates returns static enum candidates for a flag-value site.
+// The output flag's enum is global (every command shares one ArgSpec), so
+// it is filtered against the resolved leaf's OutputPolicy here — the one
+// point every -o/--output completion passes through — rather than offering
+// a value the command would reject.
 func enumCandidates(site CompletionSite, d runtime.Descriptor) []string {
 	all := append(append([]runtime.ArgSpec{}, d.Flags...), globalArgSpecs...)
 	for _, f := range all {
 		if f.Name == site.FlagName && len(f.Enum) > 0 {
-			return resolveStaticEnum(f.Enum, site)
+			enum := f.Enum
+			if f.Name == "output" {
+				enum = allowedOutputEnum(enum, d.OutputPolicy)
+			}
+			return resolveStaticEnum(enum, site)
 		}
 	}
 	return nil
+}
+
+// allowedOutputEnum filters enum down to the values d's OutputPolicy
+// accepts, preserving today's behavior (the full enum) for the zero policy.
+func allowedOutputEnum(enum []string, policy runtime.OutputPolicy) []string {
+	if len(policy.AllowedFormats) == 0 {
+		return enum
+	}
+	out := make([]string, 0, len(enum))
+	for _, v := range enum {
+		if policy.Allows(v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // positionalEnumCandidates returns static enum candidates for a positional

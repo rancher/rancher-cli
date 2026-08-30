@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 )
@@ -43,7 +44,7 @@ func logsPodServer(t *testing.T) (srv *httptest.Server, hits *atomic.Int32, last
 
 var logsDescriptor = runtime.Descriptor{
 	Name: "logs",
-	Args: []runtime.ArgSpec{{Name: "target", Type: "string", Required: true}},
+	Args: []runtime.ArgSpec{{Name: "target", Type: "string", Required: true, Enum: observe.Names()}},
 	Flags: []runtime.ArgSpec{
 		{Name: "cluster", Type: "string"},
 		{Name: "tail", Type: "string"},
@@ -139,4 +140,15 @@ func TestLogsPodCandidatesUnknownOrIncompleteTargetYieldsNil(t *testing.T) {
 	defer cancel()
 	got := liveCandidates(ctx, site, logsDescriptor, nil, tail)
 	assert.Nil(t, got)
+}
+
+// TestLogsTargetCompletionYieldsExactlyTheTargetTable pins `logs <TAB>`
+// against the curated target table: the positional's Enum (sourced from
+// observe.Names(), never a hand-copied list) must offer exactly those five
+// names, sorted, and nothing else.
+func TestLogsTargetCompletionYieldsExactlyTheTargetTable(t *testing.T) {
+	t.Parallel()
+	got, owned := positionalEnumCandidates(CompletionSite{Kind: SitePositional, Index: 0}, logsDescriptor)
+	assert.True(t, owned)
+	assert.Equal(t, []string{"agent", "fleet-agent", "kube-api-auth", "server", "webhook"}, got)
 }

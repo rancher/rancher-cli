@@ -31,6 +31,7 @@ func (configUpdateServerCmd) Describe() runtime.Descriptor {
 		Name:        "config update-server",
 		Usage:       "Change a configured server's URL or CA",
 		CommandType: runtime.Local,
+		Network:     true,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Desc: "new Rancher server `url` (scheme required)"},

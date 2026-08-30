@@ -99,6 +99,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 		Name:        "auth login",
 		Usage:       "Login to a Rancher server",
 		CommandType: runtime.Local,
+		Network:     true,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Desc: "server entry `name`"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into (requires <name>)"},

@@ -166,7 +166,7 @@
       ],
       "group": "auth",
       "name": "auth login",
-      "network": false,
+      "network": true,
       "shape": "text",
       "toolset": "core",
       "usage": "Login to a Rancher server"
@@ -269,7 +269,7 @@
       ],
       "group": "config",
       "name": "config add-server",
-      "network": false,
+      "network": true,
       "shape": "text",
       "toolset": "core",
       "usage": "Add a Rancher server entry"
@@ -407,7 +407,7 @@
       ],
       "group": "config",
       "name": "config update-server",
-      "network": false,
+      "network": true,
       "shape": "text",
       "toolset": "core",
       "usage": "Change a configured server's URL or CA"
@@ -5097,6 +5097,13 @@
     {
       "args": [
         {
+          "enum": [
+            "server",
+            "agent",
+            "fleet-agent",
+            "kube-api-auth",
+            "webhook"
+          ],
           "name": "target",
           "required": true,
           "type": "string"

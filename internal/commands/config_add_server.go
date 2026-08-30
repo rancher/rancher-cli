@@ -26,6 +26,7 @@ func (configAddServerCmd) Describe() runtime.Descriptor {
 		Name:        "config add-server",
 		Usage:       "Add a Rancher server entry",
 		CommandType: runtime.Local,
+		Network:     true,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Required: true, Desc: "Rancher server `url` (scheme required)"},

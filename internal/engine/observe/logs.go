@@ -40,7 +40,7 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "logs",
 		Usage: "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)",
-		Args:  []runtime.ArgSpec{{Name: "target", Type: "string", Required: true}},
+		Args:  []runtime.ArgSpec{{Name: "target", Type: "string", Required: true, Enum: Names()}},
 		Flags: []runtime.ArgSpec{
 			{Name: engine.FlagCluster, Type: "string", Desc: "target cluster `id|name`"},
 			{Name: flagTail, Type: "string", Desc: "max `lines` (default 200)"},
@@ -64,6 +64,10 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 
 func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
+	// The pipeline's enum validation (target's ArgSpec.Enum, sourced from
+	// Names()) already rejects an unlisted name before Execute runs in the
+	// real CLI path; this check stays as the guard for direct-Execute
+	// callers (this package's own tests included) that bypass the pipeline.
 	target, ok := Lookup(name)
 	if !ok {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown log target %q", name)).
