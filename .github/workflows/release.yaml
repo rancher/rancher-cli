@@ -7,16 +7,24 @@ on:
 permissions:
   contents: read
 
+# Two same-tag runs (a UI-created release pushing the tag, racing a manual
+# re-push) must not both see zero existing releases and both create one —
+# tag_name v0.1.0-alpha.1 carried two releases on 2026-08-12 from exactly
+# that race. cancel-in-progress stays false: the queued run must still run
+# and take release-upsert's idempotent upload branch, not vanish.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  # No write permissions here: this job pulls third-party code (apt
+  # packages, golangci-lint, envtest binaries) before anything is trusted
+  # with contents/id-token/attestations access.
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
-      # Draft-release creation and asset upload.
-      contents: write
-      # GitHub-native build provenance (actions/attest-build-provenance).
-      id-token: write
-      attestations: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,6 +45,30 @@ jobs:
       - uses: ./.github/actions/setup-tools
       - run: make validate
       - run: make e2e
+
+  # Only checkout, build, attest, and upload run with write access — no
+  # third-party installs (apt, lint tooling, envtest) execute in a job that
+  # holds contents/id-token/attestations permissions.
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Draft-release creation and asset upload.
+      contents: write
+      # GitHub-native build provenance (actions/attest-build-provenance).
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # See validate's setup-go: same cache-poisoning rationale applies
+          # here, in the job that actually holds the write permissions.
+          cache: false
       - name: Build release matrix
         env:
           TAG: ${{ github.ref_name }}
