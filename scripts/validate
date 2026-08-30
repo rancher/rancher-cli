@@ -72,7 +72,7 @@ fi
 # into release assets (found in the published alpha.2 install.sh).
 # The regex is written with a group so this file's own pattern text cannot
 # match itself ("docs/(design" is not followed by a subdir name).
-if git grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!docs' ':!graphify-out'; then
+if git --no-pager grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!docs' ':!graphify-out'; then
   echo "error: tracked files must not reference local-only docs/ paths" >&2
   exit 1
 fi
