@@ -31,7 +31,10 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"and the effective credential-store policy with its source: the " +
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
-			"Under auto, also reports the probed backend pin when present. " +
+			"Under auto, also reports the probed backend pin when present, or " +
+			"— before any pin exists — credentialStoreDefault, the OS-native " +
+			"keychain auto will try first on this platform (named from the " +
+			"platform alone, never probed). " +
 			"Also reports a nested completion section (network: live API " +
 			"completion on/off; timeout: effective per-TAB budget after " +
 			"clamping/default; timeoutRaw: only when the stored value was " +
@@ -62,6 +65,13 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	if policy == "auto" {
 		pin = config.ReadPin(c.dir)
 	}
+	// Before any pin exists (no login yet, no prior probe), name what auto
+	// will try first on this machine — a static GOOS-derived label, never a
+	// live probe, so `config status` stays read-only.
+	defaultBackend := ""
+	if policy == "auto" && pin == "" {
+		defaultBackend = config.PlatformKeychainLabel()
+	}
 
 	// field is either a scalar (key: val) or a nested section
 	// (key: []field) rendered as an indented block. One declaration drives
@@ -81,6 +91,9 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 	if pin != "" {
 		fields = append(fields, field{"pin", pin})
+	}
+	if defaultBackend != "" {
+		fields = append(fields, field{"credentialStoreDefault", defaultBackend})
 	}
 
 	// Completion settings — always present so `config status` can answer

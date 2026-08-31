@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"os"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -216,6 +217,21 @@ func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 		assert.Equal(t, "file", data["pin"])
 		assert.Equal(t, false, data["exists"])
 		assert.Equal(t, config.FilePath(dir), data["path"])
+		_, ok := data["credentialStoreDefault"]
+		assert.False(t, ok, "once pinned, the platform default is moot — the pin is the actual answer")
+	})
+
+	t.Run("default auto with no pin yet names the platform default, read-only", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.EnvCredentialStore, "")
+
+		data := execConfigInfo(t, dir)
+		assert.Equal(t, "auto", data["credentialStore"])
+		_, pinned := data["pin"]
+		assert.False(t, pinned, "no pin exists yet — reporting one would imply a probe ran")
+		assert.Equal(t, config.PlatformKeychainLabel(), data["credentialStoreDefault"])
+		_, err := os.Stat(config.PinPath(dir))
+		assert.True(t, os.IsNotExist(err), "config status must never write the pin itself")
 	})
 
 	t.Run("explicit policy hides a stale auto pin", func(t *testing.T) {

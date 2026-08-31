@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -26,6 +27,23 @@ const pinFileName = "credstore-pin"
 const NoticeFirstPinKeychain = "pinned credential store: keychain"
 
 func PinPath(dir string) string { return filepath.Join(dir, pinFileName) }
+
+// PlatformKeychainLabel names the OS-native keychain auto tries first on
+// this machine's platform, purely from runtime.GOOS — never a probe. `config
+// status` uses it to answer "what will auto pick?" before any pin exists,
+// without the side effects (or latency) of actually trying the keychain.
+func PlatformKeychainLabel() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macOS Keychain"
+	case "windows":
+		return "Windows Credential Manager"
+	case "linux":
+		return "Secret Service keyring (D-Bus)"
+	default:
+		return "OS keychain"
+	}
+}
 
 // ReadPin returns the pinned backend, or "" when absent/unreadable/invalid
 // (invalid values re-probe rather than error: the pin is a cache, not config).
