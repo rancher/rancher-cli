@@ -8,7 +8,15 @@ ENVTEST_K8S_VERSION="1.34.0"
 
 echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
 # Pinned for repeatability/supply-chain; bump alongside controller-runtime (go.mod).
-KUBEBUILDER_ASSETS="$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use "${ENVTEST_K8S_VERSION}" -p path)"
+# Built once into a temp dir and renamed before executing: Windows refuses to
+# run an unsigned binary named setup-envtest.exe (the installer-name elevation
+# heuristic), which breaks a plain `go run` of the upstream tool there.
+ENVTEST_TOOL_DIR="$(mktemp -d)"
+trap 'rm -rf "${ENVTEST_TOOL_DIR}"' EXIT
+GOBIN="${ENVTEST_TOOL_DIR}" go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1
+ENVTEST_TOOL="${ENVTEST_TOOL_DIR}/envtest-assets$(go env GOEXE)"
+mv "${ENVTEST_TOOL_DIR}/setup-envtest$(go env GOEXE)" "${ENVTEST_TOOL}"
+KUBEBUILDER_ASSETS="$("${ENVTEST_TOOL}" use "${ENVTEST_K8S_VERSION}" -p path)"
 export KUBEBUILDER_ASSETS
 echo "==> assets: ${KUBEBUILDER_ASSETS}"
 
