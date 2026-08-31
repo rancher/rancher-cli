@@ -222,3 +222,69 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	cap := resolveCompletionToken("")
 	assert.Empty(t, cap.Token, "round-2 finding 3: cross-server URL override must not send server A token to server B")
 }
+
+// TestResolveCompletionTokenFileStoreSameURLServers pins the file-store
+// lookup when several stored servers share one URL. The current server is
+// the operator's own selection, so its token must be used whenever its URL
+// is the effective URL; the URL scan with its ambiguity guard applies only
+// when the effective URL points elsewhere (RANCHER_CLI_URL override).
+func TestResolveCompletionTokenFileStoreSameURLServers(t *testing.T) {
+	const sharedURL = "https://rancher.example.com"
+	const otherURL = "https://other.example.com"
+
+	setup := func(t *testing.T, current string) {
+		t.Helper()
+		// NOT parallel: mutates storedConfig and env globals.
+		t.Setenv(config.EnvToken, "")
+		t.Setenv(config.EnvURL, "")
+		t.Setenv(config.EnvCredentialStore, "file")
+		keyring.MockInit()
+		dir := t.TempDir()
+		store := config.NewFileStore(dir)
+		require.NoError(t, store.SetToken(config.ServerRef{Name: "alpha"}, "alpha-token"))
+		require.NoError(t, store.SetToken(config.ServerRef{Name: "beta"}, "beta-token"))
+		require.NoError(t, store.SetToken(config.ServerRef{Name: "gamma"}, "gamma-token"))
+		require.NoError(t, store.SetToken(config.ServerRef{Name: "delta"}, "delta-token"))
+		// epsilon shares the URL but has no stored login token.
+		cfg := &config.Config{
+			CurrentServer: current,
+			Servers: map[string]config.Server{
+				"alpha":   {URL: sharedURL},
+				"beta":    {URL: sharedURL},
+				"gamma":   {URL: otherURL},
+				"delta":   {URL: otherURL},
+				"epsilon": {URL: sharedURL},
+			},
+		}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		setStoredConfig(cfg, dir)
+	}
+
+	cases := []struct {
+		name    string
+		current string
+		envURL  string
+		want    string
+	}{
+		{"current server wins among same-URL entries", "alpha", "", "alpha-token"},
+		{"other same-URL entry as current also wins", "beta", "", "beta-token"},
+		{"url override matching the current server keeps its token", "alpha", sharedURL, "alpha-token"},
+		{"url override to a different ambiguous url yields empty", "alpha", otherURL, ""},
+		{"url override to an unknown url yields empty", "alpha", "https://unknown.example.com", ""},
+		{"current server without a stored token yields empty, never a sibling's token", "epsilon", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setup(t, tc.current)
+			if tc.envURL != "" {
+				t.Setenv(config.EnvURL, tc.envURL)
+			}
+			cap := resolveCompletionToken("")
+			assert.Equal(t, tc.want, cap.Token)
+			if tc.want != "" {
+				assert.False(t, cap.IDOnly)
+			}
+		})
+	}
+}

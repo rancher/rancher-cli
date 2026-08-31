@@ -90,8 +90,10 @@ func resolveCompletionConnection() completionConnection {
 func resolveCompletionToken(clusterID string) TokenCapability {
 	conn := resolveCompletionConnection()
 	if conn.ServerURL == "" {
+		completionDebugf("stop: no server URL (no current server in config and no RANCHER_CLI_URL)")
 		return TokenCapability{}
 	}
+	completionDebugf("connection: url=%s ca=%t", conn.ServerURL, conn.CACert != "")
 
 	// Validate the server URL before any stored-credential read. Completion
 	// is best-effort: an unsupported or malformed URL silently yields an
@@ -99,9 +101,11 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	// be safely used (AC-22: never trigger a helper exec for an invalid identity).
 	canonServerURL, csErr := credhelper.CanonicalServerURL(conn.ServerURL)
 	if csErr != nil {
+		completionDebugf("stop: server URL: %v", csErr)
 		return TokenCapability{}
 	}
 	if !config.IsSupportedScheme(canonServerURL) {
+		completionDebugf("stop: server URL scheme unsupported: %s", conn.ServerURL)
 		return TokenCapability{}
 	}
 
@@ -112,6 +116,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 
 	// AC-4: env token — full management capability.
 	if tok := os.Getenv(config.EnvToken); tok != "" {
+		completionDebugf("token: %s (full capability)", config.EnvToken)
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
@@ -122,11 +127,13 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	// name (round-2 finding 3: RANCHER_CLI_URL pointing at server B while config
 	// current server is A must not send A's token to B).
 	if tok := fileStoreTokenSilent(dir, conn.ServerURL); tok != "" {
+		completionDebugf("token: file credential store (full capability)")
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
 	// AC-6: exec-cred cache — downstream-scoped, ID-only.
 	if clusterID == "" {
+		completionDebugf("stop: no token: no %s, no file-store login for this URL, and no --cluster for the exec-credential cache", config.EnvToken)
 		return TokenCapability{}
 	}
 	serverID := canonServerURL
@@ -134,6 +141,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	// first file read; avoids a second parse of token-cache.yaml.
 	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID)
 	if err != nil {
+		completionDebugf("stop: exec-credential cache: %v", err)
 		return TokenCapability{}
 	}
 	// Exclude legacy:-prefixed cache entries before the single-entry ambiguity
@@ -152,12 +160,15 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	}
 	if len(native) != 1 {
 		// Missing, error, or ambiguous (AC-6a: multiple principals → skip).
+		completionDebugf("stop: no token: %d unexpired exec-credential cache entries for cluster %s (need exactly 1)", len(native), clusterID)
 		return TokenCapability{}
 	}
 	tok := native[0].Token
 	if tok == "" {
+		completionDebugf("stop: exec-credential cache entry for cluster %s has an empty token", clusterID)
 		return TokenCapability{}
 	}
+	completionDebugf("token: exec-credential cache for cluster %s (id-only capability)", clusterID)
 	return TokenCapability{Token: tok, IDOnly: true, ServerURL: conn.ServerURL, CACert: conn.CACert}
 }
 
@@ -172,6 +183,13 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 //
 // effectiveURL is the resolved server URL from resolveCompletionConnection;
 // it may differ from the stored current server's URL when RANCHER_CLI_URL is set.
+//
+// The current server is the operator's own selection: when its URL is the
+// effective URL its token is used directly, exactly as an authenticated
+// command would. Several stored entries may legitimately share one URL
+// (re-logins under new names, per-CA variants), so the URL scan and its
+// ambiguity guard apply only when the effective URL points somewhere other
+// than the current server.
 func fileStoreTokenSilent(dir, effectiveURL string) string {
 	cfg := storedConfigSnapshot()
 	if cfg == nil || dir == "" || effectiveURL == "" {
@@ -182,7 +200,24 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	// AC-5: explicit file policy OR pin resolved to file — not unpinned auto.
 	isFile := policy == "file" || (policy == "auto" && pin == "file")
 	if !isFile {
+		completionDebugf("file store skipped: credential store policy=%s pin=%q (needs file)", policy, pin)
 		return ""
+	}
+
+	// The current server wins when its URL is the effective URL — the same
+	// priority internal/token's serverCandidateRank gives the
+	// authenticated-command path. Completion is deliberately STRICTER than
+	// that shared ranking: a current server without a stored token yields
+	// nothing, never a same-URL sibling's token, because completion runs
+	// silently and an unexpected identity could not be noticed or
+	// corrected the way an interactive command's output allows. A tie-break
+	// change to serverCandidateRank needs a matching decision here.
+	if name, cur, err := cfg.CurrentServerEntry(); err == nil && config.SameServerURL(cur.URL, effectiveURL) {
+		tok := config.ReadFileTokenSilent(dir, name)
+		if tok == "" {
+			completionDebugf("file store skipped: no login token stored for current server %q", name)
+		}
+		return tok
 	}
 
 	// Round-2 finding 3: find the server whose URL matches the effective URL.
@@ -193,12 +228,14 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 		if config.SameServerURL(srv.URL, effectiveURL) {
 			if matchName != "" {
 				// Ambiguous: two stored servers share the same URL — skip.
+				completionDebugf("file store skipped: servers %q and %q both have URL %s and neither is current", matchName, name, effectiveURL)
 				return ""
 			}
 			matchName = name
 		}
 	}
 	if matchName == "" {
+		completionDebugf("file store skipped: no stored server has URL %s", effectiveURL)
 		return ""
 	}
 	// Silent read: bypass NewFileStore.GetToken (which calls warnLoosePerm).
