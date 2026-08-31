@@ -63,8 +63,11 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 	t.Parallel()
 	plat := runtime.GOOS + "-" + runtime.GOARCH
 	cli, helper := "rancher-"+plat, "rancher-credential-vault-"+plat
-	mutations := map[string]func(sums string) string{
-		"missing helper entry": func(sums string) string {
+	mutations := map[string]struct {
+		mutate func(sums string) string
+		want   string
+	}{
+		"missing helper entry": {want: "SHA256SUMS must contain exactly one entry for " + helper + " (found 0)", mutate: func(sums string) string {
 			var keep []string
 			for l := range strings.SplitSeq(sums, "\n") {
 				if !strings.HasSuffix(l, "  "+helper) {
@@ -72,8 +75,8 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 				}
 			}
 			return strings.Join(keep, "\n")
-		},
-		"duplicate cli entry masking the helper": func(sums string) string {
+		}},
+		"duplicate cli entry masking the helper": {want: "SHA256SUMS must contain exactly one entry for " + cli + " (found 2)", mutate: func(sums string) string {
 			var out []string
 			for l := range strings.SplitSeq(sums, "\n") {
 				if strings.HasSuffix(l, "  "+helper) {
@@ -85,8 +88,8 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 				}
 			}
 			return strings.Join(out, "\n")
-		},
-		"missing cli entry": func(sums string) string {
+		}},
+		"missing cli entry": {want: "SHA256SUMS must contain exactly one entry for " + cli + " (found 0)", mutate: func(sums string) string {
 			var keep []string
 			for l := range strings.SplitSeq(sums, "\n") {
 				if !strings.HasSuffix(l, "  "+cli) {
@@ -94,8 +97,8 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 				}
 			}
 			return strings.Join(keep, "\n")
-		},
-		"duplicate helper entry masking the cli": func(sums string) string {
+		}},
+		"duplicate helper entry masking the cli": {want: "SHA256SUMS must contain exactly one entry for " + cli + " (found 0)", mutate: func(sums string) string {
 			var out []string
 			for l := range strings.SplitSeq(sums, "\n") {
 				if strings.HasSuffix(l, "  "+cli) {
@@ -107,17 +110,20 @@ func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 				}
 			}
 			return strings.Join(out, "\n")
-		},
+		}},
 	}
-	for name, mutate := range mutations {
+	// The wanted message names the asset the check fails on first: the CLI
+	// is checked before the helper, so a dropped CLI entry reports the CLI
+	// even when the helper entry is also wrong.
+	for name, tc := range mutations {
 		t.Run(name, func(t *testing.T) {
 			s := newStub(t)
 			writeRelease(s, "v1.2.3", false)
 			s.setLatest("v1.2.3")
-			s.setAsset("v1.2.3/SHA256SUMS", []byte(mutate(string(s.asset("v1.2.3/SHA256SUMS")))))
+			s.setAsset("v1.2.3/SHA256SUMS", []byte(tc.mutate(string(s.asset("v1.2.3/SHA256SUMS")))))
 			_, errOut, code := runInstall(t, s, nil)
 			require.NotEqual(t, 0, code)
-			assert.Contains(t, errOut, "exactly one entry")
+			assert.Contains(t, errOut, tc.want)
 		})
 	}
 }

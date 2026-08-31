@@ -275,11 +275,32 @@ func fakeUname(t *testing.T, kernel, machine string) string {
 	return dir
 }
 
+// stubAsset is one release binary the stub serves: its asset name and bytes.
+type stubAsset struct {
+	name string
+	body []byte
+}
+
 // writeRelease registers a release and, when published, its three assets:
 // fake "binaries" are tiny sh scripts so the epilogue's --version works.
 // It also populates assetByID (for the API asset endpoint) and releaseJSON
 // (for the single-release metadata endpoint) so private-mode installs work.
 func writeRelease(s *stub, tag string, draft bool) {
+	var assets []stubAsset
+	for _, name := range []string{"rancher", "rancher-credential-vault"} {
+		for _, plat := range installerPlatforms {
+			assets = append(assets, stubAsset{
+				name: name + "-" + plat,
+				body: []byte("#!/bin/sh\necho \"" + name + " version " + tag + "\"\n"),
+			})
+		}
+	}
+	registerRelease(s, tag, draft, assets)
+}
+
+// registerRelease stores a release's binaries under both download shapes,
+// generates its SHA256SUMS, and adds it to the metadata endpoints.
+func registerRelease(s *stub, tag string, draft bool, binaries []stubAsset) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if draft {
@@ -299,23 +320,19 @@ func writeRelease(s *stub, tag string, draft bool) {
 	var apiAssets []releaseAsset
 	var sums strings.Builder
 
-	for _, name := range []string{"rancher", "rancher-credential-vault"} {
-		for _, plat := range installerPlatforms {
-			assetName := name + "-" + plat
-			body := []byte("#!/bin/sh\necho \"" + name + " version " + tag + "\"\n")
-			s.assets[tag+"/"+assetName] = body
-			sum := sha256.Sum256(body)
-			fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), assetName)
+	for _, a := range binaries {
+		s.assets[tag+"/"+a.name] = a.body
+		sum := sha256.Sum256(a.body)
+		fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), a.name)
 
-			id := s.nextAssetID
-			s.nextAssetID++
-			s.assetByID[strconv.FormatInt(id, 10)] = body
-			apiAssets = append(apiAssets, releaseAsset{
-				URL:  s.srv.URL + "/repos/rancher/rancher-cli/releases/assets/" + strconv.FormatInt(id, 10),
-				Name: assetName,
-				ID:   id,
-			})
-		}
+		id := s.nextAssetID
+		s.nextAssetID++
+		s.assetByID[strconv.FormatInt(id, 10)] = a.body
+		apiAssets = append(apiAssets, releaseAsset{
+			URL:  s.srv.URL + "/repos/rancher/rancher-cli/releases/assets/" + strconv.FormatInt(id, 10),
+			Name: a.name,
+			ID:   id,
+		})
 	}
 
 	sumsBody := []byte(sums.String())
@@ -466,7 +483,8 @@ func docSnippet(t *testing.T, filename, anchorLine string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", filename))
 	require.NoError(t, err)
-	lines := strings.Split(string(b), "\n")
+	// A checkout with CRLF line endings must read the same as one with LF.
+	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
 	anchor := -1
 	for i, l := range lines {
 		if strings.HasPrefix(l, "    ") && strings.Contains(l, anchorLine) {
