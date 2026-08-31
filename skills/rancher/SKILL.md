@@ -166,8 +166,8 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 ```
 
 - A mutation without `--apply` is refused with `CONFIRMATION_REQUIRED`; the
-  error's `hint` names the exact flags to add. Relay the dry-run Effect (action,
-  target, diff) to the user before applying anything non-trivial.
+  error's `message` names the exact flags to add. Relay the dry-run Effect
+  (action, target, diff) to the user before applying anything non-trivial.
 - Patch previews include a field-level diff (`data.diff`) — show it.
 - `secret` diffs are redacted by design: `data`/`stringData` entries show the
   changed path but `from`/`to` are `<redacted>`, never the raw value.
@@ -274,9 +274,10 @@ a separate line to skip past.
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
 
-- Read the `hint` — it is short guidance, often naming the exact missing
-  flag or a suggested command. It is only paste-valid verbatim when it
-  carries concrete, already-known values; inspect it before running it,
+- Read the `hint` — when present, it is exactly one paste-valid command
+  carrying only concrete, already-known values. When the CLI has no
+  concrete value to offer, there is no `hint` field at all — the guidance
+  lives in `message` instead. Inspect a present hint before running it,
   the same as any other emitted text — do not execute it blindly.
 - `retryable: true` (timeouts, conflicts) → retry is reasonable; otherwise do
   not repeat the identical call.

@@ -510,16 +510,15 @@ terminal.
 
 ## Machine hints
 
-An error's `data.error.hint` field, when present, is short operator
-guidance — it MAY be a runnable command targeting POSIX sh, but is not
-guaranteed to be one: today's corpus includes bare commands alongside
-prose, `<placeholder>` values, `[optional]` flags, and OR alternatives.
-Hints must be valid verbatim where they carry only concrete,
-already-known values; guidance that needs a value the CLI does not have
-(an unknown URL, a name that does not exist) goes in the message body
-instead, with no `hint` field at all. Agents must not execute a hint
-blindly — inspect it the same way any other emitted text is inspected
-before treating it as argv. Windows agents adapt a runnable hint
+An error's `data.error.hint` field, when present, is exactly one
+paste-valid command targeting POSIX sh, carrying only concrete,
+already-known values — never prose, a `<placeholder>`, an `[optional]`
+flag, or an "X or Y" alternative. Guidance that needs a value the CLI
+does not have (an unknown URL, a name that does not exist) goes in the
+message body instead, with no `hint` field at all: the field's absence is
+itself informative — nothing here is safe to run as-is. Agents may
+execute a present hint after the same inspection any other emitted text
+gets before being treated as argv. Windows agents adapt a runnable hint
 themselves — the same posture as the rest of the machine contract.
 
 ## Read-only mode
