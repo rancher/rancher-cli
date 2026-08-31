@@ -567,17 +567,18 @@ func TestTableWideColumnsAndRowsOrder(t *testing.T) {
 func TestShippedColumnRows(t *testing.T) {
 	t.Parallel()
 
-	t.Run("project BACKING-NS", func(t *testing.T) {
+	t.Run("project BACKING-NS default, DESCRIPTION wide", func(t *testing.T) {
 		t.Parallel()
 		k, ok := kinds.Lookup("project")
 		require.True(t, ok)
 		obj := unstructured.Unstructured{Object: map[string]any{
 			"metadata": map[string]any{"name": "p-1"},
-			"spec":     map[string]any{"displayName": "Default", "clusterName": "c-x"},
+			"spec":     map[string]any{"displayName": "Default", "clusterName": "c-x", "description": "team workloads"},
 			"status":   map[string]any{"backingNamespace": "c-x-p-1"},
 		}}
 		tab := newTable(k, []unstructured.Unstructured{obj}, false)
 		assert.Equal(t, []string{"p-1", "Default", "c-x", "c-x-p-1", ""}, tab.Rows()[0])
+		assert.Equal(t, []string{"p-1", "Default", "c-x", "c-x-p-1", "team workloads", ""}, tab.WideRows()[0])
 	})
 
 	t.Run("node STATUS/VERSION default, OS-IMAGE wide", func(t *testing.T) {

@@ -318,6 +318,7 @@ var table = []Kind{
 			{Header: "DISPLAY", Path: []string{"spec", "displayName"}},
 			{Header: "CLUSTER", Path: []string{"spec", "clusterName"}},
 			{Header: "BACKING-NS", Path: []string{"status", "backingNamespace"}},
+			{Header: "DESCRIPTION", Path: []string{"spec", "description"}, Wide: true},
 		},
 	},
 	{
