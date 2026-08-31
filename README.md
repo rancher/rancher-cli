@@ -30,27 +30,36 @@ operators get the same commands with readable table output.
 
     curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh | sh
 
+On Windows (PowerShell 7 or Windows PowerShell 5.1):
+
+    irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1 | iex
+
 > [!NOTE]
-> While the repository is internal the anonymous form above fails. Use
+> While the repository is internal the anonymous forms above fail. Use
 > `gh` instead (authenticated once via `gh auth login`) — the installer
 > picks up gh's token automatically, and it never appears in process
 > arguments:
 
     gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre
 
-`--pre` selects the newest prerelease — early access ships prereleases
-only; drop it once a stable release exists. Prerelease resolution needs
-`jq` or `python3` on PATH.
+PowerShell:
+
+    iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre"
+
+`--pre` (`-Pre` in PowerShell) selects the newest prerelease — early
+access ships prereleases only; drop it once a stable release exists.
+Prerelease resolution on Linux and macOS needs `jq` or `python3` on PATH.
 
 Without `gh`, the token-authenticated download-then-run form is in
 [REFERENCE.md](REFERENCE.md#defensive-bootstrap).
 
-Both install the `rancher` CLI and its credential helper to `~/.local/bin`
-(rootless, no shell-profile edits; the script prints the `PATH` line if
-needed). Checksums are always verified; build provenance is verified when
-an authenticated `gh` CLI is available. The script covers Linux and macOS —
-on Windows, see [REFERENCE.md](REFERENCE.md#windows) for the manual install
-steps. The CLI supports Rancher `>= 2.14`
+On Linux and macOS both forms install the `rancher` CLI and its credential
+helper to `~/.local/bin`; on Windows to `%LOCALAPPDATA%\rancher-cli\bin`
+(rootless, no admin rights, no profile or `PATH` edits; the script prints
+the `PATH` line if needed). Checksums are always verified; build
+provenance is verified when an authenticated `gh` CLI is available. The
+by-hand Windows steps stay in [REFERENCE.md](REFERENCE.md#windows) as a
+fallback. The CLI supports Rancher `>= 2.14`
 ([details](REFERENCE.md#supported-server-version)); install internals and
 manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 
@@ -66,6 +75,13 @@ provenance verification mandatory, `--dry-run` prints the plan without
 writing anything, `-q` suppresses progress notes. Set `GH_TOKEN` or
 `GITHUB_TOKEN` for internal or rate-limited use.
 
+PowerShell takes the same options as parameters — `-Version <tag>`,
+`-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`, `-Quiet` — with
+the same env twins. The pipe form cannot pass parameters; wrap the script
+in a scriptblock instead:
+
+    iex "& { $(irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1) } -Pre"
+
 </details>
 
 <details>
@@ -73,11 +89,15 @@ writing anything, `-q` suppresses progress notes. Set `GH_TOKEN` or
 
 To update, rerun the install command — resolution finds the newer release
 and the switch is atomic. To downgrade or roll back, rerun with
-`--version <tag>`.
+`--version <tag>` (`-Version <tag>`).
 
-Uninstall: remove the `rancher` and `rancher-credential-vault` symlinks
-from your bin dir, `~/.local/share/rancher-cli`, and
-`~/.config/rancher-cli/install-receipt.json`.
+Uninstall on Linux and macOS: remove the `rancher` and
+`rancher-credential-vault` symlinks from your bin dir,
+`~/.local/share/rancher-cli`, and
+`~/.config/rancher-cli/install-receipt.json`. On Windows: remove
+`%LOCALAPPDATA%\rancher-cli` (the `bin` junction and the version
+directories), `%APPDATA%\rancher-cli\install-receipt.json`, and the `PATH`
+entry you added.
 
 </details>
 

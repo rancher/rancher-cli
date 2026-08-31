@@ -69,3 +69,21 @@ jobs:
           key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
       - run: make e2e
         timeout-minutes: 20
+  install-windows:
+    # The installer's behavior and security tests (token handling,
+    # checksums, the atomic junction switch) only execute on Windows —
+    # everywhere else they skip, so without this job they would never
+    # run in CI.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Only the Windows suite: the package's POSIX-sh installer tests
+      # assume sh/symlink semantics and fail on a Windows runner. -race
+      # per the repo's testing mandate (the runner ships gcc).
+      - run: go test -race -count=1 -run TestWindows ./install/

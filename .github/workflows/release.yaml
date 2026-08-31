@@ -87,7 +87,7 @@ jobs:
           # install.sh ships as a versioned release asset too: checksummed
           # and attested like the binaries. raw@main stays the canonical
           # living copy; this is the pinned, auditable one.
-          cp install.sh dist/
+          cp install.sh install.ps1 dist/
           (cd dist && sha256sum -- * > SHA256SUMS)
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
@@ -95,6 +95,7 @@ jobs:
           subject-path: |
             dist/rancher-*
             dist/install.sh
+            dist/install.ps1
       - name: Create draft release or attach assets to an existing one
         env:
           GH_TOKEN: ${{ github.token }}

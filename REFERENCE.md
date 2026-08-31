@@ -87,6 +87,22 @@ records what is installed; rerunning the installer silently replaces
 managed links and prints a notice when taking over a previous manual
 installation.
 
+`install.ps1` keeps the same layout under `%LOCALAPPDATA%\rancher-cli`:
+each release lands in `versions\<tag>\` as `rancher.exe` and
+`rancher-credential-vault.exe`, and the `bin` directory (the one to put on
+`PATH`) is an NTFS junction to the current version. A junction needs no
+admin rights and no developer mode, and the installer switches it by
+creating a new junction beside it and renaming that over the old one in a
+single operation — both binaries change together, and a kill at any point
+leaves either the old pair or the new pair in place, never neither. The
+receipt lives at `%APPDATA%\rancher-cli\install-receipt.json`. `-BinDir`
+moves the junction, so the directory it names must be new, empty, or hold
+only a prior by-hand `rancher.exe`/`rancher-credential-vault.exe` pair,
+which the installer takes over with a notice. Unlike `install.sh`, which
+links each binary into a shared directory such as `~/.local/bin`,
+`-BinDir` on Windows must name a dedicated directory: the whole directory
+becomes the version junction.
+
 Checksums (`SHA256SUMS`) are always verified. Build provenance is
 verified when an authenticated `gh` CLI is available, and
 `--verify-attestation` makes that verification mandatory instead of
@@ -111,10 +127,10 @@ to the installed binary. A version change is named at the switch:
 upgrades as a note, downgrades as a warning — rollback stays a
 one-command flow, it is just never silent.
 
-Each release carries its own fixed `install.sh` as a release asset
-(checksummed and attested like every other asset); the raw
-`https://raw.githubusercontent.com/…/main/install.sh` URL always serves
-the current copy from `main`.
+Each release carries its own fixed `install.sh` and `install.ps1` as
+release assets, checksummed and attested like every other asset; the raw
+`https://raw.githubusercontent.com/…/main/install.sh` and `…/install.ps1`
+URLs always serve the current copy from `main`.
 
 ### Defensive bootstrap
 
@@ -165,7 +181,33 @@ against `SHA256SUMS`, and (optionally) verify provenance with
 
 #### Windows
 
-`install.sh` covers Linux and macOS only; on Windows, install by hand:
+`install.sh` covers Linux and macOS only; on Windows, run the PowerShell
+installer (PowerShell 7 or Windows PowerShell 5.1):
+
+    irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1 | iex
+
+It verifies both binaries against `SHA256SUMS`, verifies build provenance
+when an authenticated `gh` is available (`-VerifyAttestation` makes that
+mandatory), installs under `%LOCALAPPDATA%\rancher-cli`, and prints the
+`PATH` line to add — it never edits `PATH` itself. Its atomic switch
+to a new version relies on a directory rename that requires Windows 10
+version 1607 / Windows Server 2016 or later. Parameters
+(`-Version <tag>`, `-Pre`, `-BinDir <dir>`, `-VerifyAttestation`,
+`-DryRun`, `-Quiet`) go through the scriptblock form:
+
+    iex "& { $(irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1) } -Version v1.2.3"
+
+While the repository is internal, fetch the script through `gh` instead
+(the installer then reuses gh's token for the release assets):
+
+    iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre"
+
+Like `install.sh`, the whole script lives inside a function invoked on its
+last line, so a truncated download either fails to parse or runs nothing.
+
+##### By hand
+
+If the installer cannot be used, install by hand:
 
 1. Download the `windows` release assets: the CLI binary and
    `rancher-credential-vault`.
