@@ -105,7 +105,13 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("creating temp dir: " + err.Error())
 	}
-	binPath = filepath.Join(tmp, "rancher")
+	// Scripts invoke "rancher" through PATH; on Windows the built binary
+	// must carry the .exe suffix or exec never resolves it.
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	binPath = filepath.Join(tmp, "rancher"+ext)
 
 	// Building the binary and starting envtest have no data dependency on
 	// each other — run them concurrently so `make e2e` pays max(build,
@@ -117,10 +123,6 @@ func TestMain(m *testing.M) {
 		// root with the main package is one level up.
 		if out, err := exec.Command("go", "build", "-o", binPath, "..").CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
-		}
-		ext := ""
-		if runtime.GOOS == "windows" {
-			ext = ".exe"
 		}
 		fakeBin := filepath.Join(tmp, "rancher-credential-fake"+ext)
 		if out, err := exec.Command("go", "build", "-o", fakeBin,
@@ -395,6 +397,7 @@ func TestScenarios(t *testing.T) {
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 			"jsonquery":     cmdJSONQuery,
+			"pathmatch":     cmdPathmatch,
 			"flipstatus":    cmdFlipStatus,
 			"rawget":        cmdRawGet,
 			"seedexeccache": cmdSeedExecCache,

@@ -4,6 +4,12 @@
 # fast instead of hanging.
 [darwin] skip 'keychain probe hangs under the testscript HOME sandbox'
 
+# Windows always exposes a usable native credential store (wincred), so the
+# plaintext-fallback branch this script pins can never run there. The
+# usable-branch coverage is TestLoginSequenceFreshAutoUsableKeychain, the
+# same compensating unit test the darwin skip leans on.
+[windows] skip 'wincred is always usable, so auto never falls back to file'
+
 # E2E-A-003: clears Setup's RANCHER_CLI_CREDENTIAL_STORE=file default so the
 # "auto" pin path actually runs — a script-side exemption since
 # testscript.Env carries no script name for Setup to special-case.

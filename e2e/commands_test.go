@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,6 +53,26 @@ func cmdJSONQuery(ts *testscript.TestScript, neg bool, args []string) {
 			ts.Fatalf("jsonquery %s %q: got %q, want anything but %q", file, path, got, want)
 		}
 		ts.Fatalf("jsonquery %s %q: got %q, want %q", file, path, got, want)
+	}
+}
+
+// cmdPathmatch asserts the named output stream contains a file path:
+// pathmatch <stdout|stderr> <path>. The path argument is compared with its
+// separators converted to the native form — the stdout/stderr assertions
+// are regexps, and a Windows path's backslashes are invalid escapes there,
+// so a script asserting on a printed native path needs this command to stay
+// portable.
+func cmdPathmatch(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 2 || (args[0] != "stdout" && args[0] != "stderr") {
+		ts.Fatalf("usage: pathmatch <stdout|stderr> <path>")
+	}
+	stream, want := args[0], filepath.FromSlash(args[1])
+	got := ts.ReadFile(stream)
+	if match := strings.Contains(got, want); match == neg {
+		if neg {
+			ts.Fatalf("pathmatch %s: %q unexpectedly contains %q", stream, got, want)
+		}
+		ts.Fatalf("pathmatch %s: %q does not contain %q", stream, got, want)
 	}
 }
 

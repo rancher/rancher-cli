@@ -6,7 +6,7 @@ env RANCHER_CLI_CREDENTIAL_STORE=file
 # config path: prints the resolved path whether or not the file exists yet.
 ! exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config path
-stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
+pathmatch stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher config path -o json
 jsonquery stdout data.exists false
@@ -50,7 +50,7 @@ jsonquery stdout data.currentServer ''
 ! exec rancher config edit
 stderr 'error \(VALIDATION\):'
 stderr 'TTY'
-stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
+pathmatch stderr $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # config add-server: establishes trust, records the entry, and bootstraps
 # the current-server pointer (empty here, after the delete-server above).

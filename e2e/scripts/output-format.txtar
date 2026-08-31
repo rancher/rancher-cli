@@ -18,4 +18,4 @@ stderr 'error \(VALIDATION\):'
 # config path's data carries {path, exists}, so {{.path}} prints the resolved
 # config file path.
 exec rancher config path -o template={{.path}}
-stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
+pathmatch stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
