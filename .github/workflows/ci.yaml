@@ -87,3 +87,30 @@ jobs:
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
       - run: go test -race -count=1 -run TestWindows ./install/
+
+  e2e-windows:
+    # The same suite as the e2e job, on the platform whose exec, path,
+    # and credential-store semantics differ: the harness resolves
+    # rancher.exe, pathmatch compares native separators, and scenario
+    # skips gate what cannot occur here. Without this leg the suite's
+    # Windows support can only regress silently between Windows runs.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # Before checkout: the e2e goldens and txtar fixtures are
+      # byte-compared, so a CRLF working tree fails them by
+      # construction.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cache envtest assets
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~\AppData\Local\kubebuilder-envtest
+          key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
+      - run: bash scripts/e2e
+        timeout-minutes: 25
