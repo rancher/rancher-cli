@@ -31,11 +31,18 @@ import (
 //   - credhelper/serve.go and cmd/rancher-credential-vault/main.go: each is
 //     its OWN process, invoked by kubectl (or a credential helper caller)
 //     as a subprocess — no envelope exists there to carry anything.
+//   - surface/cli/completion_debug.go: the opt-in completion trace runs in
+//     the shell's completion child and must observe phases from process
+//     start (config load included), before any runtime.IO exists; the
+//     shell protocol owns stdout, so raw stderr is the only channel, and
+//     the trace is inert unless RANCHER_CLI_COMPLETION_DEBUG is set during
+//     an active completion request.
 var stderrAllowlist = map[string]bool{
 	"main.go":                              true,
 	"internal/commands/config_edit.go":     true,
 	"credhelper/serve.go":                  true,
 	"cmd/rancher-credential-vault/main.go": true,
+	"surface/cli/completion_debug.go":      true,
 }
 
 // skipDirNames are walked over but never descended into: VCS/build

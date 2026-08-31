@@ -9090,6 +9090,10 @@
       "name": "RANCHER_CLI_CONFIG_NO_LOCK"
     },
     {
+      "desc": "when non-empty, trace each phase of a shell completion request to stderr (config load, token source, budget, requests, candidate count); stdout is unchanged",
+      "name": "RANCHER_CLI_COMPLETION_DEBUG"
+    },
+    {
       "desc": "OAuth flow: devicecode or authcode",
       "flag": "--auth-flow",
       "name": "RANCHER_CLI_OAUTH_AUTH_FLOW"

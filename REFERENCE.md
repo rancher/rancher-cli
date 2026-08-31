@@ -66,6 +66,7 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
 | `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
+| `RANCHER_CLI_COMPLETION_DEBUG` | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
 
 Scope is per-invocation: `--cluster` routes to a downstream cluster; `--project`
 filters namespaced kinds. No scope is persisted or ambient — see
@@ -223,6 +224,17 @@ completions are available given your current auth setup.
 The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 
     rancher config set-completion --timeout=1s
+
+Live completion degrades to no candidates on any failure — an expired token,
+a slow server, a URL the credential store cannot match — without a message.
+To see why, run the request the shell script issues with tracing on; every
+phase prints one timed line on stderr and stdout stays exactly what the
+shell would receive:
+
+    RANCHER_CLI_COMPLETION_DEBUG=1 rancher --rancher-completion-proto=2 get cluster --rancher-completion-cur= --generate-shell-completion
+
+PowerShell: `$env:RANCHER_CLI_COMPLETION_DEBUG = "1"` first, then the same
+command.
 
 ## Project scope (--project)
 

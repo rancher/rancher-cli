@@ -128,6 +128,7 @@ func EnvVars() []EnvVar {
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
 		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},
 		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking"},
+		{Name: "RANCHER_CLI_COMPLETION_DEBUG", Desc: "when non-empty, trace each phase of a shell completion request to stderr (config load, token source, budget, requests, candidate count); stdout is unchanged"},
 		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
 		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_AUTH_FLOW"},

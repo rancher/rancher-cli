@@ -24,4 +24,11 @@ const (
 	// write lock (the in-process serialization stays). Escape hatch for
 	// filesystems with broken advisory locking.
 	EnvConfigNoLock = "RANCHER_CLI_CONFIG_NO_LOCK"
+
+	// EnvCompletionDebug, when non-empty, makes a shell completion request
+	// write one line per phase (config load, token source, HTTP budget,
+	// each request, candidate count) to stderr. Completion is silent-empty
+	// on every failure by design; this is the only way to see why without
+	// a source build. Stdout is unaffected.
+	EnvCompletionDebug = "RANCHER_CLI_COMPLETION_DEBUG"
 )

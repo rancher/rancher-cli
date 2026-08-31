@@ -129,10 +129,13 @@ func getJSON(ctx context.Context, hc *http.Client, token, url string, dst any) e
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Accept", "application/json")
+	start := time.Now()
 	resp, body, err := httpx.Do(hc, req)
 	if err != nil {
+		completionDebugf("GET %s: %v (%s)", url, err, time.Since(start).Round(time.Millisecond))
 		return err
 	}
+	completionDebugf("GET %s: HTTP %d, %d bytes (%s)", url, resp.StatusCode, len(body), time.Since(start).Round(time.Millisecond))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}

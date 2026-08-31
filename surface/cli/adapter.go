@@ -162,10 +162,15 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 	if dir, err := config.ResolveDir(c.String("config")); err == nil {
 		if cfg, err := config.Load(config.FilePath(dir)); err == nil {
 			setStoredConfig(cfg, dir) // single load shared with completion (AC-19)
+			completionDebugf("config loaded: dir=%s currentServer=%q servers=%d", dir, cfg.CurrentServer, len(cfg.Servers))
 			if cfg.ReadOnly {
 				sources = append(sources, "config readOnly")
 			}
+		} else {
+			completionDebugf("config load failed: %v", err)
 		}
+	} else {
+		completionDebugf("config dir resolve failed: %v", err)
 	}
 	if os.Getenv(config.EnvReadOnly) != "" {
 		sources = append(sources, config.EnvReadOnly)

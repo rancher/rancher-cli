@@ -235,9 +235,12 @@ func dispatchSite(
 
 	// Layer 3: live (gated).
 	if !completionNetworkEnabled() {
+		completionDebugf("live completion off: enable with: rancher config set-completion --network=true")
 		return nil
 	}
-	return liveCandidates(ctx, site, d, c, tail)
+	cands := liveCandidates(ctx, site, d, c, tail)
+	completionDebugf("done: %d candidates", len(cands))
+	return cands
 }
 
 // enumCandidates returns static enum candidates for a flag-value site.
@@ -356,6 +359,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// REST path. A value containing "/" or other non-DNS characters fails here;
 	// the whole dispatch returns nil (fail closed, zero requests).
 	if clusterValue != "" && !isValidSegment(clusterValue) {
+		completionDebugf("stop: --cluster value %q is not a valid path segment", clusterValue)
 		return nil
 	}
 
@@ -363,11 +367,12 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// and none resolves, return nil with ZERO requests. This prevents
 	// /k8s/clusters//... calls (an empty cluster ID in the URL).
 	if siteNeedsCluster(site, d) && clusterValue == "" {
+		completionDebugf("stop: site needs --cluster and none was typed")
 		return nil
 	}
 
 	// Apply deadline (AC-24).
-	ctx, cancel := context.WithTimeout(ctx, completionTimeout())
+	ctx, cancel := completionDeadline(ctx)
 	defer cancel()
 
 	cap := resolveCompletionToken(clusterValue)
@@ -378,6 +383,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// Finding 9: build ONE HTTP client per dispatch (not per fetch call).
 	hc, err := newCompletionClient(cap.CACert)
 	if err != nil {
+		completionDebugf("stop: HTTP client: %v", err)
 		return nil
 	}
 
@@ -394,6 +400,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 			resolvedClusterID = id
 		} else {
 			// Display name unresolvable: can't continue for cluster-dependent site.
+			completionDebugf("stop: cluster display name %q did not resolve to one id", clusterValue)
 			return nil
 		}
 	}
@@ -606,7 +613,7 @@ func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descr
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, completionTimeout())
+	ctx, cancel := completionDeadline(ctx)
 	defer cancel()
 
 	cap := resolveCompletionToken(clusterID)
@@ -615,6 +622,7 @@ func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descr
 	}
 	hc, err := newCompletionClient(cap.CACert)
 	if err != nil {
+		completionDebugf("stop: HTTP client: %v", err)
 		return nil
 	}
 
