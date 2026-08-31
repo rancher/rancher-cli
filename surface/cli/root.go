@@ -167,6 +167,17 @@ func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
 // clusterregistrationtoken (Task 5, spec D-4): get is a Steve /v1 read (the
 // only place the real token is spliced into the command/manifest fields);
 // patch is refused outright — the row is read-only surface.
+// featureRestartWarning returns the advisory for a feature whose read
+// status.dynamic is false: the server must restart to apply the change, and
+// until it has come back the next command can fail confusingly.
+func featureRestartWarning(orig *unstructured.Unstructured) (string, bool) {
+	dynamic, found, _ := unstructured.NestedBool(orig.Object, "status", "dynamic")
+	if !found || dynamic {
+		return "", false
+	}
+	return "this feature flag is not dynamic: the server restarts itself to apply it — wait for the server to come back before running more commands", true
+}
+
 var kindOverrideTable = map[string]kindOverride{
 	"clusterregistrationtoken": {
 		get:      func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
@@ -182,6 +193,19 @@ var kindOverrideTable = map[string]kindOverride{
 			return managementtoken.NewDeleteGuard(k, d.clients, d.sessionNamer)
 		},
 		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
+	},
+	// feature: patching a flag whose status.dynamic is false takes effect
+	// only after the server restarts itself — on a single-node server that
+	// is a real outage window, and the CLI otherwise says nothing. Advisory
+	// only, never a gate.
+	"feature": {
+		patch: func(k kinds.Kind, d runDeps) runtime.Command {
+			return resources.NewPatch(k, d.clients, d.src, func(orig, _ *unstructured.Unstructured, eff *safety.Effect) {
+				if w, ok := featureRestartWarning(orig); ok {
+					eff.Warnings = append(eff.Warnings, w)
+				}
+			})
+		},
 	},
 	// user: delete adds a cascade warning (Rancher controllers remove the
 	// user's role bindings when the user goes) and a self-delete guard that

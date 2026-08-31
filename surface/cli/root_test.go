@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"maps"
 	"os"
 	"path/filepath"
@@ -1209,5 +1210,42 @@ func TestCreateOpBindingsTrackKindRows(t *testing.T) {
 		b, ok := resolver.Resolve(op)
 		require.True(t, ok, op)
 		assert.Equal(t, row.Binding, b, "op %q must track the %q row's Binding", op, key)
+	}
+}
+
+// TestFeaturePatchWarnsWhenFlagIsNotDynamic asserts the feature kind's
+// patch override wires the restart advisory: a read status.dynamic of
+// false yields the warning, true or absent yields none, and the override
+// table actually carries a feature patch entry.
+func TestFeaturePatchWarnsWhenFlagIsNotDynamic(t *testing.T) {
+	t.Parallel()
+	require.NotNil(t, kindOverrideTable["feature"].patch, "the feature kind must override patch to carry the restart advisory")
+
+	obj := func(status map[string]any) *unstructured.Unstructured {
+		o := map[string]any{"apiVersion": "management.cattle.io/v3", "kind": "Feature"}
+		if status != nil {
+			o["status"] = status
+		}
+		return &unstructured.Unstructured{Object: o}
+	}
+	for _, tc := range []struct {
+		name   string
+		orig   *unstructured.Unstructured
+		warned bool
+	}{
+		{"non-dynamic flag warns", obj(map[string]any{"dynamic": false}), true},
+		{"dynamic flag stays silent", obj(map[string]any{"dynamic": true}), false},
+		{"absent field stays silent", obj(nil), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w, ok := featureRestartWarning(tc.orig)
+			assert.Equal(t, tc.warned, ok)
+			if tc.warned {
+				assert.Contains(t, w, "restarts itself to apply it")
+			} else {
+				assert.Empty(t, w)
+			}
+		})
 	}
 }
