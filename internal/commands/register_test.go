@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -150,7 +151,8 @@ func TestCommitCreateAbsentNamePathDisappearsBetweenProbeAndCommit(t *testing.T)
 	// must name the underlying error, so an operator can tell a transient
 	// read failure from real concurrent drift instead of guessing from
 	// unrelated timing.
-	assert.Contains(t, ce.Message, "no such file", "the underlying resolution error is named, not just \"CA content changed\"")
+	assert.Contains(t, ce.Message, fmt.Sprintf("reading CA file %q", path),
+		"the underlying resolution error is named, not just \"CA content changed\"")
 }
 
 func TestCommitCreateExistingIdenticalIsEntryNoOpPointerValid(t *testing.T) {
