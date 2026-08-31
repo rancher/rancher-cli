@@ -70,8 +70,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// missing --cluster first, but Execute must be safe when called directly.
 	id := in.String("cluster")
 	if id == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required").
-			WithHint("pass --cluster <id|name>")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 	id, err = c.clients.ResolveCluster(ctx, id)
 	if err != nil {

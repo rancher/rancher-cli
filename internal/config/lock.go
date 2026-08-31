@@ -170,9 +170,10 @@ func lockWaitError(err error, stage lockWaitStage) error {
 	if stage == lockWaitInProcess {
 		msg = "waiting for the configuration lock held by this same process (a concurrent goroutine, or a nested WithLock call — a bug): "
 	}
-	return clierr.Retryable(clierr.CodeLockTimeout, msg+err.Error()).
+	return clierr.Retryable(clierr.CodeLockTimeout,
+		msg+err.Error()+" — on a filesystem with broken file locking, skip the flock with RANCHER_CLI_CONFIG_NO_LOCK=1").
 		WithCause(err).
-		WithHint("set RANCHER_CLI_CONFIG_NO_LOCK=1 to skip the flock on filesystems with broken file locking")
+		WithHint("export RANCHER_CLI_CONFIG_NO_LOCK=1")
 }
 
 // waitForFlock acquires the flock at path, polling every poll interval until

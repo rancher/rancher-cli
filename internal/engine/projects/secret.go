@@ -20,11 +20,11 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 // parseLiteralPairs parses a comma-separated k=v list for --from-literal.
 // Unlike quota pairs, an empty value is valid (e.g. an intentionally blank
 // secret entry). Values containing a comma can't be expressed this way —
-// the VALIDATION hint points at create resource -f instead.
+// the VALIDATION message points at create resource -f instead.
 func parseLiteralPairs(s string) (map[string]any, error) {
 	return parsePairs(s, true, func(pair string) error {
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed --from-literal pair %q", pair)).
-			WithHint("pass key=value pairs; for values containing a comma use `create resource -f` instead")
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("malformed --from-literal pair %q; pass key=value pairs, or for values containing a comma use `create resource -f` instead", pair))
 	})
 }
 
@@ -70,7 +70,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	name := args[0]
 
@@ -78,12 +78,11 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	projectFlag := in.String("project")
 	nsFlag := in.String("namespace")
 	if projectScoped && projectFlag == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--project is required with --project-scoped").
-			WithHint("pass --project <id|name>")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--project is required with --project-scoped")
 	}
 	if projectScoped && nsFlag != "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--namespace cannot be combined with --project-scoped").
-			WithHint("project-scoped secrets are written into the project's backing namespace")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"--namespace cannot be combined with --project-scoped; project-scoped secrets are written into the project's backing namespace")
 	}
 
 	var stringData map[string]any
@@ -155,8 +154,8 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 
 	if nsFlag == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--namespace is required").
-			WithHint("pass --namespace <namespace>, or --project/--project-scoped for a project-scoped secret")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"--namespace is required, or pass --project with --project-scoped for a project-scoped secret")
 	}
 	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {

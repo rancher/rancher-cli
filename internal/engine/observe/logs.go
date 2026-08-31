@@ -70,8 +70,8 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	// callers (this package's own tests included) that bypass the pipeline.
 	target, ok := Lookup(name)
 	if !ok {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown log target %q", name)).
-			WithHint(fmt.Sprintf("choose one of: %s", strings.Join(Names(), ", ")))
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("unknown log target %q; choose one of: %s", name, strings.Join(Names(), ", ")))
 	}
 
 	tail, err := parseTailFlag(in.String(flagTail))
@@ -129,8 +129,8 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 
 	if len(entries) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeNotFound,
-			fmt.Sprintf("no logs available for target %q in namespace %s on cluster %s", target.Name, resolved.Namespace, resolved.ClusterID)).
-			WithHint("confirm the target is running, or check the warnings for per-pod fetch failures")
+			fmt.Sprintf("no logs available for target %q in namespace %s on cluster %s; confirm the target is running, or check the warnings for per-pod fetch failures",
+				target.Name, resolved.Namespace, resolved.ClusterID))
 	}
 
 	return runtime.Result{
@@ -153,8 +153,7 @@ func parseTailFlag(raw string) (*int64, error) {
 	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
 		return nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--tail %q is not a valid non-negative integer", raw)).
-			WithHint("pass --tail <N>")
+			fmt.Sprintf("--tail %q is not a valid non-negative integer", raw))
 	}
 	return &n, nil
 }
@@ -173,8 +172,8 @@ func parseSinceFlag(raw string) (*int64, error) {
 		return nil, err
 	}
 	if d == 0 {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("--since %q must be greater than zero", raw)).
-			WithHint("omit --since for no time limit, or pass a positive duration (30m, 2h)")
+		return nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--since %q must be greater than zero; omit --since for no time limit, or pass a positive duration (30m, 2h)", raw))
 	}
 	secs := int64(d.Seconds())
 	return &secs, nil
@@ -229,8 +228,7 @@ func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unst
 		cands[i] = clierr.Candidate{ID: n, Name: n}
 	}
 	return unstructured.Unstructured{}, clierr.New(clierr.CodeNotFound, fmt.Sprintf("pod %q not found", name)).
-		WithCandidates(cands).
-		WithHint("choose one of the listed pods")
+		WithCandidates(cands)
 }
 
 func podNames(pods []unstructured.Unstructured) []string {

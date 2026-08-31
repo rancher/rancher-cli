@@ -24,8 +24,7 @@ const FlagCluster = "cluster"
 func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
-		return "", clierr.New(clierr.CodeValidation, "--cluster is required").
-			WithHint("pass --cluster <id|name>")
+		return "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 	return clients.ResolveCluster(ctx, target)
 }

@@ -37,8 +37,8 @@ func (c *refusePatchCmd) Describe() runtime.Descriptor {
 
 func (c *refusePatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+": patch is not supported — writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it").
-		WithHint("use the Rancher API or UI to manage token fields")
+		c.k.Name+": patch is not supported — writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); "+
+			"the CLI does not bypass it; use the Rancher API or UI to manage token fields")
 }
 
 var _ runtime.MutatingCommand = (*refusePatchCmd)(nil)
@@ -125,8 +125,8 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return resources.PlanFromFetched(ctx, mgmt, c.k, ns, args[0], obj, effectCluster)
 	}
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		"refusing to delete "+c.k.Name+" "+args[0]+": this token backs the current CLI session — deleting it would cut off the CLI's own access mid-command").
-		WithHint("switch credentials first (re-login or set RANCHER_CLI_TOKEN), then delete this token from another session or the Rancher UI")
+		"refusing to delete "+c.k.Name+" "+args[0]+": this token backs the current CLI session — deleting it would cut off the CLI's own access mid-command; "+
+			"switch credentials first (re-login or set RANCHER_CLI_TOKEN), then delete this token from another session or the Rancher UI")
 }
 
 var _ runtime.MutatingCommand = (*deleteGuardCmd)(nil)

@@ -84,7 +84,7 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 				cands = append(cands, clierr.Candidate{ID: n, Name: n})
 			}
 			return clierr.New(clierr.CodeAmbiguousSelection, "server name required").
-				WithCandidates(cands).WithHint("rancher config use-server <name>")
+				WithCandidates(cands)
 		}
 		name = in.Args()[0]
 		if _, ok := cfg.Servers[name]; !ok {

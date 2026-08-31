@@ -107,8 +107,7 @@ func (c *getCRTCmd) Describe() runtime.Descriptor {
 
 func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	if in.Bool("wait") {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait is not supported for "+c.k.Name).
-			WithHint("omit --wait")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait is not supported for "+c.k.Name)
 	}
 	root, err := c.roots.Root()
 	if err != nil {
@@ -120,8 +119,7 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if named {
 		if ns == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--namespace is required to address a "+c.k.Name+" by name").
-				WithHint("pass --namespace <namespace>")
+				"--namespace is required to address a "+c.k.Name+" by name")
 		}
 		name := in.Args()[0]
 		path := crtCollectionPath + "/" + ns + "/" + name
@@ -198,8 +196,8 @@ func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
 
 func (c *refuseCRTPatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+" is read-only: patching a clusterregistrationtoken is not supported").
-		WithHint("registration tokens are consumed, not edited — create a new one instead")
+		c.k.Name+" is read-only: patching a clusterregistrationtoken is not supported; "+
+			"registration tokens are consumed, not edited — create a new one instead")
 }
 
 var _ runtime.MutatingCommand = (*refuseCRTPatchCmd)(nil)

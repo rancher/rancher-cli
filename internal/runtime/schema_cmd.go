@@ -157,8 +157,8 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	}
 	if len(in.Args()) == 0 {
 		if asKind {
-			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector").
-				WithHint("pass a kind name, e.g. `rancher schema kubeconfig --kind`")
+			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector, e.g. kubeconfig").
+				WithHint("rancher schema kubeconfig --kind")
 		}
 		text := renderTOC(m)
 		return Result{Kind: "Schema", Data: newTOCView(m, true), Text: text,
@@ -334,8 +334,8 @@ func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
 		with = "a schema selector"
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%s cannot combine with %s", strings.Join(f.describe(), ", "), with)).
-		WithHint("filters and --search search the whole surface; drop the selector or the filter")
+		fmt.Sprintf("%s cannot combine with %s; filters and --search search the whole surface — drop the selector or the filter",
+			strings.Join(f.describe(), ", "), with))
 }
 
 // allConflict constructs the --all selection-mode conflict error. mode names
@@ -411,17 +411,13 @@ func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 // list stops helping.
 const maxNearestMatches = 10
 
-// commandListHint, kindsArrayRef, kindsArrayHint, and dualListHint are SE-4's
-// reusable hint fragments. unknownSelection composes its per-mode hint from
-// these named constants so the tier hints (dual, kindOnly, command) share one
-// source of truth rather than inline literals. kindsArrayRef is the bare
-// reference fragment; kindsArrayHint and dualListHint both read as instructions
-// — each starts with the verb "run". Nearest-match candidates are a layer on
-// top of the tier hint, not a separate tier.
-const commandListHint = "run `rancher schema -o name` for the full command list"
-const kindsArrayRef = "`rancher schema -o json` — its kinds array lists every kind name"
-const kindsArrayHint = "run " + kindsArrayRef
-const dualListHint = commandListHint + ", or " + kindsArrayRef
+// commandListCmd and kindsArrayCmd are SE-4's two paste-valid pointers to the
+// full surface: -o name for the command list, -o json for the kinds array.
+// unknownSelection names both in its message when the miss is genuinely
+// ambiguous (no single command covers both), and carries the one that
+// applies as the Hint when the tier pins a single interpretation.
+const commandListCmd = "rancher schema -o name"
+const kindsArrayCmd = "rancher schema -o json"
 
 // unknownSelection builds SE-4's VALIDATION error for a positional that
 // matches nothing, listing nearest matches when any exist. Under --kind
@@ -430,18 +426,29 @@ const dualListHint = commandListHint + ", or " + kindsArrayRef
 func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	// Three ambiguity tiers: --kind pins the kind interpretation; a
 	// multi-token selector is command-shaped (kinds are single tokens,
-	// always) so the kind half of the dual hint is noise; only a bare
-	// single token is genuinely either.
+	// always) so the kind half of the dual guidance is noise; only a bare
+	// single token is genuinely either. The dual tier names both commands in
+	// the message — an "X or Y" pair is never a hint — while the other two
+	// tiers pin one command, which the Hint carries.
 	commandShaped := len(strings.Fields(want)) > 1
-	noun, hint := "command or kind", dualListHint
+	var noun, guidance, hint string
 	switch {
 	case kindOnly:
-		noun, hint = "kind", kindsArrayHint
+		noun = "kind"
+		guidance = "the kinds array (" + kindsArrayCmd + ") lists every kind name"
+		hint = kindsArrayCmd
 	case commandShaped:
-		noun, hint = "command", commandListHint
+		noun = "command"
+		guidance = "see the full command list: " + commandListCmd
+		hint = commandListCmd
+	default:
+		noun = "command or kind"
+		guidance = "see the full command list (" + commandListCmd + ") or the kinds array (" + kindsArrayCmd + ")"
 	}
-	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q", noun, want)).
-		WithHint(hint)
+	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q; %s", noun, want, guidance))
+	if hint != "" {
+		ce = ce.WithHint(hint)
+	}
 	matches := nearestSelectors(m, want, kindOnly, commandShaped)
 	if len(matches) == 0 {
 		return ce
@@ -450,8 +457,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	for i, name := range matches {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
-	nearestHint := fmt.Sprintf("nearest matches: %s — %s", strings.Join(matches, ", "), hint)
-	return ce.WithCandidates(cands).WithHint(nearestHint)
+	return ce.WithCandidates(cands)
 }
 
 // nearestSelectors finds SE-4's nearest matches: a case-insensitive substring

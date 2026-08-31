@@ -444,8 +444,8 @@ func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
 // not recomputed via machineConfigKindsHint(), which would restate the
 // production derivation (same independent-source doctrine as
 // TestMachineConfigKindsTracksKindsTable). The Desc is derived from the same
-// single source as the VALIDATION hint, so schema and hint can never drift;
-// this literal is the tripwire that a kind-table edit reaches both.
+// single source as the VALIDATION message, so schema and message can never
+// drift; this literal is the tripwire that a kind-table edit reaches both.
 func TestMachineConfigFlagDescListsClosedKindSet(t *testing.T) {
 	t.Parallel()
 	d := NewCreateCluster(fakeFactory{}, fakeRootFactory{}).Describe()

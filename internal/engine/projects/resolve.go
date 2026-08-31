@@ -126,14 +126,14 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 
 	return MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
 		"project not found: "+nameOrID,
-		fmt.Sprintf("run: rancher get projects --cluster %s", clusterID),
+		fmt.Sprintf("rancher get projects --cluster %s", clierr.ShellQuote(clusterID)),
 		func(idFound bool, displayMatchCount int) string {
 			if idFound {
-				return fmt.Sprintf("%q matches both a project id and a different project's display name", nameOrID)
+				return fmt.Sprintf("%q matches both a project id and a different project's display name; pass the project id", nameOrID)
 			}
-			return fmt.Sprintf("%d projects have display name %q", displayMatchCount, nameOrID)
+			return fmt.Sprintf("%d projects have display name %q; pass the project id", displayMatchCount, nameOrID)
 		},
-		"pass the project id")
+		"")
 }
 
 // ResolveByGet is the forbidden-list fallback shared by ResolveProject and
@@ -154,11 +154,12 @@ func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, n
 	var ge *clierr.Error
 	switch {
 	case errors.As(gerr, &ge) && ge.Code == clierr.CodeNotFound:
-		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID).
-			WithHint("you cannot list projects, so display names cannot be resolved — " +
-				"pass the exact project id (metadata.name)")
+		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID+
+			"; you cannot list projects, so display names cannot be resolved — "+
+			"pass the exact project id (metadata.name)")
 	case errors.As(gerr, &ge) && ge.Code == clierr.CodeRBAC:
-		return nil, listErr.WithHint("you cannot list projects; pass the exact project id " +
+		return nil, listErr.WithMessage(listErr.Message +
+			"; you cannot list projects; pass the exact project id " +
 			"(metadata.name) of a project you have access to")
 	default:
 		return nil, gerr
@@ -194,12 +195,13 @@ func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, 
 // NotMemberError builds the canonical "namespace is not in project"
 // VALIDATION error: the message format Route, usage, and project
 // remove-namespace all enforce membership with, kept in one place so a
-// wording change never drifts across call sites. hint is call-site
-// specific (list-scoping advice differs from a mutation-target mismatch).
-func NotMemberError(namespace, projectID, hint string) error {
+// wording change never drifts across call sites. detail is call-site
+// specific prose (list-scoping advice differs from a mutation-target
+// mismatch) appended to the message — never a hint, since neither call
+// site's guidance is a single concrete command.
+func NotMemberError(namespace, projectID, detail string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("namespace %q is not in project %q", namespace, projectID)).
-		WithHint(hint)
+		fmt.Sprintf("namespace %q is not in project %q; %s", namespace, projectID, detail))
 }
 
 // SetMembership stamps obj (a namespace) with the project membership label
@@ -226,8 +228,7 @@ func ProjectSelector(projectID string) (string, error) {
 	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{projectID})
 	if err != nil {
 		return "", clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid project id %q: %v", projectID, err)).
-			WithHint("pass a valid label value")
+			fmt.Sprintf("invalid project id %q: %v; pass a valid label value", projectID, err))
 	}
 	return labels.NewSelector().Add(*req).String(), nil
 }

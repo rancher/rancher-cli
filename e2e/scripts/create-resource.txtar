@@ -22,7 +22,7 @@ stderr 'error \(VALIDATION\):'
 # a Sensitive kind's create is destructive: --apply alone is refused
 ! exec rancher create resource -f grb.yaml --apply
 stderr 'error \(CONFIRMATION_REQUIRED\):'
-stderr 'hint: re-run with: --yes'
+stderr 're-run with --yes'
 
 -- cm.yaml --
 apiVersion: v1

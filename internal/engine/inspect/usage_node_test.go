@@ -182,14 +182,14 @@ func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
 
 	// hint-less 404 → curated shape (produced by the dynamic client; fake simulates it)
 	client := newFakeClient().
-		withGetErr(nodeKind.GVR, "", "n1", kinds.NotFoundCurated(nodeKind, "n1")).
+		withGetErr(nodeKind.GVR, "", "n1", kinds.NotFoundCurated(nodeKind, "n1", "c-abc")).
 		withList(podKind.GVR, pods)
 	cmd := NewUsage(&fakeFactory{client: client})
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "node not found: n1", ce.Message)
-	assert.Equal(t, "list with: rancher get nodes", ce.Hint)
+	assert.Equal(t, "list with: rancher get nodes --cluster 'c-abc'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

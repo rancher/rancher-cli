@@ -69,13 +69,12 @@ func (grantCmd) Describe() runtime.Descriptor {
 func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <subject> is required").
-			WithHint("provide a user/group name, id, or fully qualified principal")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"argument <subject> is required; provide a user/group name, id, or fully qualified principal")
 	}
 	role := in.String("role")
 	if role == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--role is required").
-			WithHint("pass --role <roletemplate-id|globalrole-id>")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--role is required")
 	}
 	sub, err := ParseSubject(args[0], in.String("type"))
 	if err != nil {
@@ -117,19 +116,27 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		if r != role || !bindingMatchesSubject(b, rs, sub, true) {
 			continue
 		}
-		hint := "nothing to grant; use revoke to remove it first if re-granting"
+		msg := fmt.Sprintf("subject already holds role %q at this scope (binding %s)", role, b.GetName())
+		var hint string
 		// Alias-only match: the binding carries a different principal alias
 		// than the caller supplied. Revoke matches with aliasPrincipals=false
-		// and won't find it by the same spelling — surface the exact
-		// principal stored in the binding so the caller can revoke precisely.
+		// and won't find it by the same spelling — name the exact principal
+		// stored in the binding, and the revoke command that removes it, so
+		// the caller can act precisely.
 		if !bindingMatchesSubject(b, rs, sub, false) {
 			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
-				hint = fmt.Sprintf("alias-matched binding uses principal %q; revoke %s --role %s ... removes it", upn, upn, role)
+				msg += fmt.Sprintf("; alias-matched binding uses principal %q", upn)
+				hint = fmt.Sprintf("rancher revoke %s --role %s%s", clierr.ShellQuote(upn), clierr.ShellQuote(role), scope.Flags())
 			}
 		}
-		return safety.Effect{}, nil, clierr.New(clierr.CodeConflict,
-			fmt.Sprintf("subject already holds role %q at this scope (binding %s)", role, b.GetName())).
-			WithHint(hint)
+		if hint == "" {
+			msg += "; nothing to grant — use revoke to remove it first if re-granting"
+		}
+		e := clierr.New(clierr.CodeConflict, msg)
+		if hint != "" {
+			e = e.WithHint(hint)
+		}
+		return safety.Effect{}, nil, e
 	}
 
 	prefix := role + "-"
@@ -265,7 +272,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		// surface. Empty-context objects always pass (legacy/inherited roles).
 		if scope != ScopeGlobal {
 			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != "" && rtCtx != string(scope) {
-				hint := "run: rancher get roletemplates"
+				hint := "rancher get roletemplates"
 				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 				if perr != nil {
 					return perr
@@ -288,9 +295,9 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return nil
 	}
 
-	hint := "run: rancher get roletemplates"
+	hint := "rancher get roletemplates"
 	if scope == ScopeGlobal {
-		hint = "run: rancher get globalroles"
+		hint = "rancher get globalroles"
 	}
 	pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 	if perr != nil {

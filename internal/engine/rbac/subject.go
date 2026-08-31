@@ -38,8 +38,8 @@ type Subject struct {
 // (Rancher's IsSystem predicate) are rejected outright.
 func ParseSubject(arg, typeFlag string) (Subject, error) {
 	if arg == "" {
-		return Subject{}, clierr.New(clierr.CodeValidation, "argument <subject> is required").
-			WithHint("provide a user/group name, id, or fully qualified principal")
+		return Subject{}, clierr.New(clierr.CodeValidation,
+			"argument <subject> is required; provide a user/group name, id, or fully qualified principal")
 	}
 	var flagKind SubjectKind
 	switch typeFlag {
@@ -49,31 +49,27 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 		flagKind = SubjectGroup
 	default:
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --type %q", typeFlag)).
-			WithHint("pass --type user or --type group")
+			fmt.Sprintf("invalid --type %q; pass --type user or --type group", typeFlag))
 	}
 
 	// Principals with the "system:" prefix (Rancher's IsSystem predicate,
 	// shared via engine.IsSystemPrincipal) are rejected outright.
 	if engine.IsSystemPrincipal(arg) {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			"system principals cannot be granted roles").
-			WithHint("pass a user or group principal")
+			"system principals cannot be granted roles; pass a user or group principal")
 	}
 
 	if !strings.Contains(arg, "://") {
 		if flagKind == SubjectGroup {
 			return Subject{}, clierr.New(clierr.CodeValidation,
-				"group subjects require a fully qualified principal id").
-				WithHint("pass the full group principal id, e.g. okta_group://<id>")
+				"group subjects require a fully qualified principal id; pass the full group principal id, e.g. okta_group://<id>")
 		}
 		return Subject{Kind: SubjectUser, Bare: arg}, nil
 	}
 
 	if arg[strings.Index(arg, "://")+3:] == "" {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("principal %q has empty remainder after ://", arg)).
-			WithHint("provide the full principal id, e.g. local://<user-id>")
+			fmt.Sprintf("principal %q has empty remainder after ://; provide the full principal id, e.g. local://<user-id>", arg))
 	}
 
 	// Closed inference rule: only recognized principal forms infer a kind.
@@ -91,15 +87,13 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 	default:
 		if typeFlag == "" {
 			return Subject{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("cannot infer subject type from principal %q", arg)).
-				WithHint("pass --type user or --type group")
+				fmt.Sprintf("cannot infer subject type from principal %q; pass --type user or --type group", arg))
 		}
 		return Subject{Kind: flagKind, Principal: arg}, nil
 	}
 	if typeFlag != "" && flagKind != inferred {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--type %s contradicts principal %q (inferred %s)", typeFlag, arg, inferred)).
-			WithHint("drop --type or pass the matching principal")
+			fmt.Sprintf("--type %s contradicts principal %q (inferred %s); drop --type or pass the matching principal", typeFlag, arg, inferred))
 	}
 	return Subject{Kind: inferred, Principal: arg}, nil
 }

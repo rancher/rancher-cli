@@ -36,7 +36,7 @@ jsonquery secret-eff.json data.diff.0.to '<redacted>'
 # secret is now a Sensitive kind: patch --apply alone is refused
 ! exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply
 stderr 'error \(CONFIRMATION_REQUIRED\):'
-stderr 'hint: re-run with: --yes'
+stderr 're-run with --yes'
 
 exec rancher patch secret patch-secret --cluster testcluster --namespace default --patch $SECRET_PATCH --apply --yes -o json
 

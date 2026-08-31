@@ -44,8 +44,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	}
 	url := in.String("url")
 	if url == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--url is required").
-			WithHint("pass --url <url>")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--url is required")
 	}
 
 	probe, err := prepareRegistration(ctx, c.tlsPreflight, url, in.String("cacert"))

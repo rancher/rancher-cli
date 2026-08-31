@@ -116,7 +116,7 @@ func TestClassifyUnknownAuthority(t *testing.T) {
 	ce := Classify(err, "rancher.example", time.Now())
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
-	assert.Contains(t, ce.Hint, "--cacert")
+	assert.Contains(t, ce.Message, "--cacert")
 	details, ok := ce.Details.(Details)
 	require.True(t, ok)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
@@ -134,7 +134,7 @@ func TestClassifyHostnameMismatch(t *testing.T) {
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindHostnameMismatch, details.Kind)
-	assert.Contains(t, ce.Hint, "cannot fix a hostname mismatch")
+	assert.Contains(t, ce.Message, "cannot fix a hostname mismatch")
 }
 
 func TestClassifyExpired(t *testing.T) {
@@ -147,7 +147,7 @@ func TestClassifyExpired(t *testing.T) {
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindExpired, details.Kind)
-	assert.Contains(t, ce.Hint, "cannot fix an expired certificate")
+	assert.Contains(t, ce.Message, "cannot fix an expired certificate")
 }
 
 func TestClassifyNotYetValid(t *testing.T) {
@@ -160,7 +160,7 @@ func TestClassifyNotYetValid(t *testing.T) {
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindNotYetValid, details.Kind)
-	assert.Contains(t, ce.Hint, "check the local clock")
+	assert.Contains(t, ce.Message, "check the local clock")
 }
 
 // TestClassifyNullableDetailsOnEmptyChain pins the nullable-details

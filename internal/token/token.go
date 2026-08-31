@@ -171,8 +171,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	// below covers callers that bypass run() (e.g. future direct callers).
 	if config.IsLegacyCacheSlot(name) {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
-			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
+			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots; use a different name")
 	}
 
 	// Require --cluster BEFORE the cache probe, not only in resolveConn: a
@@ -183,8 +182,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	// first; this guards direct Execute callers. The shim keeps its unscoped
 	// path via runWithParams, which run() never fronts for it.
 	if in.String("cluster") == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required").
-			WithHint("pass --cluster <cluster-id>")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 
 	flagServer := in.String("server")
@@ -215,8 +213,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	// protected, not only the CLI-flag path.
 	if config.IsLegacyCacheSlot(params.Name) && !params.legacyShim {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots").
-			WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
+			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots; use a different name")
 	}
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
@@ -283,8 +280,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, err
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token").
-			WithHint("check the auth provider and credentials")
+		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
 	}
 
 	var tokenExpiry time.Time
@@ -441,8 +437,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	keys := in.Args()
 	if all && len(keys) > 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify either credential name(s) or --all, not both").
-			WithHint("rancher auth delete-token prod  OR  rancher auth delete-token --all")
+			"specify either credential name(s) or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)")
 	}
 	if all {
 		if err := d.store.DeleteAllCachedCreds(); err != nil {
@@ -455,8 +450,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	}
 	if len(keys) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"provide a cached-credential name or --all").
-			WithHint("name is the cached entry name; or: rancher auth delete-token --all")
+			"provide a cached-credential name or --all")
 	}
 	// Resolve each argument against the cached record set: a bare display name
 	// matches EVERY entry with that name (a legacy bare entry and a scoped entry
@@ -476,8 +470,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 			}
 			if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
 				return runtime.Result{}, clierr.Wrap(derr,
-					fmt.Sprintf("failed to delete %q: %v", arg, derr)).
-					WithHint(fmt.Sprintf("already deleted: %v", deleted))
+					fmt.Sprintf("failed to delete %q: %v (already deleted: %v)", arg, derr, deleted))
 			}
 			deleted = append(deleted, info.Key)
 		}
@@ -559,8 +552,8 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	var token Token
 	if samlProviders[input.authProvider] {
 		if p.NoInput() {
-			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
-				WithHint("run without --no-input, or use a cached --name")
+			return Token{}, clierr.New(clierr.CodeAuth,
+				"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
 		}
 		token, err = samlAuth(ctx, client, input, p)
 	} else if oauthProviders[input.authProvider] {
@@ -586,8 +579,8 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
-				WithHint("run in a terminal, or use a cached --name")
+			return Token{}, clierr.New(clierr.CodeAuth,
+				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
 		}
 		return Token{}, err
 	}
@@ -601,8 +594,8 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return Token{}, clierr.New(clierr.CodeAuth, "interactive login required for "+input.authProvider).
-				WithHint("run in a terminal, or use a cached --name")
+			return Token{}, clierr.New(clierr.CodeAuth,
+				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
 		}
 		return Token{}, err
 	}
@@ -836,7 +829,7 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 			}
 		}
 		return nil, clierr.New(clierr.CodeNotFound, "auth provider not found: "+want).
-			WithCandidates(cands()).WithHint("pass --auth-provider <id>")
+			WithCandidates(cands())
 	}
 
 	if len(providers) == 1 {
@@ -860,7 +853,7 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 	}
 
 	return nil, clierr.New(clierr.CodeAmbiguousSelection, "multiple auth providers; select one").
-		WithCandidates(cands()).WithHint("pass --auth-provider <id>")
+		WithCandidates(cands())
 }
 
 func generateKey() (string, error) {
@@ -910,8 +903,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 	// context below. This also keeps the needsEff gate honest — past this
 	// point server == "" implies !noAmbientContext.
 	if server == "" && noAmbientContext {
-		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required").
-			WithHint("pass --server")
+		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
 	}
 
 	// The native get-token path requires --cluster: a token must never mint
@@ -919,8 +911,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
 	// mint — still purely flag-driven, never filled from ambient state.
 	if cluster == "" && !noAmbientContext {
-		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required").
-			WithHint("pass --cluster <cluster-id>")
+		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 
 	if server == "" || caIn == "" {
@@ -963,8 +954,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 
 	if server == "" {
 		return "", "", "", clierr.New(clierr.CodeValidation,
-			"--server is required; pass it, or add and log in to a server first").
-			WithHint("pass --server")
+			"--server is required; pass it, or add and log in to a server first")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
@@ -1249,9 +1239,9 @@ func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearer
 		fmt.Sprintf("cluster not found: %q", clusterID), "",
 		func(idFound bool, displayMatchCount int) string {
 			if idFound {
-				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", clusterID)
+				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name; pass the cluster id", clusterID)
 			}
-			return fmt.Sprintf("%d clusters have display name %q", displayMatchCount, clusterID)
+			return fmt.Sprintf("%d clusters have display name %q; pass the cluster id", displayMatchCount, clusterID)
 		}, "")
 }
 

@@ -131,21 +131,17 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 
 	if named && c.k.SystemFilter != nil && in.IsSet(flagIncludeSystem) {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--include-system does not apply to a named "+c.k.Name).
-			WithHint("drop --include-system; a named get always returns the object")
+			"--include-system does not apply to a named "+c.k.Name+"; a named get always returns the object")
 	}
 	if !wait && (forExpr != "" || timeoutStr != "") {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait").
-			WithHint("pass --wait")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait")
 	}
 	if wait && !named {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name").
-			WithHint("pass a name argument")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name")
 	}
 	if wait && c.k.WaitDefault == "" && forExpr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s has no default wait condition", c.k.Name)).
-			WithHint("pass --for state=<value> or --for condition=<Type>[=<Status>] to specify a custom signal")
+			fmt.Sprintf("%s has no default wait condition; pass --for state=<value> or --for condition=<Type>[=<Status>]", c.k.Name))
 	}
 
 	clusterID, ns, _, scope, err := Route(ctx, c.clients, c.k, in, named)
@@ -311,8 +307,7 @@ func parseWaitTimeout(s string) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration", s)).
-			WithHint("pass e.g. --timeout 5m")
+		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration, e.g. 5m", s))
 	}
 	return d, nil
 }
@@ -347,8 +342,7 @@ func rejectProjectScope(in runtime.Input, k kinds.Kind) error {
 	if TypedProject(in) == "" {
 		return nil
 	}
-	return clierr.New(clierr.CodeValidation, "--project does not apply to "+k.Name).
-		WithHint("drop --project for this kind")
+	return clierr.New(clierr.CodeValidation, "--project does not apply to "+k.Name)
 }
 
 // resolveProjectScope resolves the typed --project for a Downstream
@@ -417,8 +411,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", nil, clierr.New(clierr.CodeValidation,
-					"--cluster is required to address a "+k.Name+" by name").
-					WithHint("pass --cluster <id|name>")
+					"--cluster is required to address a "+k.Name+" by name")
 			}
 			return engine.LocalCluster, "", "", nil, nil // list across all clusters
 		}
@@ -452,8 +445,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		nspace := in.String(FlagNamespace)
 		if named && nspace == "" {
 			return "", "", "", nil, clierr.New(clierr.CodeValidation,
-				"--namespace is required to address a "+k.Name+" by name").
-				WithHint("pass --namespace <namespace>")
+				"--namespace is required to address a "+k.Name+" by name")
 		}
 		if !scopable {
 			if err := rejectProjectScope(in, k); err != nil {

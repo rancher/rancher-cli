@@ -74,8 +74,8 @@ func skillTargets(in runtime.Input) ([]skillinstall.Target, error) {
 
 func nothingDetectedErr() *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
-		"no coding-agent harness detected in the home directory").
-		WithHint("supported: claude, codex, copilot, agents; use --scope project to install into the current repo instead")
+		"no coding-agent harness detected in the home directory; "+
+			"supported: claude, codex, copilot, agents; use --scope project to install into the current repo instead")
 }
 
 type skillInstallCmd struct{ version string }
@@ -113,8 +113,7 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "install", force)
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()).
-			WithHint("no target was changed")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()+"; no target was changed")
 	}
 	defer skillinstall.ReleaseAll(leases)
 
@@ -171,8 +170,7 @@ func (c skillUninstallCmd) Execute(_ context.Context, in runtime.Input, _ runtim
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "uninstall", false)
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()).
-			WithHint("no target was changed")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()+"; no target was changed")
 	}
 	defer skillinstall.ReleaseAll(leases)
 

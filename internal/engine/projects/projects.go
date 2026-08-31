@@ -27,7 +27,7 @@ var quotaKeys = map[string]bool{
 	"limitsCpu": true, "limitsMemory": true,
 }
 
-func quotaKeysHint() string {
+func quotaKeysText() string {
 	keys := make([]string, 0, len(quotaKeys))
 	for k := range quotaKeys {
 		keys = append(keys, k)
@@ -58,16 +58,16 @@ func parsePairs(s string, allowEmptyValue bool, malformed func(pair string) erro
 // validating each pair against quotaKeys.
 func parseQuotaPairs(s string) (map[string]any, error) {
 	limit, err := parsePairs(s, false, func(pair string) error {
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf("malformed quota pair %q", pair)).
-			WithHint("pass key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi")
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("malformed quota pair %q; pass key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi", pair))
 	})
 	if err != nil {
 		return nil, err
 	}
 	for k := range limit {
 		if !quotaKeys[k] {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown quota key %q", k)).
-				WithHint(quotaKeysHint())
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("unknown quota key %q; %s", k, quotaKeysText()))
 		}
 	}
 	return limit, nil
@@ -103,8 +103,7 @@ func buildQuotaSpecs(in runtime.Input) (limit, nsDefault map[string]any, err err
 	}
 	if limitStr == "" || nsDefaultStr == "" {
 		return nil, nil, clierr.New(clierr.CodeValidation,
-			"--quota-limit and --namespace-default-quota must be given together with matching keys").
-			WithHint("pass both flags with the same set of keys")
+			"--quota-limit and --namespace-default-quota must be given together with matching keys")
 	}
 	limit, err = parseQuotaPairs(limitStr)
 	if err != nil {
@@ -116,8 +115,7 @@ func buildQuotaSpecs(in runtime.Input) (limit, nsDefault map[string]any, err err
 	}
 	if diff := quotaKeySetDiff(limit, nsDefault); len(diff) > 0 {
 		return nil, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--quota-limit and --namespace-default-quota key sets differ: %s", strings.Join(diff, ", "))).
-			WithHint("pass the same set of keys to both flags")
+			fmt.Sprintf("--quota-limit and --namespace-default-quota key sets differ: %s; pass the same set of keys to both flags", strings.Join(diff, ", ")))
 	}
 	return limit, nsDefault, nil
 }
@@ -160,11 +158,11 @@ func (createCmd) Describe() runtime.Descriptor {
 func (createCmd) build(in runtime.Input) (*unstructured.Unstructured, string, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return nil, "", clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
+		return nil, "", clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	cluster := in.String("cluster")
 	if cluster == "" {
-		return nil, "", clierr.New(clierr.CodeValidation, "--cluster is required").WithHint("pass --cluster <id>")
+		return nil, "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 	name := args[0]
 	obj := &unstructured.Unstructured{Object: map[string]any{

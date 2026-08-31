@@ -42,7 +42,7 @@ jsonquery stderr 'data.error.code' VALIDATION
 # Delete WITHOUT --allow-deprecated is refused: management-token is Deprecated.
 ! exec rancher delete management-token mgmt-token-test --apply --yes -o json
 jsonquery stderr 'data.error.code' CONFIRMATION_REQUIRED
-jsonquery stderr 'data.error.hint' 're-run with: --allow-deprecated'
+jsonquery stderr 'data.error.message' 'confirmation required for this mutation; re-run with --allow-deprecated'
 
 # Delete WITH all required flags succeeds for a non-session token.
 exec rancher delete management-token mgmt-token-test --apply --yes --allow-deprecated

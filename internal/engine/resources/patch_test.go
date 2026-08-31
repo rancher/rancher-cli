@@ -304,7 +304,7 @@ func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 func TestPatchNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "deployment")
-	client := &patchClient{getErr: kinds.NotFoundCurated(k, "web")}
+	client := &patchClient{getErr: kinds.NotFoundCurated(k, "web", "c-abc")}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, _, err := planPatch(t, NewPatch(k, fac, nil),
 		input{args: []string{"web"}, s: map[string]string{
@@ -315,7 +315,7 @@ func TestPatchNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "deployment not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get deployments", ce.Hint)
+	assert.Equal(t, "list with: rancher get deployments --cluster 'c-abc'", ce.Hint)
 }
 
 // TestPatchNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
@@ -487,7 +487,7 @@ func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"3"},"spec":{"replicas":1}}`)
 	client := &patchClient{
 		obj:           orig,
-		execUpdateErr: kinds.NotFoundCurated(k, "web"),
+		execUpdateErr: kinds.NotFoundCurated(k, "web", "c-abc"),
 	}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, exec, err := planPatch(t, NewPatch(k, fac, nil),

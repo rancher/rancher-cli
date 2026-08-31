@@ -610,7 +610,7 @@ func TestInspectProjectNotFoundCurated(t *testing.T) {
 		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
 			Items: []unstructured.Unstructured{*projectFixtureObj("p-gone", "Gone", "")},
 		}).
-		withGetErr(projectKind.GVR, "c-test", "p-gone", kinds.NotFoundCurated(projectKind, "p-gone"))
+		withGetErr(projectKind.GVR, "c-test", "p-gone", kinds.NotFoundCurated(projectKind, "p-gone", ""))
 	downstream := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{})
 	fac := &fakeFactory{perCluster: map[string]engine.ClusterClient{

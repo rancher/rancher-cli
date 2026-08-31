@@ -96,9 +96,7 @@ func (f *clientFactory) resolve() (config.Effective, error) {
 
 func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.ClusterClient, error) {
 	if clusterID == "" {
-		return nil, clierr.New(clierr.CodeValidation,
-			"cluster id must not be empty").
-			WithHint("pass engine.LocalCluster or an explicit cluster id")
+		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty")
 	}
 	// Resolve config+credentials before locking: sync.Once serializes its own
 	// first run, so the mutex only needs to guard the cache map — not the
@@ -116,7 +114,7 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	if err != nil {
 		return nil, err
 	}
-	c, err := provider.NewClusterClient(rc)
+	c, err := provider.NewClusterClient(rc, clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -332,15 +330,15 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 	id, err := projects.MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
-		"cluster not found: "+nameOrID,
-		"pass a cluster id or display name",
+		"cluster not found: "+nameOrID+"; pass a cluster id or display name",
+		"",
 		func(idFound bool, displayMatchCount int) string {
 			if idFound {
-				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name", nameOrID)
+				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name; pass the cluster id", nameOrID)
 			}
-			return fmt.Sprintf("%d clusters have display name %q", displayMatchCount, nameOrID)
+			return fmt.Sprintf("%d clusters have display name %q; pass the cluster id", displayMatchCount, nameOrID)
 		},
-		"pass the cluster id")
+		"")
 	if err != nil {
 		return "", err
 	}

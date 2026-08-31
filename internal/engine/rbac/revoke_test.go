@@ -190,7 +190,7 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Equal(t, "subject holds: project-member, project-owner", ce.Hint)
+	assert.Contains(t, ce.Message, "subject holds: project-member, project-owner")
 }
 
 func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
@@ -216,7 +216,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 			listsByGVR: map[string]*unstructured.UnstructuredList{
 				"clusterroletemplatebindings": {},
 			},
-			wantHint:   "run: rancher get clusterroletemplatebinding --cluster c-x -o json",
+			wantHint:   "rancher get clusterroletemplatebinding --cluster 'c-x' -o json",
 			wantNoPlur: "clusterroletemplatebindings",
 		},
 		{
@@ -230,7 +230,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 				"projectroletemplatebindings": {},
 			},
 			gets:       map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
-			wantHint:   "run: rancher get projectroletemplatebinding --namespace p-x -o json",
+			wantHint:   "rancher get projectroletemplatebinding --namespace 'p-x' -o json",
 			wantNoPlur: "projectroletemplatebindings",
 		},
 		{
@@ -242,7 +242,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 			listsByGVR: map[string]*unstructured.UnstructuredList{
 				"globalrolebindings": {},
 			},
-			wantHint:   "run: rancher get globalrolebinding -o json",
+			wantHint:   "rancher get globalrolebinding -o json",
 			wantNoPlur: "globalrolebindings",
 		},
 	}
@@ -305,7 +305,7 @@ func TestRevokePartialFailure(t *testing.T) {
 	require.ErrorAs(t, execErr, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.True(t, ce.Retryable, "partialFailure must hoist Retryable from the underlying error")
-	assert.Contains(t, ce.Hint, "re-run")
+	assert.Contains(t, ce.Message, "re-run")
 
 	// Type assertion pins the Details shape.
 	pf, ok := ce.Details.(RevokePartialFailure)

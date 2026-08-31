@@ -804,25 +804,27 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-	assert.Contains(t, env.Data.Error.Hint, "provisioning-cluster")
+	assert.Contains(t, env.Data.Error.Message, "provisioning-cluster")
+	assert.Equal(t, "rancher schema", env.Data.Error.Hint,
+		"no single concrete command names both provisioning-cluster and the missing name — the hint stays generic")
 
-	// "clusters" under delete → same targeted hint.
+	// "clusters" under delete → same targeted detail.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "delete", "clusters", "my-cluster"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "clusters", "my-cluster"}))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
-	assert.Contains(t, env2.Data.Error.Hint, "provisioning-cluster")
+	assert.Contains(t, env2.Data.Error.Message, "provisioning-cluster")
 
-	// unknown token under delete → generic hint, not the cluster-specific one.
+	// unknown token under delete → generic message, not the cluster-specific one.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "delete", "bogus-kind-xyz"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "bogus-kind-xyz"}))
 	var env3 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env3))
 	assert.Equal(t, "VALIDATION", env3.Data.Error.Code)
-	assert.NotContains(t, env3.Data.Error.Hint, "provisioning-cluster")
+	assert.NotContains(t, env3.Data.Error.Message, "provisioning-cluster")
 }
 
 // exercise bug 2 repro: an unknown flag on a real command must surface the
@@ -873,7 +875,8 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave -A error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint)
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
 	t.Run("--all-namespaces long form", func(t *testing.T) {
@@ -891,7 +894,8 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave --all-namespaces error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint)
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
 	t.Run("genuinely unknown flag gets generic hint", func(t *testing.T) {
@@ -947,8 +951,11 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Equal(t, "there is no all-namespaces flag; run: rancher schema for this command's real flags", env.Data.Error.Hint,
-			"create namespace -A must get the verb-agnostic hint, not the get-specific or generic hint")
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag",
+			"create namespace -A must get the verb-agnostic detail, not the get-specific wording")
+		assert.NotContains(t, env.Data.Error.Message, "list operations already span all namespaces",
+			"the get-specific wording must not leak onto a non-get verb")
+		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
 	t.Run("create namespace with genuinely unknown flag gets generic hint", func(t *testing.T) {
@@ -965,7 +972,8 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Equal(t, "run: rancher schema; pass --help for usage", env.Data.Error.Hint,
+		assert.Contains(t, env.Data.Error.Message, "pass --help for usage")
+		assert.Equal(t, "rancher schema", env.Data.Error.Hint,
 			"a genuinely unknown flag on a non-get verb must get the generic hint")
 	})
 
@@ -983,16 +991,17 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Equal(t, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one", env.Data.Error.Hint,
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one",
 			"bare get group -A (path length 2) must yield the get-scoped wording, pinning the >= 2 boundary")
+		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 }
 
 // TestAllNamespacesHintsBothShareOpeningClause pins F5: both rendered
-// wordings of the -A/--all-namespaces hint open with noAllNamespacesFlag.
-// Calling allNamespacesEntry.hint directly for a get-context command and a
-// non-get-context command verifies the shared clause is not accidentally
-// dropped if the branching logic changes.
+// wordings of the -A/--all-namespaces message detail open with
+// noAllNamespacesFlag. Calling allNamespacesEntry.detail directly for a
+// get-context command and a non-get-context command verifies the shared
+// clause is not accidentally dropped if the branching logic changes.
 func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
 	t.Parallel()
 	root := &ucli.Command{Name: "rancher"}
@@ -1003,12 +1012,12 @@ func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
 	_ = root.Run(t.Context(), []string{"rancher"}) // wires parent pointers via setupDefaults
 
 	err := errors.New("flag provided but not defined: -A")
-	getHint := allNamespacesEntry.hint(usageErrorInput{c: get, err: err})
-	assert.True(t, strings.HasPrefix(getHint, noAllNamespacesFlag),
-		"get-scoped -A hint must open with the noAllNamespacesFlag clause")
-	nonGetHint := allNamespacesEntry.hint(usageErrorInput{c: create, err: err})
-	assert.True(t, strings.HasPrefix(nonGetHint, noAllNamespacesFlag),
-		"verb-agnostic -A hint must open with the noAllNamespacesFlag clause")
+	getDetail := allNamespacesEntry.detail(usageErrorInput{c: get, err: err})
+	assert.True(t, strings.HasPrefix(getDetail, noAllNamespacesFlag),
+		"get-scoped -A detail must open with the noAllNamespacesFlag clause")
+	nonGetDetail := allNamespacesEntry.detail(usageErrorInput{c: create, err: err})
+	assert.True(t, strings.HasPrefix(nonGetDetail, noAllNamespacesFlag),
+		"verb-agnostic -A detail must open with the noAllNamespacesFlag clause")
 }
 
 // An explicitly overridden config dir must not put a plain-text notice ahead

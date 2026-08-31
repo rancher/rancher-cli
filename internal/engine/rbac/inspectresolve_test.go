@@ -37,7 +37,7 @@ func TestResolveInspectUserGroupPrincipalRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Hint, "grant/revoke")
+	assert.Contains(t, ce.Message, "grant/revoke")
 	assert.Zero(t, c.lists, "a group principal must never reach the ownership scan")
 }
 
@@ -47,7 +47,7 @@ func TestResolveInspectUserUnknownPrefixRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.NotContains(t, ce.Hint, "--type", "inspect has no --type flag to suggest")
+	assert.NotContains(t, ce.Message, "--type", "inspect has no --type flag to suggest")
 	assert.Zero(t, c.lists)
 }
 

@@ -51,8 +51,8 @@ func fetchOIDCClient(ctx context.Context, clients engine.ClusterClientFactory, c
 // secrets map alone.
 func errNotProvisioned(clientName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("oidc-client %s has not been provisioned by the controller", clientName)).
-		WithHint("check the oidc-provider feature, then " + recoveryHint(clientName))
+		fmt.Sprintf("oidc-client %s has not been provisioned by the controller; check the oidc-provider feature, then rancher %s",
+			clientName, recoveryHint(clientName)))
 }
 
 // planAnnotationUpdate sets annotationKey to annotationValue on a deep copy
@@ -152,12 +152,11 @@ func resolveSecretName(clientName string, secrets map[string]any, requested stri
 		}
 		return "", clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("oidc-client %s has no secret named %q", clientName, requested)).
-			WithHint("pass one of the existing secret names").
 			WithCandidates(toSecretCandidates(names))
 	}
 	if !allowOmit {
 		return "", clierr.New(clierr.CodeValidation, "secret-name is required").
-			WithHint("pass a secret name").WithCandidates(toSecretCandidates(names))
+			WithCandidates(toSecretCandidates(names))
 	}
 	switch len(names) {
 	case 0:
@@ -167,6 +166,6 @@ func resolveSecretName(clientName string, secrets map[string]any, requested stri
 	default:
 		return "", clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("oidc-client %s has %d secrets; name one", clientName, len(names))).
-			WithHint("pass a secret name").WithCandidates(toSecretCandidates(names))
+			WithCandidates(toSecretCandidates(names))
 	}
 }

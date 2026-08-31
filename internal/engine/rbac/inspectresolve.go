@@ -45,8 +45,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	prefix, remainder, _ := strings.Cut(principal, "://")
 	if remainder == "" {
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("principal %q has empty remainder after ://", principal)).
-			WithHint("provide the full principal id, e.g. local://<user-id>")
+			fmt.Sprintf("principal %q has empty remainder after ://; provide the full principal id, e.g. local://<user-id>", principal))
 	}
 
 	switch {
@@ -58,12 +57,10 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 		// Recognized user-principal form.
 	case strings.HasSuffix(prefix, "_group") || prefix == "github_org" || prefix == "github_team":
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%q is a group principal", principal)).
-			WithHint("inspect user only supports individual users; use grant/revoke to work with group role bindings")
+			fmt.Sprintf("%q is a group principal; inspect user only supports individual users — use grant/revoke to work with group role bindings", principal))
 	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cannot infer subject type from principal %q", principal)).
-			WithHint("pass a user id, username, displayName, or a local:// / <provider>_user:// principal")
+			fmt.Sprintf("cannot infer subject type from principal %q; pass a user id, username, displayName, or a local:// / <provider>_user:// principal", principal))
 	}
 
 	list, err := client.List(ctx, userGVR, "", "")
@@ -82,7 +79,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound,
 			fmt.Sprintf("no user found for principal %q", principal)).
-			WithHint("run: rancher get users")
+			WithHint("rancher get users")
 	case 1:
 		pids, _, _ := unstructured.NestedStringSlice(owners[0].Object, "principalIds")
 		return ResolvedSubject{UserID: owners[0].GetName(), Principal: principal, PrincipalIDs: pids}, nil
@@ -93,8 +90,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users share principal %q", len(owners), principal)).
-			WithCandidates(cands).
-			WithHint("pass the user id")
+			WithCandidates(cands)
 	}
 }
 
@@ -133,7 +129,7 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
 			WithCandidates(subjectCandidates(toPointerSlice(list.Items), bare)).
-			WithHint("run: rancher get users")
+			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(matches))
 		for _, u := range matches {
@@ -141,8 +137,7 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users match %q", len(matches), bare)).
-			WithCandidates(cands).
-			WithHint("pass the user id")
+			WithCandidates(cands)
 	}
 }
 

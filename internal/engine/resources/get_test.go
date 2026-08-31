@@ -407,7 +407,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 func TestGetNamedNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "user")
-	client := &memClient{getErr: kinds.NotFoundCurated(k, "u-xxx")}
+	client := &memClient{getErr: kinds.NotFoundCurated(k, "u-xxx", "")}
 	cmd := NewGet(k, &recFactory{client: client})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"u-xxx"}}, nil)
 	var ce *clierr.Error
@@ -424,7 +424,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 	k := mustKind(t, "cluster")
 	client := &seqClient{
 		objs: []*unstructured.Unstructured{nil},
-		errs: []error{kinds.NotFoundCurated(k, "missing")},
+		errs: []error{kinds.NotFoundCurated(k, "missing", "")},
 	}
 	cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(), input{
@@ -1059,8 +1059,8 @@ func TestGetUserNamedSystemAccountSucceeds(t *testing.T) {
 }
 
 // TestGetUserNamedIncludeSystemRejected pins the typed no-op rejection: a
-// named get with --include-system is a VALIDATION error with a directive
-// hint, matching the repo's --project/--for typed no-op precedent.
+// named get with --include-system is a VALIDATION error naming the reason in
+// its message, matching the repo's --project/--for typed no-op precedent.
 func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
 	t.Parallel()
 	cmd, ok := NewGet(mustKind(t, "user"), &recFactory{client: &memClient{}}).(runtime.ReadCommand)
@@ -1074,7 +1074,8 @@ func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Hint, "drop --include-system")
+	assert.Contains(t, ce.Message, "a named get always returns the object")
+	assert.Empty(t, ce.Hint)
 }
 
 // TestGetUserNamedIncludeSystemFalseRejected pins the IsSet seam: an

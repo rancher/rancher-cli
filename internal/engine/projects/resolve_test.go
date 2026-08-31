@@ -217,7 +217,7 @@ func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
-	assert.Contains(t, cerr.Hint, "exact project id")
+	assert.Contains(t, cerr.Message, "exact project id")
 }
 
 // TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts the
@@ -237,7 +237,7 @@ func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
 	assert.Contains(t, cerr.Message, "typo-web")
-	assert.Contains(t, cerr.Hint, "display names cannot be resolved")
+	assert.Contains(t, cerr.Message, "display names cannot be resolved")
 }
 
 // TestResolveProjectNonRBACListErrorPropagates verifies that only a
@@ -382,7 +382,7 @@ func TestBackingNamespaceFallsBackToProjectID(t *testing.T) {
 func TestBackingNamespaceNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	projectKind, _ := kinds.Lookup("project")
-	client := &listClient{getErrs: map[string]error{"c-x/p-gone": kinds.NotFoundCurated(projectKind, "p-gone")}}
+	client := &listClient{getErrs: map[string]error{"c-x/p-gone": kinds.NotFoundCurated(projectKind, "p-gone", "")}}
 	factory := stubFactory{c: client}
 
 	_, _, err := BackingNamespace(t.Context(), factory, "c-x", "p-gone")

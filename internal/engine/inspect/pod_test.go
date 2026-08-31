@@ -455,7 +455,7 @@ func TestInspectPodNotFoundCurated(t *testing.T) {
 	podKind := mustKind(t, "pod")
 
 	// hint-less 404 → curated shape (produced by the dynamic client; fake simulates it)
-	client := newFakeClient().withGetErr(podKind.GVR, "ns1", "web", kinds.NotFoundCurated(podKind, "web"))
+	client := newFakeClient().withGetErr(podKind.GVR, "ns1", "web", kinds.NotFoundCurated(podKind, "web", "c-abc"))
 	cmd := NewPod(&fakeFactory{client: client})
 	_, err := execRead(t, cmd, input{
 		args: []string{"web"},
@@ -464,7 +464,7 @@ func TestInspectPodNotFoundCurated(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

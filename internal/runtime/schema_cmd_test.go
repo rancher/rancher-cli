@@ -495,8 +495,8 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.Len(t, ce.Candidates, 1)
 		assert.Equal(t, "get pod", ce.Candidates[0].Name)
-		assert.Contains(t, ce.Hint, "get pod")
-		assert.Contains(t, ce.Hint, "rancher schema")
+		assert.Contains(t, ce.Message, "rancher schema")
+		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
 	t.Run("name substring matches multiple commands", func(t *testing.T) {
@@ -519,7 +519,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Empty(t, ce.Candidates)
-		assert.Contains(t, ce.Hint, "rancher schema")
+		assert.Contains(t, ce.Message, "rancher schema")
 	})
 
 	t.Run("kind names join the candidate set", func(t *testing.T) {
@@ -565,15 +565,16 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Equal(t, []string{"kubeconfig"}, names)
 	})
 
-	t.Run("hint without --kind covers both commands and kinds", func(t *testing.T) {
+	t.Run("message without --kind covers both commands and kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"frobnicate"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Contains(t, ce.Hint, "rancher schema -o name")
-		assert.Contains(t, ce.Hint, "rancher schema -o json")
-		assert.Contains(t, ce.Hint, "kinds array")
+		assert.Contains(t, ce.Message, "rancher schema -o name")
+		assert.Contains(t, ce.Message, "rancher schema -o json")
+		assert.Contains(t, ce.Message, "kinds array")
+		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
 	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
@@ -586,36 +587,36 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Contains(t, ce.Message, `unknown command "get pdo"`)
-		assert.Contains(t, ce.Hint, "rancher schema -o name")
+		assert.Equal(t, "rancher schema -o name", ce.Hint)
 		assert.NotContains(t, ce.Hint, "kinds array")
 	})
 
-	t.Run("dual hint on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
+	t.Run("dual message on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"pdo"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Hint, "rancher schema -o name")
-		assert.Contains(t, ce.Hint, "rancher schema -o json")
-		assert.Contains(t, ce.Hint, "kinds array")
+		assert.Contains(t, ce.Message, "rancher schema -o name")
+		assert.Contains(t, ce.Message, "rancher schema -o json")
+		assert.Contains(t, ce.Message, "kinds array")
+		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
-	t.Run("hint with --kind points to -o json kinds array", func(t *testing.T) {
+	t.Run("hint with --kind points to the kinds array command", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"frobnicate"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.True(t, strings.HasPrefix(ce.Hint, "run "), "--kind hint must start with 'run '")
-		assert.Contains(t, ce.Hint, "rancher schema -o json")
-		assert.Contains(t, ce.Hint, "kinds array")
+		assert.Equal(t, "rancher schema -o json", ce.Hint, "the --kind tier's hint is a single paste-valid command")
+		assert.Contains(t, ce.Message, "kinds array")
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
 
-	t.Run("hint with --kind and nearest matches still points to -o json kinds array", func(t *testing.T) {
+	t.Run("hint with --kind and nearest matches still points to the kinds array command", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := kcmd.(ReadCommand).Execute(t.Context(),
@@ -623,10 +624,9 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.NotEmpty(t, ce.Candidates)
-		// With nearest matches the hint is prefixed "nearest matches: ... — <kindsArrayRef>";
-		// the kindsArrayRef fragment itself still starts with "run " inside the composite.
-		assert.Contains(t, ce.Hint, "rancher schema -o json")
-		assert.Contains(t, ce.Hint, "kinds array")
+		// Nearest-match candidates ride the structured Candidates field; the
+		// Hint still names the one concrete command this tier points to.
+		assert.Equal(t, "rancher schema -o json", ce.Hint)
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
 
@@ -634,16 +634,17 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	// a single arg with surrounding whitespace (e.g. " pod") contains a space
 	// but is a single token — strings.Fields splits it to one element, so it
 	// must stay in the dual tier, not the command tier.
-	t.Run("padded single-token selector gets dual hint not command hint", func(t *testing.T) {
+	t.Run("padded single-token selector gets dual guidance not command-only guidance", func(t *testing.T) {
 		t.Parallel()
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{" pod"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Hint, "kinds array",
-			"padded single token must get the dual hint, not the command-only hint")
-		assert.Contains(t, ce.Hint, "rancher schema -o name")
+		assert.Contains(t, ce.Message, "kinds array",
+			"padded single token must get the dual guidance, not the command-only guidance")
+		assert.Contains(t, ce.Message, "rancher schema -o name")
+		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 }
 
@@ -869,7 +870,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Contains(t, ce.Message, "--verb")
 		assert.Contains(t, ce.Message, "selector")
-		assert.Contains(t, ce.Hint, "drop the selector or the filter")
+		assert.Contains(t, ce.Message, "drop the selector or the filter")
 	})
 
 	t.Run("kind selector plus --search", func(t *testing.T) {

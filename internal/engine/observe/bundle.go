@@ -287,8 +287,8 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 		}
 		t, ok := Lookup(tok)
 		if !ok {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown log target %q", tok)).
-				WithHint(fmt.Sprintf("choose from: %s", strings.Join(Names(), ", ")))
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("unknown log target %q; choose from: %s", tok, strings.Join(Names(), ", ")))
 		}
 		out = append(out, t)
 	}

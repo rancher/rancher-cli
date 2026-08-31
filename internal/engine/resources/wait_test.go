@@ -176,7 +176,8 @@ func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
 		require.ErrorContains(t, err, "Pending", "timeout message shows the real phase, not <no state>")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Empty(t, ce.Hint)
 	})
 }
 
@@ -246,7 +247,8 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
 		require.ErrorContains(t, err, "provisioning")
-		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Empty(t, ce.Hint)
 	})
 }
 
@@ -292,7 +294,8 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
 		require.ErrorContains(t, err, "no state observed")
-		assert.Equal(t, "retry with a longer --timeout or inspect the resource for what is holding it back", ce.Hint)
+		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Empty(t, ce.Hint)
 	})
 }
 

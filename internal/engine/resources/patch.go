@@ -82,7 +82,7 @@ func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	name := args[0]
 	if c.k.Key == "managementcluster" {
@@ -118,8 +118,8 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	patchedJSON, err := patch.Apply(origJSON)
 	if err != nil {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "cannot apply patch: "+err.Error()).
-			WithHint("check the patch ops against the resource")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"cannot apply patch: "+err.Error()+"; check the patch ops against the resource")
 	}
 	patched := &unstructured.Unstructured{}
 	if err := patched.UnmarshalJSON(patchedJSON); err != nil {
@@ -161,23 +161,22 @@ func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
 	var raw []byte
 	switch {
 	case inline != "" && file != "":
-		return nil, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or -f").WithHint("drop one of them")
+		return nil, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or -f, not both")
 	case inline != "":
 		raw = []byte(inline)
 	case file != "":
 		b, err := c.src.Read(file)
 		if err != nil {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("cannot read patch %q: %v", file, err)).
-				WithHint("pass -f <file> or -f - for stdin")
+			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("cannot read patch %q: %v", file, err))
 		}
 		raw = b
 	default:
-		return nil, clierr.New(clierr.CodeValidation, "a patch is required").WithHint("pass --patch '[...]' or -f <file>")
+		return nil, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or -f")
 	}
 	patch, err := jsonpatch.DecodePatch(raw)
 	if err != nil {
-		return nil, clierr.New(clierr.CodeValidation, "invalid patch: "+err.Error()).
-			WithHint("expected an RFC 6902 JSON patch array")
+		return nil, clierr.New(clierr.CodeValidation,
+			"invalid patch: "+err.Error()+"; expected an RFC 6902 JSON patch array")
 	}
 	return patch, nil
 }

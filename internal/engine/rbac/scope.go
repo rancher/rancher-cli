@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -41,8 +42,7 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 
 	if global && (project != "" || clusterFlag != "") {
 		return Scope{}, clierr.New(clierr.CodeValidation,
-			"--global cannot be combined with --project or --cluster").
-			WithHint("pick exactly one scope")
+			"--global cannot be combined with --project or --cluster; pick exactly one scope")
 	}
 	if global {
 		return Scope{Kind: ScopeGlobal, KindKey: "globalrolebinding", RoleField: "globalRoleName"}, nil
@@ -72,6 +72,19 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 			KindKey: "clusterroletemplatebinding", RoleField: "roleTemplateName"}, nil
 	}
 	return Scope{}, clierr.New(clierr.CodeValidation,
-		"a scope is required: --project, --cluster, or --global").
-		WithHint("e.g. --project Default --cluster c-x, or --cluster c-x, or --global")
+		"a scope is required: --project (optionally with --cluster), --cluster, or --global")
+}
+
+// Flags renders the scope as the --project/--cluster/--global flags an
+// equivalent grant or revoke invocation needs, shell-quoted, for splicing
+// into a hint that names a complete paste-valid command.
+func (s Scope) Flags() string {
+	switch s.Kind {
+	case ScopeProject:
+		return fmt.Sprintf(" --project %s --cluster %s", clierr.ShellQuote(s.ProjectID), clierr.ShellQuote(s.Cluster))
+	case ScopeCluster:
+		return fmt.Sprintf(" --cluster %s", clierr.ShellQuote(s.Cluster))
+	default: // ScopeGlobal
+		return " --global"
+	}
 }

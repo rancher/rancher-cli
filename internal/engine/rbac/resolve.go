@@ -88,7 +88,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			// Local principal, hash-id was NOT_FOUND: the user doesn't exist.
 			return ResolvedSubject{}, clierr.New(clierr.CodeNotFound,
 				fmt.Sprintf("no user found for principal %q", sub.Principal)).
-				WithHint("run: rancher get users")
+				WithHint("rancher get users")
 		}
 
 		// External principal: always run the authoritative ownership scan.
@@ -128,9 +128,9 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 				// Create and receive AlreadyExists — provisioning cannot
 				// succeed. Return a structured conflict.
 				return ResolvedSubject{}, clierr.New(clierr.CodeConflict,
-					fmt.Sprintf("principal %q cannot be provisioned: predicted user id %q is already occupied by a different identity",
+					fmt.Sprintf("principal %q cannot be provisioned: predicted user id %q is already occupied by a different identity; find the right user, or pass its id directly",
 						sub.Principal, hashIDOccupied)).
-					WithHint("run: rancher get users, or pass the user id directly")
+					WithHint("rancher get users")
 			}
 			return ResolvedSubject{Principal: sub.Principal, Provision: true}, nil
 		case 1:
@@ -143,8 +143,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			}
 			return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 				fmt.Sprintf("%d users share principal %q", len(owners), sub.Principal)).
-				WithCandidates(cands).
-				WithHint("pass the user id")
+				WithCandidates(cands)
 		}
 	}
 
@@ -191,7 +190,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
 			WithCandidates(subjectCandidates(all, sub.Bare)).
-			WithHint("run: rancher get users")
+			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(nameMatches))
 		for _, u := range nameMatches {
@@ -199,8 +198,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users match %q", len(nameMatches), sub.Bare)).
-			WithCandidates(cands).
-			WithHint("pass the user id")
+			WithCandidates(cands)
 	}
 }
 
@@ -208,16 +206,14 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 // system account: never a fallback, never provisioning.
 func systemUserError(subject string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles", subject)).
-		WithHint("pass a regular user or group")
+		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles — pass a regular user or group", subject))
 }
 
 func resolvedFromUser(u *unstructured.Unstructured) (ResolvedSubject, error) {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 	if len(pids) == 0 {
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("user %q has no principal ids", u.GetName())).
-			WithHint("fix the user object, or pass a fully qualified principal")
+			fmt.Sprintf("user %q has no principal ids; fix the user object, or pass a fully qualified principal", u.GetName()))
 	}
 	return ResolvedSubject{UserID: u.GetName(), Principal: preferredPrincipal(pids), PrincipalIDs: pids}, nil
 }

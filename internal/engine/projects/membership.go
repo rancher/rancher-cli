@@ -55,8 +55,9 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	current, _, _ := unstructured.NestedString(before.Object, "metadata", "labels", projectLabel)
 	if current != "" && current != projectID {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("namespace %q belongs to project %q", nsName, current)).
-			WithHint(fmt.Sprintf("run: rancher project remove-namespace %s --project %s --cluster %s first", nsName, current, cluster))
+			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)).
+			WithHint(fmt.Sprintf("rancher project remove-namespace %s --project %s --cluster %s",
+				clierr.ShellQuote(nsName), clierr.ShellQuote(current), clierr.ShellQuote(cluster)))
 	}
 
 	after := before.DeepCopy()
@@ -120,11 +121,11 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 func membershipArgs(in runtime.Input) (nsName, projectFlag string, err error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return "", "", clierr.New(clierr.CodeValidation, "argument <namespace> is required").WithHint("provide <namespace>")
+		return "", "", clierr.New(clierr.CodeValidation, "argument <namespace> is required")
 	}
 	projectFlag = in.String("project")
 	if projectFlag == "" {
-		return "", "", clierr.New(clierr.CodeValidation, "--project is required").WithHint("pass --project <id|name>")
+		return "", "", clierr.New(clierr.CodeValidation, "--project is required")
 	}
 	return args[0], projectFlag, nil
 }

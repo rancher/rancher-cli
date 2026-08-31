@@ -29,8 +29,8 @@ func BaseURL(serverURL string) string {
 // engine.LocalCluster or the invocation's own --cluster value.
 func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	if cluster == "" {
-		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty").
-			WithHint("pass an explicit cluster id (\"local\" for the management plane)")
+		return nil, clierr.New(clierr.CodeValidation,
+			`cluster id must not be empty; pass an explicit cluster id ("local" for the management plane)`)
 	}
 	if eff.URL == "" {
 		// Config-aware when the inventory is present: after a logout the

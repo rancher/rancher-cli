@@ -42,7 +42,7 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = env.Stop() })
 
-	repo, err := NewClusterClient(rc)
+	repo, err := NewClusterClient(rc, "test")
 	require.NoError(t, err)
 	ctx := t.Context()
 	w := func(name string) *unstructured.Unstructured {
@@ -82,7 +82,7 @@ func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = env.Stop() })
 
-	repo, err := NewClusterClient(rc)
+	repo, err := NewClusterClient(rc, "test")
 	require.NoError(t, err)
 	ctx := t.Context()
 

@@ -50,10 +50,9 @@ func checkFlagValues(descriptorFlags []runtime.ArgSpec, argv []string, inComplet
 		}
 		if flagIsKnown(next, all) {
 			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("flag %s got flag %s as its value — empty shell variable?", token, next)).
-				WithHint(fmt.Sprintf(
-					"check that the value for %s is set (the variable may be unset); use %s=<value> to pass a literal flag-like string",
-					token, token))
+				fmt.Sprintf(
+					"flag %s got flag %s as its value — empty shell variable? check that the value for %s is set, or use %s=<value> to pass a literal flag-like string",
+					token, next, token, token))
 		}
 		// next starts with "-" but is not a registered flag (e.g. "-1.5"): valid value.
 		i++

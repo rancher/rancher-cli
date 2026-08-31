@@ -26,16 +26,17 @@ func UserPasswordWorkflowCapability() runtime.CapabilityRequirement {
 // the operator must never see a raw NOT_FOUND for what is really a missing
 // workflow. The message carries the observed evidence rather than a
 // version diagnosis, because a NOT_FOUND cannot distinguish an old server
-// from one whose workflow objects were removed; the hint offers both ways
-// out. Every other error passes through unchanged: a real, actionable
-// failure (RBAC, network) must never be silently reclassified.
-func RefuseUnsupportedWorkflow(err error, evidence, hint string) error {
+// from one whose workflow objects were removed; detail names the way(s)
+// out — never a hint, since recovering from a missing workflow is never a
+// single concrete command. Every other error passes through unchanged: a
+// real, actionable failure (RBAC, network) must never be silently
+// reclassified.
+func RefuseUnsupportedWorkflow(err error, evidence, detail string) error {
 	if !clierr.IsNotFound(err) {
 		return err
 	}
 	return clierr.New(clierr.CodeCapabilityUnsupported,
-		"this server does not support the user-password workflow ("+evidence+")").
-		WithHint(hint)
+		"this server does not support the user-password workflow ("+evidence+"); "+detail)
 }
 
 // CommittedPartialSuccess wraps a post-commit step failure with the given

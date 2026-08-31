@@ -212,9 +212,9 @@ func TestCreateMachineConfigSetMalformed(t *testing.T) {
 		sl      []string
 		message string
 	}{
-		{"no equals", []string{secret}, "--set argument #1 must be <field>=<value>"},
-		{"no equals second occurrence", []string{"region=us-east-1", secret}, "--set argument #2 must be <field>=<value>"},
-		{"empty key", []string{"=" + secret}, "--set argument #1 has an empty field name"},
+		{"no equals", []string{secret}, "--set argument #1 must be <field>=<value>, e.g. --set region=nyc3"},
+		{"no equals second occurrence", []string{"region=us-east-1", secret}, "--set argument #2 must be <field>=<value>, e.g. --set region=nyc3"},
+		{"empty key", []string{"=" + secret}, "--set argument #1 has an empty field name, e.g. --set region=nyc3"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -274,8 +274,8 @@ func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
 
 // TestCreateMachineConfigCuratedFlagForeignKind pins MC-7a for one flag of
 // each class — string, bool (incl. explicit-false presence), list: a DO
-// curated flag on a non-DO kind is VALIDATION naming flag and kind, with a
-// --set hint, and the field is never written.
+// curated flag on a non-DO kind is VALIDATION naming flag and kind, with
+// the --set alternative named too, and the field is never written.
 func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -304,7 +304,7 @@ func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 			assert.Contains(t, ce.Message, tc.flag)
 			assert.Contains(t, ce.Message, "digitaloceanconfig")
 			assert.Contains(t, ce.Message, "azureconfig")
-			assert.Contains(t, ce.Hint, "--set")
+			assert.Contains(t, ce.Message, "--set")
 		})
 	}
 }
@@ -312,7 +312,7 @@ func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 // TestCreateMachineConfigCredentialRejectedPerKind pins MC-8: at least one
 // credential-carried key per kind, passed as a WELL-FORMED key=value
 // assignment (so the credential check, not the shape check, is what
-// fires), is VALIDATION naming the key with a cloud-credential hint —
+// fires), is VALIDATION naming the key with the cloud-credential guidance —
 // here in the canonical confirmed casing (case folding is pinned by
 // TestCreateMachineConfigCredentialRejectedCaseInsensitive).
 func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
@@ -330,7 +330,7 @@ func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 			_, err := buildMachineConfig(t, mcInput{a: []string{kind, "x"}, sl: []string{key + "=dummy"}})
 			ce := requireValidation(t, err)
 			assert.Contains(t, ce.Message, key)
-			assert.Contains(t, ce.Hint, "cloud credential")
+			assert.Contains(t, ce.Message, "cloud credential")
 		})
 	}
 }
@@ -340,7 +340,7 @@ func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 // --set ACCESSTOKEN=...) must not slip past the rejection and persist a
 // secret as a plaintext CR field. The VALIDATION message names the
 // CANONICAL casing from the metadata so the user learns the real field
-// name, with the cloud-credential hint.
+// name, with the cloud-credential guidance.
 func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -358,7 +358,7 @@ func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
 			_, err := buildMachineConfig(t, mcInput{a: []string{tc.kind, "x"}, sl: []string{tc.key + "=dummy"}})
 			ce := requireValidation(t, err)
 			assert.Contains(t, ce.Message, `"`+tc.canonical+`"`, "names the canonical casing")
-			assert.Contains(t, ce.Hint, "cloud credential")
+			assert.Contains(t, ce.Message, "cloud credential")
 		})
 	}
 }
@@ -651,8 +651,8 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 }
 
 // TestCreateMachineConfigSetForeignKindHintArticle pins the article-aware
-// hint: "an" before a vowel-initial kind name (azureconfig, amazonec2config),
-// "a" before a consonant-initial kind name (harvesterconfig).
+// message text: "an" before a vowel-initial kind name (azureconfig,
+// amazonec2config), "a" before a consonant-initial kind name (harvesterconfig).
 func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -672,7 +672,7 @@ func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {
 				is: map[string]bool{"region": true},
 			})
 			ce := requireValidation(t, err)
-			assert.Contains(t, ce.Hint, tc.article+" "+tc.kind, "hint article must match kind's initial vowel/consonant")
+			assert.Contains(t, ce.Message, tc.article+" "+tc.kind, "message article must match kind's initial vowel/consonant")
 		})
 	}
 }

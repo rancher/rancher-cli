@@ -45,8 +45,8 @@ func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWri
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		if os.IsExist(err) {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("%s already exists", path)).
-				WithHint("choose a different -f path, or remove the existing file")
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("%s already exists; choose a different -f path, or remove the existing file", path))
 		}
 		return nil, err
 	}

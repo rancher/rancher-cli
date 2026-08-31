@@ -43,25 +43,28 @@ func mapErr(err error) error {
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())
 	case apierrors.IsServiceUnavailable(err):
-		return clierr.Retryable(clierr.CodeGeneric, err.Error()).
-			WithHint("the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active")
+		return clierr.Retryable(clierr.CodeGeneric,
+			err.Error()+" — its agent may not be registered yet; retry once the cluster is active")
 	case errors.Is(err, context.DeadlineExceeded):
 		// A hung request expires the client timeout without any HTTP status —
 		// client-go hands back a url.Error wrapping context.DeadlineExceeded.
 		// This arm serves management-plane reads and downstream agent-tunnel
 		// reads alike, and the two causes are indistinguishable here, so the
-		// hint names both.
-		return clierr.Retryable(clierr.CodeGeneric, err.Error()).
-			WithHint("the request timed out — the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster>)")
+		// message names both; which cluster to inspect is unknown here, so
+		// no hint names one.
+		return clierr.Retryable(clierr.CodeGeneric,
+			err.Error()+" — the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster-id>)")
 	case isUnexpectedServerError(err):
-		ce := clierr.Retryable(clierr.CodeGeneric, err.Error())
-		// The substring refines the hint only — it is never the classifier,
+		msg := err.Error()
+		// The substring refines the message only — it is never the classifier,
 		// so a reworded proxy body still lands retryable with the generic
-		// proxy-path hint instead of silently flipping non-retryable.
-		if strings.Contains(err.Error(), "cluster agent disconnected") {
-			return ce.WithHint("the cluster agent is disconnected — retry once the cluster reconnects")
+		// proxy-path wording instead of silently flipping non-retryable.
+		if strings.Contains(msg, "cluster agent disconnected") {
+			msg += " — retry once the cluster reconnects"
+		} else {
+			msg += " — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed"
 		}
-		return ce.WithHint("the server answered with an unstructured 5xx — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
+		return clierr.Retryable(clierr.CodeGeneric, msg)
 	default:
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}

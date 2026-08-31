@@ -363,7 +363,7 @@ func TestNotFoundCuratedShape(t *testing.T) {
 	t.Parallel()
 	k, ok := Lookup("user")
 	require.True(t, ok)
-	err := NotFoundCurated(k, "u-xxx")
+	err := NotFoundCurated(k, "u-xxx", "")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -377,11 +377,25 @@ func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
 	t.Parallel()
 	k, ok := Lookup("fleet-cluster")
 	require.True(t, ok)
-	err := NotFoundCurated(k, "local")
+	err := NotFoundCurated(k, "local", "")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "fleet-cluster not found: local", ce.Message)
 	assert.Equal(t, "list with: rancher get fleetclusters", ce.Hint)
+}
+
+// TestNotFoundCuratedDownstreamCarriesCluster pins that a Downstream-scoped
+// kind's list hint carries the invocation's own --cluster value, shell-quoted
+// — the list command a Downstream kind's hint names is never valid without it.
+func TestNotFoundCuratedDownstreamCarriesCluster(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("deployment")
+	require.True(t, ok)
+	require.Equal(t, Downstream, k.Scope)
+	err := NotFoundCurated(k, "web", "c-abc123")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, "list with: rancher get deployments --cluster 'c-abc123'", ce.Hint)
 }
 
 func TestLookupGVK(t *testing.T) {

@@ -74,13 +74,11 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 	if by == byNode {
 		if in.String(resources.FlagNamespace) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--namespace does not apply to --by node").
-				WithHint("use --by pod --node N to see per-pod usage on a specific node")
+				"--namespace does not apply to --by node; use --by pod --node <node> to see per-pod usage on a specific node")
 		}
 		if resources.TypedProject(in) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--project does not apply to --by node").
-				WithHint("use --by pod --project P to see where a project's pods are scheduled")
+				"--project does not apply to --by node; use --by pod --project <project> to see where a project's pods are scheduled")
 		}
 	}
 

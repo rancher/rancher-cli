@@ -122,14 +122,13 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 
 	if d.CommandType == Mutating && streams.ReadOnly {
 		return 0, renderErr(streams, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("read-only mode: %s is a mutating command", d.Name)).
-			WithHint("enabled by "+strings.Join(streams.ReadOnlySources, ", ")))
+			fmt.Sprintf("read-only mode: %s is a mutating command; enabled by %s",
+				d.Name, strings.Join(streams.ReadOnlySources, ", "))))
 	}
 
 	if streams.DryRun && d.CommandType != Mutating {
 		return 0, renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
-			fmt.Sprintf("%s is a %s command", d.Name, d.CommandType)).
-			WithHint("re-run without --dry-run"))
+			fmt.Sprintf("%s is a %s command; re-run without --dry-run", d.Name, d.CommandType)))
 	}
 
 	if ce := validateInput(d, in); ce != nil {
@@ -203,8 +202,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	}
 	if missing := missingFlags(streams, eff, b); len(missing) > 0 {
 		return 0, renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
-			"confirmation required for this mutation").
-			WithHint("re-run with: "+strings.Join(missing, " ")))
+			"confirmation required for this mutation; re-run with "+strings.Join(missing, " ")))
 	}
 	res, err := exec(ctx)
 	if err != nil {
@@ -275,18 +273,17 @@ func validateFormat(format string) *clierr.Error {
 	}
 	if src, ok := strings.CutPrefix(format, output.TemplatePrefix); ok {
 		if src == "" {
-			return clierr.New(clierr.CodeValidation, "--output template source is empty").
-				WithHint("pass -o template='{{ .field }}'")
+			return clierr.New(clierr.CodeValidation,
+				"--output template source is empty; pass -o template='{{ .field }}'")
 		}
 		if _, err := template.New("out").Parse(src); err != nil {
-			return clierr.New(clierr.CodeValidation, fmt.Sprintf("invalid template: %v", err)).
-				WithHint("template must be valid Go text/template syntax")
+			return clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("invalid template: %v; must be valid Go text/template syntax", err))
 		}
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|"))).
-		WithHint(fmt.Sprintf("allowed: %s, template=<go-template>", strings.Join(OutputFormats, ", ")))
+		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|")))
 }
 
 // validateColor closes the --color value set: "" (the flag omitted, same as
@@ -298,8 +295,7 @@ func validateColor(color string) *clierr.Error {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("--color=%q is not one of %s", color, strings.Join(ColorModes, "|"))).
-		WithHint("allowed: " + strings.Join(ColorModes, ", "))
+		fmt.Sprintf("--color=%q is not one of %s", color, strings.Join(ColorModes, "|")))
 }
 
 // validateOutputPolicy enforces a Descriptor's OutputPolicy: a command that
@@ -316,8 +312,8 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 		shown = "table (the default)"
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%s does not support --output=%s", d.Name, shown)).
-		WithHint(fmt.Sprintf("allowed: %s", strings.Join(d.OutputPolicy.AllowedFormats, ", ")))
+		fmt.Sprintf("%s does not support --output=%s; allowed: %s",
+			d.Name, shown, strings.Join(d.OutputPolicy.AllowedFormats, ", ")))
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed Input:
@@ -331,15 +327,13 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 	for i, a := range d.Args {
 		if a.Required && (i >= len(args) || args[i] == "") {
 			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("argument <%s> is required", a.Name)).
-				WithHint(fmt.Sprintf("provide <%s>", a.Name))
+				fmt.Sprintf("argument <%s> is required", a.Name))
 		}
 		if len(a.Enum) > 0 && i < len(args) && args[i] != "" {
 			ok := slices.Contains(a.Enum, args[i])
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], strings.Join(a.Enum, "|"))).
-					WithHint(fmt.Sprintf("allowed: %s", strings.Join(a.Enum, ", ")))
+					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], strings.Join(a.Enum, "|")))
 			}
 		}
 	}
@@ -348,8 +342,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 			entries := in.Strings(f.Name)
 			if f.Required && len(entries) == 0 {
 				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--%s is required", f.Name)).
-					WithHint(fmt.Sprintf("pass --%s <value>", f.Name))
+					fmt.Sprintf("--%s is required", f.Name))
 			}
 			if len(f.Enum) > 0 {
 				for _, v := range entries {
@@ -359,8 +352,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 					ok := slices.Contains(f.Enum, v)
 					if !ok {
 						return clierr.New(clierr.CodeValidation,
-							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|"))).
-							WithHint(fmt.Sprintf("allowed: %s", strings.Join(f.Enum, ", ")))
+							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|")))
 					}
 				}
 			}
@@ -369,15 +361,13 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		v := in.String(f.Name)
 		if f.Required && v == "" {
 			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--%s is required", f.Name)).
-				WithHint(fmt.Sprintf("pass --%s <value>", f.Name))
+				fmt.Sprintf("--%s is required", f.Name))
 		}
 		if len(f.Enum) > 0 && v != "" {
 			ok := slices.Contains(f.Enum, v)
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|"))).
-					WithHint(fmt.Sprintf("allowed: %s", strings.Join(f.Enum, ", ")))
+					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|")))
 			}
 		}
 	}
@@ -407,29 +397,27 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequirement, streams IO) *clierr.Error {
 	if streams.Capability == nil {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s declares a capability requirement but no capability checker is wired", d.Name)).
-			WithHint("register the command through the standard server-command path")
+			fmt.Sprintf("%s declares a capability requirement but no capability checker is wired; "+
+				"register the command through the standard server-command path", d.Name))
 	}
 	dec := streams.Capability.Check(ctx, req)
 	switch dec.Outcome {
 	case CapabilityDisabled:
 		if dec.EditionPrime {
 			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("%s is disabled", req.Feature)).
-				WithHint(fmt.Sprintf("enable feature %s", req.Feature))
+				fmt.Sprintf("%s is disabled; enable it on the connected server", req.Feature))
 		}
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is disabled on this server", req.Feature)).
-			WithHint("availability is decided by the connected server — " + clierr.LearnMorePrimeURL)
+			fmt.Sprintf("%s is disabled on this server; availability is decided by the connected server — %s",
+				req.Feature, clierr.LearnMorePrimeURL))
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
-			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime", d.Name)).
-			WithHint("this capability requires Rancher Prime — " + clierr.LearnMorePrimeURL).
+			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime — %s",
+				d.Name, clierr.LearnMorePrimeURL)).
 			WithDetails(clierr.PrimeRequiredDetails{Feature: req.Feature, Server: dec.Server})
 	case CapabilityUnsupported:
 		return clierr.New(clierr.CodeCapabilityUnsupported,
-			fmt.Sprintf("this server does not support %s", req.Unsupported)).
-			WithHint("upgrade the connected server to a version that carries this workflow").
+			fmt.Sprintf("this server does not support %s; upgrade the connected server to a version that carries this workflow", req.Unsupported)).
 			WithDetails(clierr.CapabilityUnsupportedDetails{Feature: req.Feature, Server: dec.Server})
 	default: // CapabilityProceed, CapabilityUnknown
 		return nil

@@ -111,20 +111,18 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "argument <kind> is required").
-			WithHint("one of: " + machineConfigKindsHint())
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
+			"argument <kind> is required; one of: "+machineConfigKindsHint())
 	}
 	if len(args) < 2 || args[1] == "" {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "argument <name> is required").
-			WithHint("provide <name>")
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	kindName, name := args[0], args[1]
 
 	k, found := kinds.Lookup(kindName)
 	if !found || k.GVR.Group != kinds.MachineConfigGroup {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("argument <kind>=%q is not a machine-config kind", kindName)).
-			WithHint("one of: " + machineConfigKindsHint())
+			fmt.Sprintf("argument <kind>=%q is not a machine-config kind; one of: %s", kindName, machineConfigKindsHint()))
 	}
 
 	// Credential rejection (MC-8) folds case — lowercased key → the
@@ -157,23 +155,20 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		key, raw, ok := strings.Cut(entry, "=")
 		if !ok {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set argument #%d must be <field>=<value>", i+1)).
-				WithHint("e.g. --set region=nyc3")
+				fmt.Sprintf("--set argument #%d must be <field>=<value>, e.g. --set region=nyc3", i+1))
 		}
 		if key == "" {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set argument #%d has an empty field name", i+1)).
-				WithHint("e.g. --set region=nyc3")
+				fmt.Sprintf("--set argument #%d has an empty field name, e.g. --set region=nyc3", i+1))
 		}
 		if key == "apiVersion" || key == "kind" || key == "metadata" || key == "status" {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set %q is a Kubernetes envelope key, not a driver field", key)).
-				WithHint("apiVersion/kind/metadata are set by the CLI and status by the server; pass driver fields only")
+				fmt.Sprintf("--set %q is a Kubernetes envelope key, not a driver field; "+
+					"apiVersion/kind/metadata are set by the CLI and status by the server — pass driver fields only", key))
 		}
 		if seen[key] {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set field %q is given more than once", key)).
-				WithHint("pass each field exactly once")
+				fmt.Sprintf("--set field %q is given more than once; pass each field exactly once", key))
 		}
 		seen[key] = true
 		entries = append(entries, setEntry{key: key, raw: raw})
@@ -188,8 +183,8 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		}
 		if k.Name != doKind {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--%s applies to %s, not %s", cf.flag, doKind, k.Name)).
-				WithHint(fmt.Sprintf("pass --set %s=<value> to set %s %s driver field", cf.field, articleFor(k.Name), k.Name))
+				fmt.Sprintf("--%s applies to %s, not %s; pass --set %s=<value> to set %s %s driver field",
+					cf.flag, doKind, k.Name, cf.field, articleFor(k.Name), k.Name))
 		}
 		if cf.isBool {
 			fields[cf.field] = in.Bool(cf.flag)
@@ -202,8 +197,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		if k.Name == doKind {
 			if flag, collides := curatedFieldFlag[e.key]; collides {
 				return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--set %s collides with the curated --%s flag", e.key, flag)).
-					WithHint(fmt.Sprintf("pass --%s instead of --set %s=...", flag, e.key))
+					fmt.Sprintf("--set %s collides with the curated --%s flag; pass --%s instead", e.key, flag, flag))
 			}
 		}
 		if canonical, isCredential := credential[strings.ToLower(e.key)]; isCredential {
@@ -211,8 +205,8 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			if e.key != canonical {
 				msg = fmt.Sprintf("%q is the credential field %q and never belongs on a machine config", e.key, canonical)
 			}
-			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg).
-				WithHint("credentials live on a cloud credential (cc-* secret); reference it via create cluster --cloud-credential")
+			msg += "; credentials live on a cloud credential (cc-* secret) — reference it via create cluster --cloud-credential"
+			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)
 	}

@@ -213,7 +213,7 @@ func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
 	assert.Contains(t, cerr.Message, "cloud credential", "fast-path miss must yield the domain error, not 'secret not found'")
 	assert.NotContains(t, cerr.Message, "secret", "fast-path miss must not leak the Secret kind implementation detail")
 	require.NotEmpty(t, cerr.Candidates, "fast-path miss must yield candidates from the list")
-	assert.Equal(t, "run: rancher get cloud-credential", cerr.Hint)
+	assert.Equal(t, "rancher get cloud-credential", cerr.Hint)
 }
 
 // TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID pins
@@ -256,7 +256,8 @@ func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
 	require.Len(t, cerr.Candidates, 2)
-	assert.Contains(t, cerr.Hint, "cc-", "hint must name the exact-ID form")
+	assert.Contains(t, cerr.Candidates[0].ID, "cc-", "candidates must name the exact-ID form")
+	assert.Empty(t, cerr.Hint, "candidates already carry the selection guidance")
 }
 
 // TestResolveCloudCredentialAmbiguousCandidatesNarrowed pins run-1 finding:

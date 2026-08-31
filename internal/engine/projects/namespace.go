@@ -45,7 +45,7 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	name := args[0]
 

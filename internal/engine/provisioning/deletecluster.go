@@ -46,8 +46,8 @@ const localClusterName = "local"
 func NewDeleteProvisioningCluster(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
 	guard := func(_ context.Context, in runtime.Input) error {
 		if args := in.Args(); len(args) > 0 && args[0] == localClusterName {
-			return clierr.New(clierr.CodeValidation, "refusing to delete the local cluster").
-				WithHint("the local cluster is not a provisioning-cluster resource that can be removed this way")
+			return clierr.New(clierr.CodeValidation,
+				"refusing to delete the local cluster; it is not a provisioning-cluster resource that can be removed this way")
 		}
 		return nil
 	}

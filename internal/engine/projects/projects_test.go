@@ -227,7 +227,7 @@ func TestCreateProjectQuotaUnknownKeyIsValidation(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "limitsCPU")
-	assert.Contains(t, ce.Hint, "limitsCpu")
+	assert.Contains(t, ce.Message, "limitsCpu")
 }
 
 func TestCreateProjectQuotaMalformedPairIsValidation(t *testing.T) {

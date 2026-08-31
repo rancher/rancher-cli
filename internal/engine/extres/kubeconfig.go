@@ -100,8 +100,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 		}
 		if !hasWildcard && !slices.Contains(clusterList, resolved) {
 			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--current-context %q must name one of --clusters", raw)).
-				WithHint("pass --current-context as one of the values given to --clusters")
+				fmt.Sprintf("--current-context %q must name one of --clusters", raw))
 		}
 		currentContext = resolved
 	}
@@ -109,8 +108,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	includeDefaultEntry := in.String("include-default-entry")
 	if includeDefaultEntry == "false" && len(clusterList) == 0 {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"--include-default-entry=false requires --clusters").
-			WithHint("pass --clusters, or omit --include-default-entry to keep the default entry")
+			"--include-default-entry=false requires --clusters, or omit --include-default-entry to keep the default entry")
 	}
 
 	ttl, err := ParseTTL(in.String("ttl"))

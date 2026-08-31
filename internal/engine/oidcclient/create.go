@@ -88,12 +88,10 @@ func parseWaitTimeout(s string) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration", s)).
-			WithHint("pass e.g. --timeout 90s")
+		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration; e.g. 90s", s))
 	}
 	if d <= 0 {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q must be a positive duration", s)).
-			WithHint("pass e.g. --timeout 90s")
+		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q must be a positive duration; e.g. 90s", s))
 	}
 	return d, nil
 }
@@ -337,8 +335,7 @@ func impossibleCreateShape(name string, secrets map[string]any) *clierr.Error {
 // re-checking; no automatic cleanup.
 func createTimeoutError(name string) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("timed out waiting for oidc-client %s to be provisioned", name)).
-		WithHint("the oidc-provider feature may be disabled").
+		fmt.Sprintf("timed out waiting for oidc-client %s to be provisioned; the oidc-provider feature may be disabled", name)).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: name,
 			Recovery: "check the oidc-provider feature, then " + recoveryHint(name),

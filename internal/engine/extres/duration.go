@@ -45,8 +45,7 @@ func ParseTTL(s string) (time.Duration, error) {
 		}
 		if days > maxDays {
 			return 0, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("invalid --ttl %q: days must be at most %d (a larger value overflows the internal duration)", s, maxDays)).
-				WithHint(fmt.Sprintf("pass at most %dd", maxDays))
+				fmt.Sprintf("invalid --ttl %q: days must be at most %d (a larger value overflows the internal duration)", s, maxDays))
 		}
 		d = time.Duration(days) * 24 * time.Hour
 		if rest := m[2]; rest != "" {
@@ -70,8 +69,8 @@ func ParseTTL(s string) (time.Duration, error) {
 }
 
 func invalidTTL(s string) error {
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf("invalid --ttl %q", s)).
-		WithHint("use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)")
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("invalid --ttl %q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", s))
 }
 
 // TTLMilliseconds converts a parsed, positive TTL to the milliseconds the
@@ -87,8 +86,7 @@ func TTLMilliseconds(ttl time.Duration, raw string) (int64, error) {
 	ms := ttl.Milliseconds()
 	if ms == 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --ttl %q: too small to represent in milliseconds", raw)).
-			WithHint("pass at least 1ms")
+			fmt.Sprintf("invalid --ttl %q: too small to represent in milliseconds; pass at least 1ms", raw))
 	}
 	return ms, nil
 }
@@ -102,8 +100,7 @@ func TTLSeconds(ttl time.Duration, raw string) (int64, error) {
 	secs := int64(ttl.Seconds())
 	if secs == 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --ttl %q: too small to represent in seconds", raw)).
-			WithHint("pass at least 1s")
+			fmt.Sprintf("invalid --ttl %q: too small to represent in seconds; pass at least 1s", raw))
 	}
 	return secs, nil
 }

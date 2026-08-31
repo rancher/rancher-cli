@@ -98,16 +98,15 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		"refusing to delete user "+args[0]+": deleting your own user record locks this CLI out").
-		WithHint("switch to a different admin account, then delete this user — another admin must do it")
+		"refusing to delete user "+args[0]+": deleting your own user record locks this CLI out"+
+			"; switch to a different admin account, then delete this user — another admin must do it")
 }
 
 // guardVerifyRefusal returns the retryable GENERIC error used when the
 // self-delete guard cannot be verified. The cause is embedded for diagnostics.
 func guardVerifyRefusal(cause error) *clierr.Error {
 	return clierr.Retryable(clierr.CodeGeneric,
-		fmt.Sprintf("could not verify the target is not your own user: %v", cause)).
-		WithHint("the self-delete guard could not run — retry, or have another admin delete this user")
+		fmt.Sprintf("could not verify the target is not your own user: %v; retry, or have another admin delete this user", cause))
 }
 
 // passClassifiedOrRefuse returns err unchanged when it is a classified clierr

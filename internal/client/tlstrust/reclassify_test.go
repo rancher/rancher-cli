@@ -34,8 +34,8 @@ func leafOf(t *testing.T, c tls.Certificate) *x509.Certificate {
 // TestClassifyUntypedUnknownAuthorityLeafOnly is the live-incident repro: a
 // leaf issued by an absent CA, presented WITHOUT that CA (dynamiclistener's
 // leaf-only shape), failing with an untyped platform error. It must
-// classify unknownAuthority with the --cacert hint — not invalidChain with
-// contact-the-operator.
+// classify unknownAuthority with the --cacert guidance — not invalidChain
+// with contact-the-operator.
 func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	t.Parallel()
 	ca, caKey := genCA(t, "dynamiclistener-ca@test")
@@ -46,7 +46,7 @@ func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.Contains(t, ce.Message, "unknown authority")
-	assert.Contains(t, ce.Hint, "--cacert")
+	assert.Contains(t, ce.Message, "--cacert")
 	details, ok := ce.Details.(Details)
 	require.True(t, ok)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)

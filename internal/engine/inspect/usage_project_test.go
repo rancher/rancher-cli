@@ -257,5 +257,5 @@ func TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC(t *testing.T) {
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
-	assert.Contains(t, cerr.Hint, "--project")
+	assert.Contains(t, cerr.Message, "--project")
 }

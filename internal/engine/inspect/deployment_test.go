@@ -174,7 +174,7 @@ func TestInspectDeploymentEmptySelectorErrors(t *testing.T) {
 func TestInspectDeploymentNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	depKind := mustKind(t, "deployment")
-	client := newFakeClient().withGetErr(depKind.GVR, "ns1", "web", kinds.NotFoundCurated(depKind, "web"))
+	client := newFakeClient().withGetErr(depKind.GVR, "ns1", "web", kinds.NotFoundCurated(depKind, "web", "c-abc"))
 
 	cmd := NewDeployment(&fakeFactory{client: client})
 	_, err := execRead(t, cmd, input{

@@ -38,19 +38,16 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 	}
 	if ttl <= 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --%s %q: must be a positive duration", flag, raw)).
-			WithHint("pass a whole number of seconds, e.g. 1h or 3600s")
+			fmt.Sprintf("invalid --%s %q: must be a positive duration; e.g. 1h or 3600s", flag, raw))
 	}
 	if ttl%time.Second != 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --%s %q: must be a whole number of seconds with no fractional remainder", flag, raw)).
-			WithHint("pass a duration with no sub-second component, e.g. 1h or 3600s")
+			fmt.Sprintf("invalid --%s %q: must be a whole number of seconds with no fractional remainder; e.g. 1h or 3600s", flag, raw))
 	}
 	secs := int64(ttl / time.Second)
 	if secs > maxTTLSeconds {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --%s %q: must be at most %ds", flag, raw, maxTTLSeconds)).
-			WithHint(fmt.Sprintf("pass at most %ds", maxTTLSeconds))
+			fmt.Sprintf("invalid --%s %q: must be at most %ds", flag, raw, maxTTLSeconds))
 	}
 	return secs, nil
 }

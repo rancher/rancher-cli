@@ -29,7 +29,7 @@ jsonquery stdout data.metadata.name u-hsu-sys
 # A typed --include-system on a named get is a VALIDATION no-op rejection.
 ! exec rancher get user u-hsu-sys --include-system -o json
 jsonquery stderr data.error.code VALIDATION
-jsonquery stderr data.error.hint 'drop --include-system; a named get always returns the object'
+jsonquery stderr data.error.message '--include-system does not apply to a named user; a named get always returns the object'
 
 # Cleanup: leave no fixtures behind for scripts sharing this envtest server.
 exec rancher delete user u-hsu-real --apply --yes

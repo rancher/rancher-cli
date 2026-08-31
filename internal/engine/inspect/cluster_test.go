@@ -489,7 +489,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
 	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}, engine.LocalCluster)
 	require.NoError(t, err)
-	realClient, err := provider.NewClusterClient(rc)
+	realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
 	require.NoError(t, err)
 
 	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
@@ -548,7 +548,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
 	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}, engine.LocalCluster)
 	require.NoError(t, err)
-	realClient, err := provider.NewClusterClient(rc)
+	realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
 	require.NoError(t, err)
 
 	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
@@ -720,16 +720,14 @@ func TestInspectClusterResolutionErrors(t *testing.T) {
 		wantCode   string
 	}{
 		{
-			name: "unknown cluster propagates the provider's NOT_FOUND",
-			resolveErr: clierr.New(clierr.CodeNotFound, "cluster not found: ghost").
-				WithHint("pass a cluster id or display name"),
-			wantCode: clierr.CodeNotFound,
+			name:       "unknown cluster propagates the provider's NOT_FOUND",
+			resolveErr: clierr.New(clierr.CodeNotFound, "cluster not found: ghost; pass a cluster id or display name"),
+			wantCode:   clierr.CodeNotFound,
 		},
 		{
 			name: "ambiguous display name propagates the provider's AMBIGUOUS_SELECTION with candidates",
 			resolveErr: clierr.New(clierr.CodeAmbiguousSelection, `2 clusters have display name "prod"`).
-				WithCandidates([]clierr.Candidate{{ID: "c-aaa", Name: "prod"}, {ID: "c-bbb", Name: "prod"}}).
-				WithHint("pass the cluster id"),
+				WithCandidates([]clierr.Candidate{{ID: "c-aaa", Name: "prod"}, {ID: "c-bbb", Name: "prod"}}),
 			wantCode: clierr.CodeAmbiguousSelection,
 		},
 	}
@@ -1553,7 +1551,7 @@ func TestInspectClusterNotFoundCurated(t *testing.T) {
 	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withGetErr(mgmtKind.GVR, "", "c-gone", kinds.NotFoundCurated(mgmtKind, "c-gone")).
+		withGetErr(mgmtKind.GVR, "", "c-gone", kinds.NotFoundCurated(mgmtKind, "c-gone", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{})

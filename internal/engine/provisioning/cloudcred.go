@@ -118,14 +118,14 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 
 	id, err := projects.MatchOneOrError(name, ids, func(id string) string { return displayByID[id] }, cands,
 		"cloud credential not found: "+nameOrID,
-		"run: rancher get cloud-credential",
+		"rancher get cloud-credential",
 		func(idFound bool, displayMatchCount int) string {
 			if idFound {
-				return fmt.Sprintf("%q matches both a cloud credential id and a different credential's display name", nameOrID)
+				return fmt.Sprintf("%q matches both a cloud credential id and a different credential's display name; pass the credential id", nameOrID)
 			}
-			return fmt.Sprintf("%d cloud credentials have display name %q", displayMatchCount, nameOrID)
+			return fmt.Sprintf("%d cloud credentials have display name %q; pass the credential id", displayMatchCount, nameOrID)
 		},
-		"pass the credential id (cattle-global-data:cc-xxxxx)")
+		"")
 	if err != nil {
 		return nil, err
 	}

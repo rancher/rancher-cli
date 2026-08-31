@@ -365,8 +365,7 @@ func rejectProject(in runtime.Input, cmd string) error {
 	if resources.TypedProject(in) == "" {
 		return nil
 	}
-	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd).
-		WithHint("drop --project for this command")
+	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd)
 }
 
 // podMetricsGVR is a metrics GVR constant — deliberately not a kind-table

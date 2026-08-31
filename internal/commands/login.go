@@ -338,8 +338,7 @@ func (l loginCmd) authenticateAndStore(
 		id, secret, ok := strings.Cut(token, ":")
 		if !ok || id == "" || secret == "" {
 			authErr = clierr.New(clierr.CodeValidation,
-				"invalid token (expected non-empty id:secret)").
-				WithHint("get a token from the Rancher UI (format id:secret)")
+				"invalid token (expected non-empty id:secret); get one from the Rancher UI")
 		}
 	}
 	if authErr != nil {
@@ -361,7 +360,8 @@ func (l loginCmd) authenticateAndStore(
 				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, verr, snap)
 			}
 			if ce, ok := errors.AsType[*clierr.Error](verr); ok {
-				return runtime.Result{}, ce.WithHint("re-run with --no-verify to store the token without checking it")
+				return runtime.Result{}, ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
+					WithHint("")
 			}
 			return runtime.Result{}, verr
 		}
@@ -524,14 +524,14 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 	if in.Bool("token-stdin") {
 		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
 			return "", false, clierr.New(clierr.CodeValidation,
-				"--auth-provider/--auth-flow/--ttl apply to the provider sign-in flow and are incompatible with --token-stdin").
-				WithHint("drop --token-stdin to use the provider flow, or drop the provider flags to paste/pipe a token")
+				"--auth-provider/--auth-flow/--ttl apply to the provider sign-in flow and are incompatible with --token-stdin; "+
+					"drop --token-stdin to use the provider flow, or drop the provider flags to paste/pipe a token")
 		}
 	}
 	if in.Bool("no-verify") && (in.String("auth-provider") != "" || in.String("auth-flow") != "") {
 		return "", false, clierr.New(clierr.CodeValidation,
-			"--no-verify has no effect on the provider sign-in flow, which is already authenticated by construction").
-			WithHint("drop --no-verify, or drop the provider flags to skip verification for a pasted token")
+			"--no-verify has no effect on the provider sign-in flow, which is already authenticated by construction; "+
+				"drop --no-verify, or drop the provider flags to skip verification for a pasted token")
 	}
 
 	var (
@@ -551,8 +551,7 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 	case p.CanPrompt() || in.String("auth-provider") != "":
 		tok, viaProvider, err = promptForToken(ctx, server, caPEM, in, p)
 	default:
-		return "", false, clierr.New(clierr.CodeValidation, "token required").
-			WithHint("pipe it via --token-stdin, or run in a terminal")
+		return "", false, clierr.New(clierr.CodeValidation, "token required; pipe it via --token-stdin, or run in a terminal")
 	}
 	if err != nil {
 		// A typed clierr (from the provider flow, or an invalid menu pick) is
@@ -562,15 +561,13 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 			return "", false, err
 		}
 		if errors.Is(err, io.EOF) {
-			return "", false, clierr.New(clierr.CodeValidation, "no token provided").
-				WithHint("pipe the token via --token-stdin, or enter it at the prompt")
+			return "", false, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
 		}
 		return "", false, clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
 	}
 	tok = strings.TrimSpace(tok)
 	if tok == "" {
-		return "", false, clierr.New(clierr.CodeValidation, "no token provided").
-			WithHint("pipe the token via --token-stdin, or enter it at the prompt")
+		return "", false, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
 	}
 	return tok, viaProvider, nil
 }
@@ -598,7 +595,6 @@ func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input,
 		tok, err := resolveProviderLoginToken(ctx, server, caPEM, in, p)
 		return tok, true, err
 	default:
-		return "", false, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider)").
-			WithHint("re-run and answer 1 or 2")
+		return "", false, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider); re-run and answer 1 or 2")
 	}
 }

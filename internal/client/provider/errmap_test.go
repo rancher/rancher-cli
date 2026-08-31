@@ -51,16 +51,15 @@ func TestMapErr(t *testing.T) {
 // agent is not yet registered returns a 503 ServiceUnavailable that should be
 // classified as retryable so callers know to wait and retry, not give up.
 func TestMapErrServiceUnavailable(t *testing.T) {
-	const wantHint = "the target cluster is unavailable — its agent may not be registered yet; retry once the cluster is active"
-
-	t.Run("503 maps to GENERIC+retryable+hint", func(t *testing.T) {
+	t.Run("503 maps to GENERIC+retryable+message", func(t *testing.T) {
 		err := apierrors.NewServiceUnavailable("ClusterUnavailable 503: ClusterUnavailable 503")
 		got := mapErr(err)
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable, "503 must be retryable")
-		assert.Equal(t, wantHint, ce.Hint)
+		assert.Contains(t, ce.Message, "its agent may not be registered yet; retry once the cluster is active")
+		assert.Empty(t, ce.Hint)
 	})
 
 	t.Run("403 still maps to RBAC (no regression)", func(t *testing.T) {
@@ -143,9 +142,8 @@ func TestMapErrDeniedFallback(t *testing.T) {
 // Rancher's stale-precondition delete, fidelity/probes.go) must NOT match.
 func TestMapErrAgentDisconnected(t *testing.T) {
 	gr := schema.GroupResource{Group: "", Resource: "nodes"}
-	const wantHint = "the cluster agent is disconnected — retry once the cluster reconnects"
 
-	t.Run("post-registration disconnect maps to GENERIC+retryable+hint", func(t *testing.T) {
+	t.Run("post-registration disconnect maps to GENERIC+retryable+message", func(t *testing.T) {
 		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
 			"error trying to reach service: cluster agent disconnected", 0, true)
 		got := mapErr(err)
@@ -153,7 +151,8 @@ func TestMapErrAgentDisconnected(t *testing.T) {
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable, "disconnected agent must be retryable")
-		assert.Equal(t, wantHint, ce.Hint)
+		assert.Contains(t, ce.Message, "retry once the cluster reconnects")
+		assert.Empty(t, ce.Hint)
 	})
 
 	t.Run("genuine k8s InternalError stays non-retryable", func(t *testing.T) {
@@ -165,15 +164,15 @@ func TestMapErrAgentDisconnected(t *testing.T) {
 		assert.Empty(t, ce.Hint)
 	})
 
-	t.Run("unexpected 500 without the disconnect text stays retryable with the proxy hint", func(t *testing.T) {
-		const wantProxyHint = "the server answered with an unstructured 5xx — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed"
+	t.Run("unexpected 500 without the disconnect text stays retryable with the proxy message", func(t *testing.T) {
 		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
 			"upstream connect error", 0, true)
 		got := mapErr(err)
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.True(t, ce.Retryable, "unexpected 5xx via proxy must be retryable")
-		assert.Equal(t, wantProxyHint, ce.Hint)
+		assert.Contains(t, ce.Message, "often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
+		assert.Empty(t, ce.Hint)
 	})
 
 	t.Run("503 keeps its registration-window classification (no regression)", func(t *testing.T) {
@@ -181,7 +180,7 @@ func TestMapErrAgentDisconnected(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.True(t, ce.Retryable)
-		assert.Contains(t, ce.Hint, "may not be registered yet")
+		assert.Contains(t, ce.Message, "may not be registered yet")
 	})
 }
 
@@ -197,7 +196,8 @@ func TestMapErrDeadlineExceeded(t *testing.T) {
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable, "request timeout must be retryable")
-		assert.Contains(t, ce.Hint, "rancher inspect cluster")
+		assert.Contains(t, ce.Message, "rancher inspect cluster")
+		assert.Empty(t, ce.Hint)
 	})
 
 	t.Run("context cancellation is not given the timeout hint", func(t *testing.T) {

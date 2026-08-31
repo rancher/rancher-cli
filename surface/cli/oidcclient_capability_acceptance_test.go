@@ -117,8 +117,8 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 		require.Error(t, err)
 		env := oidcErrEnvelope(t, stdout, stderr)
 		assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled")
-		assert.Contains(t, env.Data.Error.Hint, "enable feature oidc-provider")
+		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled; enable it on the connected server")
+		assert.Empty(t, env.Data.Error.Hint)
 		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
 	})
 
@@ -137,7 +137,8 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 		env := oidcErrEnvelope(t, stdout, stderr)
 		assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on this server")
-		assert.Contains(t, env.Data.Error.Hint, clierr.LearnMorePrimeURL)
+		assert.Contains(t, env.Data.Error.Message, clierr.LearnMorePrimeURL)
+		assert.Empty(t, env.Data.Error.Hint)
 		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
 	})
 

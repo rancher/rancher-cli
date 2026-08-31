@@ -10,7 +10,7 @@ jsonquery eff.json data.cluster c-test
 # gate: no --apply → confirmation required
 ! exec rancher create project e2e-loop --cluster testcluster -o json
 jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --apply'
+jsonquery stderr data.error.message 'confirmation required for this mutation; re-run with --apply'
 
 # apply
 exec rancher create project e2e-loop --cluster testcluster --apply -o json
@@ -22,7 +22,7 @@ exec rancher get project e2e-loop --cluster testcluster -o json
 # delete: destructive → --apply alone refused
 ! exec rancher delete project e2e-loop --cluster testcluster --apply -o json
 jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --yes'
+jsonquery stderr data.error.message 'confirmation required for this mutation; re-run with --yes'
 
 exec rancher delete project e2e-loop --cluster testcluster --apply --yes
 

@@ -60,8 +60,8 @@ func parseWaitCondition(forExpr string) (waitCond, error) {
 
 func invalidForErr(forExpr string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("--for %q is not a supported wait grammar", forExpr)).
-		WithHint("use state=<value> or condition=<Type>[=<Status>]; JSONPath is not supported — use `kubectl wait` via `rancher kubeconfig` for that")
+		fmt.Sprintf("--for %q is not a supported wait grammar; use state=<value> or condition=<Type>[=<Status>]; "+
+			"JSONPath is not supported — use kubectl wait via rancher kubeconfig for that", forExpr))
 }
 
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
@@ -145,8 +145,7 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond,
 		}
 	}
 	return clierr.Retryable(clierr.CodeGeneric,
-		fmt.Sprintf("timed out waiting for %s; last state: %s", name, summary)).
-		WithHint("retry with a longer --timeout or inspect the resource for what is holding it back")
+		fmt.Sprintf("timed out waiting for %s; last state: %s; retry with a longer --timeout or inspect the resource for what is holding it back", name, summary))
 }
 
 // resolvedState reads status.state (the Rancher idiom); when absent it falls

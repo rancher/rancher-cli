@@ -63,8 +63,7 @@ func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, raw
 		// credential later, surfacing as an unexplained NOT_LOGGED_IN after
 		// a login that appeared to succeed.
 		return registrationProbe{}, clierr.New(clierr.CodeValidation,
-			"unsupported server URL scheme: "+rawURL).
-			WithHint("pass an http:// or https:// URL")
+			"unsupported server URL scheme: "+rawURL+"; use http:// or https://")
 	}
 	caBytes, raerr := resolveRegistrationCA(canonicalURL, caSelector)
 	if raerr != nil {
@@ -98,8 +97,7 @@ func validateEntryName(name string) *clierr.Error {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots", config.LegacyCachePrefix)).
-		WithHint("use a different name; 'rancher token' (the legacy shim) uses this prefix internally")
+		fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", config.LegacyCachePrefix))
 }
 
 // caPresence summarizes a stored CA selector's kind for a result envelope —

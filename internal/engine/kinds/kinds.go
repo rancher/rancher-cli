@@ -225,16 +225,24 @@ func hintToken(k Kind) string {
 // NotFoundCurated returns the curated NOT_FOUND error for a named-get miss:
 // "<kind> not found: <name>" with a hint naming the list command. The dynamic
 // client calls this after mapErr when ByGVR resolves the GVR to a kind row —
-// that is the single seam. Exported so test helpers can build the expected
-// curated shape without duplicating the hint formula.
+// that is the single seam, and it passes the --cluster value the failing
+// invocation itself was already scoped to. Exported so test helpers can
+// build the expected curated shape without duplicating the hint formula.
+// A Downstream-scoped kind's list command is never valid without --cluster,
+// so the hint carries it; a Management-scoped kind's list command needs no
+// cluster and clusterID is ignored.
 //
 // Rule: an error that ALREADY CARRIES A HINT is already curated — the dynamic
 // client checks for an existing hint in curateNotFound and passes such errors
 // through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
 // get the "<kind> not found: <name>" treatment.
-func NotFoundCurated(k Kind, name string) error {
+func NotFoundCurated(k Kind, name, clusterID string) error {
+	hint := "list with: rancher get " + hintToken(k)
+	if k.Scope == Downstream {
+		hint += " --cluster " + clierr.ShellQuote(clusterID)
+	}
 	return clierr.New(clierr.CodeNotFound, k.Name+" not found: "+name).
-		WithHint("list with: rancher get " + hintToken(k))
+		WithHint(hint)
 }
 
 // groupResource is the (Group, Resource) pair used as a map key for O(1)

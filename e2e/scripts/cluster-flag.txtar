@@ -11,7 +11,7 @@ jsonquery stdout data.metadata.name ctx-cm
 ! exec rancher get configmap ctx-cm --cluster no-such-cluster --namespace default -o json
 jsonquery stderr data.error.code NOT_FOUND
 
-# missing --cluster on a Downstream kind → VALIDATION with the flag hint
+# missing --cluster on a Downstream kind → VALIDATION
 ! exec rancher get configmap ctx-cm --namespace default -o json
 jsonquery stderr data.error.code VALIDATION
 stderr 'cluster is required'

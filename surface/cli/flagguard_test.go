@@ -25,8 +25,9 @@ func TestCheckFlagValuesIncident(t *testing.T) {
 	assert.Equal(t, "VALIDATION", ce.Code)
 	assert.Contains(t, ce.Message, "--cloud-credential")
 	assert.Contains(t, ce.Message, "--k8s-version")
-	assert.Contains(t, ce.Hint, "value for --cloud-credential")
-	assert.Contains(t, ce.Hint, "--cloud-credential=<value>")
+	assert.Contains(t, ce.Message, "value for --cloud-credential")
+	assert.Contains(t, ce.Message, "--cloud-credential=<value>")
+	assert.Empty(t, ce.Hint, "the empty-shell-variable guidance lives in the message, not a hint — <value> is a genuine placeholder, never a known literal")
 }
 
 func TestCheckFlagValuesEqualsFormPasses(t *testing.T) {

@@ -154,7 +154,7 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 func TestDeleteNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "pod")
-	client := &delClient{getErr: kinds.NotFoundCurated(k, "web")}
+	client := &delClient{getErr: kinds.NotFoundCurated(k, "web", "c-abc")}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, _, err := planDelete(t, NewDelete(k, fac),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
@@ -162,7 +162,7 @@ func TestDeleteNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
@@ -187,7 +187,7 @@ func TestDeleteDryRunNotFoundCurated(t *testing.T) {
 	k := mustKind(t, "pod")
 	client := &delClient{
 		obj:       objWithRV("web", "7"),
-		dryRunErr: kinds.NotFoundCurated(k, "web"),
+		dryRunErr: kinds.NotFoundCurated(k, "web", "c-abc"),
 	}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, _, err := planDelete(t, NewDelete(k, fac),
@@ -196,7 +196,7 @@ func TestDeleteDryRunNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteDryRunNotFoundWithHintPassesThrough pins that an already-curated
@@ -281,7 +281,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	k := mustKind(t, "pod")
 	client := &delClient{
 		obj:     objWithRV("web", "7"),
-		execErr: kinds.NotFoundCurated(k, "web"),
+		execErr: kinds.NotFoundCurated(k, "web", "c-abc"),
 	}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	_, exec, err := planDelete(t, NewDelete(k, fac),
@@ -295,7 +295,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get pods", ce.Hint)
+	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteExecPhaseNotFoundWithHintPassesThrough pins that an already-curated

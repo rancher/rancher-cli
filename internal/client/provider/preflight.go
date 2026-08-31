@@ -68,6 +68,5 @@ func mapPreflightErr(err error) error {
 			return ce
 		}
 	}
-	return clierr.Retryable(clierr.CodeGeneric, "cannot reach server: "+err.Error()).
-		WithHint("check the server URL and CA")
+	return clierr.Retryable(clierr.CodeGeneric, "cannot reach server: "+err.Error()+"; check the server URL and CA")
 }

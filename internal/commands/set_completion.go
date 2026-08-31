@@ -51,8 +51,8 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 	timeoutStr := in.String("timeout")
 	if networkStr == "" && timeoutStr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"provide --network and/or --timeout").
-			WithHint("run: rancher config set-completion --network=true [--timeout=500ms]")
+			"provide --network and/or --timeout (e.g. --timeout=500ms)").
+			WithHint("rancher config set-completion --network=true")
 	}
 	if networkStr != "" && networkStr != "true" && networkStr != "false" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -66,8 +66,7 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 		d, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--timeout=%q is not a valid duration: %v", timeoutStr, err)).
-				WithHint("examples: 500ms, 1s, 2s")
+				fmt.Sprintf("--timeout=%q is not a valid duration: %v (examples: 500ms, 1s, 2s)", timeoutStr, err))
 		}
 		if d > completionTimeoutMax {
 			d = completionTimeoutMax

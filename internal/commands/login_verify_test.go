@@ -75,7 +75,8 @@ func TestLoginVerifyRejects401TokenNothingPersisted(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Equal(t, "re-run with --no-verify to store the token without checking it", ce.Hint)
+	assert.Contains(t, ce.Message, "re-run with --no-verify to store the token without checking it")
+	assert.Empty(t, ce.Hint)
 
 	_, terr := store.GetToken(config.ServerRef{Name: "prod"})
 	assert.Error(t, terr, "a rejected token must never be persisted")
@@ -91,7 +92,8 @@ func TestLoginVerifyUnreachableServerRefusalClassifiesReachFailure(t *testing.T)
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable)
-	assert.Equal(t, "re-run with --no-verify to store the token without checking it", ce.Hint)
+	assert.Contains(t, ce.Message, "re-run with --no-verify to store the token without checking it")
+	assert.Empty(t, ce.Hint)
 
 	_, terr := store.GetToken(config.ServerRef{Name: "prod"})
 	assert.Error(t, terr, "an unreachable server must never get a persisted token")

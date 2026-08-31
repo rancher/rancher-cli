@@ -95,8 +95,8 @@ func (revokeCmd) Describe() runtime.Descriptor {
 func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <subject> is required").
-			WithHint("provide a user/group name, id, or fully qualified principal")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"argument <subject> is required; provide a user/group name, id, or fully qualified principal")
 	}
 	sub, err := ParseSubject(args[0], in.String("type"))
 	if err != nil {
@@ -144,15 +144,15 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	sort.Strings(names)
 
 	if len(names) == 0 {
-		e := clierr.New(clierr.CodeNotFound,
-			fmt.Sprintf("no %s for subject %q at this scope", bindKind.GVR.Resource, args[0]))
+		msg := fmt.Sprintf("no %s for subject %q at this scope", bindKind.GVR.Resource, args[0])
+		var hint string
 		if len(heldRoles) > 0 {
 			held := make([]string, 0, len(heldRoles))
 			for r := range heldRoles {
 				held = append(held, r)
 			}
 			sort.Strings(held)
-			e = e.WithHint("subject holds: " + strings.Join(held, ", "))
+			msg += "; subject holds: " + strings.Join(held, ", ")
 		} else {
 			// bindKind.Name, NOT bindKind.GVR.Resource: kinds.Lookup
 			// matches Name/Key/Aliases only, and the plural GVR
@@ -163,12 +163,16 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			// all-namespaces/all-clusters list.
 			switch scope.Kind {
 			case ScopeProject:
-				e = e.WithHint("run: rancher get " + bindKind.Name + " --namespace " + scope.NS + " -o json")
+				hint = fmt.Sprintf("rancher get %s --namespace %s -o json", bindKind.Name, clierr.ShellQuote(scope.NS))
 			case ScopeCluster:
-				e = e.WithHint("run: rancher get " + bindKind.Name + " --cluster " + scope.Cluster + " -o json")
+				hint = fmt.Sprintf("rancher get %s --cluster %s -o json", bindKind.Name, clierr.ShellQuote(scope.Cluster))
 			default: // ScopeGlobal — no namespace qualifier needed
-				e = e.WithHint("run: rancher get " + bindKind.Name + " -o json")
+				hint = "rancher get " + bindKind.Name + " -o json"
 			}
+		}
+		e := clierr.New(clierr.CodeNotFound, msg)
+		if hint != "" {
+			e = e.WithHint(hint)
 		}
 		return safety.Effect{}, nil, e
 	}
@@ -244,10 +248,10 @@ func partialFailure(err error, failedName string, deleted, unattempted []string)
 		unattempted = []string{}
 	}
 	return clierr.New(code,
-		fmt.Sprintf("revoke partially applied: %d deleted, failed on %q, %d unattempted",
+		fmt.Sprintf("revoke partially applied: %d deleted, failed on %q, %d unattempted"+
+			"; re-run the same revoke command — it re-matches the remaining bindings",
 			len(deleted), failedName, len(unattempted))).
 		WithRetryable(retryable).
-		WithHint("re-run the same revoke command; it re-matches the remaining bindings").
 		WithDetails(RevokePartialFailure{
 			Deleted:     deleted,
 			Failed:      RevokeFailure{Name: failedName, Code: code, Message: msg},

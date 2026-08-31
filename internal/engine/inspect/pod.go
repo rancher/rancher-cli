@@ -133,8 +133,7 @@ func parseTail(s string) (int, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--tail %q is not a valid non-negative integer", s)).
-			WithHint("pass --tail <N>")
+			fmt.Sprintf("--tail %q is not a valid non-negative integer", s))
 	}
 	return n, nil
 }

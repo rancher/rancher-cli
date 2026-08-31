@@ -120,8 +120,8 @@ func parseQuantity(s string) (int, *clierr.Error) {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 1 {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--quantity %q is not a positive integer", s)).
-			WithHint("pass --quantity <n>, n >= 1")
+		return 0, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--quantity %q is not a positive integer; must be >= 1", s))
 	}
 	return n, nil
 }
@@ -207,7 +207,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clusterMode, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return nil, 0, clierr.New(clierr.CodeValidation, "argument <name> is required").WithHint("provide <name>")
+		return nil, 0, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	name := args[0]
 
@@ -218,13 +218,13 @@ func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clu
 	nodeDriverFlags := machineConfig != "" || cloudCred != ""
 
 	if importFlag && customFlag {
-		return nil, 0, clierr.New(clierr.CodeValidation, "--import and --custom are mutually exclusive").
-			WithHint("pass exactly one of --import, --custom, or the node-driver flags")
+		return nil, 0, clierr.New(clierr.CodeValidation,
+			"--import and --custom are mutually exclusive; pass exactly one of --import, --custom, or the node-driver flags")
 	}
 	if (importFlag || customFlag) && nodeDriverFlags {
 		return nil, 0, clierr.New(clierr.CodeValidation,
-			"--import/--custom cannot be combined with --machine-config/--cloud-credential").
-			WithHint("pass exactly one of --import, --custom, or the node-driver flags")
+			"--import/--custom cannot be combined with --machine-config/--cloud-credential; "+
+				"pass exactly one of --import, --custom, or the node-driver flags")
 	}
 
 	var mode clusterMode
@@ -255,8 +255,7 @@ func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clu
 
 	case modeCustom:
 		if k8sVersion == "" {
-			return nil, 0, clierr.New(clierr.CodeValidation, "--custom requires --k8s-version").
-				WithHint("pass --k8s-version <version>")
+			return nil, 0, clierr.New(clierr.CodeValidation, "--custom requires --k8s-version")
 		}
 		_ = unstructured.SetNestedField(obj.Object, k8sVersion, "spec", "kubernetesVersion")
 		_ = unstructured.SetNestedMap(obj.Object, map[string]any{}, "spec", "rkeConfig")
@@ -276,28 +275,24 @@ func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clu
 // --cloud-credential over the network.
 func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machineConfig, cloudCred, k8sVersion string) error {
 	if machineConfig == "" {
-		return clierr.New(clierr.CodeValidation, "--machine-config is required for a node-driver cluster").
-			WithHint("pass --machine-config <kind>/<name>, e.g. amazonec2config/mycfg")
+		return clierr.New(clierr.CodeValidation,
+			"--machine-config is required for a node-driver cluster; pass --machine-config <kind>/<name>, e.g. amazonec2config/mycfg")
 	}
 	if cloudCred == "" {
-		return clierr.New(clierr.CodeValidation, "--cloud-credential is required for a node-driver cluster").
-			WithHint("pass --cloud-credential <name-or-id>")
+		return clierr.New(clierr.CodeValidation, "--cloud-credential is required for a node-driver cluster")
 	}
 	if k8sVersion == "" {
-		return clierr.New(clierr.CodeValidation, "--k8s-version is required for a node-driver cluster").
-			WithHint("pass --k8s-version <version>")
+		return clierr.New(clierr.CodeValidation, "--k8s-version is required for a node-driver cluster")
 	}
 
 	cfgKind, cfgName, ok := strings.Cut(machineConfig, "/")
 	if !ok || cfgKind == "" || cfgName == "" {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--machine-config %q must be <kind>/<name>", machineConfig)).
-			WithHint("e.g. amazonec2config/mycfg")
+			fmt.Sprintf("--machine-config %q must be <kind>/<name>, e.g. amazonec2config/mycfg", machineConfig))
 	}
 	if !machineConfigKinds()[cfgKind] {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind", cfgKind)).
-			WithHint("one of: " + machineConfigKindsHint())
+			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind; one of: %s", cfgKind, machineConfigKindsHint()))
 	}
 	// machineConfigKinds() is a strict subset of the kind table (every row
 	// whose GVR.Group is rke-machine-config.cattle.io), so this lookup always
@@ -307,8 +302,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	cfgTableKind, found := kinds.Lookup(cfgKind)
 	if !found {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind", cfgKind)).
-			WithHint("one of: " + machineConfigKindsHint())
+			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind; one of: %s", cfgKind, machineConfigKindsHint()))
 	}
 
 	poolName := in.String("pool-name")
@@ -323,8 +317,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	// the same reason and is left for the future multi-pool path.
 	if !etcd && !controlplane && !worker {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("pool %q must have at least one role (--etcd/--controlplane/--worker)", poolName)).
-			WithHint("pass at least one of --etcd, --controlplane, --worker")
+			fmt.Sprintf("pool %q must have at least one role (--etcd/--controlplane/--worker)", poolName))
 	}
 
 	quantity, qerr := parseQuantity(in.String("quantity"))

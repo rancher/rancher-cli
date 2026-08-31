@@ -20,7 +20,7 @@ jsonquery stdout warnings.0 'deleting this user removes the identity record; Ran
 # Gate: --apply alone is refused because delete is destructive (needs --yes).
 ! exec rancher delete user u-e2e --apply -o json
 jsonquery stderr data.error.code CONFIRMATION_REQUIRED
-jsonquery stderr data.error.hint 're-run with: --yes'
+jsonquery stderr data.error.message 'confirmation required for this mutation; re-run with --yes'
 
 # Gate passes with --apply --yes; the user is deleted.
 exec rancher delete user u-e2e --apply --yes

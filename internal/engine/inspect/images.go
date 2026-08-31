@@ -139,8 +139,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	needles := in.Strings(flagMatch)
 	if slices.Contains(needles, "") {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--match value must not be empty").
-			WithHint("pass a non-empty substring, e.g. --match registry.old.corp/")
+			"--match value must not be empty; pass a non-empty substring, e.g. --match registry.old.corp/")
 	}
 	by := in.String(flagBy)
 	if by == "" {
@@ -150,8 +149,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	allClusters := in.Bool(flagAllClusters)
 	if allClusters && clusterFlag != "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--cluster and --all-clusters are mutually exclusive").
-			WithHint("pass exactly one of --cluster or --all-clusters")
+			"--cluster and --all-clusters are mutually exclusive")
 	}
 	if allClusters {
 		return c.allClusters(ctx, by, needles)

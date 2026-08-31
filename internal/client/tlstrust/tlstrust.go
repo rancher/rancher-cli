@@ -133,25 +133,25 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	switch kind {
 	case KindUnknownAuthority:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server presented a certificate signed by an unknown authority").
-			WithHint("obtain the server's CA through a trusted channel (or verify its fingerprint out of band against the one shown here) and pass it with --cacert <path>").
+			"the server presented a certificate signed by an unknown authority; "+
+				"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert").
 			WithDetails(details)
 	case KindHostnameMismatch:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate is not valid for "+host).
-			WithHint("check that --server matches the certificate's hostname; --cacert cannot fix a hostname mismatch").
+			"the server's certificate is not valid for "+host+
+				"; check that --url matches the certificate's hostname — --cacert cannot fix a hostname mismatch").
 			WithDetails(details)
 	case KindExpired:
-		return clierr.New(clierr.CodeTLSTrust, "the server's certificate has expired").
-			WithHint("ask the server operator to renew the certificate; --cacert cannot fix an expired certificate").
+		return clierr.New(clierr.CodeTLSTrust,
+			"the server's certificate has expired; ask the server operator to renew it — --cacert cannot fix an expired certificate").
 			WithDetails(details)
 	case KindNotYetValid:
-		return clierr.New(clierr.CodeTLSTrust, "the server's certificate is not yet valid").
-			WithHint("check the local clock, or ask the server operator to reissue the certificate; --cacert cannot fix this").
+		return clierr.New(clierr.CodeTLSTrust,
+			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it — --cacert cannot fix this").
 			WithDetails(details)
 	default: // KindInvalidChain
-		return clierr.New(clierr.CodeTLSTrust, "the server's certificate chain failed validation").
-			WithHint("the certificate chain is malformed or incomplete; contact the server operator").
+		return clierr.New(clierr.CodeTLSTrust,
+			"the server's certificate chain failed validation; the chain is malformed or incomplete — contact the server operator").
 			WithDetails(details)
 	}
 }

@@ -220,14 +220,14 @@ func TestLoadMembershipTargetNotFoundCurated(t *testing.T) {
 	nsKind, _ := kinds.Lookup("namespace")
 	client := &membershipClient{
 		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-		getErr:   kinds.NotFoundCurated(nsKind, "no-ns"),
+		getErr:   kinds.NotFoundCurated(nsKind, "no-ns", "c-x"),
 	}
 	cmd := NewAddNamespace(stubFactory{c: client})
 	_, _, err := planMembership(t, cmd, in{s: map[string]string{"project": "p-1", "cluster": "c-x"}, a: []string{"no-ns"}})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "namespace not found: no-ns", ce.Message)
-	assert.Equal(t, "list with: rancher get namespaces", ce.Hint)
+	assert.Equal(t, "list with: rancher get namespaces --cluster 'c-x'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

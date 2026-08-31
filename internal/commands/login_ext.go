@@ -66,8 +66,7 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in run
 	}
 	s := strings.TrimSpace(sessionToken.Token)
 	if s == "" {
-		return "", clierr.New(clierr.CodeAuth, "authentication returned an empty token").
-			WithHint("check the auth provider and credentials")
+		return "", clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
 	}
 
 	base := kube.BaseURL(server)

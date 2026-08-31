@@ -115,7 +115,7 @@ func TestRunRefusesMutatingUnderReadOnly(t *testing.T) {
 			assert.Contains(t, ce.Message, "read-only mode:")
 			assert.Contains(t, ce.Message, "clusters scale")
 			for _, s := range tc.sources {
-				assert.Contains(t, ce.Hint, s, "hint must name every active read-only source")
+				assert.Contains(t, ce.Message, s, "message must name every active read-only source")
 			}
 		})
 	}
@@ -215,7 +215,7 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 		safety.Binding{Contract: safety.ContractPublic, Stability: safety.Deprecated})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeConfirmationRequired, ce.Code)
-	assert.Contains(t, ce.Hint, "--allow-deprecated")
+	assert.Contains(t, ce.Message, "--allow-deprecated")
 }
 
 // TestRenderEffectWarningsJSONOnce covers case (a) from the plan (D-10b,
@@ -1079,31 +1079,26 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 		name    string
 		format  string
 		message string
-		hint    string
 	}{
 		{
 			name:    "unknown value",
 			format:  "csv",
 			message: `--output="csv" is not one of table|wide|json|yaml|name|template=<go-template>`,
-			hint:    "allowed: table, wide, json, yaml, name, template=<go-template>",
 		},
 		{
 			name:    "bare template",
 			format:  "template",
 			message: `--output="template" is not one of table|wide|json|yaml|name|template=<go-template>`,
-			hint:    "allowed: table, wide, json, yaml, name, template=<go-template>",
 		},
 		{
 			name:    "empty template source",
 			format:  "template=",
-			message: "--output template source is empty",
-			hint:    "pass -o template='{{ .field }}'",
+			message: "--output template source is empty; pass -o template='{{ .field }}'",
 		},
 		{
 			name:    "template parse error",
 			format:  "template={{",
 			message: "invalid template:",
-			hint:    "template must be valid Go text/template syntax",
 		},
 	}
 	for _, tc := range invalid {
@@ -1118,14 +1113,14 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 			require.NotNil(t, ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Contains(t, ce.Message, tc.message)
-			assert.Equal(t, tc.hint, ce.Hint)
+			assert.Empty(t, ce.Hint, "an unsupported -o value carries its guidance in the message, not a hint")
 			assert.Empty(t, out.String(), "nothing may reach stdout for an invalid -o")
 
 			// The invalid value itself is untrusted, so it can never select
 			// envelope rendering: every case here renders as text, the error
 			// that complains about the format IS the format.
-			assert.Contains(t, errBuf.String(), "error (VALIDATION): "+tc.message)
-			assert.Contains(t, errBuf.String(), "hint: "+tc.hint)
+			assert.Contains(t, errBuf.String(), "error (VALIDATION): "+ce.Message)
+			assert.NotContains(t, errBuf.String(), "hint:", "no hint line when the guidance already lives in the message")
 		})
 	}
 }
@@ -1159,7 +1154,7 @@ func TestRunValidatesColor(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, `--color="rainbow" is not one of auto|always|never`)
-	assert.Equal(t, "allowed: auto, always, never", ce.Hint)
+	assert.Empty(t, ce.Hint, "the allowed values already live in the message")
 	assert.Empty(t, out.String(), "nothing may reach stdout for an invalid --color")
 }
 

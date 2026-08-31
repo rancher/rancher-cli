@@ -120,7 +120,7 @@ func TestSkillInstallNothingDetectedIsError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Hint, "--scope project")
+	assert.Contains(t, ce.Message, "--scope project")
 }
 
 // Preflight failure on ANY target changes nothing (the lease API refuses).

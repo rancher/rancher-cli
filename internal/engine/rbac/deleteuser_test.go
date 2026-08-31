@@ -128,7 +128,7 @@ func TestDeleteUserSelfDeleteRefused(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "u-self")
-	assert.Contains(t, ce.Hint, "admin")
+	assert.Contains(t, ce.Message, "admin")
 	assert.Empty(t, c.deleteDryRuns, "inner dry-run must not fire on self-delete refusal")
 }
 
@@ -151,7 +151,7 @@ func TestDeleteUserGenericProbeErrorRefuses(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable)
-	assert.Contains(t, ce.Hint, "retry")
+	assert.Contains(t, ce.Message, "retry")
 }
 
 // TestDeleteUserProbeNotFoundSkips verifies that a NOT_FOUND probe error
@@ -234,7 +234,7 @@ func TestDeleteUserUnclassifiedCliErrClusterErrorRefusesRetryably(t *testing.T) 
 	require.ErrorAs(t, err, &ce, "must be wrapped as a structured error")
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable, "unclassified construction failure must refuse retryably")
-	assert.Contains(t, ce.Hint, "retry")
+	assert.Contains(t, ce.Message, "retry")
 }
 
 // TestDeleteUserCliErrProbeErrorPassesThrough verifies that a clierr-coded
@@ -325,7 +325,7 @@ func TestDeleteUserMapErrDefaultProbeErrorRefusesRetryably(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable, "bare generic probe error must refuse retryably")
-	assert.Contains(t, ce.Hint, "retry")
+	assert.Contains(t, ce.Message, "retry")
 }
 
 // TestDeleteUserRetryableGenericHintedProbePassesThrough verifies that a probe

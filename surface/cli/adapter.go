@@ -283,29 +283,38 @@ func exit(ce *clierr.Error) error {
 	return ucli.Exit("", ce.ExitCode())
 }
 
-// hintEntry pairs a matcher with the targeted hint it selects. hint
-// receives the same input as match so one entry can vary its wording
-// by context instead of relying on table order between overlapping
+// hintEntry pairs a matcher with the extra MESSAGE-body detail it selects
+// (never a hint — none of these entries has a single concrete, runnable
+// command to offer beyond the generic schema pointer every caller falls
+// back to) and an optional hint override for the rare entry that does have
+// one. Both receive the same input as match so one entry can vary its
+// wording by context instead of relying on table order between overlapping
 // entries.
 type hintEntry[T any] struct {
-	match func(T) bool
-	hint  func(T) string
+	match  func(T) bool
+	detail func(T) string // extra message-body text; "" adds nothing
+	hint   func(T) string // hint override; nil uses the caller's generic fallback
 }
 
-// firstHint walks an ordered registration table: the first matching
-// entry's hint wins; fallback when nothing matches.
-func firstHint[T any](entries []hintEntry[T], in T, fallback string) string {
+// firstMatch walks an ordered registration table and returns the first
+// matching entry's detail and hint-override (nil hint if the entry has
+// none); ok is false when nothing matches.
+func firstMatch[T any](entries []hintEntry[T], in T) (detail string, hint func(T) string, ok bool) {
 	for _, e := range entries {
 		if e.match(in) {
-			return e.hint(in)
+			d := ""
+			if e.detail != nil {
+				d = e.detail(in)
+			}
+			return d, e.hint, true
 		}
 	}
-	return fallback
+	return "", nil, false
 }
 
-// constHint wraps a fixed hint string for entries whose wording does
-// not vary by input.
-func constHint[T any](s string) func(T) string {
+// constText wraps a fixed string for a detail or hint field whose wording
+// does not vary by input.
+func constText[T any](s string) func(T) string {
 	return func(T) string { return s }
 }
 
@@ -316,29 +325,38 @@ type notFoundInput struct {
 }
 
 // notFoundHints is the registration table for targeted command-not-found
-// hints: the first matching entry's hint wins; callers fall back to the
-// generic schema pointer when nothing matches. Register new targeted hints
-// here, not in the seam.
+// guidance: the first matching entry's detail is appended to the message,
+// and its hint (if any) overrides the generic schema pointer. Register new
+// targeted entries here, not in the seam.
 var notFoundHints = []hintEntry[notFoundInput]{
 	{
 		// --version is a root-level flag only; a subgroup miss like `get
-		// version` has no such flag to point at, so it keeps the generic hint.
+		// version` has no such flag to point at, so it keeps the generic entry.
 		match: func(in notFoundInput) bool {
 			return in.name == "version" && in.c == in.c.Root()
 		},
-		hint: constHint[notFoundInput]("there is no `version` command; use --version"),
+		detail: constText[notFoundInput]("there is no version command"),
+		hint:   constText[notFoundInput]("rancher --version"),
 	},
 	{
 		match: func(in notFoundInput) bool {
 			return in.c.Name == "delete" && (in.name == "cluster" || in.name == "clusters")
 		},
-		hint: constHint[notFoundInput]("cluster deletion goes through: rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"),
+		detail: constText[notFoundInput]("cluster deletion goes through rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"),
 	},
 }
 
-// notFoundHint returns the targeted operator hint for commandNotFound.
-func notFoundHint(c *ucli.Command, name string) string {
-	return firstHint(notFoundHints, notFoundInput{c: c, name: name}, "run: rancher schema")
+// notFoundGuidance returns commandNotFound's message detail (possibly "")
+// and hint for name.
+func notFoundGuidance(c *ucli.Command, name string) (detail, hint string) {
+	if d, h, ok := firstMatch(notFoundHints, notFoundInput{c: c, name: name}); ok {
+		hint := "rancher schema"
+		if h != nil {
+			hint = h(notFoundInput{c: c, name: name})
+		}
+		return d, hint
+	}
+	return "", "rancher schema"
 }
 
 // usageErrorInput bundles the arguments passed to onUsageError.
@@ -369,31 +387,39 @@ func isAllNamespacesFlag(err error) bool {
 // itself reports ["rancher","get"]. The positional p[1]=="get" check
 // matches only commands directly under the `get` group — a "get" segment
 // anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
-// not trigger the hint.
+// not trigger the detail.
 var allNamespacesEntry = hintEntry[usageErrorInput]{
 	// kubectl reflex -A/--all-namespaces: the flag exists nowhere.
 	// Under the get group the wording explains that lists already
-	// span all namespaces; elsewhere it just names the missing flag.
+	// span all namespaces; elsewhere the base message alone covers it.
 	// One entry, wording chosen here — no order-dependent
 	// specialize-then-generalize pair.
 	match: func(in usageErrorInput) bool { return isAllNamespacesFlag(in.err) },
-	hint: func(in usageErrorInput) string {
+	detail: func(in usageErrorInput) string {
 		if p := in.c.Path(); len(p) >= 2 && p[1] == "get" {
 			return noAllNamespacesFlag + " — list operations already span all namespaces; use --namespace where the kind accepts one"
 		}
-		return noAllNamespacesFlag + "; run: rancher schema for this command's real flags"
+		return noAllNamespacesFlag
 	},
 }
 
 // usageErrorHints is the registration table for targeted flag-parse
-// hints: the first matching entry's hint wins; callers fall back to the
-// generic schema hint when nothing matches. Register new targeted hints
-// here, not in the seam.
+// guidance: the first matching entry's detail is appended to the message;
+// callers fall back to just the base message plus the generic schema hint
+// when nothing matches. Register new targeted entries here, not in the seam.
 var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry}
 
-// usageErrorHint returns the targeted operator hint for onUsageError.
-func usageErrorHint(c *ucli.Command, err error) string {
-	return firstHint(usageErrorHints, usageErrorInput{c: c, err: err}, "run: rancher schema; pass --help for usage")
+// usageErrorGuidance returns onUsageError's message detail (possibly "")
+// and hint for err.
+func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
+	if d, h, ok := firstMatch(usageErrorHints, usageErrorInput{c: c, err: err}); ok {
+		hint := "rancher schema"
+		if h != nil {
+			hint = h(usageErrorInput{c: c, err: err})
+		}
+		return d, hint
+	}
+	return "", "rancher schema"
 }
 
 // commandNotFound is urfave/cli's seam for an unmatched command/subcommand
@@ -407,9 +433,12 @@ func usageErrorHint(c *ucli.Command, err error) string {
 // yet at this point, so the rendering format comes from a raw-argv scan
 // (scanOutputFormat), not a parsed --output value.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
-	hint := notFoundHint(c, name)
-	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown command %q", name)).
-		WithHint(hint)
+	msg := fmt.Sprintf("unknown command %q", name)
+	detail, hint := notFoundGuidance(c, name)
+	if detail != "" {
+		msg += "; " + detail
+	}
+	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
 	ucli.OsExiter(ce.ExitCode())
 }
@@ -424,9 +453,12 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 // command's own flags failed to parse, so — like commandNotFound — the
 // rendering format comes from a raw-argv scan, not a parsed --output value.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
-	hint := usageErrorHint(c, err)
-	ce := clierr.New(clierr.CodeValidation, err.Error()).
-		WithHint(hint)
+	msg := err.Error() + "; pass --help for usage"
+	detail, hint := usageErrorGuidance(c, err)
+	if detail != "" {
+		msg += "; " + detail
+	}
+	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
 	return exit(ce)
 }

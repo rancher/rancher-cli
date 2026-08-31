@@ -203,8 +203,8 @@ func resolveTargetCluster(ctx context.Context, clients engine.ClusterClientFacto
 				return "", err
 			}
 			if resolved != engine.LocalCluster {
-				return "", clierr.New(clierr.CodeValidation, fmt.Sprintf("%s is a local-only target", t.Name)).
-					WithHint("omit --cluster, or pass --cluster local")
+				return "", clierr.New(clierr.CodeValidation,
+					fmt.Sprintf("%s is a local-only target; omit --cluster, or pass --cluster local", t.Name))
 			}
 		}
 		return engine.LocalCluster, nil
@@ -214,8 +214,7 @@ func resolveTargetCluster(ctx context.Context, clients engine.ClusterClientFacto
 			return "", err
 		}
 		if resolved == engine.LocalCluster {
-			return "", clierr.New(clierr.CodeValidation, fmt.Sprintf("%s only runs on a downstream cluster", t.Name)).
-				WithHint("pass --cluster <id|name>")
+			return "", clierr.New(clierr.CodeValidation, fmt.Sprintf("%s only runs on a downstream cluster", t.Name))
 		}
 		return resolved, nil
 	default:

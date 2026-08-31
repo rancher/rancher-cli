@@ -109,7 +109,8 @@ func TestRunCapabilityDisabledOnPrimeRefusesWithEnableHint(t *testing.T) {
 		IO{Out: &out, Err: &errBuf, Format: "json", Capability: checker}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Hint, "enable feature widget-feature")
+	assert.Contains(t, ce.Message, "widget-feature is disabled; enable it on the connected server")
+	assert.Empty(t, ce.Hint)
 }
 
 // TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint pins the
@@ -126,7 +127,8 @@ func TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "widget-feature is disabled on this server")
-	assert.Contains(t, ce.Hint, clierr.LearnMorePrimeURL)
+	assert.Contains(t, ce.Message, clierr.LearnMorePrimeURL)
+	assert.Empty(t, ce.Hint)
 }
 
 func TestRunCapabilityPrimeRequiredReturnsStructuredError(t *testing.T) {
@@ -139,7 +141,8 @@ func TestRunCapabilityPrimeRequiredReturnsStructuredError(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodePrimeRequired, ce.Code)
 	assert.Equal(t, 9, ce.ExitCode())
-	assert.Contains(t, ce.Hint, clierr.LearnMorePrimeURL)
+	assert.Contains(t, ce.Message, clierr.LearnMorePrimeURL)
+	assert.Empty(t, ce.Hint)
 	details, ok := ce.Details.(clierr.PrimeRequiredDetails)
 	require.True(t, ok, "Details must carry the structured PrimeRequiredDetails shape")
 	assert.Equal(t, "widget-feature", details.Feature)

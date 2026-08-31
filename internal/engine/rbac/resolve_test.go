@@ -337,7 +337,7 @@ func TestResolveSubjectExternalPrincipalHashHitAmbiguousOwners(t *testing.T) {
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 			assert.Len(t, ce.Candidates, 2)
-			assert.Equal(t, "pass the user id", ce.Hint)
+			assert.Empty(t, ce.Hint, "candidates already carry the selection guidance")
 		})
 	}
 }
@@ -365,7 +365,7 @@ func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 			assert.Len(t, ce.Candidates, 2)
-			assert.Equal(t, "pass the user id", ce.Hint)
+			assert.Empty(t, ce.Hint, "candidates already carry the selection guidance")
 		})
 	}
 }
@@ -410,7 +410,7 @@ func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 	assert.Len(t, ce.Candidates, 2)
-	assert.Equal(t, "pass the user id", ce.Hint)
+	assert.Empty(t, ce.Hint, "candidates already carry the selection guidance")
 }
 
 func TestResolveSubjectBareSameUserBothFields(t *testing.T) {

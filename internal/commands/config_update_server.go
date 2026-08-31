@@ -54,8 +54,8 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			"--cacert and --clear-cacert are mutually exclusive")
 	}
 	if url == "" && cacert == "" && !clearCacert {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "nothing to update").
-			WithHint("pass --url, --cacert, or --clear-cacert")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"nothing to update; pass --url, --cacert, or --clear-cacert")
 	}
 
 	preCfg, err := config.Load(config.FilePath(c.dir))
