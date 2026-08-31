@@ -173,7 +173,14 @@ else
   # here — the image is digest-pinned, the port is loopback-bound by default
   # (BIND_ADDR), and the container is ephemeral (removed unless
   # E2E_REAL_KEEP=1).
-  docker run -d --name "${CONTAINER}" --privileged \
+  # A kept container self-heals: patching a non-dynamic Feature makes the
+  # single-node server exit to apply it, and without a restart policy the
+  # kept oracle stays down until someone notices. Suite mode stays
+  # policy-free so a crash fails loudly instead of masking itself.
+  RESTART_ARGS=""
+  [ "${E2E_REAL_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
+  # shellcheck disable=SC2086
+  docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
     -p "${BIND_ADDR}:${HOST_PORT}:443" \
     --env-file "${ENV_FILE}" \
     "${ORACLE_IMAGE}" >/dev/null
