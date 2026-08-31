@@ -353,9 +353,11 @@ never exposes the raw units), and shown-once handling for the created secret.
 `oidcclient` (Rancher's `management.cattle.io/v3` OIDCClient — the server
 side of the embedded OIDC provider) is the first generated kind gated behind
 a Rancher Prime capability requirement (feature `oidc-provider`): `rancher
-schema oidcclient` and `--help` mark it accordingly, and on a server where
-the feature is unavailable the generated verbs answer `PRIME_REQUIRED`
-instead of reaching the server's data. Sensitive (`patch oidcclient`
+schema oidcclient` and `--help` mark it accordingly. On a server where the
+feature is explicitly disabled, the verbs refuse with a `VALIDATION`
+"feature is disabled on this server" message on every edition, before
+reaching the server's data; `PRIME_REQUIRED` (exit 9) is reserved for a
+Prime-tiered feature on a server whose edition cannot enable it. Sensitive (`patch oidcclient`
 escalates to `--yes`) — the generic patch path can set the same client-secret
 lifecycle annotations the curated `create oidc-client` / `oidc-client
 add-secret|rotate-secret|remove-secret` commands gate behind confirmation,
