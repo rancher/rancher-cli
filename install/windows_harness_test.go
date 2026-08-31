@@ -236,6 +236,16 @@ func ghStubDir(t *testing.T, mode string) (dir, argvLog string, env []string) {
 	return
 }
 
+// canonicalPath returns the filesystem's own final name for an existing
+// path (resolving reparse points and 8.3 short forms — runner TEMP dirs
+// arrive short); a path that cannot be resolved is cleaned as given.
+func canonicalPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
+}
+
 // junctionTarget reports where the bin junction points, normalized for a
 // case-insensitive comparison against a versions dir path.
 func junctionTarget(t *testing.T, path string) string {
@@ -243,13 +253,13 @@ func junctionTarget(t *testing.T, path string) string {
 	target, err := os.Readlink(path)
 	require.NoError(t, err, "%s must be a junction", path)
 	target = strings.TrimPrefix(target, `\\?\`)
-	return filepath.Clean(target)
+	return canonicalPath(target)
 }
 
 func assertJunctionTo(t *testing.T, link, want string) {
 	t.Helper()
 	got := junctionTarget(t, link)
-	assert.Truef(t, strings.EqualFold(got, filepath.Clean(want)), "junction %s points at %s, want %s", link, got, want)
+	assert.Truef(t, strings.EqualFold(got, canonicalPath(want)), "junction %s points at %s, want %s", link, got, want)
 }
 
 // readReceipt decodes the install receipt.

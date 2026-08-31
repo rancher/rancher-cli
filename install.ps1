@@ -93,6 +93,7 @@ using System.Net.Http;
 using System.Net.Security;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace RancherCliInstall
@@ -107,6 +108,12 @@ namespace RancherCliInstall
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern bool CreateDirectoryW(string path, IntPtr sa);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern int GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path, int size, int flags);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern int GetFullPathNameW(string name, int size, StringBuilder buffer, IntPtr filePart);
 
         const uint DELETE = 0x00010000;
         const uint FILE_SHARE_ALL = 0x7;
@@ -162,6 +169,62 @@ namespace RancherCliInstall
                     Marshal.FreeHGlobal(p);
                 }
             }
+        }
+
+        // FinalPath returns the filesystem's own final long-form name for an
+        // existing path, resolved through any reparse points: environment
+        // variables can hand the installer 8.3 short names (RUNNER~1) whose
+        // string form never equals the long name the same directory reports
+        // elsewhere, so every path comparison goes through this
+        // canonicalization instead of raw strings.
+        public static string FinalPath(string path)
+        {
+            using (SafeFileHandle h = CreateFileW(path, 0, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero))
+            {
+                if (h.IsInvalid)
+                {
+                    throw new IOException("cannot open " + path + " (error " + Marshal.GetLastWin32Error() + ")");
+                }
+                StringBuilder sb = new StringBuilder(1024);
+                int n = GetFinalPathNameByHandleW(h, sb, sb.Capacity, 0);
+                if (n > sb.Capacity)
+                {
+                    sb.Capacity = n;
+                    n = GetFinalPathNameByHandleW(h, sb, sb.Capacity, 0);
+                }
+                if (n <= 0)
+                {
+                    throw new IOException("cannot resolve the final path of " + path + " (error " + Marshal.GetLastWin32Error() + ")");
+                }
+                string s = sb.ToString();
+                if (s.StartsWith(@"\\?\UNC\")) { s = @"\\" + s.Substring(8); }
+                else if (s.StartsWith(@"\\?\")) { s = s.Substring(4); }
+                return s.TrimEnd('\\');
+            }
+        }
+
+        // FullPath returns the absolute form of a path without touching the
+        // filesystem: relative segments resolve against the current
+        // directory and separators normalize, but every component keeps the
+        // spelling it was given. Path.GetFullPath is not a substitute here -
+        // it silently rewrites 8.3 short components (RUNNER~1) to their
+        // long names, and paths the installer prints or stores must echo
+        // the form the environment or the operator handed in.
+        public static string FullPath(string path)
+        {
+            StringBuilder sb = new StringBuilder(1024);
+            int n = GetFullPathNameW(path, sb.Capacity, sb, IntPtr.Zero);
+            if (n > sb.Capacity)
+            {
+                sb.Capacity = n;
+                n = GetFullPathNameW(path, sb.Capacity, sb, IntPtr.Zero);
+            }
+            if (n <= 0)
+            {
+                throw new IOException("cannot resolve the full path of " + path + " (error " + Marshal.GetLastWin32Error() + ")");
+            }
+            return sb.ToString();
         }
 
         // TryCreateDirectory creates the directory and reports false when it
@@ -551,7 +614,24 @@ namespace RancherCliInstall
     function Get-JunctionTarget([string]$Path) {
         $t = (Get-Item -LiteralPath $Path -Force).Target
         if ($t -is [array]) { $t = $t[0] }
-        return [IO.Path]::GetFullPath([string]$t).TrimEnd('\')
+        return (Get-FullPath ([string]$t)).TrimEnd('\')
+    }
+
+    # Get-FinalPath canonicalizes an existing path to the filesystem's own
+    # final long-form name, resolving through junctions - the only compare
+    # form safe against 8.3 short names in the environment. Comparisons
+    # canonicalize both sides at the compare site; state and output keep
+    # the path forms they were handed.
+    function Get-FinalPath([string]$Path) {
+        return [RancherCliInstall.Native]::FinalPath($Path)
+    }
+
+    # Get-FullPath makes a path absolute without rewriting its spelling -
+    # unlike [IO.Path]::GetFullPath, which expands 8.3 short components to
+    # their long names. Paths that reach output or the receipt go through
+    # this, so they echo the form the environment or the operator gave.
+    function Get-FullPath([string]$Path) {
+        return [RancherCliInstall.Native]::FullPath($Path)
     }
 
     # Resolve-Reparse follows a file or directory through reparse points -
@@ -629,7 +709,7 @@ namespace RancherCliInstall
         $S.ConfigDir = Join-Path $env:APPDATA 'rancher-cli'
         $S.VersionsDir = Join-Path $S.DataDir 'versions'
         if (-not $S.BinDir) { $S.BinDir = Join-Path $S.DataDir 'bin' }
-        $S.BinDir = [IO.Path]::GetFullPath($S.BinDir).TrimEnd('\')
+        $S.BinDir = (Get-FullPath $S.BinDir).TrimEnd('\')
         if ([IO.Path]::GetPathRoot($S.BinDir).TrimEnd('\') -ieq $S.BinDir) { Fail "bin dir must be a directory, not a drive root: $($S.BinDir)" }
     }
 
@@ -710,11 +790,15 @@ namespace RancherCliInstall
         $item = Get-Item -LiteralPath $S.BinDir -Force
         if (-not $item.PSIsContainer) { Fail "$($S.BinDir) is a file - refusing to replace it" }
         if (Test-Junction $S.BinDir) {
-            $target = Get-JunctionTarget $S.BinDir
-            if ($target.StartsWith("$($S.VersionsDir)\", [StringComparison]::OrdinalIgnoreCase)) {
-                $S.CurrentTarget = $target
+            # Ownership is decided in final form on both sides: the junction
+            # may have recorded a spelling of the versions dir (an 8.3 short
+            # form) that never string-matches the one this run was handed.
+            # The notice echoes the stored target as recorded.
+            $resolved = Get-FinalPath $S.BinDir
+            if ($resolved.StartsWith("$(Get-FinalPath $S.VersionsDir)\", [StringComparison]::OrdinalIgnoreCase)) {
+                $S.CurrentTarget = $resolved
             } else {
-                Write-Note "notice: replacing existing junction $($S.BinDir) -> $target"
+                Write-Note "notice: replacing existing junction $($S.BinDir) -> $(Get-JunctionTarget $S.BinDir)"
             }
             return
         }
@@ -729,7 +813,10 @@ namespace RancherCliInstall
     # A plain bin dir (a prior by-hand pair or an empty directory) moves aside
     # to <bin>.old.<pid> beside itself before the junction takes its place,
     # and is removed only once the junction is verified. Get-BinDirAsides
-    # lists every aside beside the bin dir, oldest run first.
+    # lists every aside beside the bin dir, oldest run first. Callers re-root
+    # an entry's Name on the bin dir's parent as given: the provider expands
+    # 8.3 short components in FullName, and paths that reach output must
+    # echo the environment's own spelling.
     function Get-BinDirAsides {
         $parent = Split-Path -Parent $S.BinDir
         $leaf = Split-Path -Leaf $S.BinDir
@@ -746,7 +833,7 @@ namespace RancherCliInstall
         if (Test-Path -LiteralPath $S.BinDir) { return }
         $asides = Get-BinDirAsides
         if ($asides.Count -eq 0) { return }
-        $aside = $asides[$asides.Count - 1].FullName
+        $aside = Join-Path (Split-Path -Parent $S.BinDir) $asides[$asides.Count - 1].Name
         Write-Note "notice: restoring $aside to $($S.BinDir) - an earlier install was interrupted"
         [IO.Directory]::Move($aside, $S.BinDir)
     }
@@ -759,7 +846,7 @@ namespace RancherCliInstall
     # counter, so the rename never targets an existing directory.
     function Move-BinDirAside {
         foreach ($e in @(Get-ChildItem -LiteralPath $S.BinDir -Force)) {
-            Write-Note "notice: replacing existing file $($e.FullName)"
+            Write-Note "notice: replacing existing file $(Join-Path $S.BinDir $e.Name)"
         }
         $aside = "$($S.BinDir).old.$PID"
         if (Test-Path -LiteralPath $aside) { try { Remove-Tree $aside } catch { } }
@@ -792,9 +879,15 @@ namespace RancherCliInstall
         # never finished its switch - is kept and reused below. A directory a
         # running binary still holds is left for the next run.
         foreach ($d in @(Get-ChildItem -LiteralPath $S.VersionsDir -Force)) {
-            if ($S.CurrentTarget -and $d.FullName -ieq $S.CurrentTarget) { continue }
-            if ($intact -and $d.FullName -ieq $S.VDir) { continue }
-            try { Remove-Tree $d.FullName } catch { Write-Warn "cannot remove $($d.FullName): $($_.Exception.Message)" }
+            # Each entry is re-rooted on the versions dir as given: the
+            # provider expands 8.3 short components in FullName, which would
+            # neither string-match VDir's spelling nor print in the
+            # operator's own form. CurrentTarget holds a final-form path, so
+            # that compare resolves the entry to final form too.
+            $full = Join-Path $S.VersionsDir $d.Name
+            if ($S.CurrentTarget -and (Get-FinalPath $full) -ieq $S.CurrentTarget) { continue }
+            if ($intact -and $full -ieq $S.VDir) { continue }
+            try { Remove-Tree $full } catch { Write-Warn "cannot remove ${full}: $($_.Exception.Message)" }
         }
 
         if ($intact) {
@@ -855,7 +948,7 @@ namespace RancherCliInstall
         }
         [RancherCliInstall.Native]::ReplaceDirectory($S.StagingLink, $S.BinDir)
         $S.StagingLink = $null
-        if (-not (Test-Junction $S.BinDir) -or (Get-JunctionTarget $S.BinDir) -ine $S.VDir) {
+        if (-not (Test-Junction $S.BinDir) -or (Get-FinalPath $S.BinDir) -ine (Get-FinalPath $S.VDir)) {
             Fail "current switch failed verification - rerun the installer"
         }
         Wait-Hold $env:RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH
@@ -865,11 +958,13 @@ namespace RancherCliInstall
         # bin dir, every aside and every staging junction from an earlier
         # run is litter now that the junction is verified.
         foreach ($d in @(Get-ChildItem -LiteralPath $S.VersionsDir -Force)) {
-            if ($d.FullName -ieq $S.VDir) { continue }
-            try { Remove-Tree $d.FullName } catch { Write-Warn "cannot remove superseded $($d.FullName) (still running?) - the next install will retry" }
+            $full = Join-Path $S.VersionsDir $d.Name
+            if ($full -ieq $S.VDir) { continue }
+            try { Remove-Tree $full } catch { Write-Warn "cannot remove superseded $full (still running?) - the next install will retry" }
         }
         foreach ($d in (Get-BinDirAsides)) {
-            try { Remove-Tree $d.FullName } catch { Write-Warn "cannot remove replaced $($d.FullName) (still running?) - the next install will retry" }
+            $full = Join-Path (Split-Path -Parent $S.BinDir) $d.Name
+            try { Remove-Tree $full } catch { Write-Warn "cannot remove replaced $full (still running?) - the next install will retry" }
         }
         $S.Aside = $null
         $stale = ".$(Split-Path -Leaf $S.BinDir).*"
@@ -895,11 +990,20 @@ namespace RancherCliInstall
         # that leads back to the installed binary runs the identical file -
         # not a shadow, so the candidate and its directory are followed
         # through reparse points before the comparison.
-        $binFull = [IO.Path]::GetFullPath($S.BinDir).TrimEnd('\')
-        $vdirFull = [IO.Path]::GetFullPath($S.VDir).TrimEnd('\')
+        # The comparison runs in the filesystem's final form on both sides:
+        # Resolve-Reparse supplies the chain semantics, Get-FinalPath then
+        # settles the spelling, so a link back at the install can never
+        # read as foreign over an 8.3 short component. Both dirs exist by
+        # now - the binaries just ran out of them.
+        $binFull = Get-FinalPath $S.BinDir
+        $vdirFull = Get-FinalPath $S.VDir
         foreach ($base in @('rancher', 'rancher-credential-vault')) {
             foreach ($c in @(Get-Command $base -All -CommandType Application -ErrorAction SilentlyContinue)) {
                 $dir = Resolve-Reparse (Split-Path -Parent (Resolve-Reparse $c.Source))
+                # A candidate whose final form cannot be resolved (a PATH
+                # entry gone mid-scan) keeps its walked spelling: the scan
+                # warns at worst, it never fails the install.
+                try { $dir = Get-FinalPath $dir } catch { }
                 if ($dir -ieq $binFull -or $dir -ieq $vdirFull) { continue }
                 Write-Warn "another $base exists at $($c.Source) - it may shadow this install (check PATH order)"
             }
@@ -912,9 +1016,11 @@ namespace RancherCliInstall
 
     try {
         try {
-            Initialize-Args
+            # Native helpers load first: argument validation resolves the
+            # bin dir path through them.
             if ($PSVersionTable.PSVersion.Major -lt 6) { Add-Type -AssemblyName System.Net.Http | Out-Null }
             Import-Native
+            Initialize-Args
             Resolve-Token
             if ($S.UsedGhToken) { Write-Note "using gh auth token" }
             Resolve-Platform

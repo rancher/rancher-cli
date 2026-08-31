@@ -977,7 +977,7 @@ func TestWindowsKillAfterMigrationSwitchLeavesAsideForNextRun(t *testing.T) {
 	want := filepath.Join(home.versionsDir(), "v1.2.3")
 	cmd := startHeldPs(t, s, sh, home, "RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH", hold, func() bool {
 		target, err := os.Readlink(home.binDir())
-		return err == nil && strings.EqualFold(filepath.Clean(strings.TrimPrefix(target, `\\?\`)), want)
+		return err == nil && strings.EqualFold(canonicalPath(strings.TrimPrefix(target, `\\?\`)), canonicalPath(want))
 	})
 	require.NoError(t, cmd.Process.Kill())
 	_ = cmd.Wait()
@@ -1052,7 +1052,7 @@ func TestWindowsKillAfterSwitchServesNewPair(t *testing.T) {
 	want := filepath.Join(home.versionsDir(), "v1.3.0")
 	cmd := startHeldPs(t, s, sh, home, "RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH", hold, func() bool {
 		target, err := os.Readlink(home.binDir())
-		return err == nil && strings.EqualFold(filepath.Clean(strings.TrimPrefix(target, `\\?\`)), want)
+		return err == nil && strings.EqualFold(canonicalPath(strings.TrimPrefix(target, `\\?\`)), canonicalPath(want))
 	})
 	require.NoError(t, cmd.Process.Kill())
 	_ = cmd.Wait()
@@ -1363,4 +1363,64 @@ func TestWindowsBootstrapPropagatesInstallerFailure(t *testing.T) {
 	out, runErr := cmd.CombinedOutput()
 	require.Errorf(t, runErr, "installer failure must propagate through the pipe, output: %s", out)
 	assert.Contains(t, string(out), "tag grammar")
+}
+
+// shortPathName returns the 8.3 short form of an existing path — the form
+// some environments hand out in LOCALAPPDATA/APPDATA/TEMP (GitHub-hosted
+// runners, notably), where a naive string compare against the long form of
+// the same directory fails.
+func shortPathName(t *testing.T, path string) string {
+	t.Helper()
+	// The path travels via the environment, never argv: PowerShell and
+	// cmd quoting both mangle quoted paths handed through exec argv.
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		"(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:RANCHER_TEST_SHORTPATH_TARGET).ShortPath")
+	cmd.Env = append(os.Environ(), "RANCHER_TEST_SHORTPATH_TARGET="+path)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	s := strings.TrimSpace(string(out))
+	require.NotEmpty(t, s)
+	return s
+}
+
+// TestWindowsShortPathEnvironmentInstallsAndReruns pins that an environment
+// handing out 8.3 short paths installs cleanly, passes its own switch
+// verification, and on a rerun recognizes its own junction rather than
+// treating it as foreign or garbage-collecting the version directory the
+// live junction points at. Printed paths and the receipt echo the short
+// form the environment handed in: canonical long-form paths exist only
+// inside comparisons, never in what the operator sees.
+func TestWindowsShortPathEnvironmentInstallsAndReruns(t *testing.T) {
+	t.Parallel()
+	sh := requirePowerShell(t)
+	s := newStub(t)
+	writeWindowsRelease(t, s, "v1.2.3")
+	s.setLatest("v1.2.3")
+	long := newWinHome(t)
+	home := winHome{
+		localAppData: shortPathName(t, long.localAppData),
+		appData:      shortPathName(t, long.appData),
+		temp:         shortPathName(t, long.temp),
+	}
+	if home == long {
+		t.Skip("8.3 short names are disabled on this volume")
+	}
+
+	out, errOut, code := runInstallPs(t, s, sh, home, nil)
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, out, "installed: rancher version v1.2.3")
+	assert.Contains(t, out, home.binDir(),
+		"the PATH hint must echo the bin dir as the environment spelled it")
+	receipt := readReceipt(t, home)
+	assert.Equal(t, home.binDir(), receipt["binDir"],
+		"the receipt must echo the bin dir as the environment spelled it")
+	assert.Equal(t, home.dataDir(), receipt["dataDir"],
+		"the receipt must echo the data dir as the environment spelled it")
+
+	out2, errOut2, code2 := runInstallPs(t, s, sh, home, nil)
+	require.Equalf(t, 0, code2, "rerun stderr: %s", errOut2)
+	assert.NotContains(t, out2, "replacing existing junction",
+		"the rerun must recognize its own junction under a short-path environment")
+	assert.DirExists(t, filepath.Join(long.versionsDir(), "v1.2.3"),
+		"the version directory the live junction points at must survive the rerun's GC")
 }
