@@ -378,6 +378,13 @@ func runInstall(t *testing.T, s *stub, extraEnv []string, args ...string) (strin
 	home := t.TempDir()
 	script, err := filepath.Abs("../install.sh")
 	require.NoError(t, err)
+	// A fake tool script that interpolates a host path instead of expanding a
+	// quoted env var mangles the separators and writes relative to the CWD;
+	// comparing the package directory before and after catches the stray file.
+	// Parallel tests share this directory, so the failure can surface in a
+	// concurrently running test's comparison — the diff still names the stray
+	// file, which is what identifies the offending fake.
+	before := packageDirNames(t)
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
 	// Hermetic PATH by default: baseTools only, so a developer's real
 	// authenticated gh (or stray jq) can never leak into a test — a capable
@@ -403,7 +410,22 @@ func runInstall(t *testing.T, s *stub, extraEnv []string, args ...string) (strin
 	} else if runErr != nil {
 		t.Fatalf("running install.sh: %v", runErr)
 	}
+	assert.Equal(t, before, packageDirNames(t),
+		"install.sh run left stray files in the package directory")
 	return out.String(), errb.String(), code
+}
+
+// packageDirNames returns the entry names of the test package directory, in
+// ReadDir's sorted order.
+func packageDirNames(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }
 
 // envHome overrides the hermetic HOME runInstall would otherwise generate, for

@@ -391,7 +391,7 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 	dir := t.TempDir()
 	callLog := filepath.Join(dir, "calls")
 	fake := "#!/bin/sh\n" +
-		"echo \"$@\" >> " + callLog + "\n" +
+		"echo \"$@\" >> \"$RANCHER_TEST_GH_CALL_LOG\"\n" +
 		"case \"$1 $2\" in\n" +
 		"  'auth status') exit 0 ;;\n" +
 		"  'attestation verify') if [ \"$3\" = --help ] || [ \"$3\" = '' ]; then echo '--signer-workflow'; fi; exit 0 ;;\n" +
@@ -399,7 +399,8 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(fake), 0o755))
 	home := t.TempDir()
 	out, errOut, code := runInstall(t, s, append(envHome(home),
-		"PATH="+dir+":"+toolPath(t, baseTools...)), "--verify-attestation")
+		"PATH="+dir+":"+toolPath(t, baseTools...),
+		"RANCHER_TEST_GH_CALL_LOG="+callLog), "--verify-attestation")
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
 	assert.Contains(t, out, "build provenance verified")
 	logBytes, err := os.ReadFile(callLog)
