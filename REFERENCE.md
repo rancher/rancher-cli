@@ -229,6 +229,10 @@ If the installer cannot be used, install by hand:
    then the same command with `rancher-credential-vault.exe`.
 5. Only after both files verify, place them in a directory on `PATH`.
 
+##### Editor quirk
+
+On Windows 11, the Store version of Notepad opens `config edit`'s temp file as a new tab in an already-running Notepad window rather than a new window; close the tab, not the window, to return control to the CLI.
+
 ## Shell completion
 
 PowerShell (Windows PowerShell 5.1 or PowerShell 7) — pipe into the session so
