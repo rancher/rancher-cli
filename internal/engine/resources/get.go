@@ -38,13 +38,32 @@ const defaultWaitTimeout = 120 * time.Second
 type getCmd struct {
 	k       kinds.Kind
 	clients engine.ClusterClientFactory
+	enrich  []GetEnricher
 }
+
+// GetEnricher inspects one rendered object and optionally returns a warning
+// to attach to Result.Warnings — the read-path counterpart to NewPatch's
+// EffectEnricher. It runs once per rendered object: once for a named get,
+// once per item for a list.
+type GetEnricher func(ctx context.Context, obj *unstructured.Unstructured) (string, bool)
 
 // NewGet builds `get <kind> [name]` (readOnly) from a Kind: the Descriptor,
 // scope-based flags, and cluster/namespace routing all derive from the table
-// row.
-func NewGet(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
-	return &getCmd{k: k, clients: clients}
+// row. enrich runs against every rendered object, named or listed.
+func NewGet(k kinds.Kind, clients engine.ClusterClientFactory, enrich ...GetEnricher) runtime.Command {
+	return &getCmd{k: k, clients: clients, enrich: enrich}
+}
+
+// enrichWarnings runs every enricher against obj, collecting every warning
+// triggered — never just the first.
+func (c getCmd) enrichWarnings(ctx context.Context, obj *unstructured.Unstructured) []string {
+	var out []string
+	for _, e := range c.enrich {
+		if w, ok := e(ctx, obj); ok {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 func (c getCmd) Describe() runtime.Descriptor {
@@ -194,8 +213,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		if err != nil {
 			return runtime.Result{}, err
 		}
+		warnings := append(waitWarnings, c.enrichWarnings(ctx, one)...)
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
-			Summary: waitSummary, Warnings: waitWarnings}, nil
+			Summary: waitSummary, Warnings: warnings}, nil
 	}
 	selector := ""
 	if scope != nil {
@@ -226,6 +246,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		if hidden > 0 {
 			warnings = append(warnings, systemHiddenWarning(hidden, c.k.SystemFilter.Label))
 		}
+	}
+	for i := range items {
+		warnings = append(warnings, c.enrichWarnings(ctx, &items[i])...)
 	}
 	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false), Warnings: warnings}, nil
 }

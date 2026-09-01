@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1365,4 +1368,120 @@ func TestFeaturePatchWarnsWhenFlagIsNotDynamic(t *testing.T) {
 			}
 		})
 	}
+}
+
+// versionServer serves a fixed /rancherversion body — enough for
+// primeFeatureCommunityWarning's ServerInfo call, no Feature route needed
+// since the enricher is exercised directly against an in-memory object.
+func versionServer(t *testing.T, rancherVersionBody string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rancherversion" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(rancherVersionBody))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// primeFeatureObj builds a minimal Feature object carrying exactly the
+// fields primeFeatureCommunityWarning reads: metadata.name (for the
+// warning text), status.prime, and status.default (the enabled reading,
+// standing in for either spec.value or its status.default fallback).
+func primeFeatureObj(name string, prime, enabled bool) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+		"status":   map[string]any{"prime": prime, "default": enabled},
+	}}
+}
+
+// TestPrimeFeatureCommunityWarning pins item 7's fix: a feature confirmed
+// prime-classified AND confirmed enabled warns only when the server is
+// confirmed community — never on Prime, never on an unreadable/unknown
+// edition, never for a non-prime feature, never for a disabled one.
+func TestPrimeFeatureCommunityWarning(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		rancherPrime string
+		prime        bool
+		enabled      bool
+		warned       bool
+	}{
+		{"community + prime + enabled: warns", "false", true, true, true},
+		{"prime edition + prime + enabled: silent", "true", true, true, false},
+		{"community + prime + disabled: silent", "false", true, false, false},
+		{"community + non-prime + enabled: silent", "false", false, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := versionServer(t, fmt.Sprintf(`{"Version":"v2.15.1","RancherPrime":%q}`, tc.rancherPrime))
+			f := checkerFor(t, srv).f
+			enrich := primeFeatureCommunityWarning(f)
+			w, ok := enrich(t.Context(), primeFeatureObj("cluster-autoscaling", tc.prime, tc.enabled))
+			assert.Equal(t, tc.warned, ok)
+			if tc.warned {
+				assert.Contains(t, w, "cluster-autoscaling")
+				assert.Contains(t, w, "inactive without Rancher Prime")
+			} else {
+				assert.Empty(t, w)
+			}
+		})
+	}
+
+	t.Run("edition unreadable: silent, never speculates", func(t *testing.T) {
+		t.Parallel()
+		srv := versionServer(t, "not json")
+		f := checkerFor(t, srv).f
+		enrich := primeFeatureCommunityWarning(f)
+		w, ok := enrich(t.Context(), primeFeatureObj("cluster-autoscaling", true, true))
+		assert.False(t, ok)
+		assert.Empty(t, w)
+	})
+
+	t.Run("feature kind get override wires the warning", func(t *testing.T) {
+		require.NotNil(t, kindOverrideTable["feature"].get, "the feature kind must override get to carry the community-prime advisory")
+	})
+}
+
+// TestGetFeatureCommunityPrimeWarningLive proves the full composition live
+// through the pipeline: `get feature <name>` on a community server whose
+// Feature reads prime:true and enabled(status.default:true) carries the
+// advisory in the envelope's standard top-level warnings field.
+func TestGetFeatureCommunityPrimeWarningLive(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rancherversion", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.1","RancherPrime":"false"}`))
+	})
+	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/features/cluster-autoscaling", func(w http.ResponseWriter, r *http.Request) {
+		grWriteJSON(w, map[string]any{
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "Feature",
+			"metadata":   map[string]any{"name": "cluster-autoscaling", "resourceVersion": "1"},
+			"status":     map[string]any{"prime": true, "default": true},
+		})
+	})
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	dir := grConfigDir(t, srv)
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+	stdout, stderr, err := grRun(t, root, dir, "get", "feature", "cluster-autoscaling", "-o", "json")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	var env struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal(stdout, &env))
+	require.Len(t, env.Warnings, 1)
+	assert.Contains(t, env.Warnings[0], "cluster-autoscaling")
+	assert.Contains(t, env.Warnings[0], "inactive without Rancher Prime")
 }

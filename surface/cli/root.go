@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/commands"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -183,6 +184,36 @@ func featureRestartWarning(orig *unstructured.Unstructured) (string, bool) {
 	return "this feature flag is not dynamic: the server restarts itself to apply it — wait for the server to come back before running more commands", true
 }
 
+// primeFeatureCommunityWarning warns that a rendered Feature's VALUE column
+// reads enabled — via spec.value or the status.default fallback — only
+// because that reading never reflects a community server's own build gate:
+// Rancher's own Feature.Enabled() disables any status.prime:true feature on
+// a non-Prime build ahead of spec.value/status.default/lockedValue (see
+// decideCapability), so the object's own enabled reading is honest about
+// what is stored but inert about what the server will do. clients must be
+// the concrete client factory that exposes ServerInfo; any other
+// implementation (never true in production) gets a no-op enricher. Unknown
+// edition never warns — the fact asserted here is "this server is
+// confirmed community", never guessed.
+func primeFeatureCommunityWarning(clients engine.ClusterClientFactory) resources.GetEnricher {
+	f, ok := clients.(*clientFactory)
+	if !ok {
+		return func(context.Context, *unstructured.Unstructured) (string, bool) { return "", false }
+	}
+	return func(ctx context.Context, obj *unstructured.Unstructured) (string, bool) {
+		enabled, prime := featureState(obj)
+		if prime == nil || !*prime || enabled == nil || !*enabled {
+			return "", false
+		}
+		info, err := f.ServerInfo(ctx)
+		if err != nil || info.Edition != provider.EditionCommunity {
+			return "", false
+		}
+		name, _, _ := unstructured.NestedString(obj.Object, "metadata", "name")
+		return name + " is enabled by default but inactive without Rancher Prime", true
+	}
+}
+
 var kindOverrideTable = map[string]kindOverride{
 	"clusterregistrationtoken": {
 		get:      func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
@@ -202,8 +233,13 @@ var kindOverrideTable = map[string]kindOverride{
 	// feature: patching a flag whose status.dynamic is false takes effect
 	// only after the server restarts itself — on a single-node server that
 	// is a real outage window, and the CLI otherwise says nothing. Advisory
-	// only, never a gate.
+	// only, never a gate. get carries the community-edition counterpart: a
+	// prime-classified feature that reads enabled is inert there regardless
+	// of what the object says.
 	"feature": {
+		get: func(k kinds.Kind, d runDeps) runtime.Command {
+			return resources.NewGet(k, d.clients, primeFeatureCommunityWarning(d.clients))
+		},
 		patch: func(k kinds.Kind, d runDeps) runtime.Command {
 			return resources.NewPatch(k, d.clients, d.src, func(orig, _ *unstructured.Unstructured, eff *safety.Effect) {
 				if w, ok := featureRestartWarning(orig); ok {

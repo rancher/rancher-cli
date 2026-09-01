@@ -900,6 +900,44 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 	})
 }
 
+// TestGetEnrichersAttachWarnings pins NewGet's variadic GetEnricher hook: it
+// runs against the named object on a named get, and against every item on a
+// list get — never against items an enricher does not match.
+func TestGetEnrichersAttachWarnings(t *testing.T) {
+	t.Parallel()
+	warnPromoted := func(_ context.Context, obj *unstructured.Unstructured) (string, bool) {
+		name, _, _ := unstructured.NestedString(obj.Object, "metadata", "name")
+		if name == "c-m-abc" {
+			return "warned: " + name, true
+		}
+		return "", false
+	}
+
+	t.Run("named", func(t *testing.T) {
+		t.Parallel()
+		client := &memClient{items: []unstructured.Unstructured{clusterObj("c-m-abc", "prod", "active")}}
+		res := execGet(t, NewGet(mustKind(t, "cluster"), &recFactory{client: client}, warnPromoted), input{args: []string{"prod"}})
+		assert.Equal(t, []string{"warned: c-m-abc"}, res.Warnings)
+	})
+
+	t.Run("list: only the matching item warns", func(t *testing.T) {
+		t.Parallel()
+		client := &memClient{items: []unstructured.Unstructured{
+			clusterObj("c-m-abc", "prod", "active"),
+			clusterObj("c-m-def", "staging", "active"),
+		}}
+		res := execGet(t, NewGet(mustKind(t, "cluster"), &recFactory{client: client}, warnPromoted), input{})
+		assert.Equal(t, []string{"warned: c-m-abc"}, res.Warnings)
+	})
+
+	t.Run("no enrichers: no warnings", func(t *testing.T) {
+		t.Parallel()
+		client := &memClient{items: []unstructured.Unstructured{clusterObj("c-m-abc", "prod", "active")}}
+		res := execGet(t, NewGet(mustKind(t, "cluster"), &recFactory{client: client}), input{args: []string{"prod"}})
+		assert.Empty(t, res.Warnings)
+	})
+}
+
 // TestWaitElapsed pins the boundary behaviour of waitElapsed: the
 // millisecond floor for sub-second waits and the cutover to the
 // apimachinery short form at exactly one second.
