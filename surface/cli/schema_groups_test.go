@@ -211,8 +211,9 @@ func TestSchemaCommandGroupField(t *testing.T) {
 //   - A kind identifier shadowing a group name means the group card is
 //     reachable only via --kind (groups win the collision tier).
 //
-// Currently "project" is the only known collision (the GROUP wins; TestSchemaProject
-// Shadowing pins the behavior). Single-token command × group: zero overlaps.
+// "project" and "cluster" are the known collisions (the GROUP wins each
+// time; TestSchemaProjectShadowing pins "project"'s behavior). Single-token
+// command × group: zero overlaps.
 func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
@@ -222,6 +223,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	// the test enforces that every collision is reviewed.
 	knownShadowings := map[string]string{
 		"project": "the project group wins the selector (revised 2026-08-20); the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
+		"cluster": "the cluster group wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; renaming would churn every agent prompt referencing the family",
 	}
 
 	groupNames := map[string]bool{}
@@ -256,11 +258,12 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 // TestSchemaGroupKindCollisionsAreDeliberate guards the schema selector's
 // name space: a command-group name that is also a kind name (or alias) makes
 // the kind reachable only via --kind, so every such collision must be a
-// reviewed decision. "project" is the one deliberate collision today (the
-// group card wins; its kind-view hint points at --kind). A new name here
-// means either rename the group or extend this allowlist on purpose.
+// reviewed decision. "project" and "cluster" are the deliberate collisions
+// today (the group card wins each; its kind-view hint points at --kind). A
+// new name here means either rename the group or extend this allowlist on
+// purpose.
 func TestSchemaGroupKindCollisionsAreDeliberate(t *testing.T) {
-	deliberate := map[string]bool{"project": true}
+	deliberate := map[string]bool{"project": true, "cluster": true}
 
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)

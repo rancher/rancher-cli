@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 180,
+  "commandCount": 185,
   "effectSchema": {
     "actions": [
       "create",
@@ -255,6 +255,32 @@
       ],
       "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
       "name": "oidc-client"
+    },
+    {
+      "commands": [
+        {
+          "name": "cluster scale",
+          "usage": "Scale a machine pool's node count"
+        },
+        {
+          "name": "cluster set-autoscaling",
+          "usage": "Turn on cluster-autoscaler management for a machine pool"
+        },
+        {
+          "name": "cluster clear-autoscaling",
+          "usage": "Return a machine pool to manual quantity"
+        },
+        {
+          "name": "cluster pause-autoscaling",
+          "usage": "Pause the cluster autoscaler cluster-wide"
+        },
+        {
+          "name": "cluster resume-autoscaling",
+          "usage": "Resume the cluster autoscaler cluster-wide"
+        }
+      ],
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
+      "name": "cluster"
     },
     {
       "commands": [

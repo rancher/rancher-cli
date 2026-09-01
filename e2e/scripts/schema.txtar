@@ -1,7 +1,7 @@
 # bare schema is the TOC: orientation, not the manifest
 exec rancher schema -o json
 cp stdout toc.json
-jsonquery toc.json 'data.commandCount' 180
+jsonquery toc.json 'data.commandCount' 185
 jsonquery toc.json 'data.kindCount' 49
 jsonquery toc.json 'data.kinds.#' 49
 # generated get/patch/delete <kind> commands are COLLAPSED on the bare
@@ -17,7 +17,7 @@ jsonquery toc.json 'data.effectSchema.fields.#(name="resourceVersion").type' str
 # the full manifest is explicit: --all
 exec rancher schema --all -o json
 cp stdout schema.json
-jsonquery schema.json 'data.commands.#' 180
+jsonquery schema.json 'data.commands.#' 185
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods

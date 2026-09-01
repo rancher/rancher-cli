@@ -12,6 +12,7 @@ in detail.
 [Create](#create) ·
 [Projects & access](#projects--access) ·
 [OIDC client](#oidc-client) ·
+[Cluster scaling & autoscaling](#cluster-scaling--autoscaling) ·
 [Read & inspect](#read--inspect) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
@@ -82,6 +83,19 @@ target for the legacy `server switch` command.
 
 See also `create oidc-client` in [Create](#create), which creates the client itself.
 
+## Cluster scaling & autoscaling
+
+| Command | Purpose |
+|---|---|
+| `cluster scale <cluster> --pool <name> --nodes <n>` | Scale a machine pool's node count; refuses on an autoscaled, unpaused pool or a pool-less cluster — destructive; dry-run/apply --yes |
+| `cluster set-autoscaling <cluster> --pool <name> --min <n> --max <m>` | Turn on cluster-autoscaler management for a machine pool — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster clear-autoscaling <cluster> --pool <name>` | Return a machine pool to manual quantity; a no-op on an already-manual pool — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster pause-autoscaling <cluster>` | Pause the cluster autoscaler cluster-wide — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster resume-autoscaling <cluster>` | Resume the cluster autoscaler cluster-wide — destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+
+See also `create cluster` in [Create](#create) and `delete provisioning-cluster`
+for lifecycle; `get provisioning-cluster` for reads.
+
 ## Read & inspect
 
 | Command | Purpose |
@@ -133,6 +147,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 — 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) —
-129 generated commands, 180 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 185 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

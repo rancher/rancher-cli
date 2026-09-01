@@ -86,6 +86,11 @@ func buildEntries() []entry {
 		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewAddSecret(d.clients) }},
 		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewRotateSecret(d.clients) }},
 		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewRemoveSecret(d.clients) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewScale(d.clients) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewSetAutoscaling(d.clients) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewClearAutoscaling(d.clients) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewPauseAutoscaling(d.clients) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewResumeAutoscaling(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
@@ -363,6 +368,7 @@ var groupUsages = map[string]string{
 	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
 	"skill":       "Agents-skill installation for coding-agent harnesses",
 	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
+	"cluster":     "Cluster scaling and autoscaling (lifecycle is 'create cluster' and 'delete provisioning-cluster')",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
@@ -539,18 +545,23 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 // same core-v1 dynamic path as the generated namespace verbs and are bound
 // to that row, not the project verbs they sit beside.
 var derivedOpKinds = map[string]string{
-	"create project":            "project",
-	"create token":              "token",
-	"create kubeconfig":         "kubeconfig",
-	"create namespace":          "namespace",
-	"project add-namespace":     "namespace",
-	"project remove-namespace":  "namespace",
-	"create secret":             "secret",
-	"create cluster":            "provisioningcluster",
-	"create oidc-client":        "oidcclient",
-	"oidc-client add-secret":    "oidcclient",
-	"oidc-client rotate-secret": "oidcclient",
-	"oidc-client remove-secret": "oidcclient",
+	"create project":             "project",
+	"create token":               "token",
+	"create kubeconfig":          "kubeconfig",
+	"create namespace":           "namespace",
+	"project add-namespace":      "namespace",
+	"project remove-namespace":   "namespace",
+	"create secret":              "secret",
+	"create cluster":             "provisioningcluster",
+	"create oidc-client":         "oidcclient",
+	"oidc-client add-secret":     "oidcclient",
+	"oidc-client rotate-secret":  "oidcclient",
+	"oidc-client remove-secret":  "oidcclient",
+	"cluster scale":              "provisioningcluster",
+	"cluster set-autoscaling":    "provisioningcluster",
+	"cluster clear-autoscaling":  "provisioningcluster",
+	"cluster pause-autoscaling":  "provisioningcluster",
+	"cluster resume-autoscaling": "provisioningcluster",
 }
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
@@ -719,10 +730,18 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// prompt that references it.
 		"project":     "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
 		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
-		"inspect":     "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
-		"get":         "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
-		"patch":       "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
-		"delete":      "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+		// "cluster" is both a command group and a management KIND name —
+		// the same deliberate collision "project" already carries (see
+		// TestSchemaGroupKindCollisionsAreDeliberate), covered by the same
+		// allowlist. Lifecycle CRUD (`create cluster`, `delete
+		// provisioning-cluster`, `get cluster`) stays where it is; `get
+		// provisioning-cluster` is the read path for this family's target.
+		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
+			"lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
+		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
+		"get":     "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+		"patch":   "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+		"delete":  "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
 	}
 
 	// The manifest's ordered sections mirror assembleCommands below exactly

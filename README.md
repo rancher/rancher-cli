@@ -151,6 +151,7 @@ or point any other agent's instructions file at it.
 | [Servers & configuration](COMMANDS.md#servers--configuration) | servers, config file, completion settings |
 | [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config |
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
+| [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage |
 | [Logs & support](COMMANDS.md#logs--support) | curated logs, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |

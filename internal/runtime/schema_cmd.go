@@ -49,7 +49,7 @@ func (s *schemaCmd) Describe() Descriptor {
 			// registry's distinct first name tokens; a new verb fails there
 			// until this list is updated.
 			{Name: "verb", Type: "string",
-				Enum: []string{"auth", "completion", "config", "create", "delete", "get",
+				Enum: []string{"auth", "cluster", "completion", "config", "create", "delete", "get",
 					"grant", "images", "inspect", "kubeconfig", "logs", "oidc-client", "patch",
 					"project", "revoke", "schema", "skill", "support-bundle", "token", "usage"},
 				Desc: "show only commands with this verb (the first word of the command name)"},

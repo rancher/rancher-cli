@@ -215,6 +215,230 @@
     {
       "args": [
         {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op, so a retry always converges. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster clear-autoscaling my-cluster --pool pool1 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "machine pool `name`",
+          "name": "pool",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "cluster clear-autoscaling",
+      "network": true,
+      "prime": true,
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Return a machine pool to manual quantity"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only — no per-pool pause exists server-side, so this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster pause-autoscaling my-cluster --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "cluster pause-autoscaling",
+      "network": true,
+      "prime": true,
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Pause the cluster autoscaler cluster-wide"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster resume-autoscaling my-cluster --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "cluster resume-autoscaling",
+      "network": true,
+      "prime": true,
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Resume the cluster autoscaler cluster-wide"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later — pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind, so every scale is Destructive regardless of direction, the same as a generic patch on the same object — dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "machine pool `name`",
+          "name": "pool",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "target node `count`",
+          "name": "nodes",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "name": "cluster scale",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Scale a machine pool's node count"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side — --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool — so a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "machine pool `name`",
+          "name": "pool",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "minimum node `count`",
+          "name": "min",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "maximum node `count`",
+          "name": "max",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "learnMore": "https://www.rancher.com/products/rancher-prime",
+      "name": "cluster set-autoscaling",
+      "network": true,
+      "prime": true,
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Turn on cluster-autoscaler management for a machine pool"
+    },
+    {
+      "args": [
+        {
           "enum": [
             "bash",
             "zsh",
@@ -8657,6 +8881,7 @@
           "desc": "show only commands with this verb (the first word of the command name)",
           "enum": [
             "auth",
+            "cluster",
             "completion",
             "config",
             "create",
@@ -9324,6 +9549,17 @@
       ],
       "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
       "name": "oidc-client"
+    },
+    {
+      "commands": [
+        "cluster scale",
+        "cluster set-autoscaling",
+        "cluster clear-autoscaling",
+        "cluster pause-autoscaling",
+        "cluster resume-autoscaling"
+      ],
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
+      "name": "cluster"
     },
     {
       "commands": [
