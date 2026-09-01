@@ -210,6 +210,7 @@
         },
         {
           "name": "create oidc-client",
+          "prime": true,
           "usage": "Create an OIDC client for Rancher's embedded OIDC provider"
         },
         {
@@ -242,14 +243,17 @@
       "commands": [
         {
           "name": "oidc-client add-secret",
+          "prime": true,
           "usage": "Add a new client secret to an OIDC client"
         },
         {
           "name": "oidc-client rotate-secret",
+          "prime": true,
           "usage": "Regenerate a client secret on an OIDC client"
         },
         {
           "name": "oidc-client remove-secret",
+          "prime": true,
           "usage": "Remove a client secret from an OIDC client"
         }
       ],
@@ -264,18 +268,22 @@
         },
         {
           "name": "cluster set-autoscaling",
+          "prime": true,
           "usage": "Turn on cluster-autoscaler management for a machine pool"
         },
         {
           "name": "cluster clear-autoscaling",
+          "prime": true,
           "usage": "Return a machine pool to manual quantity"
         },
         {
           "name": "cluster pause-autoscaling",
+          "prime": true,
           "usage": "Pause the cluster autoscaler cluster-wide"
         },
         {
           "name": "cluster resume-autoscaling",
+          "prime": true,
           "usage": "Resume the cluster autoscaler cluster-wide"
         }
       ],

@@ -228,6 +228,58 @@ func TestSchemaManifestGolden(t *testing.T) {
 	assert.Equal(t, string(want), string(got), "schema manifest drifted from golden; run with -update if intended")
 }
 
+// TestSchemaTOCMarksEveryPrimeCommand cross-checks the full manifest against
+// the bare TOC: every bespoke command carrying prime:true in schema --all
+// must also carry prime:true in the TOC's groups[].commands[] entries.
+// Generated commands are skipped — the bare TOC collapses them into a
+// per-group summary and never lists them individually.
+func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	runJSON := func(args ...string) map[string]any {
+		var out bytes.Buffer
+		root.Writer = &out
+		require.NoError(t, root.Run(t.Context(), append([]string{"rancher", "--config", dir}, args...)))
+		var env struct {
+			Data json.RawMessage `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+		var v map[string]any
+		require.NoError(t, json.Unmarshal(env.Data, &v))
+		return v
+	}
+
+	full := runJSON("schema", "--all", "-o", "json")
+	bare := runJSON("schema", "-o", "json")
+
+	tocPrime := map[string]bool{}
+	for _, g := range bare["groups"].([]any) {
+		cmds, _ := g.(map[string]any)["commands"].([]any)
+		for _, c := range cmds {
+			m := c.(map[string]any)
+			prime, _ := m["prime"].(bool)
+			tocPrime[m["name"].(string)] = prime
+		}
+	}
+
+	for _, c := range full["commands"].([]any) {
+		m := c.(map[string]any)
+		prime, _ := m["prime"].(bool)
+		if !prime {
+			continue
+		}
+		name := m["name"].(string)
+		got, ok := tocPrime[name]
+		if !ok {
+			continue // generated command: collapsed on the bare TOC, never listed by name
+		}
+		assert.True(t, got, "command %q is prime:true in the manifest but not TOC-marked", name)
+	}
+}
+
 // TestSchemaTOCGolden pins the bare `schema -o json` TOC shape — the
 // progressive-disclosure contract (spec 2026-08-06): orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.

@@ -37,6 +37,7 @@ func newTOCView(m Manifest, bare bool) tocView { return tocView{manifest: m, bar
 type tocEntry struct {
 	Name  string `json:"name"`
 	Usage string `json:"usage,omitempty"`
+	Prime bool   `json:"prime,omitempty"`
 }
 
 type tocGroup struct {
@@ -102,7 +103,7 @@ func (v tocView) toc() tocJSON {
 		bespoke, genCount := partitionGroup(g, byName, generated)
 		tg := tocGroup{Name: g.Name, Desc: g.Desc}
 		for _, c := range bespoke {
-			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage})
+			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage, Prime: c.Prime})
 		}
 		if v.bare && genCount > 0 {
 			tg.Generated = &groupGeneratedSummary{Count: genCount, Pattern: g.Name + " <kind>"}
