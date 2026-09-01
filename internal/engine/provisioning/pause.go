@@ -1,0 +1,130 @@
+// pause.go implements the prime-gated `cluster pause-autoscaling` and
+// `cluster resume-autoscaling` verbs: the cluster-wide switch on the
+// provisioning Cluster's pause annotation.
+package provisioning
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+type pauseAutoscalingCmd struct {
+	clients engine.ClusterClientFactory
+}
+
+// NewPauseAutoscaling builds `cluster pause-autoscaling <cluster>`
+// (mutating, prime): sets the pause annotation. No --pool flag — pause is
+// cluster-wide only, since no per-pool pause exists server-side.
+func NewPauseAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
+	return &pauseAutoscalingCmd{clients: clients}
+}
+
+func (pauseAutoscalingCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:  "cluster pause-autoscaling",
+		Usage: "Pause the cluster autoscaler cluster-wide",
+		Desc: "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
+			"Cluster. Pause is cluster-wide only — no per-pool pause exists server-side, so this verb " +
+			"takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving " +
+			"every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. " +
+			"Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
+			"Destructive like every other mutation on the same object — dry-run/apply --yes.",
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
+		Flags:       []runtime.ArgSpec{clusterNamespaceFlag},
+		Examples:    []string{"rancher cluster pause-autoscaling my-cluster --apply --yes"},
+		Destructive: "true",
+		Network:     true,
+		Auth:        true,
+		Shape:       runtime.ShapeText,
+		Capability:  clusterAutoscalingCapability,
+	}
+}
+
+func (c pauseAutoscalingCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	return planAutoscalerPause(ctx, c.clients, in, true)
+}
+
+var _ runtime.MutatingCommand = (*pauseAutoscalingCmd)(nil)
+
+type resumeAutoscalingCmd struct {
+	clients engine.ClusterClientFactory
+}
+
+// NewResumeAutoscaling builds `cluster resume-autoscaling <cluster>`
+// (mutating, prime): clears the pause annotation.
+func NewResumeAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
+	return &resumeAutoscalingCmd{clients: clients}
+}
+
+func (resumeAutoscalingCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:  "cluster resume-autoscaling",
+		Usage: "Resume the cluster autoscaler cluster-wide",
+		Desc: "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
+			"Cluster, restoring autoscaler management of every pool that carries min/max config. " +
+			"Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
+			"Destructive like every other mutation on the same object — dry-run/apply --yes.",
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
+		Flags:       []runtime.ArgSpec{clusterNamespaceFlag},
+		Examples:    []string{"rancher cluster resume-autoscaling my-cluster --apply --yes"},
+		Destructive: "true",
+		Network:     true,
+		Auth:        true,
+		Shape:       runtime.ShapeText,
+		Capability:  clusterAutoscalingCapability,
+	}
+}
+
+func (c resumeAutoscalingCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	return planAutoscalerPause(ctx, c.clients, in, false)
+}
+
+var _ runtime.MutatingCommand = (*resumeAutoscalingCmd)(nil)
+
+// planAutoscalerPause implements both pause and resume: set or clear the
+// pause annotation, converging (no-op success) when the cluster is already
+// in the target state — the same retry contract clear-autoscaling gives an
+// agent that finds nothing left to do.
+func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, pause bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+
+	already := autoscalingPaused(obj)
+	after := obj.DeepCopy()
+	if pause {
+		if err := unstructured.SetNestedField(after.Object, "true", "metadata", "annotations", clusterAutoscalerPausedAnnotation); err != nil {
+			return safety.Effect{}, nil, err
+		}
+	} else {
+		unstructured.RemoveNestedField(after.Object, "metadata", "annotations", clusterAutoscalerPausedAnnotation)
+	}
+	after.SetResourceVersion(obj.GetResourceVersion())
+
+	diff := engine.DiffObjects(obj.Object, after.Object)
+	eff, exec, err := engine.PlanUpdate(ctx, client, provisioningClusterGVR, ns, after, engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", diff, provisioningClusterSensitive())
+	if err != nil {
+		return eff, exec, err
+	}
+
+	var contextLine string
+	switch {
+	case pause && already:
+		contextLine = fmt.Sprintf("cluster autoscaler already paused for %s", name)
+	case !pause && !already:
+		contextLine = fmt.Sprintf("cluster autoscaler already running for %s", name)
+	case pause:
+		contextLine = fmt.Sprintf("cluster autoscaler paused for %s", name)
+	default:
+		contextLine = fmt.Sprintf("cluster autoscaler resumed for %s", name)
+	}
+	return eff, wrapWithContextLine(exec, contextLine), nil
+}
