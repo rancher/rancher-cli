@@ -57,7 +57,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 		// Recognized user-principal form.
 	case strings.HasSuffix(prefix, "_group") || prefix == "github_org" || prefix == "github_team":
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%q is a group principal; inspect user only supports individual users — use grant/revoke to work with group role bindings", principal))
+			fmt.Sprintf("%q is a group principal; inspect user only supports individual users; use grant/revoke to work with group role bindings", principal))
 	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("cannot infer subject type from principal %q; pass a user id, username, displayName, or a local:// / <provider>_user:// principal", principal))

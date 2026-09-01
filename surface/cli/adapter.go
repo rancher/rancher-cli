@@ -318,6 +318,25 @@ func constText[T any](s string) func(T) string {
 	return func(T) string { return s }
 }
 
+// genericSchemaHint is the hint every commandNotFound/onUsageError caller
+// falls back to when no targeted entry matches, or a matched entry carries
+// no hint override.
+const genericSchemaHint = "rancher schema"
+
+// resolveGuidance wraps firstMatch with the generic schema fallback shared
+// by every guidance table: no match, or a matched entry with a nil hint,
+// both resolve to genericSchemaHint.
+func resolveGuidance[T any](entries []hintEntry[T], in T) (detail, hint string) {
+	if d, h, ok := firstMatch(entries, in); ok {
+		hint := genericSchemaHint
+		if h != nil {
+			hint = h(in)
+		}
+		return d, hint
+	}
+	return "", genericSchemaHint
+}
+
 // notFoundInput bundles the arguments passed to commandNotFound.
 type notFoundInput struct {
 	c    *ucli.Command
@@ -349,14 +368,7 @@ var notFoundHints = []hintEntry[notFoundInput]{
 // notFoundGuidance returns commandNotFound's message detail (possibly "")
 // and hint for name.
 func notFoundGuidance(c *ucli.Command, name string) (detail, hint string) {
-	if d, h, ok := firstMatch(notFoundHints, notFoundInput{c: c, name: name}); ok {
-		hint := "rancher schema"
-		if h != nil {
-			hint = h(notFoundInput{c: c, name: name})
-		}
-		return d, hint
-	}
-	return "", "rancher schema"
+	return resolveGuidance(notFoundHints, notFoundInput{c: c, name: name})
 }
 
 // usageErrorInput bundles the arguments passed to onUsageError.
@@ -412,14 +424,7 @@ var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry}
 // usageErrorGuidance returns onUsageError's message detail (possibly "")
 // and hint for err.
 func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
-	if d, h, ok := firstMatch(usageErrorHints, usageErrorInput{c: c, err: err}); ok {
-		hint := "rancher schema"
-		if h != nil {
-			hint = h(usageErrorInput{c: c, err: err})
-		}
-		return d, hint
-	}
-	return "", "rancher schema"
+	return resolveGuidance(usageErrorHints, usageErrorInput{c: c, err: err})
 }
 
 // commandNotFound is urfave/cli's seam for an unmatched command/subcommand

@@ -206,7 +206,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 // system account: never a fallback, never provisioning.
 func systemUserError(subject string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles — pass a regular user or group", subject))
+		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles; pass a regular user or group", subject))
 }
 
 func resolvedFromUser(u *unstructured.Unstructured) (ResolvedSubject, error) {

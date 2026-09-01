@@ -51,7 +51,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		}
 		if projectFlag == "" {
 			return runtime.Result{}, ce.WithMessage(ce.Message +
-				" — you cannot list projects; pass --project <project id> to scope usage to a project you have access to")
+				"; you cannot list projects; pass --project <project id> to scope usage to a project you have access to")
 		}
 		obj, gerr := projects.ResolveByGet(ctx, mgmtClient, clusterID, projectFlag, ce)
 		if gerr != nil {

@@ -171,7 +171,7 @@ func lockWaitError(err error, stage lockWaitStage) error {
 		msg = "waiting for the configuration lock held by this same process (a concurrent goroutine, or a nested WithLock call — a bug): "
 	}
 	return clierr.Retryable(clierr.CodeLockTimeout,
-		msg+err.Error()+" — on a filesystem with broken file locking, skip the flock with RANCHER_CLI_CONFIG_NO_LOCK=1").
+		msg+err.Error()+"; on a filesystem with broken file locking, skip the flock with RANCHER_CLI_CONFIG_NO_LOCK=1").
 		WithCause(err).
 		WithHint("export RANCHER_CLI_CONFIG_NO_LOCK=1")
 }

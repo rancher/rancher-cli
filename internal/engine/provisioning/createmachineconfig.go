@@ -164,7 +164,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		if key == "apiVersion" || key == "kind" || key == "metadata" || key == "status" {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--set %q is a Kubernetes envelope key, not a driver field; "+
-					"apiVersion/kind/metadata are set by the CLI and status by the server — pass driver fields only", key))
+					"apiVersion/kind/metadata are set by the CLI and status by the server; pass driver fields only", key))
 		}
 		if seen[key] {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
@@ -205,7 +205,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			if e.key != canonical {
 				msg = fmt.Sprintf("%q is the credential field %q and never belongs on a machine config", e.key, canonical)
 			}
-			msg += "; credentials live on a cloud credential (cc-* secret) — reference it via create cluster --cloud-credential"
+			msg += "; credentials live on a cloud credential (cc-* secret); reference it via create cluster --cloud-credential"
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)

@@ -2,10 +2,7 @@ package main_test
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,6 +27,10 @@ import (
 const unresolved = "￼"
 
 var (
+	// placeholderRE does not flag internal/engine/password.go's hint, which
+	// carries a literal "rancher ..." ellipsis as a deliberate stand-in for a
+	// subcommand this shared validator cannot know (it backs several create
+	// commands): an ellipsis is not a <bracket>, so it never matches here.
 	placeholderRE     = regexp.MustCompile(`<[^<>\s]+>`)
 	optionalBracketRE = regexp.MustCompile(`\[[^\[\]]+\]`)
 )
@@ -54,21 +55,6 @@ func hintGrammarViolation(literal string) string {
 		return ""
 	}
 }
-
-// hintExemptions names literal hints that are reviewed, deliberate
-// exceptions to the corpus grammar, keyed by "file:line" of their WithHint
-// call site. Every entry must carry an inline reason. Do not add an entry
-// to silence a real violation — fix the hint instead.
-//
-// internal/engine/password.go:21's hint uses a literal "rancher ..."
-// ellipsis as a deliberate, reviewed stand-in for a subcommand this shared
-// validator cannot know (it backs several create commands) — not a
-// <placeholder> for a value, so nothing to splice or drop. It needs no
-// entry here: an ellipsis is not a <bracket>, so it does not trip
-// hintGrammarViolation in the first place: this note exists so a future
-// change to the banned-pattern list does not accidentally break it without
-// anyone noticing why it was fine.
-var hintExemptions = map[string]string{}
 
 // flattener resolves WithHint arguments to their literal string content on a
 // best-effort basis, across the whole non-test source tree, so a hint built
@@ -237,30 +223,9 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 // what a static, no-execution check can see into pure runtime data.
 func TestHintGrammarConformance(t *testing.T) {
 	t.Parallel()
-	fset := token.NewFileSet()
-	var files []*ast.File
-	var paths []string
-
-	walkErr := filepath.WalkDir(".", func(path string, d fs.DirEntry, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if d.IsDir() {
-			if path != "." && skipDirNames[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, perr := parser.ParseFile(fset, path, nil, parser.AllErrors)
-		require.NoError(t, perr, "parsing %s", path)
-		files = append(files, f)
-		paths = append(paths, filepath.ToSlash(path))
-		return nil
-	})
-	require.NoError(t, walkErr)
+	tree := parseSourceTree()
+	require.NoError(t, tree.err)
+	fset, files, paths := tree.fset, tree.files, tree.paths
 
 	funcsByName := map[string][]*ast.FuncDecl{}
 	for _, f := range files {
@@ -271,8 +236,6 @@ func TestHintGrammarConformance(t *testing.T) {
 		}
 	}
 	fl := &flattener{funcsByName: funcsByName}
-
-	seenExemptions := map[string]bool{}
 
 	for i, f := range files {
 		path := paths[i]
@@ -299,21 +262,10 @@ func TestHintGrammarConformance(t *testing.T) {
 					if reason == "" {
 						continue
 					}
-					if exempt, ok := hintExemptions[site]; ok {
-						seenExemptions[site] = true
-						_ = exempt // reason for the exemption is asserted below
-						continue
-					}
 					t.Errorf("%s: hint %q %s", site, literal, reason)
 				}
 				return true
 			})
 		}
-	}
-
-	for site, reason := range hintExemptions {
-		require.NotEmpty(t, reason, "exemption %s must carry a reason", site)
-		require.True(t, seenExemptions[site],
-			"exemption %s is stale — no WithHint call at that site produced a violation needing it; prune the entry", site)
 	}
 }

@@ -130,7 +130,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 			}
 		}
 		if hint == "" {
-			msg += "; nothing to grant — use revoke to remove it first if re-granting"
+			msg += "; nothing to grant; use revoke to remove it first if re-granting"
 		}
 		e := clierr.New(clierr.CodeConflict, msg)
 		if hint != "" {

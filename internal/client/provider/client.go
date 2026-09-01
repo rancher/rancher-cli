@@ -140,7 +140,7 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 		// it unset so a later call retries once the group reports a version.
 		if g.PreferredVersion.Version == "" {
 			return gvr, clierr.New(clierr.CodeNotFound,
-				fmt.Sprintf("API group %q has no preferred version — the server may be mid-upgrade; retry, or run rancher schema <kind> to check API requirements", gvr.Group))
+				fmt.Sprintf("API group %q has no preferred version; the server may be mid-upgrade; retry, or run rancher schema <kind> to check API requirements", gvr.Group))
 		}
 		r.mu.Lock()
 		r.versions[gvr.Group] = g.PreferredVersion.Version
@@ -154,7 +154,7 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 				"token management: auth list-tokens; kubeconfig: the default exec-credential mode", config.MinRancherVersion))
 	}
 	return gvr, clierr.New(clierr.CodeNotFound,
-		fmt.Sprintf("API group %q not served by the cluster — the kind may need a newer server version or an optional feature; run rancher schema <kind> for requirements", gvr.Group))
+		fmt.Sprintf("API group %q not served by the cluster; the kind may need a newer server version or an optional feature; run rancher schema <kind> for requirements", gvr.Group))
 }
 
 // curateNotFound enriches a hint-less NOT_FOUND error with the curated

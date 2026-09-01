@@ -412,7 +412,7 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 				req.Feature, clierr.LearnMorePrimeURL))
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
-			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime — %s",
+			fmt.Sprintf("%s requires Rancher Prime; the connected server does not have Rancher Prime; %s",
 				d.Name, clierr.LearnMorePrimeURL)).
 			WithDetails(clierr.PrimeRequiredDetails{Feature: req.Feature, Server: dec.Server})
 	case CapabilityUnsupported:

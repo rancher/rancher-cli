@@ -334,7 +334,7 @@ func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
 		with = "a schema selector"
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%s cannot combine with %s; filters and --search search the whole surface — drop the selector or the filter",
+		fmt.Sprintf("%s cannot combine with %s; filters and --search search the whole surface; drop the selector or the filter",
 			strings.Join(f.describe(), ", "), with))
 }
 

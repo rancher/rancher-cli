@@ -249,7 +249,7 @@ func partialFailure(err error, failedName string, deleted, unattempted []string)
 	}
 	return clierr.New(code,
 		fmt.Sprintf("revoke partially applied: %d deleted, failed on %q, %d unattempted"+
-			"; re-run the same revoke command — it re-matches the remaining bindings",
+			"; re-run the same revoke command; it re-matches the remaining bindings",
 			len(deleted), failedName, len(unattempted))).
 		WithRetryable(retryable).
 		WithDetails(RevokePartialFailure{

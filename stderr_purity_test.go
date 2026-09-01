@@ -2,11 +2,6 @@ package main_test
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,30 +60,15 @@ var skipDirNames = map[string]bool{
 // written straight to stderr instead of through runtime.IO.Err/NoticeSource).
 func TestNoStrayStderrWriterOutsideAllowlist(t *testing.T) {
 	t.Parallel()
-	fset := token.NewFileSet()
-	seen := map[string]bool{}
+	tree := parseSourceTree()
+	require.NoError(t, tree.err)
 
-	walkErr := filepath.WalkDir(".", func(path string, d fs.DirEntry, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if d.IsDir() {
-			if path != "." && skipDirNames[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, perr := parser.ParseFile(fset, path, nil, parser.AllErrors)
-		require.NoError(t, perr, "parsing %s", path)
+	seen := map[string]bool{}
+	for i, f := range tree.files {
 		if referencesOSStderr(f) {
-			seen[filepath.ToSlash(path)] = true
+			seen[tree.paths[i]] = true
 		}
-		return nil
-	})
-	require.NoError(t, walkErr)
+	}
 
 	for path := range seen {
 		assert.True(t, stderrAllowlist[path], "%s references os.Stderr directly — either route the diagnostic through runtime.IO.Err/NoticeSource, or add it to stderrAllowlist with a reviewed reason", path)

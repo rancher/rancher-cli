@@ -139,19 +139,19 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	case KindHostnameMismatch:
 		return clierr.New(clierr.CodeTLSTrust,
 			"the server's certificate is not valid for "+host+
-				"; check that --url matches the certificate's hostname — --cacert cannot fix a hostname mismatch").
+				"; check that --url matches the certificate's hostname; --cacert cannot fix a hostname mismatch").
 			WithDetails(details)
 	case KindExpired:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate has expired; ask the server operator to renew it — --cacert cannot fix an expired certificate").
+			"the server's certificate has expired; ask the server operator to renew it; --cacert cannot fix an expired certificate").
 			WithDetails(details)
 	case KindNotYetValid:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it — --cacert cannot fix this").
+			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it; --cacert cannot fix this").
 			WithDetails(details)
 	default: // KindInvalidChain
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate chain failed validation; the chain is malformed or incomplete — contact the server operator").
+			"the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server operator").
 			WithDetails(details)
 	}
 }
