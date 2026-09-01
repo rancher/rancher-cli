@@ -36,9 +36,18 @@ func mapErr(err error) error {
 		return withDeniedFallback(clierr.New(clierr.CodeRBAC, err.Error()), http.StatusForbidden)
 	case apierrors.IsUnauthorized(err):
 		return withDeniedFallback(clierr.New(clierr.CodeAuth, err.Error()), http.StatusUnauthorized)
-	case apierrors.IsConflict(err) || apierrors.IsAlreadyExists(err):
-		// Both are HTTP 409 but distinct predicates: Conflict = resourceVersion
-		// race, AlreadyExists = duplicate name on create.
+	case apierrors.IsConflict(err):
+		// A resourceVersion precondition race: some other writer (e.g. a
+		// reconciling controller) updated the object between the read and
+		// this write. The object itself is fine — a fresh
+		// read-modify-write against the current version resolves it, so
+		// this is retryable, and the raw Kubernetes wording ("the object
+		// has been modified") never reaches the caller.
+		return clierr.Retryable(clierr.CodeConflict,
+			"the resource changed on the server since it was last read; retry the command")
+	case apierrors.IsAlreadyExists(err):
+		// A duplicate name on create — retrying without changing the name
+		// never succeeds.
 		return clierr.New(clierr.CodeConflict, err.Error())
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())

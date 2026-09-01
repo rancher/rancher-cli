@@ -73,6 +73,35 @@ func TestMapErrServiceUnavailable(t *testing.T) {
 	})
 }
 
+// TestMapErrConflictRetryable covers the precondition-conflict race: a
+// resourceVersion mismatch from a concurrent writer (e.g. a reconciling
+// controller) is retryable with plain wording, never the raw Kubernetes
+// "the object has been modified" message. A duplicate-name AlreadyExists is
+// the other HTTP 409 predicate and stays non-retryable — retrying it without
+// changing the name never succeeds.
+func TestMapErrConflictRetryable(t *testing.T) {
+	gr := schema.GroupResource{Group: "provisioning.cattle.io", Resource: "clusters"}
+
+	t.Run("conflict is retryable with plain wording", func(t *testing.T) {
+		err := apierrors.NewConflict(gr, "c-x", errors.New("the object has been modified; please apply your changes to the latest version and try again"))
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeConflict, ce.Code)
+		assert.True(t, ce.Retryable, "a resourceVersion precondition conflict is retryable")
+		assert.NotContains(t, ce.Message, "the object has been modified", "the raw Kubernetes message must not reach the caller")
+	})
+
+	t.Run("already exists is not retryable", func(t *testing.T) {
+		err := apierrors.NewAlreadyExists(gr, "c-x")
+		got := mapErr(err)
+		var ce *clierr.Error
+		require.ErrorAs(t, got, &ce)
+		assert.Equal(t, clierr.CodeConflict, ce.Code)
+		assert.False(t, ce.Retryable, "a duplicate name never succeeds on retry")
+	})
+}
+
 // TestMapErrDeniedFallback covers exercise bug 5: Rancher's proxy paths
 // reject an invalid/insufficient token with an empty-body 403, which
 // apierrors passes through as an empty Error() string. mapErr must never
