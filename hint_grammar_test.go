@@ -199,11 +199,15 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 }
 
 // TestHintGrammarConformance is the corpus-grammar tripwire: it statically
-// resolves every WithHint(...) call site's argument to its literal string
-// content (as far as a best-effort AST walk can trace it — see flattener)
-// and fails the build on any literal that violates the hint-normalization
-// ruling (a "run:" prefix, an " OR " double-command, [optional] brackets, a
-// <placeholder>, or more than one rancher invocation in one hint).
+// resolves every WithHint(...) call site's argument, and every composite
+// literal's Hint: field value, to their literal string content (as far as a
+// best-effort AST walk can trace it — see flattener) and fails the build on
+// any literal that violates the hint-normalization ruling (a "run:" prefix,
+// an " OR " double-command, [optional] brackets, a <placeholder>, or more
+// than one rancher invocation in one hint). The Hint: field check catches
+// hints that reach the wire through a struct literal instead of
+// clierr.Error.WithHint — e.g. a domain-specific "hint" JSON field on a
+// command's own result payload.
 //
 // Static AST resolution — rather than grepping the built binary's string
 // table or the raw source text — is the one approach here that cannot be
@@ -245,24 +249,27 @@ func TestHintGrammarConformance(t *testing.T) {
 				continue
 			}
 			localAssigns := collectLocalAssigns(fd.Body)
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "WithHint" || len(call.Args) == 0 {
-					return true
-				}
-				line := fset.Position(call.Pos()).Line
-				site := path + ":" + strconv.Itoa(line)
-
-				for _, literal := range fl.flatten(call.Args[0], localAssigns, 0) {
+			check := func(expr ast.Expr, pos token.Pos) {
+				site := path + ":" + strconv.Itoa(fset.Position(pos).Line)
+				for _, literal := range fl.flatten(expr, localAssigns, 0) {
 					reason := hintGrammarViolation(literal)
 					if reason == "" {
 						continue
 					}
 					t.Errorf("%s: hint %q %s", site, literal, reason)
+				}
+			}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				switch node := n.(type) {
+				case *ast.CallExpr:
+					sel, ok := node.Fun.(*ast.SelectorExpr)
+					if ok && sel.Sel.Name == "WithHint" && len(node.Args) > 0 {
+						check(node.Args[0], node.Pos())
+					}
+				case *ast.KeyValueExpr:
+					if id, ok := node.Key.(*ast.Ident); ok && id.Name == "Hint" {
+						check(node.Value, node.Pos())
+					}
 				}
 				return true
 			})

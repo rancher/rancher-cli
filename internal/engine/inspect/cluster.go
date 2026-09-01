@@ -196,6 +196,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		// join token. No fetch is issued when --registration is absent.
 		res.Registration = &registration{
 			Withheld: true,
+			Message:  withheldMessage(),
 			Hint:     withheldHint(clusterID),
 		}
 	}
@@ -624,14 +625,22 @@ var registrationSurfacedFields = map[string]bool{
 	"manifestUrl":         true,
 }
 
+// withheldMessage explains why the registration.hint field carries no
+// fields when --registration is absent: rerunning with --registration is
+// the alternative to withheldHint's token lookup.
+func withheldMessage() string {
+	return "registration was withheld because it carries a live cluster join token; rerun with --registration to include it"
+}
+
 // withheldHint builds the machine-readable rerun suggestion carried by the
-// JSON registration.hint field when --registration is absent. The default
-// registration token lives at default-token in the cluster's own namespace
-// (namespace = management cluster id), so the concrete get command can be
-// rendered with the values Execute already holds. Tests assert an exact
-// match so any wording change fails loudly.
+// JSON registration.hint field when --registration is absent: a single
+// paste-valid command, never prose. The default registration token lives at
+// default-token in the cluster's own namespace (namespace = management
+// cluster id), so the concrete get command can be rendered with the values
+// Execute already holds. Tests assert an exact match so any wording change
+// fails loudly.
 func withheldHint(clusterID string) string {
-	return "rerun with --registration, or: rancher get clusterregistrationtoken default-token --namespace " + clusterID
+	return "rancher get clusterregistrationtoken default-token --namespace " + clusterID
 }
 
 // registration carries BOTH workflow pairs explicitly — the node pair
@@ -640,8 +649,9 @@ func withheldHint(clusterID string) string {
 // is individually omitempty so a placeholder-bearing or empty field
 // DISAPPEARS from the wire rather than marshaling "" (IC-5).
 //
-// When --registration is absent the struct carries only Withheld=true and
-// Hint, serializing as {"withheld":true,"hint":"..."} — the same key in the
+// When --registration is absent the struct carries only Withheld=true,
+// Message, and Hint, serializing as
+// {"withheld":true,"message":"...","hint":"..."} — the same keys in the
 // envelope, a shape that is distinct from both the live-data case (string
 // fields present) and the unavailable case (key absent). Text rendering checks
 // Withheld before rendering fields.
@@ -658,10 +668,12 @@ type registration struct {
 	// the JSON contract is additive and consumers may pin field presence.
 	// Never names a field the payload does not carry.
 	NotApplicable []string `json:"notApplicable,omitempty"`
-	// Withheld is true when --registration was absent. Hint carries the
-	// rerun suggestion. Both are omitempty so they are absent from the
+	// Withheld is true when --registration was absent. Message explains why
+	// the section carries no fields; Hint carries the single paste-valid
+	// rerun command. All three are omitempty so they are absent from the
 	// live-data payload.
 	Withheld bool   `json:"withheld,omitempty"`
+	Message  string `json:"message,omitempty"`
 	Hint     string `json:"hint,omitempty"`
 }
 

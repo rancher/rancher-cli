@@ -1614,8 +1614,11 @@ func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 	reg, ok := doc["registration"].(map[string]any)
 	require.True(t, ok, "registration key must be present with the withheld shape")
 	assert.Equal(t, true, reg["withheld"], "registration.withheld must be true")
+	message, _ := reg["message"].(string)
+	assert.Equal(t, withheldMessage(), message, "message must carry the rerun-with---registration prose")
 	hint, _ := reg["hint"].(string)
 	assert.Equal(t, withheldHint("c-abc"), hint, "hint must be the canonical rerun suggestion")
+	assert.NotContains(t, hint, "--registration", "hint must be a single paste-valid command, not the --registration alternative too")
 	for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
 		_, has := reg[field]
 		assert.False(t, has, "registration.%s must be absent from the withheld shape", field)
