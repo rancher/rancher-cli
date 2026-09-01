@@ -45,17 +45,34 @@ func resolveRegistrationCA(canonicalURL, selector string) (string, error) {
 	return config.ResolveCA(selector)
 }
 
-// prepareRegistration runs every network step a registration needs OUTSIDE
-// config.WithLock: URL canonicalization, CA resolution, the TLS preflight,
-// and the min-version floor check. tlsPreflight runs for both schemes (an
-// http server can still be probed for its version; TLS classification never
-// fires against a non-TLS connection) so the min-version check is never lost
-// under http.
-func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, rawURL, caSelector string) (registrationProbe, error) {
-	canonicalURL, cerr := credhelper.CanonicalServerURL(rawURL)
-	if cerr != nil {
-		return registrationProbe{}, clierr.New(clierr.CodeValidation, "invalid server URL: "+rawURL)
+// canonicalizeServerURL canonicalizes rawURL for a registration call,
+// producing the standard invalid-URL validation error every registration
+// caller surfaces on failure. Callers thread the result into
+// prepareRegistration rather than letting it canonicalize the same URL a
+// second time.
+func canonicalizeServerURL(rawURL string) (string, error) {
+	canonical, err := credhelper.CanonicalServerURL(rawURL)
+	if err != nil {
+		return "", clierr.New(clierr.CodeValidation, "invalid server URL: "+rawURL)
 	}
+	// Scheme is checked here, not only in prepareRegistration, so the
+	// error can echo the URL as the operator typed it — canonicalization
+	// strips path/query, and a fat-fingered URL is easier to spot whole.
+	if !config.IsSupportedScheme(canonical) {
+		return "", clierr.New(clierr.CodeValidation,
+			"unsupported server URL scheme: "+rawURL+"; use http:// or https://")
+	}
+	return canonical, nil
+}
+
+// prepareRegistration runs every network step a registration needs OUTSIDE
+// config.WithLock: CA resolution, the TLS preflight, and the min-version
+// floor check, against an already-canonicalized URL (see
+// canonicalizeServerURL). tlsPreflight runs for both schemes (an http server
+// can still be probed for its version; TLS classification never fires
+// against a non-TLS connection) so the min-version check is never lost under
+// http.
+func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, canonicalURL, caSelector string) (registrationProbe, error) {
 	if !config.IsSupportedScheme(canonicalURL) {
 		// The same gate config.Effective's credential-read path applies
 		// (resolve.go) — a scheme it refuses must never reach a committed
@@ -63,7 +80,7 @@ func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, raw
 		// credential later, surfacing as an unexplained NOT_LOGGED_IN after
 		// a login that appeared to succeed.
 		return registrationProbe{}, clierr.New(clierr.CodeValidation,
-			"unsupported server URL scheme: "+rawURL+"; use http:// or https://")
+			"unsupported server URL scheme: "+canonicalURL+"; use http:// or https://")
 	}
 	caBytes, raerr := resolveRegistrationCA(canonicalURL, caSelector)
 	if raerr != nil {

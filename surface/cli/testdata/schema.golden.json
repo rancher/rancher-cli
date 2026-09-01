@@ -121,7 +121,7 @@
       ],
       "flags": [
         {
-          "desc": "Rancher server `url` to add and log into (requires <name>)",
+          "desc": "Rancher server `url` to add and log into; when name is omitted, the server's hostname becomes the entry name",
           "name": "url",
           "type": "string"
         },

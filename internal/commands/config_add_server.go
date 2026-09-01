@@ -47,7 +47,11 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--url is required")
 	}
 
-	probe, err := prepareRegistration(ctx, c.tlsPreflight, url, in.String("cacert"))
+	canonicalURL, err := canonicalizeServerURL(url)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	probe, err := prepareRegistration(ctx, c.tlsPreflight, canonicalURL, in.String("cacert"))
 	if err != nil {
 		return runtime.Result{}, err
 	}

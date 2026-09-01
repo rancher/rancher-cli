@@ -84,7 +84,11 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		resultCA = cacert
 	}
 
-	probe, perr := prepareRegistration(ctx, c.tlsPreflight, resultURL, resultCA)
+	canonicalResultURL, perr := canonicalizeServerURL(resultURL)
+	if perr != nil {
+		return runtime.Result{}, perr
+	}
+	probe, perr := prepareRegistration(ctx, c.tlsPreflight, canonicalResultURL, resultCA)
 	if perr != nil {
 		return runtime.Result{}, perr
 	}

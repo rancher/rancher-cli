@@ -32,7 +32,9 @@ token), not an error condition; don't treat it as one. If it fails with
   choice: paste an existing API token, or sign in via an identity provider
   (`--auth-provider`, `--auth-flow devicecode|authcode` skip the prompt). The
   provider path creates its own purpose-made, individually revocable token
-  behind the scenes (see the token taxonomy below).
+  behind the scenes (see the token taxonomy below). Dropping `<name>` works
+  too — `rancher auth login --url <url>` derives the entry name from the
+  URL's host.
 - Scripted/CI: pipe the token — `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad

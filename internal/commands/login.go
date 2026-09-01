@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"strings"
 	"time"
 
-	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -102,7 +102,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 		Network:     true,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Desc: "server entry `name`"}},
 		Flags: []runtime.ArgSpec{
-			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into (requires <name>)"},
+			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into; when name is omitted, the server's hostname becomes the entry name"},
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM (requires --url)"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
@@ -128,6 +128,14 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	name := ""
 	if a := in.Args(); len(a) > 0 {
 		name = a[0]
+		// An explicitly passed empty string is a caller bug (usually an
+		// unset shell variable), never a request to derive — deriving
+		// here would silently register under a name the caller cannot
+		// predict.
+		if name == "" {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"the server name must not be empty; pass a real name, or omit the argument to derive it from --url's host")
+		}
 	}
 	url := in.String("url")
 	cacert := in.String("cacert")
@@ -187,7 +195,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	switch len(names) {
 	case 0:
 		return runtime.Result{}, clierr.New(clierr.CodeNotLoggedIn,
-			"no servers configured; add one with: rancher auth login <name> --url <url>")
+			"no servers configured; add one with: rancher auth login --url <url>")
 	case 1:
 		// Login never selects implicitly: a success here would authenticate
 		// an entry the pointer still doesn't name, so the next command
@@ -203,6 +211,23 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection,
 			"multiple servers configured; specify a name").WithCandidates(cands)
 	}
+}
+
+// nameCollisionError is the refusal for a registration name already taken
+// by an entry at a different URL. A derived name gets no hint: the name was
+// chosen by this command, not the caller, so a suggested update-server
+// command would re-point an entry the caller never named, and no single
+// alternate name can be suggested with certainty — the remediation lives in
+// the message body instead.
+func nameCollisionError(name, existingURL, canonical string, derived bool) *clierr.Error {
+	if derived {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("the name %s, derived from the URL's host, is already registered at %s; pass an explicit name to add this server as a separate entry",
+				shquote(name), existingURL))
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("server %s is registered at %s", name, existingURL)).
+		WithHint(fmt.Sprintf("rancher config update-server %s --url %s", shquote(name), shquote(canonical)))
 }
 
 // configUseServerHint returns the bare, shell-quoted `rancher config
@@ -226,36 +251,41 @@ func loginUnknownNameError(cfg *config.Config, name string) *clierr.Error {
 // starts. A failed auth after this leaves a valid registered entry, a
 // first-class state, not a bug to roll back.
 func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input, p runtime.Prompter, cfg0 *config.Config, name, url, cacert string) (runtime.Result, error) {
+	// canonical is resolved once and reused to derive an absent name from
+	// the URL's host, to detect a collision with an existing entry under
+	// that name below, and as prepareRegistration's input — so a --url
+	// login parses the URL exactly once, and an invalid or
+	// unsupported-scheme URL is refused before any other work.
+	canonical, canonErr := canonicalizeServerURL(url)
+	if canonErr != nil {
+		return runtime.Result{}, canonErr
+	}
+
+	derived := false
 	if name == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--url requires an explicit name: rancher auth login <name> --url <url>")
+		// canonical already round-tripped through url.Parse inside
+		// CanonicalServerURL, so this reparse cannot fail.
+		u, _ := neturl.Parse(canonical)
+		name = u.Hostname()
+		derived = true
+		// Hostname() can never emit a colon, so a derived name cannot
+		// land in the reserved legacy: namespace today; the check stays
+		// so a future change to the derivation (a port suffix, say)
+		// cannot start producing reserved names unchecked.
+		if ce := validateEntryName(name); ce != nil {
+			return runtime.Result{}, ce
+		}
 	}
 
 	existing, known := cfg0.Servers[name]
 	// A known name whose canonicalized URL disagrees is a different server
 	// hiding behind a trusted name — refuse before any network call, rather
 	// than let a hijacking or a typo silently re-point the entry (or dial
-	// the wrong host first and only then fail deep inside registration). A
-	// canonicalization failure here is not this check's concern — it falls
-	// through so prepareRegistration's own invalid-URL error surfaces
-	// unchanged.
-	//
-	// This deliberately calls credhelper.CanonicalServerURL directly rather
-	// than config.SameServerURL: SameServerURL falls back to exact string
-	// equality when either side fails to canonicalize, so a malformed --url
-	// would be compared as a raw string against existing.URL (which is
-	// always stored canonical), almost certainly come out "different," and
-	// get caught here with a canonical URL in the hint that was never
-	// actually computed — instead of falling through to prepareRegistration,
-	// which is the one place that can say the URL itself is invalid.
-	// existing.URL is assumed already canonical because registration only
-	// ever stores it that way.
-	if known {
-		if canonical, cerr := credhelper.CanonicalServerURL(url); cerr == nil && canonical != existing.URL {
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("server %s is registered at %s", name, existing.URL)).
-				WithHint(fmt.Sprintf("rancher config update-server %s --url %s", shquote(name), shquote(canonical)))
-		}
+	// the wrong host first and only then fail deep inside registration).
+	// existing.URL is compared as stored: registration only ever stores it
+	// canonical.
+	if known && canonical != existing.URL {
+		return runtime.Result{}, nameCollisionError(name, existing.URL, canonical, derived)
 	}
 
 	// Known name, --cacert absent: prepare with the EXISTING entry's
@@ -267,7 +297,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		caSelector = existing.CA
 	}
 
-	probe, err := prepareRegistration(ctx, l.tlsPreflight, url, caSelector)
+	probe, err := prepareRegistration(ctx, l.tlsPreflight, canonical, caSelector)
 	if err != nil {
 		return runtime.Result{}, err
 	}

@@ -555,13 +555,142 @@ func TestLoginDelegatedRejectsUnsupportedScheme(t *testing.T) {
 	assert.Error(t, terr, "no token stored either")
 }
 
-func TestLoginNoNameWithURLIsValidation(t *testing.T) {
+// TestLoginEmptyNameArgumentRefused pins that an explicitly passed empty
+// name (an unset shell variable, usually) is a validation error, never a
+// silent fall-through to host derivation — and never an entry.
+func TestLoginEmptyNameArgumentRefused(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
-	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), args{s: map[string]string{"url": "https://r.ex"}}, ui.Discard())
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://rancher.example.com"}, b: map[string]bool{"token-stdin": true}, a: []string{""}},
+		stdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "must not be empty")
+
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Empty(t, cfg.Servers, "no entry registered for an empty name")
+
+	_, err = newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{a: []string{""}}, stdinPrompter(""))
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code, "the refusal fires without --url too")
+}
+
+// TestLoginUnsupportedSchemeEchoesRawURL pins that the scheme refusal
+// shows the URL as typed — canonicalization strips path and query, and a
+// fat-fingered URL is easier to spot whole.
+func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "ftp://rancher.example.com/some/path?x=1"}, b: map[string]bool{"token-stdin": true}, a: []string{"qa1"}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "ftp://rancher.example.com/some/path?x=1")
+}
+
+// TestLoginDerivedNameCreatesEntryFromHost pins that --url with no
+// positional name registers and logs in under the canonical URL's host,
+// naming that entry in both the envelope and the rendered text.
+func TestLoginDerivedNameCreatesEntryFromHost(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://rancher.example.com"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	data := res.Data.(map[string]any)
+	assert.Equal(t, "rancher.example.com", data["server"])
+	assert.Equal(t, true, data["added"])
+	assert.Contains(t, res.Text, "rancher.example.com")
+
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	_, ok := cfg.Servers["rancher.example.com"]
+	assert.True(t, ok)
+}
+
+// TestLoginDerivedNameSameURLProceedsAsKnownEntry pins that a derived name
+// matching an existing entry at the same canonical URL is the ordinary
+// re-login-with-add no-op, not a new registration.
+func TestLoginDerivedNameSameURLProceedsAsKnownEntry(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "r.ex", "https://r.ex", "", true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.Equal(t, false, res.Data.(map[string]any)["added"])
+}
+
+// TestLoginDerivedNameCollisionDifferentSchemeRefusesBeforeAnyProbe pins
+// that a derived name already registered under a different canonical URL
+// refuses pre-network, naming the taken entry and its URL, with no hint —
+// an update-server hint would silently re-point an entry the caller never
+// named, and no alternate name can be suggested with certainty.
+func TestLoginDerivedNameCollisionDifferentSchemeRefusesBeforeAnyProbe(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "r.ex", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "http://r.ex"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "r.ex")
+	assert.Contains(t, ce.Message, "derived")
+	assert.Contains(t, ce.Message, "https://r.ex")
+	assert.Empty(t, ce.Hint)
+
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL, "the existing entry must never be re-pointed")
+}
+
+// TestLoginDerivedNameSameHostDifferentPortRefusesBeforeAnyProbe pins that
+// a same-host, different-port URL derives the identical name (the port is
+// never part of a derived name) and so hits the same collision refusal as
+// any other different canonical URL.
+func TestLoginDerivedNameSameHostDifferentPortRefusesBeforeAnyProbe(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "r.ex", "https://r.ex", "", false)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex:8443"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "r.ex")
+	assert.Contains(t, ce.Message, "derived")
+	assert.Empty(t, ce.Hint)
+
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Equal(t, "https://r.ex", cfg.Servers["r.ex"].URL, "the existing entry must never be re-pointed")
+}
+
+// TestLoginDerivedNameInvalidURLFallsThroughToRegistrationError pins that
+// an unparseable --url with no positional name skips derivation entirely
+// and surfaces prepareRegistration's own invalid-URL error, not a name
+// validation error.
+func TestLoginDerivedNameInvalidURLFallsThroughToRegistrationError(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "not-a-url"}, b: map[string]bool{"token-stdin": true}},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "invalid server URL")
 }
 
 func TestLoginDelegatedIdenticalURLIsNoOpAddAndAuthenticates(t *testing.T) {

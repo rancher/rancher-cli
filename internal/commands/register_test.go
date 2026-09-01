@@ -43,15 +43,14 @@ func readBytes(t *testing.T, path string) []byte {
 	return b
 }
 
-func TestPrepareRegistrationCanonicalizesAndValidates(t *testing.T) {
-	p, err := prepareRegistration(context.Background(), nil, "HTTPS://Example.com:443/ignored", "")
+func TestCanonicalizeServerURLNormalizes(t *testing.T) {
+	canonical, err := canonicalizeServerURL("HTTPS://Example.com:443/ignored")
 	require.NoError(t, err)
-	assert.Equal(t, "https://example.com", p.canonicalURL)
-	assert.Empty(t, p.caBytes)
+	assert.Equal(t, "https://example.com", canonical)
 }
 
-func TestPrepareRegistrationInvalidURL(t *testing.T) {
-	_, err := prepareRegistration(context.Background(), nil, "not-a-url", "")
+func TestCanonicalizeServerURLInvalidURL(t *testing.T) {
+	_, err := canonicalizeServerURL("not-a-url")
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)

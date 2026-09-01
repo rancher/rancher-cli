@@ -53,7 +53,7 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	if len(servers) == 0 {
 		return clierr.New(clierr.CodeNotLoggedIn,
-			"not logged in and no "+EnvURL+" set; add a server with: rancher auth login <name> --url <url>")
+			"not logged in and no "+EnvURL+" set; add a server with: rancher auth login --url <url>")
 	}
 	names := make([]string, 0, len(servers))
 	for n := range servers {
