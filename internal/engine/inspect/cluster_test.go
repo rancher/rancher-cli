@@ -1844,3 +1844,71 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 	}
 	assert.NotContains(t, styled, "\x1b[1mid: c-abc", "a data line must not be styled")
 }
+
+// TestInspectClusterAutoscaledPoolReportsMinMax pins the cluster-family
+// enrichment: a pool carrying autoscalingMinSize/MaxSize surfaces both in
+// the JSON envelope and the text card, and the ClusterAutoscalerDeployment
+// Ready condition — a plain status.conditions entry — flows through the
+// generic condition walk with no allowlist to bypass.
+func TestInspectClusterAutoscaledPoolReportsMinMax(t *testing.T) {
+	t.Parallel()
+	mgmtKind := mustKind(t, "cluster")
+	provKind := mustKind(t, "provisioning-cluster")
+
+	prov := provClusterFixture("my-cluster", "c-abc")
+	_ = unstructured.SetNestedSlice(prov.Object, []any{
+		map[string]any{"type": "Ready", "status": "True"},
+		map[string]any{"type": "ClusterAutoscalerDeploymentReady", "status": "True"},
+	}, "status", "conditions")
+	_ = unstructured.SetNestedSlice(prov.Object, []any{
+		map[string]any{
+			"name": "pool1", "quantity": int64(2),
+			"etcdRole": false, "controlPlaneRole": false, "workerRole": true,
+			"autoscalingMinSize": int64(2), "autoscalingMaxSize": int64(5),
+			"machineConfigRef": map[string]any{"kind": "Amazonec2Config", "name": "mycfg"},
+		},
+		map[string]any{
+			"name": "pool2", "quantity": int64(1),
+			"etcdRole": true, "controlPlaneRole": true, "workerRole": false,
+			"machineConfigRef": map[string]any{"kind": "Amazonec2Config", "name": "mycfg"},
+		},
+	}, "spec", "rkeConfig", "machinePools")
+
+	client := newFakeClient().
+		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
+	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	doc, _ := marshaledDoc(t, res.Data)
+	status, ok := doc["status"].(map[string]any)
+	require.True(t, ok)
+	conds, ok := status["conditions"].([]any)
+	require.True(t, ok)
+	var sawAutoscalerCondition bool
+	for _, c := range conds {
+		cm := c.(map[string]any)
+		if cm["type"] == "ClusterAutoscalerDeploymentReady" {
+			sawAutoscalerCondition = true
+			assert.Equal(t, "True", cm["status"])
+		}
+	}
+	assert.True(t, sawAutoscalerCondition, "ClusterAutoscalerDeploymentReady must flow through with no allowlist")
+
+	pools, ok := doc["machinePools"].([]any)
+	require.True(t, ok)
+	require.Len(t, pools, 2)
+	autoscaled := pools[0].(map[string]any)
+	assert.Equal(t, float64(2), autoscaled["autoscalingMinSize"])
+	assert.Equal(t, float64(5), autoscaled["autoscalingMaxSize"])
+	manual := pools[1].(map[string]any)
+	assert.NotContains(t, manual, "autoscalingMinSize")
+	assert.NotContains(t, manual, "autoscalingMaxSize")
+
+	assert.Contains(t, res.Text, "pool1: Amazonec2Config/mycfg quantity=2 roles=worker autoscaling=2-5 (quantity is the autoscaler's current count)")
+	assert.Contains(t, res.Text, "pool2: Amazonec2Config/mycfg quantity=1 roles=controlplane,etcd")
+	assert.NotContains(t, res.Text, "pool2: Amazonec2Config/mycfg quantity=1 roles=controlplane,etcd autoscaling=")
+}

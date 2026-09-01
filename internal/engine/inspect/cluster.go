@@ -352,13 +352,20 @@ func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 		if b, _, _ := unstructured.NestedBool(pm, "workerRole"); b {
 			roles = append(roles, "worker")
 		}
-		pools = append(pools, machinePool{
+		pool := machinePool{
 			Name:              name,
 			MachineConfigKind: kind,
 			MachineConfigName: cfgName,
 			Quantity:          quantity,
 			Roles:             roles,
-		})
+		}
+		if minSize, found, _ := unstructured.NestedInt64(pm, "autoscalingMinSize"); found {
+			pool.AutoscalingMinSize = &minSize
+		}
+		if maxSize, found, _ := unstructured.NestedInt64(pm, "autoscalingMaxSize"); found {
+			pool.AutoscalingMaxSize = &maxSize
+		}
+		pools = append(pools, pool)
 	}
 	return pools
 }
@@ -592,6 +599,16 @@ type machinePool struct {
 	MachineConfigName string   `json:"machineConfigName"`
 	Quantity          int64    `json:"quantity"`
 	Roles             []string `json:"roles"`
+	// AutoscalingMinSize/MaxSize are nil on a manual pool (both absent
+	// server-side) and both set together on an autoscaled one — the CRD's
+	// write-side CEL requires both or neither. On an autoscaled pool,
+	// Quantity is the autoscaler's current count, not operator intent: the
+	// autoscaler re-asserts its own count within its loop, and the
+	// provisioning webhook syncs that choice back into
+	// machinePools[].quantity, so the field stays live even though nothing
+	// here calls `cluster scale`.
+	AutoscalingMinSize *int64 `json:"autoscalingMinSize,omitempty"`
+	AutoscalingMaxSize *int64 `json:"autoscalingMaxSize,omitempty"`
 }
 
 // registrationSurfacedFields is the set of CRTObject field names that
@@ -781,8 +798,13 @@ func renderMachinePoolsSection(b *strings.Builder, r clusterResult) {
 		b.WriteString("  none (imported or custom cluster)\n")
 	default:
 		for _, p := range *r.MachinePools {
-			fmt.Fprintf(b, "  %s: %s/%s quantity=%d roles=%s\n",
+			line := fmt.Sprintf("  %s: %s/%s quantity=%d roles=%s",
 				p.Name, p.MachineConfigKind, p.MachineConfigName, p.Quantity, strings.Join(p.Roles, ","))
+			if p.AutoscalingMinSize != nil && p.AutoscalingMaxSize != nil {
+				line += fmt.Sprintf(" autoscaling=%d-%d (quantity is the autoscaler's current count)",
+					*p.AutoscalingMinSize, *p.AutoscalingMaxSize)
+			}
+			b.WriteString(line + "\n")
 		}
 	}
 }
