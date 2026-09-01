@@ -117,7 +117,7 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	})
 
 	t.Run("prime required: community edition, prime-classified feature enabled only by its status.default", func(t *testing.T) {
-		// The proof-run capture: a community server's cluster-autoscaling
+		// The live-captured community shape: a community server's cluster-autoscaling
 		// Feature reads enabled=true purely from status.default (no
 		// operator ever set spec.value) — Rancher's own Feature.Enabled()
 		// still disables it server-side on a non-Prime build, so this must

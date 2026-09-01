@@ -281,6 +281,27 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 		}
 		assert.True(t, got, "command %q is prime:true in the manifest but not TOC-marked", name)
 	}
+
+	// The group JSON card is a third projection of the same per-command
+	// prime flag — hold it to the identical rule so a prime command can
+	// never read prime-less on its own group's card.
+	for _, groupName := range []string{"cluster", "oidc-client"} {
+		card := runJSON("schema", groupName, "-o", "json")
+		for _, c := range card["commands"].([]any) {
+			m := c.(map[string]any)
+			name := m["name"].(string)
+			prime, _ := m["prime"].(bool)
+			var want bool
+			for _, fc := range full["commands"].([]any) {
+				fm := fc.(map[string]any)
+				if fm["name"] == name {
+					want, _ = fm["prime"].(bool)
+					break
+				}
+			}
+			assert.Equal(t, want, prime, "group card %q: command %q prime flag disagrees with the manifest", groupName, name)
+		}
+	}
 }
 
 // TestSchemaTOCGolden pins the bare `schema -o json` TOC shape — the
@@ -1398,7 +1419,7 @@ func primeFeatureObj(name string, prime, enabled bool) *unstructured.Unstructure
 	}}
 }
 
-// TestPrimeFeatureCommunityWarning pins item 7's fix: a feature confirmed
+// TestPrimeFeatureCommunityWarning pins the advisory's trigger: a feature confirmed
 // prime-classified AND confirmed enabled warns only when the server is
 // confirmed community — never on Prime, never on an unreadable/unknown
 // edition, never for a non-prime feature, never for a disabled one.

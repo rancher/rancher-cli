@@ -316,7 +316,7 @@ func (v groupView) Rows() [][]string { return [][]string{{v.group.Name}} }
 func (v groupView) MarshalJSON() ([]byte, error) {
 	entries := make([]tocEntry, len(v.bespoke))
 	for i, c := range v.bespoke {
-		entries[i] = tocEntry{Name: c.Name, Usage: c.Usage}
+		entries[i] = tocEntry{Name: c.Name, Usage: c.Usage, Prime: c.Prime}
 	}
 	var gen *groupGeneratedSummary
 	if v.generatedCount > 0 {

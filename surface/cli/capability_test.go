@@ -325,7 +325,7 @@ func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) 
 }
 
 // TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired
-// pins the proof-run bug fix: a Prime-classified feature whose Feature
+// pins the live-captured community shape: a Prime-classified feature whose Feature
 // object reads enabled=true only because status.default is true (spec.value
 // unset — no operator ever touched it) must still resolve PRIME_REQUIRED on
 // a confirmed community server. Rancher's own Feature.Enabled() disables any

@@ -202,15 +202,15 @@ func primeFeatureCommunityWarning(clients engine.ClusterClientFactory) resources
 	}
 	return func(ctx context.Context, obj *unstructured.Unstructured) (string, bool) {
 		enabled, prime := featureState(obj)
-		if prime == nil || !*prime || enabled == nil || !*enabled {
+		if enabled == nil || !*enabled {
 			return "", false
 		}
 		info, err := f.ServerInfo(ctx)
-		if err != nil || info.Edition != provider.EditionCommunity {
+		if err != nil || !primeInertOnCommunity(prime, info.Edition) {
 			return "", false
 		}
 		name, _, _ := unstructured.NestedString(obj.Object, "metadata", "name")
-		return name + " is enabled by default but inactive without Rancher Prime", true
+		return name + " is enabled on this server but inactive without Rancher Prime", true
 	}
 }
 

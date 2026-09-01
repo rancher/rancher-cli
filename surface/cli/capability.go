@@ -155,8 +155,18 @@ func featureState(obj *unstructured.Unstructured) (enabled, prime *bool) {
 // affirmative enabled=true proceed (outcome 1); an explicit enabled=false is
 // disabled regardless of edition (outcome 2); and a missing enabled reading,
 // with prime+community not both confirmed, is unknown (outcome 4).
+// primeInertOnCommunity reports the one server shape where a feature can
+// never act no matter what its object says: the feature is confirmed
+// prime-classified and the edition is affirmatively community — the server's
+// own build gate wins over any enabled value, operator-set or defaulted.
+// Both the capability gate and the get-feature advisory key on this exact
+// predicate so the two cannot drift apart.
+func primeInertOnCommunity(prime *bool, edition provider.Edition) bool {
+	return prime != nil && *prime && edition == provider.EditionCommunity
+}
+
 func decideCapability(enabled, prime *bool, edition provider.Edition) runtime.CapabilityOutcome {
-	if prime != nil && *prime && edition == provider.EditionCommunity {
+	if primeInertOnCommunity(prime, edition) {
 		return runtime.CapabilityPrimeRequired
 	}
 	if enabled == nil {
