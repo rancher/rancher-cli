@@ -272,7 +272,8 @@ SAME envelope's top-level `warnings` field under `-o json`/`-o yaml` — never
 a separate line to skip past.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
-`4` not-found · `5` conflict/precondition · `6` RBAC · `1` generic.
+`4` not-found · `5` conflict/precondition · `6` RBAC · `9` Prime required ·
+`1` generic.
 
 - Read the `hint` — when present, it is exactly one paste-valid command
   carrying only concrete, already-known values. When the CLI has no
@@ -283,6 +284,11 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   not repeat the identical call.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list — pick with the user, don't
   guess.
+- `PRIME_REQUIRED` (exit `9`) means the command needs a capability this
+  server's edition does not have — Rancher Prime. Do not retry and do not
+  look for a workaround; tell the user what was refused and pass along the
+  message's learn-more link. `rancher schema` marks such commands and kinds
+  `[prime]`, so you can check before running.
 
 ### 6. Waits
 
