@@ -622,6 +622,35 @@ func fetchOIDCClientSecretNames(ctx context.Context, hc *http.Client, cap TokenC
 	return sanitizeCandidates(names)
 }
 
+// fetchClusterFamilyPoolNames GETs the single named provisioning Cluster in
+// ns and returns its spec.rkeConfig.machinePools[].name entries — the
+// dependent --pool completion every cluster-family verb shares, keyed off
+// the typed <cluster> positional. Any fetch error (including a not-found
+// cluster) degrades to nil, same as fetchOIDCClientSecretNames.
+func fetchClusterFamilyPoolNames(ctx context.Context, hc *http.Client, cap TokenCapability, k kinds.Kind, ns, clusterName string) []string {
+	if cap.Token == "" || cap.IDOnly {
+		return nil
+	}
+	url := cap.ServerURL + "/k8s/clusters/local" + strings.Replace(gvrNamespacedPath(k), "{namespace}", ns, 1) + "/" + clusterName
+	var obj struct {
+		Spec struct {
+			RKEConfig struct {
+				MachinePools []struct {
+					Name string `json:"name"`
+				} `json:"machinePools"`
+			} `json:"rkeConfig"`
+		} `json:"spec"`
+	}
+	if err := getJSON(ctx, hc, cap.Token, url, &obj); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(obj.Spec.RKEConfig.MachinePools))
+	for _, p := range obj.Spec.RKEConfig.MachinePools {
+		names = append(names, p.Name)
+	}
+	return sanitizeCandidates(names)
+}
+
 // dedupe removes duplicates from a sorted slice (input must be sorted).
 func dedupe(s []string) []string {
 	if len(s) == 0 {

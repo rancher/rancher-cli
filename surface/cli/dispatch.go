@@ -345,6 +345,13 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 		return logsPodCandidates(ctx, site, d, tail)
 	}
 
+	// A cluster-family verb's --pool is dependent on its own <cluster>
+	// positional, not a typed --cluster flag — self-contained like
+	// logsPodCandidates above.
+	if site.Kind == SiteFlagValue && site.FlagName == "pool" && clusterFamilyPositionalKind[d.Name] {
+		return clusterFamilyPoolCandidates(ctx, site, d, tail)
+	}
+
 	// Scope comes from the typed tail only — nothing ambient (no config, no
 	// env) may place or filter completion. A typed --project is its own
 	// announcement; absent flags leave the values empty.
@@ -672,6 +679,17 @@ func livePositionalCandidates(
 		return bespokeSingleKindPositional(ctx, hc, site, d, cap, kindKey, tail)
 	}
 
+	// Cluster-family verbs' <cluster> positional names a provisioning
+	// cluster, not the generic "cluster" kind AC-10/inspect exceptions
+	// below resolve — handled before that gate, which these command names
+	// would otherwise fail.
+	if clusterFamilyPositionalKind[d.Name] {
+		if site.Index != 0 {
+			return nil
+		}
+		return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
+	}
+
 	if site.Index != 0 {
 		return nil // only first positional completes for resource names
 	}
@@ -723,21 +741,7 @@ func livePositionalCandidates(
 			// id+username union. System accounts filtered.
 			return fetchUserIDs(ctx, hc, cap)
 		case "provisioning-cluster":
-			// NSWorkspace kind on the local management cluster; namespace comes
-			// from the --namespace flag or falls back to the kind's DefaultNamespace
-			// ("fleet-default"). Requires a full management token — IDOnly exec-cred
-			// tokens cannot authorize management-plane lists (same boundary as nodedriver).
-			if cap.IDOnly {
-				return nil
-			}
-			ns := extractFlagValue(tail, "namespace")
-			if ns == "" {
-				ns = k.DefaultNamespace
-			}
-			if !isValidSegment(ns) {
-				return nil
-			}
-			return fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), ns)
+			return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
 		default:
 			// Any other Completable NSNone management kind (e.g. oidcclient):
 			// list via the local cluster, the same shape as nodedriver — a
@@ -772,6 +776,89 @@ func livePositionalCandidates(
 		return nil
 	}
 	return fetchK8sResources(ctx, hc, cap, clusterID, gvrNamespacedPath(k), ns)
+}
+
+// provisioningClusterPositionalCandidates lists provisioning.cattle.io/v1
+// Cluster names on the local management cluster, honoring --namespace or
+// falling back to the kind's DefaultNamespace (fleet-default) — shared by
+// get/delete provisioning-cluster's generic positional (via the
+// "provisioning-cluster" case above) and every cluster-family bespoke
+// verb's <cluster> positional (via clusterFamilyPositionalKind below).
+// Requires a full management token — IDOnly exec-cred tokens cannot
+// authorize management-plane lists (same boundary as nodedriver).
+func provisioningClusterPositionalCandidates(ctx context.Context, hc *http.Client, cap TokenCapability, tail []string) []string {
+	if cap.IDOnly {
+		return nil
+	}
+	k, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		return nil
+	}
+	ns := extractFlagValue(tail, "namespace")
+	if ns == "" {
+		ns = k.DefaultNamespace
+	}
+	if !isValidSegment(ns) {
+		return nil
+	}
+	return fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), ns)
+}
+
+// clusterFamilyPositionalKind is the closed set of cluster-family bespoke
+// verbs whose index-0 positional is a provisioning-cluster name (not the
+// generic get/patch/delete "cluster" kind, which names a MANAGEMENT
+// cluster) — the completion-only sibling of root.go's derivedOpKinds,
+// consulted by livePositionalCandidates before the generic AC-10 gate,
+// which these bespoke command names would otherwise fail.
+var clusterFamilyPositionalKind = map[string]bool{
+	"cluster scale":              true,
+	"cluster set-autoscaling":    true,
+	"cluster clear-autoscaling":  true,
+	"cluster pause-autoscaling":  true,
+	"cluster resume-autoscaling": true,
+}
+
+// clusterFamilyPoolCandidates completes a cluster-family verb's --pool
+// flag: resolves the typed <cluster> positional to its provisioning Cluster
+// object (namespace from --namespace or fleet-default) and lists its
+// machine pool names — a DEPENDENT flag site, the same shape
+// bespokeSingleKindPositional's index-1 secret-name completion uses for
+// oidc-client, but keyed off a positional rather than another flag. Fully
+// self-contained like logsPodCandidates: there is no --cluster flag on
+// these commands, so it never enters the generic clusterValue pipeline.
+func clusterFamilyPoolCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, tail []string) []string {
+	clusterName := firstPositionalToken(tail, d.Flags)
+	if clusterName == "" || !isValidSegment(clusterName) {
+		return nil
+	}
+	k, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		return nil
+	}
+	ns := extractFlagValue(tail, "namespace")
+	if ns == "" {
+		ns = k.DefaultNamespace
+	}
+	if !isValidSegment(ns) {
+		return nil
+	}
+
+	ctx, cancel := completionDeadline(ctx)
+	defer cancel()
+	cap := resolveCompletionToken(engine.LocalCluster)
+	if cap.Token == "" || cap.IDOnly {
+		return nil
+	}
+	hc, err := newCompletionClient(cap.CACert)
+	if err != nil {
+		completionDebugf("stop: HTTP client: %v", err)
+		return nil
+	}
+	raw := fetchClusterFamilyPoolNames(ctx, hc, cap, k, ns, clusterName)
+	if site.EqualsForm {
+		return equalsFormCandidates(site.FlagSpelling, raw)
+	}
+	return raw
 }
 
 // machineConfigPrefixCandidates serves the `<kind>/` prefixes for create
