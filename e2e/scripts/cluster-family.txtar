@@ -1,0 +1,95 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a pooled cluster: one manual worker pool and one already-autoscaled
+# pool — the guard matrix needs both shapes on one object. The four
+# Prime-gated verbs below proceed regardless of edition in this harness: it
+# has no /rancherversion route, so the capability checker's ServerInfo probe
+# fails and the outcome degrades to Unknown, which never blocks (the live
+# four-outcome coverage lives in
+# surface/cli/clusterfamily_capability_acceptance_test.go, which this
+# harness cannot reach). provisioningcluster is Sensitive, so the generic
+# `create resource` path refuses --apply alone (scale-pool.txtar's own
+# precedent), and every family mutation below needs --yes for the same
+# reason.
+exec rancher create resource -f family-cluster.yaml --apply --yes
+
+# every family mutation is Destructive: --apply alone is refused, up or down.
+! exec rancher cluster scale e2e-family-scale --pool workers --nodes 5 --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher cluster scale e2e-family-scale --pool workers --nodes 5 --apply --yes
+exec rancher get provisioning-cluster e2e-family-scale -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.0.quantity 5
+
+exec rancher cluster scale e2e-family-scale --pool workers --nodes 1 --apply --yes
+exec rancher get provisioning-cluster e2e-family-scale -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.0.quantity 1
+
+# an unknown pool name refuses with a hint pointing at inspect cluster.
+! exec rancher cluster scale e2e-family-scale --pool missing --nodes 1
+stderr 'error \(VALIDATION\):'
+stderr 'no machine pool named'
+
+# the already-autoscaled pool refuses a manual scale while unpaused.
+! exec rancher cluster scale e2e-family-scale --pool autoscaled --nodes 3
+stderr 'error \(VALIDATION\):'
+stderr 'managed by the cluster autoscaler'
+
+# pausing cluster-wide lifts the guard for every pool.
+exec rancher cluster pause-autoscaling e2e-family-scale --apply --yes
+stdout 'cluster autoscaler paused'
+exec rancher cluster scale e2e-family-scale --pool autoscaled --nodes 3 --apply --yes
+exec rancher get provisioning-cluster e2e-family-scale -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.1.quantity 3
+
+exec rancher cluster set-autoscaling e2e-family-scale --pool workers --min 1 --max 4 --apply --yes
+exec rancher get provisioning-cluster e2e-family-scale -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.0.autoscalingMinSize 1
+jsonquery stdout data.spec.rkeConfig.machinePools.0.autoscalingMaxSize 4
+
+exec rancher cluster clear-autoscaling e2e-family-scale --pool workers --apply --yes
+exec rancher get provisioning-cluster e2e-family-scale -o json
+jsonquery stdout data.spec.rkeConfig.machinePools.0.autoscalingMinSize ''
+
+# a pool that already carries neither bound converges rather than failing.
+exec rancher cluster clear-autoscaling e2e-family-scale --pool workers --apply --yes
+stdout 'already manual; nothing to clear'
+
+exec rancher cluster resume-autoscaling e2e-family-scale --apply --yes
+stdout 'cluster autoscaler resumed'
+exec rancher cluster resume-autoscaling e2e-family-scale --apply --yes
+stdout 'already running'
+
+# An imported cluster carries no machine pools at all — the same shape a
+# real "local" cluster has. Never named "local" here: this harness's other
+# scenarios (create-cluster.txtar) assume no "local" provisioning-cluster
+# exists, and every txtar script here shares one envtest cluster.
+exec rancher create cluster e2e-family-poolless --import --apply
+! exec rancher cluster scale e2e-family-poolless --pool anything --nodes 1
+stderr 'error \(VALIDATION\):'
+stderr 'no machine pools'
+
+-- family-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-family-scale
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig:
+    machinePools:
+    - name: workers
+      workerRole: true
+      quantity: 3
+      machineConfigRef:
+        kind: Amazonec2Config
+        name: mycfg
+    - name: autoscaled
+      workerRole: true
+      quantity: 2
+      autoscalingMinSize: 1
+      autoscalingMaxSize: 5
+      machineConfigRef:
+        kind: Amazonec2Config
+        name: mycfg
