@@ -430,6 +430,45 @@ permissions.
   guaranteed on this server (requires Rancher >= 2.14, the supported
   minimum) and it won't propagate.
 
+### 11. OIDC clients
+
+`create oidc-client <name> --redirect-uri <uri> [...] --apply --yes` creates
+a client for Rancher's embedded OIDC provider (Sensitive kind,
+Prime-classified, contract internal, stability beta — even `create` is
+destructive, so `--yes` is always required, not just on patch/delete). The
+`oidc-client` group manages its secrets: `add-secret`, `rotate-secret`,
+`remove-secret` (all destructive, `--apply --yes`). Generic `get/patch/delete
+oidcclient` (alias `oidcclients`) also work — `get` is read-only,
+`patch`/`delete` escalate to `--yes` like any Sensitive kind.
+
+`create oidc-client`, `add-secret`, and `rotate-secret` generate a client
+secret and show it exactly once — capture it from the command's own output,
+it is never readable again. `-o name` is refused on these three (there is no
+id-only view of a secret you can only see once); table, wide, json, yaml,
+and template all work.
+
+`oidcclient` sits behind the `oidc-provider` feature: a disabled feature
+fails any mutation with `VALIDATION` naming the feature — "enable feature
+oidc-provider" on a Prime server, a neutral disabled statement on every
+other edition. The flag is not dynamic: patching it
+(`patch feature oidc-provider ... --apply --yes`) warns "this feature flag
+is not dynamic: the server restarts itself to apply it — wait for the
+server to come back before running more commands" — wait out the restart
+before running oidc-client commands.
+
+`rotate-secret <client> [secret-name]` may omit `secret-name` only when the
+client has exactly one secret; with more than one, an omitted name fails
+VALIDATION with a `candidates` list naming the secrets.
+
+Worked flow — create, hand the relying app its config, rotate:
+
+```
+rancher create oidc-client my-app --redirect-uri https://example.invalid/callback --apply --yes -o json
+# data: clientID, clientSecret (shown once), issuer, endpoints{authorization,token,jwks; userinfo when the server serves one}
+# hand clientID/clientSecret/issuer/endpoints to the relying app now — none of it is shown again
+rancher oidc-client rotate-secret my-app --apply --yes
+```
+
 ## Conventions
 
 - **Routing:** `--cluster` (display name or id) routes to a downstream cluster;
