@@ -797,11 +797,10 @@ func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notice
 // what json/yaml have always emitted, for those two formats — yaml serializes
 // as YAML, not JSON dressed up as one — and a short operator-facing text block
 // for every other format, including an unrecognized one (an untrusted format
-// value renders as text rather than being guessed at as an envelope). Shared
-// by every pre-pipeline failure in surface/cli that must format an error
-// before a command has resolved its own parsed --output value (those callers
-// pass no notices — nothing has resolved a credential store yet at that
-// point) or its own --color/TTY state, so this path never carries styling.
+// value renders as text rather than being guessed at as an envelope). This
+// is the always-plain convenience form of RenderErrorStyled: every
+// production render site — the pipeline and surface/cli's own pre-dispatch
+// failures alike — resolves a style and calls RenderErrorStyled directly.
 //
 // notices and ce's own warning ride (WithWarnings) are merged in one fixed
 // order — notices first (recorded earliest, e.g. a NoticeSource drained

@@ -205,7 +205,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			// invocation's own --output value is trusted directly — no raw-argv
 			// scan needed here, unlike commandNotFound/onUsageError below.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
-				_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
+				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 				return ctx, exit(ce)
 			}
 			return ctx, nil
@@ -444,7 +444,7 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 		msg += "; " + detail
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
-	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
+	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
 	ucli.OsExiter(ce.ExitCode())
 }
 
@@ -464,6 +464,6 @@ func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 		msg += "; " + detail
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
-	_ = runtime.RenderError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce)
+	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
 	return exit(ce)
 }

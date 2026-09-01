@@ -699,6 +699,62 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	assert.NotContains(t, errOut.String(), "apiVersion")
 }
 
+// TestCommandNotFoundStyledWithColorAlways pins that the errors the adapter
+// renders itself — raised before any command dispatches, so never passing
+// through the pipeline's own style resolution — still honor --color: the
+// unknown-command error's prefix is ANSI-styled under --color=always (read
+// from raw argv, since flags never parsed) and byte-plain by default on a
+// non-terminal stderr.
+func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
+	orig := rawArgv
+	t.Cleanup(func() { rawArgv = orig })
+	origExiter := ucli.OsExiter
+	ucli.OsExiter = func(int) {}
+	t.Cleanup(func() { ucli.OsExiter = origExiter })
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	CaptureArgv([]string{"--color", "always", "bogus-command-xyz"})
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--color", "always", "bogus-command-xyz"}))
+	assert.Contains(t, errOut.String(), "\x1b[", "prefix styled under --color=always")
+	assert.Contains(t, errOut.String(), `unknown command "bogus-command-xyz"`)
+
+	errOut.Reset()
+	root2, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	root2.Writer = &out
+	root2.ErrWriter = &errOut
+	CaptureArgv([]string{"--color", "always", "-o", "json", "bogus-command-xyz"})
+	require.NoError(t, root2.Run(t.Context(), []string{"rancher", "--color", "always", "-o", "json", "bogus-command-xyz"}))
+	assert.NotContains(t, errOut.String(), "\x1b[", "json envelope never styled, whatever --color says")
+	assert.Contains(t, errOut.String(), "apiVersion")
+}
+
+// TestUsageErrorStyledWithColorAlways pins the same --color honoring on the
+// flag-parse-failure path, the other pre-parse renderer.
+func TestUsageErrorStyledWithColorAlways(t *testing.T) {
+	orig := rawArgv
+	t.Cleanup(func() { rawArgv = orig })
+	origExiter := ucli.OsExiter
+	ucli.OsExiter = func(int) {}
+	t.Cleanup(func() { ucli.OsExiter = origExiter })
+
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out, errOut bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = &errOut
+
+	CaptureArgv([]string{"--color=always", "schema", "--bogus-flag-xyz"})
+	_ = root.Run(t.Context(), []string{"rancher", "--color=always", "schema", "--bogus-flag-xyz"})
+	assert.Contains(t, errOut.String(), "\x1b[", "prefix styled under --color=always")
+	assert.Contains(t, errOut.String(), "error (VALIDATION")
+}
+
 // TestUnknownFlagRendersTextWithoutOutputFlag mirrors the command-not-found
 // case for onUsageError: an unknown flag with no -o anywhere on the raw
 // command line renders as text.

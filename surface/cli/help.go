@@ -52,6 +52,22 @@ func helpStyle(cmd *ucli.Command) style.Style {
 	)}
 }
 
+// errStyle is helpStyle's twin for the ERR stream, styling errors the
+// adapter renders itself — before or outside the runtime pipeline, which
+// resolves its own styles. colorValue is passed in rather than read off cmd
+// because two callers fire before this invocation's flags have parsed and
+// must scan raw argv for it. No format gate here: RenderErrorStyled already
+// zeroes the style for non-text formats.
+func errStyle(cmd *ucli.Command, colorValue string) style.Style {
+	return style.Style{Enabled: runtime.ActivateColor(
+		colorValue,
+		os.Getenv("NO_COLOR"),
+		os.Getenv("CLICOLOR_FORCE"),
+		os.Getenv("FORCE_COLOR"),
+		fileIsTTY(cmd.Root().ErrWriter),
+	)}
+}
+
 // colonOffsetCommands returns the left-column width for a colon-aligned
 // COMMANDS list: the longest comma-joined "names:" plus fixed, mirroring
 // urfave's own offsetCommands, which sizes the same column on every

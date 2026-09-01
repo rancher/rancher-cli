@@ -402,7 +402,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			// Flags have already parsed successfully at this point, so the
 			// invocation's own --output value is trusted directly.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
-				_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
+				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 				return ctx, exit(ce)
 			}
 			return ctx, nil
@@ -420,7 +420,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 					// stderr. Flags have already parsed successfully, so
 					// the invocation's own --output value is trusted.
 					ce := clierr.New(clierr.CodeGeneric, err.Error())
-					_ = runtime.RenderError(c.Root().ErrWriter, c.String("output"), ce)
+					_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 					return exit(ce)
 				}
 				// The store is the drain handle for every notice recorded

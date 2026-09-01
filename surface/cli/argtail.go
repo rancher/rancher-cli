@@ -258,6 +258,22 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 // occurrence overrides an earlier one, matching urfave's own last-flag-wins
 // semantics for a repeated flag.
 func scanOutputFormat(argv []string) string {
+	return scanGlobalFlag(argv, "output")
+}
+
+// scanColorFlag is scanOutputFormat's twin for --color, feeding the styled
+// rendering of errors raised before this invocation's flags have parsed.
+func scanColorFlag(argv []string) string {
+	return scanGlobalFlag(argv, "color")
+}
+
+// scanGlobalFlag is the shared raw-argv scan behind scanOutputFormat and
+// scanColorFlag: it resolves each flag token against the global specs'
+// canonical names, honors the separate and equals value spellings for every
+// alias the flag's spec defines (four spellings for --output with its -o
+// short form, two for --color, which has none) with last-flag-wins, stops
+// at the first "--", and yields "" for a trailing flag with no value.
+func scanGlobalFlag(argv []string, canonical string) string {
 	value := ""
 	for i := 0; i < len(argv); i++ {
 		token := argv[i]
@@ -268,12 +284,12 @@ func scanOutputFormat(argv []string) string {
 			continue
 		}
 		if eq := strings.Index(token, "="); eq > 0 {
-			if resolveFlagCanonical(token[:eq], globalArgSpecs) == "output" {
+			if resolveFlagCanonical(token[:eq], globalArgSpecs) == canonical {
 				value = token[eq+1:]
 			}
 			continue
 		}
-		if resolveFlagCanonical(token, globalArgSpecs) != "output" {
+		if resolveFlagCanonical(token, globalArgSpecs) != canonical {
 			continue
 		}
 		if i+1 < len(argv) && argv[i+1] != "--" {
