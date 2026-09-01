@@ -54,14 +54,15 @@ func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityReq
 			}
 		}
 	}
-	// The edition is fetched only when the decision can read it: an
-	// affirmatively enabled feature decides alone (truth-table outcome 1),
-	// and an unreadable feature (enabled == nil) is unknown regardless of
-	// edition — both paths skip the /rancherversion round trip. The
-	// decision itself is still decideCapability's alone; only the fetch is
-	// conditional.
+	// The edition is fetched when EITHER decideCapability needs it (the
+	// feature is confirmed prime-classified — see decideCapability) OR the
+	// disabled-message renderer needs it (dec.EditionPrime picks the
+	// actionable "enable feature" wording on a known-Prime server, versus
+	// the neutral wording everywhere else — pipeline.go). A feature that is
+	// both non-prime and affirmatively enabled needs neither, so the
+	// /rancherversion round trip is skipped for that common case.
 	edition := provider.EditionUnknown
-	if enabled != nil && !*enabled {
+	if (prime != nil && *prime) || (enabled != nil && !*enabled) {
 		if info, err := c.f.ServerInfo(ctx); err == nil {
 			edition = info.Edition
 		}
@@ -143,23 +144,26 @@ func featureState(obj *unstructured.Unstructured) (enabled, prime *bool) {
 
 // decideCapability is the four-outcome capability truth table. enabled/prime
 // nil means the signal was unavailable, malformed, forbidden, or absent —
-// never guessed. Evaluation order encodes the stated precedence: an
-// affirmative enabled=true always wins (outcome 1), regardless of edition;
-// only then does prime-required require BOTH prime=true and edition=community
-// (outcome 3); every other explicit enabled=false reading is disabled,
-// regardless of edition (outcome 2) — an explicit false is certain enough on
-// its own that a committed mutation against a stopped controller is worse
-// than a slightly generic refusal message; only a missing enabled reading is
-// unknown (outcome 4).
+// never guessed. A feature confirmed prime-classified on a confirmed
+// community edition always resolves PRIME_REQUIRED (outcome 3) BEFORE
+// enabled is even consulted: Rancher's own Feature.Enabled() checks
+// "prime && not a Prime build" ahead of status.default, spec.value, and
+// lockedValue, so on a community server a prime feature is unconditionally
+// disabled server-side regardless of what its Feature object's enabled
+// reading says — status.default:true does not mean the feature actually
+// runs there. Only once prime+community is not both confirmed does an
+// affirmative enabled=true proceed (outcome 1); an explicit enabled=false is
+// disabled regardless of edition (outcome 2); and a missing enabled reading,
+// with prime+community not both confirmed, is unknown (outcome 4).
 func decideCapability(enabled, prime *bool, edition provider.Edition) runtime.CapabilityOutcome {
+	if prime != nil && *prime && edition == provider.EditionCommunity {
+		return runtime.CapabilityPrimeRequired
+	}
 	if enabled == nil {
 		return runtime.CapabilityUnknown
 	}
 	if *enabled {
 		return runtime.CapabilityProceed
-	}
-	if prime != nil && *prime && edition == provider.EditionCommunity {
-		return runtime.CapabilityPrimeRequired
 	}
 	return runtime.CapabilityDisabled
 }

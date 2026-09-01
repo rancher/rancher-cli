@@ -116,6 +116,23 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
 	})
 
+	t.Run("prime required: community edition, prime-classified feature enabled only by its status.default", func(t *testing.T) {
+		// The proof-run capture: a community server's cluster-autoscaling
+		// Feature reads enabled=true purely from status.default (no
+		// operator ever set spec.value) — Rancher's own Feature.Enabled()
+		// still disables it server-side on a non-Prime build, so this must
+		// resolve PRIME_REQUIRED, not proceed.
+		srv, hits := clusterFamilyAcceptanceServer(t,
+			`{"Version":"v2.16.0","RancherPrime":"false"}`,
+			clusterAutoscalingFeatureObj(true, true), http.StatusOK)
+		dir := grConfigDir(t, srv)
+		stdout, stderr, err := grRun(t, root, dir, args...)
+		require.Error(t, err)
+		env := oidcErrEnvelope(t, stdout, stderr)
+		assert.Equal(t, clierr.CodePrimeRequired, env.Data.Error.Code)
+		assert.Zero(t, hits.Load(), "PRIME_REQUIRED must make zero target requests")
+	})
+
 	t.Run("prime required: community edition, prime-classified feature off", func(t *testing.T) {
 		srv, hits := clusterFamilyAcceptanceServer(t,
 			`{"Version":"v2.16.0","RancherPrime":"false"}`,

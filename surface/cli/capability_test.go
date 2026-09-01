@@ -26,14 +26,18 @@ func TestDecideCapabilityTruthTable(t *testing.T) {
 		edition provider.Edition
 		want    runtime.CapabilityOutcome
 	}{
-		{"enabled true on community: proceed regardless", new(true), new(true), provider.EditionCommunity, runtime.CapabilityProceed},
-		{"enabled true wins over any edition", new(true), nil, provider.EditionUnknown, runtime.CapabilityProceed},
+		{"enabled true (status.default) + prime-classified + community: prime required", new(true), new(true), provider.EditionCommunity, runtime.CapabilityPrimeRequired},
+		{"enabled false + prime-classified + community: prime required", new(false), new(true), provider.EditionCommunity, runtime.CapabilityPrimeRequired},
+		{"enabled missing + prime-classified + community: prime required regardless of enabled", nil, new(true), provider.EditionCommunity, runtime.CapabilityPrimeRequired},
+		{"enabled true + prime-classified + prime edition: proceed", new(true), new(true), provider.EditionPrime, runtime.CapabilityProceed},
+		{"enabled true + prime-classified + edition unknown: proceed", new(true), new(true), provider.EditionUnknown, runtime.CapabilityProceed},
+		{"enabled true wins when prime is not classified", new(true), nil, provider.EditionCommunity, runtime.CapabilityProceed},
+		{"enabled true wins over any edition when prime is false", new(true), new(false), provider.EditionCommunity, runtime.CapabilityProceed},
 		{"disabled on prime edition: disabled", new(false), new(true), provider.EditionPrime, runtime.CapabilityDisabled},
 		{"edition prime + feature prime:false is a non-prime feature that is off", new(false), new(false), provider.EditionPrime, runtime.CapabilityDisabled},
-		{"disabled + prime-classified + community: prime required", new(false), new(true), provider.EditionCommunity, runtime.CapabilityPrimeRequired},
 		{"disabled + non-prime feature + community: disabled, not prime-required", new(false), new(false), provider.EditionCommunity, runtime.CapabilityDisabled},
 		{"disabled + missing prime classification + community: disabled", new(false), nil, provider.EditionCommunity, runtime.CapabilityDisabled},
-		{"enabled missing (forbidden/absent Feature GET): unknown", nil, new(true), provider.EditionCommunity, runtime.CapabilityUnknown},
+		{"enabled missing (forbidden/absent Feature GET), no prime signal: unknown", nil, nil, provider.EditionCommunity, runtime.CapabilityUnknown},
 		{"edition unknown, disabled: disabled on any edition", new(false), new(true), provider.EditionUnknown, runtime.CapabilityDisabled},
 		{"everything unavailable: unknown", nil, nil, provider.EditionUnknown, runtime.CapabilityUnknown},
 	}
@@ -292,11 +296,12 @@ func TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown(t *testing.T) {
 	})
 }
 
-// TestCapabilityCheckerEnabledFeatureSkipsEditionFetch makes sure the common
-// case — the feature is already enabled — decides on the Feature alone and
-// never pays the /rancherversion round trip (truth-table outcome 1 needs no
-// edition).
-func TestCapabilityCheckerEnabledFeatureSkipsEditionFetch(t *testing.T) {
+// TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch makes sure
+// the common case — a non-prime-classified feature that is enabled —
+// decides on the Feature alone and never pays the /rancherversion round
+// trip: edition can never change this outcome, since decideCapability's
+// PRIME_REQUIRED branch requires prime=true.
+func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) {
 	t.Parallel()
 	var versionHits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -307,7 +312,7 @@ func TestCapabilityCheckerEnabledFeatureSkipsEditionFetch(t *testing.T) {
 			_, _ = w.Write([]byte(`{"Version":"v2.15.0","RancherPrime":"false"}`))
 		case "/k8s/clusters/local/apis/management.cattle.io/v3/features/widget-feature":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(featureObj(true, true)))
+			_, _ = w.Write([]byte(featureObj(false, true)))
 		default:
 			http.NotFound(w, r)
 		}
@@ -316,5 +321,23 @@ func TestCapabilityCheckerEnabledFeatureSkipsEditionFetch(t *testing.T) {
 	c := checkerFor(t, srv)
 	dec := c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
 	assert.Equal(t, runtime.CapabilityProceed, dec.Outcome)
-	assert.Equal(t, 0, versionHits, "an enabled feature must never trigger the edition fetch")
+	assert.Equal(t, 0, versionHits, "a non-prime-classified feature must never trigger the edition fetch")
+}
+
+// TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired
+// pins the proof-run bug fix: a Prime-classified feature whose Feature
+// object reads enabled=true only because status.default is true (spec.value
+// unset — no operator ever touched it) must still resolve PRIME_REQUIRED on
+// a confirmed community server. Rancher's own Feature.Enabled() disables any
+// prime feature on a non-Prime build ahead of status.default, so trusting
+// this Feature object's enabled=true reading would let a mutation through
+// that the server's own controllers silently ignore.
+func TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired(t *testing.T) {
+	t.Parallel()
+	srv := featureFake(t,
+		`{"Version":"v2.15.1","RancherPrime":"false"}`,
+		featureObj(true, true), http.StatusOK)
+	c := checkerFor(t, srv)
+	dec := c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
+	assert.Equal(t, runtime.CapabilityPrimeRequired, dec.Outcome)
 }

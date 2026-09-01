@@ -87,8 +87,12 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
 	t.Run("proceed: feature enabled", func(t *testing.T) {
+		// Prime edition, not community: a prime-classified feature's
+		// enabled reading is only trustworthy once the server is confirmed
+		// NOT community (see decideCapability) — a community edition with
+		// prime:true always resolves PRIME_REQUIRED regardless of enabled.
 		srv, hits := oidcAcceptanceServer(t,
-			`{"Version":"v2.16.0","RancherPrime":"false"}`,
+			`{"Version":"v2.16.0","RancherPrime":"true"}`,
 			oidcFeatureObj(true, true), http.StatusOK)
 		dir := grConfigDir(t, srv)
 		stdout, stderr, err := grRun(t, root, dir, "get", "oidcclient", "-o", "json")
