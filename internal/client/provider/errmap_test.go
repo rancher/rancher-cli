@@ -16,6 +16,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// TestMapErrPassesThroughStructuredError pins that an error already carrying
+// a *clierr.Error (a refused cross-origin redirect arrives wrapped in a
+// *url.Error) keeps its code, message, and retryability instead of being
+// rebuilt as GENERIC from its text.
+func TestMapErrPassesThroughStructuredError(t *testing.T) {
+	t.Parallel()
+	inner := clierr.New(clierr.CodeGeneric, "refused to follow a redirect from https://a to https://b: credentialed redirects are not followed across origins; check that https://a is the correct address")
+	wrapped := &url.Error{Op: "Patch", URL: "https://a/x", Err: inner}
+	got := mapErr(wrapped)
+	ce, ok := errors.AsType[*clierr.Error](got)
+	require.True(t, ok)
+	assert.Same(t, inner, ce)
+	assert.False(t, ce.Retryable)
+}
+
 func TestMapErr(t *testing.T) {
 	gr := schema.GroupResource{Group: "management.cattle.io", Resource: "projects"}
 	cases := []struct {

@@ -1,7 +1,11 @@
 package provider
 
 import (
+	"encoding/pem"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -11,6 +15,39 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 )
+
+// redirectingServer is a TLS server that answers every request with a
+// redirect of status to elsewhere, and elsewhere counts what it receives.
+func redirectingServer(t *testing.T, status int) (srv *httptest.Server, caPEM string, elsewhereHits *atomic.Int32) {
+	t.Helper()
+	elsewhereHits = &atomic.Int32{}
+	elsewhere := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { elsewhereHits.Add(1) }))
+	t.Cleanup(elsewhere.Close)
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, status)
+	}))
+	t.Cleanup(srv.Close)
+	caPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+	return srv, caPEM, elsewhereHits
+}
+
+// TestPreflightRefusesCrossOriginRedirect pins the user-visible contract
+// through the public path: a redirected preflight is a non-retryable
+// GENERIC refusal naming both origins, never the retryable "cannot reach
+// server" connectivity wording, and nothing reaches the other origin.
+func TestPreflightRefusesCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+	srv, caPEM, hits := redirectingServer(t, http.StatusTemporaryRedirect)
+	eff := config.Effective{URL: srv.URL, CA: caPEM, Token: "id:secret"}
+	_, err := Preflight(t.Context(), eff)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.False(t, ce.Retryable)
+	require.ErrorContains(t, err, "refused to follow a redirect from "+srv.URL)
+	assert.NotContains(t, err.Error(), "cannot reach server")
+	assert.Zero(t, hits.Load())
+}
 
 // Round-2 repro: Preflight (behind `auth status`) used to rewrap every
 // RESTConfig error as AUTH, so `auth status` reported a different code/exit
@@ -82,4 +119,26 @@ func TestMapPreflightErr(t *testing.T) {
 			assert.Equal(t, tt.wantRetryable, ce.Retryable)
 		})
 	}
+}
+
+// TestPreflightRedirectLoopIsNotRetryable pins that a same-origin redirect
+// loop hitting the hop cap is rendered as the structured, non-retryable
+// refusal, never as the retryable "cannot reach server" connectivity
+// wording whose remedy (check the CA) cannot apply.
+func TestPreflightRedirectLoopIsNotRetryable(t *testing.T) {
+	t.Parallel()
+	var srvURL string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srvURL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	srvURL = srv.URL
+	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+	_, err := Preflight(t.Context(), config.Effective{URL: srv.URL, CA: caPEM, Token: "id:secret"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.False(t, ce.Retryable)
+	require.ErrorContains(t, err, "stopped after 10 redirects from "+srv.URL)
+	assert.NotContains(t, err.Error(), "cannot reach server")
 }

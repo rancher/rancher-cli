@@ -29,6 +29,13 @@ func mapErr(err error) error {
 	if err == nil {
 		return nil
 	}
+	// An error that already carries the structured shape (a refused
+	// cross-origin redirect arrives from the transport wrapped in a
+	// *url.Error) is returned as is: rebuilding it from its text would drop
+	// its code and retryability.
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+		return ce
+	}
 	switch {
 	case apierrors.IsNotFound(err):
 		return clierr.New(clierr.CodeNotFound, err.Error())

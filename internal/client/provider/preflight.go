@@ -62,9 +62,15 @@ func discoveryConfig(rc *rest.Config) *rest.Config {
 
 // mapPreflightErr distinguishes credential rejection from unreachability.
 func mapPreflightErr(err error) error {
+	// A structured error produced below the status layer (the redirect
+	// refusal) is deliberate and not retryable; it must not be relabeled
+	// as a connectivity failure whose remediation (check the CA) cannot
+	// apply.
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+		return ce
+	}
 	if mapped := mapErr(err); mapped != nil {
-		var ce *clierr.Error
-		if errors.As(mapped, &ce) && (ce.Code == clierr.CodeAuth || ce.Code == clierr.CodeRBAC) {
+		if ce, ok := errors.AsType[*clierr.Error](mapped); ok && (ce.Code == clierr.CodeAuth || ce.Code == clierr.CodeRBAC) {
 			return ce
 		}
 	}

@@ -2,10 +2,14 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -446,4 +450,24 @@ func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
+}
+
+// TestClusterClientDeleteRefusesCrossOriginRedirect pins that a mutation
+// through the dynamic client is refused at the redirect and rendered as
+// the structured refusal, with no request reaching the other origin.
+func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+	srv, caPEM, hits := redirectingServer(t, http.StatusTemporaryRedirect)
+	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: caPEM, Token: "id:secret"}, "local")
+	require.NoError(t, err)
+	cc, err := NewClusterClient(rc, "local")
+	require.NoError(t, err)
+	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
+	err = cc.Delete(t.Context(), gvr, "", "p-x", "", false)
+	ce2, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeGeneric, ce2.Code)
+	assert.False(t, ce2.Retryable)
+	require.ErrorContains(t, err, "credentialed redirects are not followed across origins")
+	assert.Zero(t, hits.Load())
 }
