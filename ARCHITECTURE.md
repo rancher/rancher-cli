@@ -270,6 +270,7 @@ graph TD
 
     kube --> config
     kube --> clierr
+    kube --> httpx
 
     tlstrust --> clierr
     httpx --> clierr

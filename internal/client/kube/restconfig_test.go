@@ -1,14 +1,19 @@
 package kube
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestBaseURL(t *testing.T) {
@@ -106,4 +111,55 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Empty(t, ce.Hint)
 	})
+}
+
+// TestHTTPClientDoesNotMutateDefaultClient pins that the process-global
+// default client never receives this policy, whatever client-go hands
+// back for a bare config: the returned client is a distinct object with
+// the policy, and the global's field is untouched. Not parallel: it reads
+// and restores a global.
+func TestHTTPClientDoesNotMutateDefaultClient(t *testing.T) {
+	saved := http.DefaultClient.CheckRedirect
+	t.Cleanup(func() { http.DefaultClient.CheckRedirect = saved })
+
+	hc, err := HTTPClient(&rest.Config{})
+	require.NoError(t, err)
+	assert.NotSame(t, http.DefaultClient, hc)
+	assert.NotNil(t, hc.CheckRedirect)
+	assert.Nil(t, http.DefaultClient.CheckRedirect, "the shared default client must be untouched")
+}
+
+// TestHTTPClientCarriesPolicyWithCustomTransport pins that a config with a
+// CA and timeout gets a dedicated client that still carries the policy and
+// the timeout.
+func TestHTTPClientCarriesPolicyWithCustomTransport(t *testing.T) {
+	t.Parallel()
+	rc := &rest.Config{Host: "https://rancher.example", Timeout: 3 * time.Second}
+	rc.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
+	hc, err := HTTPClient(rc)
+	require.NoError(t, err)
+	assert.NotNil(t, hc.CheckRedirect)
+	assert.Equal(t, 3*time.Second, hc.Timeout)
+}
+
+// TestHTTPClientSendsKubernetesUserAgent pins that requests through a
+// kube-built client identify themselves: client-go installs its User-Agent
+// only inside HTTPClientFor and only when the config names one, so the
+// default must be applied before the client is built.
+func TestHTTPClientSendsKubernetesUserAgent(t *testing.T) {
+	t.Parallel()
+	var agent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	hc, err := HTTPClient(&rest.Config{Host: srv.URL})
+	require.NoError(t, err)
+	resp, err := hc.Get(srv.URL + "/version")
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.NotEmpty(t, agent)
+	assert.False(t, strings.HasPrefix(agent, "Go-http-client"), "the default Go agent must not leak: %q", agent)
+	assert.Equal(t, rest.DefaultKubernetesUserAgent(), agent)
 }

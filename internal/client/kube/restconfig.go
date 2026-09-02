@@ -2,9 +2,11 @@ package kube
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"k8s.io/client-go/discovery"
@@ -77,15 +79,54 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	return rc, nil
 }
 
+// HTTPClient builds the http.Client every client-go client in this repo
+// rides on: rest.HTTPClientFor plus the same-origin redirect policy shared
+// with httpx. The User-Agent is defaulted first: client-go installs its
+// User-Agent round-tripper inside HTTPClientFor and only when the config
+// names one, and the *ForConfigAndClient constructors never revisit a
+// client they were handed, so an unset agent here would send Go's stdlib
+// default on every request. The client is copied before the policy is
+// set so it never lands on a client this package does not own:
+// HTTPClientFor can hand back a shared client (http.DefaultClient for a
+// config whose transport is the default), and client-go is free to widen
+// that sharing.
+func HTTPClient(rc *rest.Config) (*http.Client, error) {
+	cfg := *rc
+	if cfg.UserAgent == "" {
+		cfg.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
+	base, err := rest.HTTPClientFor(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	client := *base
+	client.CheckRedirect = httpx.RejectCrossOriginRedirect
+	return &client, nil
+}
+
 // Dynamic builds a dynamic client for arbitrary GVRs.
-func Dynamic(rc *rest.Config) (dynamic.Interface, error) { return dynamic.NewForConfig(rc) }
+func Dynamic(rc *rest.Config) (dynamic.Interface, error) {
+	hc, err := HTTPClient(rc)
+	if err != nil {
+		return nil, err
+	}
+	return dynamic.NewForConfigAndClient(rc, hc)
+}
 
 // Discovery builds a discovery client (used by auth status / server-version).
 func Discovery(rc *rest.Config) (discovery.DiscoveryInterface, error) {
-	return discovery.NewDiscoveryClientForConfig(rc)
+	hc, err := HTTPClient(rc)
+	if err != nil {
+		return nil, err
+	}
+	return discovery.NewDiscoveryClientForConfigAndClient(rc, hc)
 }
 
 // Clientset builds a typed client-go clientset, used for pod log streaming.
 func Clientset(rc *rest.Config) (kubernetes.Interface, error) {
-	return kubernetes.NewForConfig(rc)
+	hc, err := HTTPClient(rc)
+	if err != nil {
+		return nil, err
+	}
+	return kubernetes.NewForConfigAndClient(rc, hc)
 }
