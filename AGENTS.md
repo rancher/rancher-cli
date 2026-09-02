@@ -64,7 +64,7 @@ Two gotchas:
 - **Tests:** testify; a real server (`httptest`) or dependency injection over
   mocks; any test touching keyring code calls `keyring.MockInit()` first. Never
   string-match rendered JSON — decode the envelope and assert on fields.
-  Error substrings: `assert.ErrorContains(t, err, ...)`, never
+  Error substrings: `require.ErrorContains(t, err, ...)`, never
   `assert.Contains(t, err.Error(), ...)` (a source-scan test enforces
   this); the negative form `NotContains(t, err.Error(), ...)` is the
   sanctioned spelling — testify has no ErrorNotContains.
