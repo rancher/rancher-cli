@@ -311,12 +311,16 @@ func TestNewHTTPSProxyEnvVarRoutesThroughFixture(t *testing.T) {
 
 	proxy := newConnectProxy(t, nil)
 
-	t.Setenv("HTTPS_PROXY", proxy.srv.URL)
+	// The uppercase value is written LAST: Windows environment names are
+	// case-insensitive, so writing https_proxy="" after HTTPS_PROXY would
+	// blank the variable this test just set. t.Setenv has no unset form, so
+	// the empty writes come first and the real value wins on every platform.
 	t.Setenv("https_proxy", "")
 	t.Setenv("HTTP_PROXY", "")
 	t.Setenv("http_proxy", "")
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
+	t.Setenv("HTTPS_PROXY", proxy.srv.URL)
 
 	client, err := New(Options{CACert: string(certPEM)})
 	require.NoError(t, err)

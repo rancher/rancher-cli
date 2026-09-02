@@ -128,14 +128,18 @@ var sharedConnectProxyForTests *connectProxy
 // TestProxyFuncNeverProxiesLoopbackTarget in the httpx package), so only
 // rancherVersionProxyTargetHost — a real hostname, not a loopback literal —
 // actually routes through the fixture.
+//
+// Proxy variables inherited from the environment are cleared with
+// Unsetenv, never by writing an empty value: Windows environment names are
+// case-insensitive, so writing https_proxy="" after HTTPS_PROXY would blank
+// the variable this test just set. Unsetting every spelling first and
+// writing the uppercase value last is correct on every platform.
 func TestMain(m *testing.M) {
 	sharedConnectProxyForTests = newConnectProxy()
+	for _, k := range []string{"https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"} {
+		_ = os.Unsetenv(k)
+	}
 	_ = os.Setenv("HTTPS_PROXY", sharedConnectProxyForTests.srv.URL)
-	_ = os.Setenv("https_proxy", "")
-	_ = os.Setenv("HTTP_PROXY", "")
-	_ = os.Setenv("http_proxy", "")
-	_ = os.Setenv("NO_PROXY", "")
-	_ = os.Setenv("no_proxy", "")
 	os.Exit(m.Run())
 }
 
