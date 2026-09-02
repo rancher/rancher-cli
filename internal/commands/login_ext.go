@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -39,6 +40,15 @@ const v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 // a bare config.ResolveCA(in.String("cacert")) would on a same-server
 // re-login with no --cacert flag.
 func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return "", clierr.New(clierr.CodeValidation, "invalid Rancher server URL: "+err.Error())
+	}
+	serverOrigin, err := httpx.OriginOf(serverURL)
+	if err != nil {
+		return "", clierr.New(clierr.CodeValidation, "invalid Rancher server URL: "+err.Error())
+	}
+
 	client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: httpx.DefaultTimeout})
 	if err != nil {
 		return "", err
@@ -59,7 +69,7 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in run
 		AuthFlow:     in.String("auth-flow"),
 	}, p)
 	if err != nil {
-		if ce := tlstrust.ClassifyForHost(err, config.ServerHost(server), time.Now()); ce != nil {
+		if ce := tlstrust.ClassifyForOrigin(err, serverOrigin, time.Now()); ce != nil {
 			return "", ce
 		}
 		return "", err

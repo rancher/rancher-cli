@@ -1,6 +1,7 @@
 package tlstrust
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -11,12 +12,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,17 +65,22 @@ func genLeaf(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey, dns st
 }
 
 // selfSignedLeaf returns a leaf certificate that signs itself (no CA), the
-// dynamiclistener-style shape.
-func selfSignedLeaf(t *testing.T, dns string) (tls.Certificate, *x509.Certificate) {
+// dynamiclistener-style shape. san is its one subject alternative name: an
+// IP address becomes an IP SAN, anything else a DNS SAN.
+func selfSignedLeaf(t *testing.T, san string) (tls.Certificate, *x509.Certificate) {
 	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(3),
-		Subject:      pkix.Name{CommonName: dns},
+		Subject:      pkix.Name{CommonName: san},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
-		DNSNames:     []string{dns},
+	}
+	if ip := net.ParseIP(san); ip != nil {
+		tmpl.IPAddresses = []net.IP{ip}
+	} else {
+		tmpl.DNSNames = []string{san}
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
 	require.NoError(t, err)
@@ -365,28 +374,201 @@ func TestClassifyNotYetValidIntermediate(t *testing.T) {
 	assert.Contains(t, details.Subject, "future-intermediate")
 }
 
-// TestClassifyForHostIgnoresOtherHosts pins the origin guard: a TLS failure
-// from a request aimed at a DIFFERENT host (an external identity provider
-// dialed with the Rancher-scoped CA pool) must not be classified — a
-// confident TLS_TRUST diagnosis naming the wrong host is worse than the
-// raw error.
-func TestClassifyForHostIgnoresOtherHosts(t *testing.T) {
-	fixLeaf, _ := selfSignedLeaf(t, "idp.example")
-	err := dialFail(t, fixLeaf, x509.NewCertPool(), "idp.example")
-	assert.Nil(t, ClassifyForHost(err, "rancher.example", time.Now()),
-		"a failure on idp.example must not classify as rancher.example's")
-	require.NotNil(t, ClassifyForHost(err, hostFromURLError(t, err), time.Now()),
-		"the same failure classifies when the host matches")
+// synthURLErr builds the error shape a failed TLS handshake produces for a
+// request aimed at terminal: a *url.Error wrapping a certificate
+// verification error whose typed cause is x509 unknown authority.
+func synthURLErr(t *testing.T, terminal string, chain ...*x509.Certificate) error {
+	t.Helper()
+	return &url.Error{Op: "Get", URL: terminal, Err: &tls.CertificateVerificationError{
+		UnverifiedCertificates: chain,
+		Err:                    x509.UnknownAuthorityError{},
+	}}
 }
 
-// hostFromURLError extracts the actual host the failed request targeted.
-func hostFromURLError(t *testing.T, err error) string {
+func originOf(t *testing.T, raw string) httpx.Origin {
 	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	o, err := httpx.OriginOf(u)
+	require.NoError(t, err)
+	return o
+}
+
+// TestClassifyForOriginAttribution asserts the attribution rule shared by
+// ClassifyForOrigin and KindOf: the failed request's terminal URL is
+// compared to the expected origin as a normalized tuple, so a same-origin
+// redirect to a differently spelled URL is still attributed, while a
+// different scheme, host, or port is not.
+func TestClassifyForOriginAttribution(t *testing.T) {
+	_, leaf := selfSignedLeaf(t, "idp.example")
+	cases := []struct {
+		name, want, terminal string
+		attributed           bool
+	}{
+		{"host case and explicit port", "https://IDP.example:443", "https://idp.example/token", true},
+		{"ipv6 explicit port", "https://[::1]:443", "https://[::1]/token", true},
+		{"same host different scheme", "https://idp.example", "http://idp.example/token", false},
+		{"different host", "https://idp.example", "https://other.example/token", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := synthURLErr(t, tc.terminal, leaf)
+			want := originOf(t, tc.want)
+			ce := ClassifyForOrigin(err, want, time.Now())
+			kind, ok := KindOf(err, want, time.Now())
+			if !tc.attributed {
+				assert.Nil(t, ce)
+				assert.False(t, ok)
+				return
+			}
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
+			assert.True(t, ok)
+			assert.Equal(t, KindUnknownAuthority, kind)
+		})
+	}
+}
+
+// TestClassifyForOriginAfterSameOriginRedirect asserts attribution through
+// a real client: the first request is spelled with an upper-case host, the
+// server redirects to the lower-case spelling (same origin, so the redirect
+// policy follows it), and the second connection's handshake fails. The
+// error's terminal URL is the redirected spelling; both ClassifyForOrigin
+// and KindOf must still attribute it to the original spelling's origin.
+func TestClassifyForOriginAfterSameOriginRedirect(t *testing.T) {
+	ca, caKey := genCA(t, "fixture-ca")
+	trusted := genLeaf(t, ca, caKey, "idp.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	untrusted, _ := selfSignedLeaf(t, "idp.example")
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+
+	var connections atomic.Int32
+	// port is the listener's port, known only after StartTLS; the handler
+	// closes over it because a server-side r.URL carries only the path.
+	var port string
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			// Lower-case spelling of the same origin.
+			http.Redirect(w, r, "https://idp.example:"+port+"/token", http.StatusTemporaryRedirect)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		// First connection: trusted, so the redirect is received. Second
+		// connection (the redirected hop): untrusted, so its handshake fails.
+		if connections.Add(1) == 1 {
+			return &trusted, nil
+		}
+		return &untrusted, nil
+	}}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	var err error
+	_, port, err = net.SplitHostPort(srv.Listener.Addr().String())
+	require.NoError(t, err)
+
+	// Both spellings of the fixture host resolve to the loopback listener.
+	dialer := &net.Dialer{}
+	client := &http.Client{
+		CheckRedirect: httpx.RejectCrossOriginRedirect,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				_, p, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", p))
+			},
+		},
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://IDP.example:"+port+"/start", nil)
+	require.NoError(t, err)
+	_, err = client.Do(req)
+	require.Error(t, err)
 	urlErr, ok := errors.AsType[*url.Error](err)
 	require.True(t, ok)
-	parsed, perr := url.Parse(urlErr.URL)
-	require.NoError(t, perr)
-	return parsed.Host
+	assert.Equal(t, "https://idp.example:"+port+"/token", urlErr.URL, "the error names the redirected hop")
+	assert.Equal(t, int32(2), connections.Load(), "the redirect was followed and re-dialed")
+
+	want := originOf(t, "https://IDP.example:"+port)
+	ce := ClassifyForOrigin(err, want, time.Now())
+	require.NotNil(t, ce, "the failure at the redirected spelling belongs to the original origin")
+	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
+	kind, ok := KindOf(err, want, time.Now())
+	require.True(t, ok)
+	assert.Equal(t, KindUnknownAuthority, kind)
+	assert.Nil(t, ClassifyForOrigin(err, originOf(t, "https://other.example:"+port), time.Now()))
+}
+
+// TestClassifyForOriginRejectsInvalidInputs asserts the nil-returning
+// guards: no *url.Error in the chain, an unparseable terminal URL, and an
+// invalid (zero) expected origin.
+func TestClassifyForOriginRejectsInvalidInputs(t *testing.T) {
+	_, leaf := selfSignedLeaf(t, "idp.example")
+	want := originOf(t, "https://idp.example")
+	assert.Nil(t, ClassifyForOrigin(&tls.CertificateVerificationError{UnverifiedCertificates: []*x509.Certificate{leaf}, Err: x509.UnknownAuthorityError{}}, want, time.Now()))
+	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "::not a url", leaf), want, time.Now()))
+	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "https://idp.example/", leaf), httpx.Origin{}, time.Now()))
+	_, ok := KindOf(errors.New("dial tcp: connection refused"), want, time.Now())
+	assert.False(t, ok)
+}
+
+// genClientAuthOnlyLeaf issues a leaf whose only extended key usage is
+// client authentication. Presented by a server, Go's verifier rejects it
+// with CertificateInvalidError{IncompatibleUsage}, the deterministic way
+// to reach the invalid-chain kind through a real handshake.
+func genClientAuthOnlyLeaf(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey, dns string) tls.Certificate {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(4),
+		Subject:      pkix.Name{CommonName: dns},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{dns},
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &priv.PublicKey, caKey)
+	require.NoError(t, err)
+	return tls.Certificate{Certificate: [][]byte{der, ca.Raw}, PrivateKey: priv}
+}
+
+// TestKindOfRealHandshakePerKind asserts KindOf over real failed handshakes
+// for every kind, using a fixture whose root is trusted so the specific
+// kind (not unknown authority) is what the verifier reports.
+func TestKindOfRealHandshakePerKind(t *testing.T) {
+	now := time.Now()
+	ca, caKey := genCA(t, "fixture-ca")
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	cases := []struct {
+		name  string
+		leaf  tls.Certificate
+		roots *x509.CertPool
+		sni   string
+		kind  Kind
+	}{
+		{"unknown authority", genLeaf(t, ca, caKey, "idp.example", now.Add(-time.Hour), now.Add(time.Hour)), x509.NewCertPool(), "idp.example", KindUnknownAuthority},
+		{"hostname mismatch", genLeaf(t, ca, caKey, "other.example", now.Add(-time.Hour), now.Add(time.Hour)), roots, "idp.example", KindHostnameMismatch},
+		{"expired", genLeaf(t, ca, caKey, "idp.example", now.Add(-2*time.Hour), now.Add(-time.Hour)), roots, "idp.example", KindExpired},
+		{"not yet valid", genLeaf(t, ca, caKey, "idp.example", now.Add(time.Hour), now.Add(2*time.Hour)), roots, "idp.example", KindNotYetValid},
+		{"invalid chain", genClientAuthOnlyLeaf(t, ca, caKey, "idp.example"), roots, "idp.example", KindInvalidChain},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := dialFail(t, tc.leaf, tc.roots, tc.sni)
+			urlErr, ok := errors.AsType[*url.Error](err)
+			require.True(t, ok)
+			want := originOf(t, urlErr.URL)
+			kind, ok := KindOf(err, want, now)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, tc.kind, kind)
+		})
+	}
 }
 
 // TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate asserts:
@@ -453,4 +635,25 @@ func TestClassifyNotYetValidCarriesNotBefore(t *testing.T) {
 	details := ce.Details.(Details)
 	assert.Equal(t, KindNotYetValid, details.Kind)
 	assert.Equal(t, notBefore.UTC().Format(time.RFC3339), details.NotBefore)
+}
+
+// TestClassifyForOriginMismatchMessageNamesPort asserts that a hostname
+// mismatch attributed by origin names host and non-default port in its
+// message, so two same-named servers on different ports stay
+// distinguishable.
+func TestClassifyForOriginMismatchMessageNamesPort(t *testing.T) {
+	ca, caKey := genCA(t, "fixture-ca")
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	leaf := genLeaf(t, ca, caKey, "other.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	err := dialFail(t, leaf, roots, "idp.example")
+	urlErr, ok := errors.AsType[*url.Error](err)
+	require.True(t, ok)
+	terminal, perr := url.Parse(urlErr.URL)
+	require.NoError(t, perr)
+	want := originOf(t, urlErr.URL)
+	ce := ClassifyForOrigin(err, want, time.Now())
+	require.NotNil(t, ce)
+	assert.Equal(t, KindHostnameMismatch, ce.Details.(Details).Kind)
+	require.ErrorContains(t, ce, "is not valid for "+terminal.Host+";", "host and port must both appear")
 }

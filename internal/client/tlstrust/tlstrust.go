@@ -26,8 +26,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
@@ -122,25 +124,6 @@ func (d Details) TextDetails() []string {
 // certificate verification failure at all (DNS, connection-refused, timeout,
 // and similar errors are the caller's to classify as ordinary connectivity
 // failures).
-// ClassifyForHost classifies err only when the request that failed was
-// aimed at host (matched via the *url.Error in the chain). An OAuth
-// device-code/auth-code exchange can carry a caPEM-scoped client to an
-// EXTERNAL identity provider's endpoints; classifying its TLS failure as
-// the Rancher server's would produce a confident, specific, and wrong
-// diagnosis (wrong host, wrong --cacert fix). No *url.Error in the chain,
-// or a different host: not classified — the raw error passes through.
-func ClassifyForHost(err error, host string, now time.Time) *clierr.Error {
-	urlErr, ok := errors.AsType[*url.Error](err)
-	if !ok {
-		return nil
-	}
-	parsed, perr := url.Parse(urlErr.URL)
-	if perr != nil || parsed.Host != host {
-		return nil
-	}
-	return Classify(err, host, now)
-}
-
 func Classify(err error, host string, now time.Time) *clierr.Error {
 	kind, chain, offending, ok := classifyKind(err, host, now)
 	if !ok {
@@ -198,6 +181,51 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 			"the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server operator").
 			WithDetails(details)
 	}
+}
+
+// ClassifyForOrigin classifies err only when the failed request's terminal
+// URL (the *url.Error in the chain) has origin want. The comparison goes
+// through httpx.OriginOf and Equal, so host case, an explicit default
+// port, and IPv6 bracket spelling never defeat the match, while a
+// same-host different-scheme failure is not attributed. An OAuth exchange
+// can carry a failure from an external identity provider; classifying that
+// as the Rancher server's would produce a confident, specific, and wrong
+// diagnosis. Returns nil when err carries no *url.Error, the terminal URL
+// does not parse, or want is invalid.
+func ClassifyForOrigin(err error, want httpx.Origin, now time.Time) *clierr.Error {
+	if !terminalOriginIs(err, want) {
+		return nil
+	}
+	// host[:port], not the bare hostname: Classify verifies against the
+	// name and names the same string in its hostname-mismatch message, so
+	// two same-named servers on different ports stay distinguishable.
+	return Classify(err, want.HostPort(), now)
+}
+
+// KindOf reports the certificate-verification failure kind of err when the
+// failed request's terminal URL has origin want, under the same attribution
+// rule as ClassifyForOrigin. It builds no TLS_TRUST error and extracts no
+// candidate anchor: callers that must never offer guided trust (an external
+// identity provider's certificate) use it to word their own error.
+func KindOf(err error, want httpx.Origin, now time.Time) (Kind, bool) {
+	if !terminalOriginIs(err, want) {
+		return "", false
+	}
+	kind, _, _, ok := classifyKind(err, want.Hostname(), now)
+	return kind, ok
+}
+
+func terminalOriginIs(err error, want httpx.Origin) bool {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if !ok || !want.Valid() {
+		return false
+	}
+	terminal, perr := url.Parse(urlErr.URL)
+	if perr != nil {
+		return false
+	}
+	got, oerr := httpx.OriginOf(terminal)
+	return oerr == nil && got.Equal(want)
 }
 
 // classifyKind extracts the presented chain and Kind from a TLS certificate
@@ -305,12 +333,18 @@ func reclassifyUntyped(chain []*x509.Certificate, host string, now time.Time) (K
 			return KindNotYetValid, c, true
 		}
 	}
-	// host may carry a port (ClassifyForHost matches url.Error hosts, which
-	// keep theirs); VerifyHostname wants the bare name. An empty host skips
-	// the check, matching a Classify caller that has none.
+	// host may carry a port (callers pass the server's host[:port] so the
+	// message can name it); VerifyHostname wants the bare name, and for an
+	// IPv6 literal the bare address without brackets: SplitHostPort strips
+	// them only when a port follows, so "[::1]" alone is unbracketed here
+	// or VerifyHostname would treat it as a DNS name no IP SAN can match.
+	// An empty host skips the check, matching a Classify caller that has
+	// none.
 	dnsName := host
 	if h, _, serr := net.SplitHostPort(host); serr == nil {
 		dnsName = h
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		dnsName = host[1 : len(host)-1]
 	}
 	leaf := chain[0]
 	if dnsName != "" {

@@ -179,3 +179,24 @@ func TestClassifyUntypedEmptyChain(t *testing.T) {
 	assert.Equal(t, KindInvalidChain, details.Kind)
 	assert.Empty(t, details.Fingerprint)
 }
+
+// TestClassifyUntypedBracketedIPv6HostWithoutPortIsNotMismatch asserts that
+// the bracketed default-port spelling a caller's host[:port] label produces
+// for an IPv6 server, "[::1]", is unbracketed before the hostname check: a
+// certificate whose IP SAN covers ::1 must classify as unknown authority
+// (the --cacert remedy), never as a hostname mismatch. The explicit-port
+// spelling is asserted alongside as the control.
+func TestClassifyUntypedBracketedIPv6HostWithoutPortIsNotMismatch(t *testing.T) {
+	t.Parallel()
+	_, leaf := selfSignedLeaf(t, "::1")
+	for _, host := range []string{"[::1]", "[::1]:8443"} {
+		ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), host, time.Now())
+		require.NotNil(t, ce, host)
+		assert.Equal(t, KindUnknownAuthority, ce.Details.(Details).Kind, host)
+	}
+	_, other := selfSignedLeaf(t, "::2")
+	ce := Classify(untypedVerifyError([]*x509.Certificate{other}), "[::1]", time.Now())
+	require.NotNil(t, ce)
+	assert.Equal(t, KindHostnameMismatch, ce.Details.(Details).Kind, "a SAN for another address is still a mismatch")
+	assert.Contains(t, ce.Message, "not valid for [::1]")
+}
