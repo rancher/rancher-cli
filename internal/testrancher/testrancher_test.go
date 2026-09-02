@@ -504,3 +504,57 @@ func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
 	assert.NotEmpty(t, final.AccessToken)
 	assert.NotEmpty(t, final.IDToken)
 }
+
+// TestFacadeIdPURLPointsProviderAtExternalOrigin pins the split-origin
+// wiring: with IdPURL set, the azureADProvider document names the external
+// origin for every endpoint and the façade itself no longer answers /idp/*,
+// while IdPHandler serves the stub for that external server.
+func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{EnableIdP: true, IdPURL: "https://idp.test:8443"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1-public/authproviders")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	var doc struct {
+		Data []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&doc))
+	var azure map[string]any
+	for _, p := range doc.Data {
+		if p["type"] == "azureADProvider" {
+			azure = p
+		}
+	}
+	require.NotNil(t, azure)
+	assert.Equal(t, "https://idp.test:8443/idp/authorize", azure["authUrl"])
+	assert.Equal(t, "https://idp.test:8443/idp/devicecode", azure["deviceAuthUrl"])
+	assert.Equal(t, "https://idp.test:8443/idp/token", azure["tokenUrl"])
+
+	local, err := http.Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	require.NoError(t, err)
+	_ = local.Body.Close()
+	assert.Equal(t, http.StatusNotFound, local.StatusCode, "the façade must not serve the IdP on its own origin when IdPURL is set")
+
+	idp := httptest.NewServer(f.IdPHandler())
+	t.Cleanup(idp.Close)
+	ext, err := http.Post(idp.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	require.NoError(t, err)
+	defer func() { _ = ext.Body.Close() }()
+	assert.Equal(t, http.StatusOK, ext.StatusCode)
+}
+
+// TestIdPHandlerWithoutIdPIsNotFound pins that a façade built without
+// EnableIdP still hands out a usable handler: every route is 404 instead of
+// a nil-receiver panic.
+func TestIdPHandlerWithoutIdPIsNotFound(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(testrancher.New(testrancher.Options{}).IdPHandler())
+	t.Cleanup(srv.Close)
+	resp, err := http.Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}

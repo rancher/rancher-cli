@@ -55,6 +55,26 @@ func (s *idpStub) handleToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+
+	if r.FormValue("grant_type") == "authorization_code" {
+		code := r.FormValue("code")
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if code == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant"})
+			return
+		}
+		s.counter++
+		s.idToken = fmt.Sprintf("idp-idtoken-%d", s.counter)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"access_token": "idp-access-" + s.idToken,
+			"token_type":   "bearer",
+			"expires_in":   300,
+			"id_token":     s.idToken,
+		})
+		return
+	}
+
 	deviceCode := r.FormValue("device_code")
 
 	s.mu.Lock()

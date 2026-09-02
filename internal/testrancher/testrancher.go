@@ -67,6 +67,11 @@ type Options struct {
 	// IdPPendingPolls is how many /idp/token polls return
 	// authorization_pending before a token is issued; defaults to 2.
 	IdPPendingPolls int
+	// IdPURL, when set, is the external origin (scheme://host[:port]) the
+	// azureADProvider document names for its endpoints, and the façade stops
+	// serving /idp/* itself; the caller serves IdPHandler there. Empty keeps
+	// the stub on the façade's own origin.
+	IdPURL string
 	// SeedToken, when set, is accepted as a valid bearer for the mint
 	// endpoint alongside façade-issued tokens — the static seed token every
 	// existing e2e script already authenticates with (FA-1: "the mint
@@ -150,15 +155,29 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleRelease(w, rke2ReleaseFixture)
 	case r.Method == http.MethodGet && r.URL.Path == k3sReleasePath:
 		f.handleRelease(w, k3sReleaseFixture)
-	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/devicecode":
+	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && r.URL.Path == "/idp/devicecode":
 		f.idp.handleDeviceCode(w, r)
-	case f.idp != nil && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
+	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
 		f.idp.handleToken(w, r)
 	case strings.HasPrefix(r.URL.Path, "/v3-public"):
 		http.NotFound(w, r)
 	default:
 		f.fallthroughTo(w, r)
 	}
+}
+
+// IdPHandler serves the device-code identity-provider stub for a caller
+// that hosts it on its own origin (Options.IdPURL). It answers POST
+// /idp/devicecode and POST /idp/token; anything else is 404, and every
+// route is 404 when the façade was built without EnableIdP.
+func (f *Facade) IdPHandler() http.Handler {
+	if f.idp == nil {
+		return http.NotFoundHandler()
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /idp/devicecode", f.idp.handleDeviceCode)
+	mux.HandleFunc("POST /idp/token", f.idp.handleToken)
+	return mux
 }
 
 func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +191,10 @@ func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
 func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 	data := []map[string]any{{"type": "localProvider"}}
 	if f.opts.EnableIdP {
-		base := "https://" + r.Host
+		base := f.opts.IdPURL
+		if base == "" {
+			base = "https://" + r.Host
+		}
 		data = append(data, map[string]any{
 			"type":          "azureADProvider",
 			"redirectUrl":   "",
