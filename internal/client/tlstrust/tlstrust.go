@@ -171,10 +171,12 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	switch kind {
 	case KindUnknownAuthority:
 		msg := "the server presented a certificate signed by an unknown authority; " +
-			"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert"
+			"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
+			"if this server was already trusted, check the subject and issuer shown here — a certificate you don't recognize can mean something in the network path is intercepting TLS"
 		if details.leaf {
 			msg = "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
-				"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert"
+				"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
+				"if this server was already trusted, check the subject and issuer shown here — a certificate you don't recognize can mean something in the network path is intercepting TLS"
 		}
 		return clierr.New(clierr.CodeTLSTrust, msg).
 			WithDetails(details)
