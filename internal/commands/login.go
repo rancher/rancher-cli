@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	neturl "net/url"
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -42,6 +44,19 @@ type loginCmd struct {
 	// unconditionally for a provider-issued token (already authenticated by
 	// construction) and whenever --no-verify is set.
 	verify loginVerifyFunc
+	// newIdPClient builds the client the provider flow dials the identity
+	// provider with. Production wiring returns httpx.NewExternal (operating
+	// system roots only); tests inject a client pinned to their IdP fixture.
+	// nil means the production default.
+	newIdPClient func() *http.Client
+}
+
+// idpClient resolves newIdPClient with its production default.
+func (l loginCmd) idpClient() *http.Client {
+	if l.newIdPClient != nil {
+		return l.newIdPClient()
+	}
+	return httpx.NewExternal(httpx.DefaultTimeout)
 }
 
 // NewLogin builds the `auth login` command (local). The store is resolved
@@ -76,12 +91,26 @@ var trustCommitConfigWriteHookForTest func() error
 func tlsPreflightDefault(ctx context.Context, serverURL, caPEM string) (string, error) {
 	v, err := provider.RancherVersion(ctx, config.Effective{URL: serverURL, CA: caPEM})
 	if err != nil {
-		if ce := tlstrust.Classify(err, config.ServerHost(serverURL), time.Now()); ce != nil {
+		if ce := tlstrust.Classify(err, serverLabel(serverURL), time.Now()); ce != nil {
 			return "", ce
 		}
 		return "", nil
 	}
 	return v, nil
+}
+
+// serverLabel renders the server as host[:port] with a scheme-default port
+// omitted, the spelling the origin-attributed classifier uses, so the plain
+// and provider login paths name the same server identically in a
+// certificate error. Falls back to the URL's host, lowercased like the
+// origin spelling, when the URL has no usable origin.
+func serverLabel(serverURL string) string {
+	if u, err := neturl.Parse(serverURL); err == nil {
+		if origin, oerr := httpx.OriginOf(u); oerr == nil {
+			return origin.HostPort()
+		}
+	}
+	return strings.ToLower(config.ServerHost(serverURL))
 }
 
 // pinnedTrustFailure rewrites a TLS_TRUST error from plain login's preflight
@@ -448,7 +477,7 @@ func (l loginCmd) authenticateAndStore(
 		caBytes = pendingTrust.pem
 	}
 
-	token, viaProvider, authErr := resolveLoginToken(ctx, serverURL, caBytes, in, p)
+	token, viaProvider, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
 	if authErr == nil {
 		id, secret, ok := strings.Cut(token, ":")
 		if !ok || id == "" || secret == "" {
@@ -669,7 +698,7 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 // resolveProviderLoginToken produced it, since a server-issued token is
 // authenticated by construction and must never take a second verification
 // round-trip.
-func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, bool, error) {
+func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (string, bool, error) {
 	if in.Bool("token-stdin") {
 		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
 			return "", false, clierr.New(clierr.CodeValidation,
@@ -698,7 +727,7 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 	// already runs its OAuth device-code/auth-code flows headlessly. Without
 	// an explicit provider, the paste-or-provider menu itself needs a TTY.
 	case p.CanPrompt() || in.String("auth-provider") != "":
-		tok, viaProvider, err = promptForToken(ctx, server, caPEM, in, p)
+		tok, viaProvider, err = promptForToken(ctx, server, caPEM, newIdPClient, in, p)
 	default:
 		return "", false, clierr.New(clierr.CodeValidation, "token required; pipe it via --token-stdin, or run in a terminal")
 	}
@@ -726,9 +755,12 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, in runtime.Inp
 // mirroring get-token's own explicit-flag shortcut past its provider menu.
 // The bool return is viaProvider, true exactly when resolveProviderLoginToken
 // produced the token.
-func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, bool, error) {
+// newIdPClient is a constructor, not a client: the identity-provider client
+// is built only on the provider branches, so a pasted or piped token never
+// pays for a transport it will not use.
+func promptForToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (string, bool, error) {
 	if in.String("auth-provider") != "" || in.String("auth-flow") != "" {
-		tok, err := resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		tok, err := resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
 		return tok, true, err
 	}
 	p.Notice("1) paste an API token\n2) sign in via an identity provider")
@@ -741,7 +773,7 @@ func promptForToken(ctx context.Context, server, caPEM string, in runtime.Input,
 		tok, err := p.PromptSecret(ctx, "Enter token (id:secret): ")
 		return tok, false, err
 	case "2":
-		tok, err := resolveProviderLoginToken(ctx, server, caPEM, in, p)
+		tok, err := resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
 		return tok, true, err
 	default:
 		return "", false, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider); re-run and answer 1 or 2")

@@ -343,3 +343,17 @@ func TestLoginConflictWhenExplicitCacertFileContentRotatesDuringDelegatedLogin(t
 	require.NoError(t, lerr)
 	assert.NotContains(t, cfg.Servers, "prod", "registration itself conflicted; no entry, no auth attempt")
 }
+
+// TestServerLabelMatchesOriginSpelling asserts that the preflight names the
+// server the way the origin-attributed classifier does: a scheme-default
+// port is dropped, any other port is kept, and an unusable URL falls back
+// to its host, lowercased like the origin spelling.
+func TestServerLabelMatchesOriginSpelling(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "rancher.example", serverLabel("https://rancher.example:443"))
+	assert.Equal(t, "rancher.example:8443", serverLabel("https://rancher.example:8443"))
+	assert.Equal(t, "rancher.example", serverLabel("https://RANCHER.example/"))
+	assert.Equal(t, "[::1]:8443", serverLabel("https://[::1]:8443"))
+	assert.Equal(t, "h", serverLabel("ftp://h"), "an unsupported scheme has no origin; the host is the fallback")
+	assert.Equal(t, "rancher.example:99999", serverLabel("https://RANCHER.example:99999"), "the fallback lowercases like the origin spelling")
+}

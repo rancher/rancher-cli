@@ -39,7 +39,11 @@ const v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 // trust independently by re-reading a path or ignoring a stored CA the way
 // a bare config.ResolveCA(in.String("cacert")) would on a same-server
 // re-login with no --cacert flag.
-func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in runtime.Input, p runtime.Prompter) (string, error) {
+//
+// idpClient dials the identity provider; production passes a client that
+// trusts only the operating system store, so caPEM never extends past the
+// Rancher origin.
+func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpClient *http.Client, in runtime.Input, p runtime.Prompter) (string, error) {
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return "", clierr.New(clierr.CodeValidation, "invalid Rancher server URL: "+err.Error())
@@ -67,6 +71,7 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, in run
 		Server:       server,
 		AuthProvider: in.String("auth-provider"),
 		AuthFlow:     in.String("auth-flow"),
+		IdPClient:    idpClient,
 	}, p)
 	if err != nil {
 		if ce := tlstrust.ClassifyForOrigin(err, serverOrigin, time.Now()); ce != nil {

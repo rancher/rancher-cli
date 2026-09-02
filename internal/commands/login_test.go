@@ -3,7 +3,9 @@ package commands
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
@@ -1498,4 +1502,109 @@ func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
 	assert.Contains(t, res.Warnings, "credential store re-pinned: file → keychain",
 		"file→keychain re-pin notice must reach res.Warnings on the production login path")
 	assert.Equal(t, "keychain", config.ReadPin(dir), "pin must be upgraded to keychain after re-probe")
+}
+
+// TestLoginProviderFlowDeviceCodeAcrossSplitOrigins pins the end-to-end
+// topology through the login command: Rancher on one TLS origin with its CA
+// stored on the entry, the identity provider on another TLS origin with its
+// own certificate. The command's identity-provider client is injected
+// through the same seam production wires to httpx.NewExternal, pinned here
+// to the IdP fixture because a unit test cannot change the process trust
+// store; the OS-root proof is the e2e subprocess.
+func TestLoginProviderFlowDeviceCodeAcrossSplitOrigins(t *testing.T) {
+	t.Parallel()
+	var facade *testrancher.Facade
+	idp := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		facade.IdPHandler().ServeHTTP(w, r)
+	}))
+	idpCert, idpCA, err := testrancher.LoopbackTLSCertificate()
+	require.NoError(t, err)
+	idp.TLS = &tls.Config{Certificates: []tls.Certificate{idpCert}}
+	idp.StartTLS()
+	t.Cleanup(idp.Close)
+	facade = testrancher.New(testrancher.Options{EnableIdP: true, IdPURL: idp.URL, IdPPendingPolls: 1})
+	rancher := httptest.NewTLSServer(facade)
+	t.Cleanup(rancher.Close)
+
+	idpClient, err := httpx.New(httpx.Options{CACert: idpCA, Timeout: httpx.DefaultTimeout})
+	require.NoError(t, err)
+
+	dir, store := filePolicyDir(t)
+	rancherCA := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rancher.Certificate().Raw}))
+	seedServer(t, dir, "prod", rancher.URL, rancherCA, false)
+	cmd := newPlainLoginCmd(dir, store)
+	cmd.newIdPClient = func() *http.Client { return idpClient }
+	in := args{s: map[string]string{"auth-provider": "azureADProvider", "auth-flow": "devicecode"}, a: []string{"prod"}}
+	_, err = cmd.Execute(t.Context(), in, ui.New(io.Discard, strings.NewReader(""), false, false))
+	require.NoError(t, err)
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, tok)
+}
+
+// TestLoginProviderFlowRancherClientNeverReachesIdP pins the seam's
+// purpose: with the Rancher-pinned client injected as the IdP client, the
+// flow fails as an identity-provider certificate error, so the command
+// cannot silently reuse the Rancher client.
+func TestLoginProviderFlowRancherClientNeverReachesIdP(t *testing.T) {
+	t.Parallel()
+	var facade *testrancher.Facade
+	idp := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		facade.IdPHandler().ServeHTTP(w, r)
+	}))
+	idpCert, _, err := testrancher.LoopbackTLSCertificate()
+	require.NoError(t, err)
+	idp.TLS = &tls.Config{Certificates: []tls.Certificate{idpCert}}
+	idp.StartTLS()
+	t.Cleanup(idp.Close)
+	facade = testrancher.New(testrancher.Options{EnableIdP: true, IdPURL: idp.URL, IdPPendingPolls: 1})
+	rancher := httptest.NewTLSServer(facade)
+	t.Cleanup(rancher.Close)
+
+	dir, store := filePolicyDir(t)
+	rancherCA := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rancher.Certificate().Raw}))
+	seedServer(t, dir, "prod", rancher.URL, rancherCA, false)
+	cmd := newPlainLoginCmd(dir, store)
+	rancherPinned, err := httpx.New(httpx.Options{CACert: rancherCA, Timeout: httpx.DefaultTimeout})
+	require.NoError(t, err)
+	cmd.newIdPClient = func() *http.Client { return rancherPinned }
+	in := args{s: map[string]string{"auth-provider": "azureADProvider", "auth-flow": "devicecode"}, a: []string{"prod"}}
+	_, err = cmd.Execute(t.Context(), in, ui.New(io.Discard, strings.NewReader(""), false, false))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	require.ErrorContains(t, err, "identity provider 127.0.0.1: certificate not trusted")
+}
+
+// TestLoginProviderFlowRefusesCrossOriginRedirectOnLogin pins that a
+// server answering the login POST with a cross-origin 307 is refused before
+// the credential-bearing body reaches the other origin.
+func TestLoginProviderFlowRefusesCrossOriginRedirectOnLogin(t *testing.T) {
+	t.Parallel()
+	var elsewhereHits atomic.Int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { elsewhereHits.Add(1) }))
+	t.Cleanup(elsewhere.Close)
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1-public/authproviders":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
+		case "/v1-public/login":
+			http.Redirect(w, r, elsewhere.URL+"/v1-public/login", http.StatusTemporaryRedirect)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(fake.Close)
+
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	require.ErrorContains(t, err, "refused to follow a redirect from "+fake.URL+" to "+elsewhere.URL)
+	assert.Zero(t, elsewhereHits.Load(), "the password-bearing body must never reach the other origin")
 }
