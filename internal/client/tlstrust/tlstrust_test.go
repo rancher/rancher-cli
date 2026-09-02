@@ -389,6 +389,51 @@ func hostFromURLError(t *testing.T, err error) string {
 	return parsed.Host
 }
 
+// TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate asserts:
+// when the presented chain carries no valid issuer, the
+// fingerprint describes the server's own certificate, never a certificate
+// authority — the label and the message wording must say so, and
+// Certificate()/IsLeafCertificate() must expose the fact so a consent flow
+// never mislabels what it is asking the operator to trust.
+func TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate(t *testing.T) {
+	leaf, cert := selfSignedLeaf(t, "rancher.example")
+	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
+	ce := Classify(err, "rancher.example", time.Now())
+	require.NotNil(t, ce)
+	details := ce.Details.(Details)
+	assert.True(t, details.IsLeafCertificate())
+	require.NotNil(t, details.Certificate())
+	assert.Equal(t, cert.Raw, details.Certificate().Raw)
+	assert.Contains(t, details.TextDetails(), "serving certificate: "+details.Subject)
+	assert.NotContains(t, ce.Message, "obtain its CA", "a bare leaf is never called the server's CA")
+	assert.Contains(t, ce.Message, "no separate certificate authority")
+}
+
+// TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority asserts
+// the non-leaf counterpart: a chain with a valid issuer labels the
+// candidate a certificate authority, and IsLeafCertificate is false.
+func TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority(t *testing.T) {
+	ca, caKey := genCA(t, "pinnable-ca")
+	leaf := genLeaf(t, ca, caKey, "rancher.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	leaf.Certificate = append(leaf.Certificate, ca.Raw)
+	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
+	ce := Classify(err, "rancher.example", time.Now())
+	require.NotNil(t, ce)
+	details := ce.Details.(Details)
+	assert.False(t, details.IsLeafCertificate())
+	require.NotNil(t, details.Certificate())
+	assert.Equal(t, ca.Raw, details.Certificate().Raw)
+	assert.Contains(t, details.TextDetails(), "certificate authority: "+details.Subject)
+	assert.Contains(t, ce.Message, "obtain its CA")
+}
+
+// TestDetailsCertificateNilOnNullableDetails asserts that a
+// nullable-details Details (no candidate extracted) exposes no
+// certificate either.
+func TestDetailsCertificateNilOnNullableDetails(t *testing.T) {
+	assert.Nil(t, Details{Kind: KindInvalidChain}.Certificate())
+}
+
 // TestClassifyNotYetValidCarriesNotBefore: the structured payload must let
 // the user confirm the "check the local clock" hint — NotBefore is the one
 // field that says when the certificate becomes valid.

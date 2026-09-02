@@ -56,16 +56,52 @@ type Details struct {
 	Issuer      string `json:"issuer,omitempty"`
 	NotBefore   string `json:"notBefore,omitempty"`
 	NotAfter    string `json:"notAfter,omitempty"`
+	// leaf is true only for KindUnknownAuthority when the presented chain
+	// contained no valid issuer for the candidate (dynamiclistener commonly
+	// serves the leaf alone): the fingerprint shown then describes the
+	// SERVER's own certificate, never a certificate authority, and the
+	// wording must say so or an operator matching it against a fetched CA
+	// file gets a false mismatch. Never serialized: a JSON consumer already
+	// has the certificate role from Kind plus the shape of the chain it
+	// requested separately; this only steers the projected text.
+	leaf bool
+	// cert is the exact certificate Details describes (the candidate anchor
+	// for KindUnknownAuthority, the offending certificate for every other
+	// kind). Never serialized — a consent flow that must persist trust
+	// reads it through Certificate(); JSON consumers see only the
+	// projected fields.
+	cert *x509.Certificate
 }
+
+// Certificate returns the exact certificate Details describes, or nil when
+// none could be extracted from the presented chain (the nullable-details
+// case).
+func (d Details) Certificate() *x509.Certificate { return d.cert }
+
+// IsLeafCertificate reports whether the fingerprint/subject shown describe
+// the server's own certificate rather than a certificate authority —
+// meaningful only when Kind is KindUnknownAuthority.
+func (d Details) IsLeafCertificate() bool { return d.leaf }
 
 // TextDetails projects the candidate/offending certificate's facts onto
 // indented lines, each conditional on its own field: every certificate field
 // may be absent when no candidate anchor could be extracted from the
-// presented chain, and an absent field prints no line at all.
+// presented chain, and an absent field prints no line at all. For
+// KindUnknownAuthority the first line names WHICH certificate the
+// fingerprint describes — "certificate authority" or, when the chain
+// carried no valid issuer, "serving certificate" — so the card is never
+// read as naming a CA it cannot check against a fetched CA file.
 func (d Details) TextDetails() []string {
 	var lines []string
 	if d.Subject != "" {
-		lines = append(lines, "certificate: "+d.Subject)
+		label := "certificate"
+		if d.Kind == KindUnknownAuthority {
+			label = "certificate authority"
+			if d.leaf {
+				label = "serving certificate"
+			}
+		}
+		lines = append(lines, label+": "+d.Subject)
 	}
 	if d.Issuer != "" {
 		lines = append(lines, "issuer: "+d.Issuer)
@@ -119,11 +155,13 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	subject := offending
 	if kind == KindUnknownAuthority {
 		subject = CandidateAnchor(chain)
+		details.leaf = subject != nil && len(chain) > 0 && subject == chain[0]
 	}
 	if subject == nil && len(chain) > 0 {
 		subject = chain[0]
 	}
 	if subject != nil {
+		details.cert = subject
 		details.Fingerprint = Fingerprint(subject)
 		details.Subject = subject.Subject.String()
 		details.Issuer = subject.Issuer.String()
@@ -132,9 +170,13 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	}
 	switch kind {
 	case KindUnknownAuthority:
-		return clierr.New(clierr.CodeTLSTrust,
-			"the server presented a certificate signed by an unknown authority; "+
-				"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert").
+		msg := "the server presented a certificate signed by an unknown authority; " +
+			"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert"
+		if details.leaf {
+			msg = "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
+				"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert"
+		}
+		return clierr.New(clierr.CodeTLSTrust, msg).
 			WithDetails(details)
 	case KindHostnameMismatch:
 		return clierr.New(clierr.CodeTLSTrust,
