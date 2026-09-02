@@ -594,6 +594,26 @@ func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
 	assert.Contains(t, ce.Message, "ftp://rancher.example.com/some/path?x=1")
 }
 
+// TestLoginDerivedNameIPv6LiteralRefused pins that a name is never
+// derived from an IPv6 literal: Hostname() keeps its colons, and a
+// colon-bearing entry name reads as a URL fragment everywhere a name is
+// printed — the refusal names the explicit-name spelling instead.
+func TestLoginDerivedNameIPv6LiteralRefused(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://[::1]:8443"}, b: map[string]bool{"token-stdin": true}, a: nil},
+		stdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "IPv6")
+
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Empty(t, cfg.Servers, "no entry registered under a derived IPv6 name")
+}
+
 // TestLoginDerivedNameCreatesEntryFromHost pins that --url with no
 // positional name registers and logs in under the canonical URL's host,
 // naming that entry in both the envelope and the rendered text.

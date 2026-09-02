@@ -275,10 +275,18 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		u, _ := neturl.Parse(canonical)
 		name = u.Hostname()
 		derived = true
-		// Hostname() can never emit a colon, so a derived name cannot
-		// land in the reserved legacy: namespace today; the check stays
-		// so a future change to the derivation (a port suffix, say)
-		// cannot start producing reserved names unchecked.
+		// An IPv6 literal survives Hostname() with its colons — only the
+		// brackets are stripped — and a colon-bearing entry name reads as
+		// a URL fragment everywhere a name is printed or quoted, so
+		// derivation refuses it instead of coining one.
+		if strings.Contains(name, ":") {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation,
+				"a server name cannot be derived from an IPv6 address; pass an explicit name: rancher auth login <name> --url <url>")
+		}
+		// With colons refused above, a derived name cannot land in the
+		// reserved legacy: namespace; the check stays so a future
+		// derivation change cannot start producing reserved names
+		// unchecked.
 		if ce := validateEntryName(name); ce != nil {
 			return runtime.Result{}, ce
 		}
