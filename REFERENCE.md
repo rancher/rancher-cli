@@ -608,6 +608,16 @@ Server connections verify TLS against the configured CA (`--cacert` /
 `RANCHER_CLI_CACERT`) or the system trust store by default — verification is never
 disabled implicitly. HTTP(S) proxies are honored from the environment.
 
+Trust is scoped to the Rancher server's origin. The configured CA (and the
+legacy shim's `--skip-verify`) applies only to requests aimed at that
+scheme, host, and port. An identity provider reached during an OAuth login
+is verified against the operating system trust store, and its endpoints
+must be `https`; `--cacert` cannot make a self-signed provider trusted. A
+redirect to a different origin is never followed: the request fails with a
+`GENERIC` error naming both origins, because a redirected request would
+carry credentials to a server the configured trust was never meant to
+cover.
+
 There is no skip-verify flag anywhere in the native surface, ever: a
 self-signed or private-CA server is used by pinning its CA (`--cacert` or the
 stored server entry's CA), never by turning verification off. The one

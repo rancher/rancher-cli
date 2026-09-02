@@ -43,6 +43,10 @@ token), not an error condition; don't treat it as one. If it fails with
   `--no-verify` — the result then reports `"verified": false` under `-o json`
   and says "not verified" in text. Behind a corporate proxy, set
   `HTTPS_PROXY`/`NO_PROXY` — see REFERENCE.md's TLS & proxy section.
+- An `AUTH` error naming an "identity provider" certificate is about the
+  provider, not Rancher: `--cacert` covers the Rancher server only. The
+  provider must be trusted by the operating system store (or, on Linux,
+  through `SSL_CERT_FILE`).
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
