@@ -290,6 +290,7 @@ graph TD
 
     fidelity --> token
     fidelity --> testrancher
+    fidelity --> httpx
 ```
 
 ## Command pipeline

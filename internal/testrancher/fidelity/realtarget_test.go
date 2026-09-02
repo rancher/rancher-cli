@@ -159,7 +159,7 @@ func TestNewRealTargetFromEnv(t *testing.T) {
 		t.Setenv("E2E_REAL_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
 		_, err := NewRealTargetFromEnv()
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "no certificates parsed")
+		assert.ErrorContains(t, err, "failed to append CA certs from PEM")
 	})
 
 	t.Run("success wires the target", func(t *testing.T) {

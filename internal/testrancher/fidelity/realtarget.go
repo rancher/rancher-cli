@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/token"
 )
 
@@ -75,16 +74,14 @@ func NewRealTargetFromEnv() (*RealTarget, error) {
 	if base == "" || admin == "" || ca == "" {
 		return nil, fmt.Errorf("E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
 	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM([]byte(ca)) {
-		return nil, fmt.Errorf("E2E_REAL_CACERT: no certificates parsed")
+	client, err := httpx.New(httpx.Options{CACert: ca})
+	if err != nil {
+		return nil, fmt.Errorf("E2E_REAL_CACERT: %w", err)
 	}
 	return &RealTarget{
 		baseURL: strings.TrimSuffix(base, "/"),
 		admin:   admin,
-		client: &http.Client{
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}},
-		},
+		client:  client,
 	}, nil
 }
 
@@ -92,7 +89,10 @@ func NewRealTargetFromEnv() (*RealTarget, error) {
 func (t *RealTarget) BaseURL() string { return t.baseURL }
 
 // Client is an HTTP client that trusts the oracle's CA (TLS verification is
-// never skipped).
+// never skipped), refuses cross-origin redirects, and honours the proxy
+// environment variables, exactly like every Rancher-scoped client the CLI
+// builds; a LAN-bound oracle behind HTTPS_PROXY is reached the way the CLI
+// would reach it.
 func (t *RealTarget) Client() *http.Client { return t.client }
 
 // Bearer resolves the admin, standard, or revoked identity to a live bearer
