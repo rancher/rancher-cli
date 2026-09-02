@@ -36,7 +36,13 @@ else
   HOST_PORT="8443"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
 fi
-BASE_URL="https://127.0.0.1:${HOST_PORT}"
+# Dial where the port is actually published: a LAN bind publishes ONLY on
+# that address (loopback /ping may still answer through Docker Desktop's
+# userspace proxy, which makes a loopback BASE_URL pass the waits and then
+# fail the bootstrap login). 0.0.0.0 publishes everywhere; dial loopback.
+DIAL_ADDR="${BIND_ADDR}"
+[ "${DIAL_ADDR}" != "0.0.0.0" ] || DIAL_ADDR="127.0.0.1"
+BASE_URL="https://${DIAL_ADDR}:${HOST_PORT}"
 LOCK_DIR="${STATE_ROOT}/lock"
 STATE_FILE="${STATE_ROOT}/state.json"
 CA_FILE="${STATE_ROOT}/ca.pem"
@@ -84,8 +90,14 @@ cleanup() {
 trap cleanup EXIT
 
 fetch_ca() {
-  openssl s_client -connect "127.0.0.1:${HOST_PORT}" -showcerts </dev/null 2>/dev/null |
-    awk '/-----BEGIN CERTIFICATE-----/{buf=""} {buf=buf $0 "\n"} /-----END CERTIFICATE-----/{last=buf} END{printf "%s", last}'
+  # /cacerts serves the signing CA, which is stable for the container's
+  # life. Scraping the served chain is not equivalent: the oracle serves
+  # its leaf alone, and dynamiclistener reissues that leaf whenever a new
+  # SAN is first contacted (a LAN-bound run does exactly that), so a
+  # scraped "CA" goes stale mid-run. -k is sound only here: this script
+  # created the server seconds ago on this host, and everything after
+  # verifies strictly against what this returns.
+  curl -sk --max-time 10 "${BASE_URL}/cacerts"
 }
 
 wait_for_ping() {
@@ -118,7 +130,7 @@ prime_extra_sans() {
   for h in "${hosts[@]}"; do
     [ -n "${h}" ] || continue
     echo "==> priming TLS SAN for ${h}"
-    curl -sk --max-time 5 --resolve "${h}:${HOST_PORT}:127.0.0.1" "https://${h}:${HOST_PORT}/ping" >/dev/null || true
+    curl -sk --max-time 5 --resolve "${h}:${HOST_PORT}:${DIAL_ADDR}" "https://${h}:${HOST_PORT}/ping" >/dev/null || true
   done
 }
 
@@ -207,7 +219,6 @@ JSON
 {"description":"e2e-fid oracle"}
 JSON
 )"
-
   if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
     cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
     (
