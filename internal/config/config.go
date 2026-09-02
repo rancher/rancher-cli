@@ -133,6 +133,13 @@ func CompletionTimeoutWithRaw(cfg *Config) (effective time.Duration, raw string,
 type Server struct {
 	URL string `json:"url"`
 	CA  string `json:"ca,omitempty"`
+	// CAFingerprint is the SHA-256 fingerprint (lowercase hex, see
+	// tlstrust.Fingerprint) of the certificate a guided-trust consent
+	// accepted for CA. It exists only while CA is exactly that single
+	// certificate: every write that replaces CA writes a fresh Server value
+	// rather than patching CA in place, so an explicit CA replacement clears
+	// this field for free.
+	CAFingerprint string `json:"caFingerprint,omitempty"`
 }
 
 // Config is the on-disk CLI configuration. Beyond server entries and

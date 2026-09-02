@@ -71,6 +71,17 @@ type CredStore interface {
 	ListCachedCreds() ([]CachedCredInfo, error)
 }
 
+// NonAtomicStore is implemented by a CredStore backend whose SetToken cannot
+// be safely compensated: reading its prior state first would itself be a
+// side effect (an exec helper's GetToken may MINT a fresh credential rather
+// than reveal persisted state), so a snapshot taken before the write would
+// not describe restorable prior state. CommitToken checks for this
+// interface and skips compensation entirely rather than building one that
+// would write back state that never existed.
+type NonAtomicStore interface {
+	NonAtomic() bool
+}
+
 type cachedCred struct {
 	Token   string    `json:"token"`
 	Expiry  time.Time `json:"expiry"`

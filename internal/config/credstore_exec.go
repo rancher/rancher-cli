@@ -74,6 +74,11 @@ func newExecStore(helper, dir string) *execStore {
 
 func (s *execStore) binary() string { return "rancher-credential-" + s.helper }
 
+// NonAtomic implements NonAtomicStore: a helper's get may mint a fresh
+// credential rather than reveal persisted state, so no snapshot-based
+// compensation is safe for this backend.
+func (s *execStore) NonAtomic() bool { return true }
+
 // invoke runs one helper verb with req on stdin and decodes the response.
 // Decoding is verb-aware: get MUST return versioned JSON (not-found is a
 // JSON response without a token), while store/erase may exit 0 with EMPTY
