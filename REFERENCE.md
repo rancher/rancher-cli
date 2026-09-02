@@ -615,3 +615,28 @@ exception is the legacy `rancher token` shim, whose `--skip-verify` exists
 only because Rancher-generated kubeconfigs pass it verbatim — legacy
 compatibility, not an endorsement; kubeconfigs produced by this CLI never
 emit it.
+
+Proxying is environment-only — there is no `--proxy` flag, matching
+kubectl's posture. Three variables control it, each also honored in
+lowercase (`https_proxy`, `http_proxy`, `no_proxy`); when a variable is
+set in both cases with different values, the uppercase one wins and the
+lowercase one is silently ignored — worth checking first when a proxy
+setting seems to have no effect, since shell profiles usually set the
+lowercase form:
+
+- `HTTPS_PROXY` — the proxy used for `https://` server connections (every
+  Rancher server this CLI talks to).
+- `HTTP_PROXY` — the proxy used for `http://` server connections.
+- `NO_PROXY` — a comma-separated list of hosts to reach directly: exact
+  hostnames, domain suffixes (`foo.com` also matches `bar.foo.com`; a
+  leading dot restricts it to subdomains only), IP addresses, CIDR blocks,
+  optionally with a literal port, or a bare `*` to disable proxying
+  entirely.
+
+An `https://` connection routed through a proxy is tunneled with `CONNECT`:
+the proxy never terminates TLS, so the pinned CA (or system trust store)
+still verifies the real server's certificate end to end. A loopback target
+(`127.0.0.1`, `::1`, or `localhost`) is never proxied, proxy settings
+notwithstanding — the same rule Go's standard library applies everywhere.
+If the proxy itself is unreachable, the error names the proxy's address so
+it reads distinctly from a failure to reach the Rancher server itself.

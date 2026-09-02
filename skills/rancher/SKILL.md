@@ -41,7 +41,8 @@ token), not an error condition; don't treat it as one. If it fails with
   token or unreachable server fails the login and stores nothing. To stage a
   credential without the round-trip (e.g. the server is down), add
   `--no-verify` — the result then reports `"verified": false` under `-o json`
-  and says "not verified" in text.
+  and says "not verified" in text. Behind a corporate proxy, set
+  `HTTPS_PROXY`/`NO_PROXY` — see REFERENCE.md's TLS & proxy section.
 - SAML/OAuth provider flows also live on `rancher auth get-token`
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
