@@ -167,6 +167,7 @@ graph TD
     token --> ui
     token --> clierr
     token --> projects
+    token --> tlstrust
 
     runtime --> safety
     runtime --> output

@@ -73,6 +73,10 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 			"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
 	}
 
+	if input.idpClient == nil {
+		return nil, errors.New("identity provider client is not configured")
+	}
+
 	switch input.authFlow {
 	case authCodeFlow:
 		return oauthAuthCodeAuth(ctx, client, input, provider, oauthCodeFlowTimeout, openBrowser, p)
@@ -169,11 +173,11 @@ func oauthAuthCodeAuth(
 
 		exchangeCtx, cancel := context.WithTimeout(ctx, oauthCodeExchangeTimeout)
 		defer cancel()
-		exchangeCtx = context.WithValue(exchangeCtx, oauth2.HTTPClient, client)
+		exchangeCtx = context.WithValue(exchangeCtx, oauth2.HTTPClient, input.idpClient)
 
 		oauthToken, err := oauthConfig.Exchange(exchangeCtx, result.code, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", err)
+			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
 		}
 
 		return rancherLogin(ctx, client, input, oauthToken)
@@ -289,11 +293,11 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 		return nil, fmt.Errorf("failed to create oauth config: %w", err)
 	}
 
-	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, client)
+	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, input.idpClient)
 
 	deviceAuthResp, err := oauthConfig.DeviceAuth(ctxWithClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initiate device authorization: %w", err)
+		return nil, fmt.Errorf("failed to initiate device authorization: %w", idpCertificateError(err, oauthConfig.Endpoint.DeviceAuthURL))
 	}
 
 	p.Notice(fmt.Sprintf(
@@ -304,7 +308,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve access token: %w", err)
+		return nil, fmt.Errorf("failed to retrieve access token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
 	}
 
 	token, err := rancherLogin(ctx, client, input, oauthToken)
@@ -325,6 +329,16 @@ func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
 		return nil, fmt.Errorf("provider %s is not a supported OAuth provider", provider.GetType())
 	}
 
+	for _, ep := range []struct{ field, value string }{
+		{"authUrl", oauthProvider.AuthURL},
+		{"deviceAuthUrl", oauthProvider.DeviceAuthURL},
+		{"tokenUrl", oauthProvider.TokenURL},
+	} {
+		if err := validateOAuthEndpoint(ep.field, ep.value); err != nil {
+			return nil, err
+		}
+	}
+
 	return &oauth2.Config{
 		ClientID: oauthProvider.ClientID,
 		Scopes:   oauthProvider.Scopes,
@@ -334,6 +348,25 @@ func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
 			TokenURL:      oauthProvider.TokenURL,
 		},
 	}, nil
+}
+
+// validateOAuthEndpoint requires an absolute https URL with a host and no
+// userinfo. The values come from the server's provider document and carry
+// the authorization code, PKCE verifier, or device code, so a cleartext or
+// credential-bearing endpoint is refused before any request or browser
+// launch. Only the origin of a rejected value is rendered: path, query,
+// and userinfo never reach the message.
+func validateOAuthEndpoint(field, raw string) error {
+	u, err := url.Parse(raw)
+	if err == nil && u.Opaque == "" && u.Scheme == "https" && u.Hostname() != "" && u.User == nil {
+		return nil
+	}
+	rendered := "unparseable"
+	if err == nil && u.Host != "" {
+		rendered = u.Scheme + "://" + u.Host
+	}
+	return clierr.New(clierr.CodeAuth, fmt.Sprintf(
+		"identity provider endpoint %s must be an https URL with a host and no credentials, got %s", field, rendered))
 }
 
 func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token) (*Token, error) {

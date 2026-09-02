@@ -74,6 +74,11 @@ type loginInput struct {
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
+	// idpClient dials the identity provider's OAuth endpoints. It trusts the
+	// operating system store, never the Rancher entry's CA: the entry's
+	// trust must not extend to a third-party origin, and a self-signed
+	// Rancher must not break a publicly trusted provider.
+	idpClient *http.Client
 }
 
 // runParams carries the resolved flag values for a get-token invocation.
@@ -272,6 +277,10 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	switch {
 	case errors.Is(err, errNoStoredCredential):
+		// Built only when a live login is needed: the cached-credential
+		// path, the steady state under kubectl's exec plugin, never dials
+		// an identity provider.
+		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
 		rancherToken, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
 			return runtime.Result{}, err
@@ -522,6 +531,9 @@ type LoginRequest struct {
 	ClusterID    string
 	AuthProvider string
 	AuthFlow     string
+	// IdPClient dials the identity provider's OAuth endpoints (see
+	// loginInput.idpClient). Required for OAuth providers.
+	IdPClient *http.Client
 }
 
 // Login runs the identity-provider dance (provider discovery/selection, then
@@ -534,6 +546,7 @@ func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime
 		clusterID:    req.ClusterID,
 		authProvider: req.AuthProvider,
 		authFlow:     req.AuthFlow,
+		idpClient:    req.IdPClient,
 	}
 	return loginAndGenerateCred(ctx, client, input, p)
 }

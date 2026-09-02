@@ -1396,7 +1396,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider"}]}`))
+			_, _ = w.Write([]byte(`{"data":[{"type":"azureADProvider","authUrl":"https://idp.example/authorize","deviceAuthUrl":"https://idp.example/devicecode","tokenUrl":"https://idp.example/token"}]}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -1420,12 +1420,6 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 	// caller's context must still govern the flow after the code exchange,
 	// with zero timing sensitivity (no slow-IdP race).
 	t.Parallel()
-
-	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"access_token":"fake-access-token","token_type":"bearer","expires_in":3600}`))
-	}))
-	defer idp.Close()
 
 	var rancherHits atomic.Int32
 	rancherSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1462,12 +1456,13 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 			ClientID: "test-client",
 			Scopes:   []string{"openid"},
 			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:  idp.URL + "/authorize",
-				TokenURL: idp.URL + "/token",
+				AuthURL:       "https://idp.example/authorize",
+				DeviceAuthURL: "https://idp.example/devicecode",
+				TokenURL:      "https://idp.example/token",
 			},
 		},
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -1507,12 +1502,13 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 			ClientID: "test-client",
 			Scopes:   []string{"openid"},
 			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:  "http://127.0.0.1:0/authorize", // never reached
-				TokenURL: "http://127.0.0.1:0/token",
+				AuthURL:       "https://idp.example/authorize",  // never reached
+				DeviceAuthURL: "https://idp.example/devicecode", // never reached
+				TokenURL:      "https://idp.example/token",
 			},
 		},
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
 	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -1550,12 +1546,13 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 			ClientID: "test-client",
 			Scopes:   []string{"openid"},
 			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:  "http://127.0.0.1:0/authorize", // never reached
-				TokenURL: "http://127.0.0.1:0/token",
+				AuthURL:       "https://idp.example/authorize",  // never reached
+				DeviceAuthURL: "https://idp.example/devicecode", // never reached
+				TokenURL:      "https://idp.example/token",
 			},
 		},
 	}
-	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider"}
+	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
 	_, err := oauthAuthCodeAuth(t.Context(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -1570,7 +1567,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	t.Parallel()
 
-	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"fake-access-token","token_type":"bearer","expires_in":3600}`))
 	}))
@@ -1614,12 +1611,13 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 			ClientID: "test-client",
 			Scopes:   []string{"openid"},
 			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:  idp.URL + "/authorize",
-				TokenURL: idp.URL + "/token",
+				AuthURL:       idp.URL + "/authorize",
+				DeviceAuthURL: idp.URL + "/devicecode",
+				TokenURL:      idp.URL + "/token",
 			},
 		},
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider"}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: idp.Client()}
 
 	var noticeBuf strings.Builder
 	p := ui.New(&noticeBuf, strings.NewReader(""), true, false)
