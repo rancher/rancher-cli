@@ -272,6 +272,7 @@ graph TD
     kube --> clierr
 
     tlstrust --> clierr
+    httpx --> clierr
 
     config --> clierr
     config --> credhelper

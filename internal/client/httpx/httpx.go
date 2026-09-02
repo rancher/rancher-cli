@@ -51,15 +51,36 @@ func New(o Options) (*http.Client, error) {
 		tlsConfig.RootCAs = roots
 	}
 
-	proxyFunc := http.ProxyFromEnvironment
+	return &http.Client{
+		Transport:     newTransport(tlsConfig),
+		Timeout:       o.Timeout,
+		CheckRedirect: RejectCrossOriginRedirect,
+	}, nil
+}
 
+// NewExternal builds the client for third-party origins the login flow
+// must reach (the identity provider's OAuth endpoints). Verification uses
+// the operating system trust store only: no pinned CA, no insecure mode,
+// because the Rancher entry's trust must never extend to another origin.
+// Proxy environment, dialer, TLS minimum, and the same-origin redirect
+// policy match New.
+func NewExternal(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Transport:     newTransport(&tls.Config{MinVersion: tls.VersionTLS12}),
+		Timeout:       timeout,
+		CheckRedirect: RejectCrossOriginRedirect,
+	}
+}
+
+// newTransport is the one transport shape both constructors share, so the
+// Rancher and external clients cannot drift in proxy or timeout behavior.
+func newTransport(tlsConfig *tls.Config) *http.Transport {
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}
-
-	tr := &http.Transport{
-		Proxy:                 proxyFunc,
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       tlsConfig,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
@@ -69,11 +90,6 @@ func New(o Options) (*http.Client, error) {
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext:           dialer.DialContext,
 	}
-
-	return &http.Client{
-		Transport: tr,
-		Timeout:   o.Timeout,
-	}, nil
 }
 
 // Do executes req and reads the full response body, closing it before

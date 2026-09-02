@@ -18,6 +18,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// pemOf encodes a certificate as PEM for use as a CACert option.
+func pemOf(t *testing.T, cert *x509.Certificate) []byte {
+	t.Helper()
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+}
+
+// TestNewExternalUsesOSRootsOnly pins the external client's trust model: a
+// self-signed fixture fails as unknown authority because no pinned CA
+// exists, and the fixture's CA is absent from the transport's pool.
+func TestNewExternalUsesOSRootsOnly(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(srv.Close)
+	client := NewExternal(DefaultTimeout)
+	tr := client.Transport.(*http.Transport)
+	assert.Nil(t, tr.TLSClientConfig.RootCAs, "OS roots means no custom pool")
+	assert.False(t, tr.TLSClientConfig.InsecureSkipVerify)
+	assert.NotNil(t, client.CheckRedirect)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	_, _, err = Do(client, req)
+	var cve *tls.CertificateVerificationError
+	require.ErrorAs(t, err, &cve, "a self-signed fixture must fail verification against OS roots")
+}
+
+// TestNewInstallsRedirectPolicy pins that every Rancher-scoped client gets
+// the policy without the call site opting in.
+func TestNewInstallsRedirectPolicy(t *testing.T) {
+	t.Parallel()
+	client, err := New(Options{})
+	require.NoError(t, err)
+	require.NotNil(t, client.CheckRedirect)
+}
+
 func generateSelfSignedCert(t *testing.T) (certPEM string, cert *x509.Certificate) {
 	t.Helper()
 
