@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -352,11 +353,29 @@ func TestScenarios(t *testing.T) {
 			router := newRouter(func(t string) bool {
 				return t == testToken || (facade != nil && facade.ValidBearer(t))
 			})
+			// The identity-provider stub lives on its own TLS origin so the
+			// binary must reach it with the operating system trust store, not
+			// the Rancher CA it was given: the same split a self-signed
+			// Rancher and a public provider present.
+			idpSrv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				facade.IdPHandler().ServeHTTP(w, r)
+			}))
+			// A distinct certificate: every httptest TLS server otherwise
+			// presents the same built-in one, and RANCHER_CLI_CACERT would
+			// trust the IdP by accident, hiding a pin leak.
+			idpCert, idpCertPEM, err := testrancher.LoopbackTLSCertificate()
+			if err != nil {
+				return err
+			}
+			idpSrv.TLS = &tls.Config{Certificates: []tls.Certificate{idpCert}}
+			idpSrv.StartTLS()
+			e.Defer(idpSrv.Close)
 			facade = testrancher.New(testrancher.Options{
 				Fallthrough: router,
 				Legacy:      legacyScripts[scriptName],
 				SeedToken:   testToken,
 				EnableIdP:   true,
+				IdPURL:      idpSrv.URL,
 			})
 			facadeSrv := httptest.NewTLSServer(facade)
 			e.Defer(facadeSrv.Close)
@@ -386,6 +405,14 @@ func TestScenarios(t *testing.T) {
 			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) — testscript.Env carries
 			// no script name, so the exemption lives in the script.
 			e.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+			// Go reads SSL_CERT_FILE into the system pool on Linux only; the
+			// device-code script skips itself elsewhere. Written per script
+			// so concurrent scripts never share a file.
+			idpCAFile := filepath.Join(e.WorkDir, "idp-ca.pem")
+			if err := os.WriteFile(idpCAFile, []byte(idpCertPEM), 0o600); err != nil {
+				return err
+			}
+			e.Setenv("SSL_CERT_FILE", idpCAFile)
 			return nil
 		},
 		Condition: func(cond string) (bool, error) {
