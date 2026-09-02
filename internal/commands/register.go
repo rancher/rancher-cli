@@ -31,6 +31,13 @@ type registrationProbe struct {
 	caSelector     string
 	caBytes        string
 	versionWarning string
+	// caFingerprint is set only when caSelector is a guided-trust-accepted
+	// certificate: the fingerprint tlstrust.Classify already computed for
+	// the exact candidate this selector encodes. Every other registration
+	// path (add-server, update-server, an explicit --cacert) leaves it
+	// empty, and commitCreate then writes no fingerprint at all — an
+	// explicit CA replacement never carries one.
+	caFingerprint string
 }
 
 // resolveRegistrationCA resolves selector to its PEM bytes for TRUST
@@ -229,7 +236,7 @@ func commitCreate(cfg *config.Config, name string, probe registrationProbe) (cre
 	created := false
 	switch {
 	case !exists:
-		cfg.Servers[name] = config.Server{URL: probe.canonicalURL, CA: probe.caSelector}
+		cfg.Servers[name] = config.Server{URL: probe.canonicalURL, CA: probe.caSelector, CAFingerprint: probe.caFingerprint}
 		created = true
 	case existing.URL == probe.canonicalURL && existing.CA == probe.caSelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.

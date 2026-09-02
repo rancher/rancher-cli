@@ -56,6 +56,13 @@ func NewLogin(dir string) runtime.Command {
 // self-read against a resolved (URL, CA, token) triple.
 type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, error)
 
+// trustCommitConfigWriteHookForTest replaces the guided-trust commit's
+// config.Write call when non-nil, so a test can force the config-write
+// half of the commit protocol to fail WITHOUT ever touching disk (the real
+// Write would otherwise already have succeeded by the time a test could
+// observe an injected failure). Nil in production.
+var trustCommitConfigWriteHookForTest func() error
+
 // tlsPreflightDefault performs the every-https-path TLS preflight: an
 // unauthenticated GET against the same /rancherversion endpoint the PS-8
 // version probe uses, built with caPEM as the trusted root (system roots
@@ -176,7 +183,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		if !ok {
 			return runtime.Result{}, loginUnknownNameError(cfg0, name)
 		}
-		return l.authenticatePlain(ctx, in, p, name, existing.URL, existing.CA)
+		return l.authenticatePlain(ctx, in, p, name, existing.URL, existing.CA, existing.CAFingerprint)
 	}
 
 	if cacert != "" {
@@ -188,7 +195,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 
 	cur, srv, cerr := cfg0.CurrentServerEntry()
 	if cerr == nil {
-		return l.authenticatePlain(ctx, in, p, cur, srv.URL, srv.CA)
+		return l.authenticatePlain(ctx, in, p, cur, srv.URL, srv.CA, srv.CAFingerprint)
 	}
 
 	names := sortedKeys(cfg0.Servers)
@@ -298,6 +305,51 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	}
 
 	probe, err := prepareRegistration(ctx, l.tlsPreflight, canonical, caSelector)
+	switch {
+	case err != nil && !known && cacert == "":
+		// Guided trust on the delegated path applies only to a genuinely new
+		// entry with no explicit --cacert: an already-registered entry's
+		// rotated CA is a plain-login concern (authenticateAndStore runs the
+		// same offerGuidedTrust against the STORED selector, with the
+		// combined token+CA commit protocol that entry's re-prompt needs),
+		// and an explicit --cacert failure is never eligible for guided
+		// replacement — the user made an explicit trust statement. A new
+		// entry has no prior recorded identity, so there is never a
+		// changed-identity warning to show here.
+		accepted, version, _, gerr := offerGuidedTrust(ctx, err, p, l.tlsPreflight, canonical, "")
+		if accepted == nil {
+			err = gerr
+			break
+		}
+		// offerGuidedTrust already proved the candidate re-verifies; building
+		// the probe directly (rather than calling prepareRegistration again
+		// with accepted.pem) skips a second, redundant network round trip
+		// against the exact same candidate. caBytes equals caSelector here
+		// because an inline PEM selector resolves to itself unchanged
+		// (resolveRegistrationCA/config.ResolveCA).
+		warning := config.UnknownServerVersionWarning
+		if version != "" {
+			_, warning = config.EvalMinVersionSupport(version)
+		}
+		probe = registrationProbe{
+			canonicalURL:   canonical,
+			caSelector:     accepted.pem,
+			caBytes:        accepted.pem,
+			versionWarning: warning,
+			caFingerprint:  accepted.fingerprint,
+		}
+		err = nil
+	case err != nil && known && cacert == "":
+		// A known entry's rotated CA is a plain-login concern (see above);
+		// point there instead of leaving the operator retrying the --url
+		// spelling, which can never itself re-establish trust for an
+		// existing entry.
+		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeTLSTrust {
+			err = ce.WithMessage(ce.Message +
+				fmt.Sprintf("; %s is already registered — sign in to it directly: rancher auth login %s", shquote(name), shquote(name))).
+				WithHint(config.LoginHintFor(name))
+		}
+	}
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -314,8 +366,8 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 // registration ran for this call, so it re-verifies the pinned-trust
 // preflight itself, and an auth failure is final — there is no unlocked
 // registration window behind it to recheck for staleness.
-func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector string) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", "", false, false)
+func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caFingerprint string) (runtime.Result, error) {
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", "", caFingerprint, false, false)
 }
 
 // authenticateDelegated authenticates immediately after this login's own
@@ -327,7 +379,7 @@ func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p run
 // just-closed unlocked registration window. added is threaded straight
 // into LoginResult.
 func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caBytes, versionWarning string, added bool) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, versionWarning, true, added)
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, versionWarning, "", true, added)
 }
 
 // authenticateAndStore runs the auth flow against (name, serverURL,
@@ -337,10 +389,11 @@ func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p
 // for their caller — no call site passes a bare bool literal.
 func (l loginCmd) authenticateAndStore(
 	ctx context.Context, in runtime.Input, p runtime.Prompter,
-	name, serverURL, caSelector, caBytes, versionWarning string,
+	name, serverURL, caSelector, caBytes, versionWarning, caFingerprint string,
 	delegated, added bool,
 ) (runtime.Result, error) {
 	isHTTPS := strings.HasPrefix(serverURL, "https://")
+	var pendingTrust *trustCandidate
 	if !delegated {
 		// resolveRegistrationCA is the one place "resolve CA bytes only
 		// under https, and only when the selector names something" is
@@ -356,12 +409,36 @@ func (l loginCmd) authenticateAndStore(
 		caBytes = b
 		if isHTTPS && l.tlsPreflight != nil {
 			if _, perr := l.tlsPreflight(ctx, serverURL, caBytes); perr != nil {
-				return runtime.Result{}, pinnedTrustFailure(perr, name)
+				accepted, _, declined, gerr := offerGuidedTrust(ctx, perr, p, l.tlsPreflight, serverURL, caFingerprint)
+				if accepted == nil {
+					if declined {
+						return runtime.Result{}, pinnedTrustFailure(gerr, name)
+					}
+					// A consent was given but the candidate itself then
+					// failed to re-verify: gerr already describes THAT
+					// candidate, never the entry's still-failing stored
+					// trust — pinnedTrustFailure's "pinned trust no longer
+					// matches" framing would misdescribe it.
+					return runtime.Result{}, gerr
+				}
+				pendingTrust = accepted
 			}
 		}
 	}
 
+	// snap binds the commit below to the entry state THIS preflight verified
+	// against — caSelector/caBytes here are always the pre-consent, stored
+	// values (a guided-trust replacement never appears in the snapshot), so
+	// a concurrent writer that changed the entry between this preflight and
+	// the commit is still caught as drift, exactly as an unmodified plain
+	// login already is.
 	snap := authSnapshot{name: name, canonicalURL: serverURL, caSelector: caSelector, caBytes: caBytes}
+	if pendingTrust != nil {
+		// The rest of THIS operation (token acquisition, verify) authenticates
+		// against the just-accepted candidate, never the still-failing stored
+		// CA.
+		caBytes = pendingTrust.pem
+	}
 
 	token, viaProvider, authErr := resolveLoginToken(ctx, serverURL, caBytes, in, p)
 	if authErr == nil {
@@ -433,12 +510,46 @@ func (l loginCmd) authenticateAndStore(
 		if pinNotice != "" {
 			warnings = append(warnings, pinNotice)
 		}
-		if err := store.SetToken(config.ServerRef{Name: name, URL: serverURL}, token); err != nil {
-			if !errors.Is(err, config.ErrTokenStoreUnsupported) {
-				return err
+		ref := config.ServerRef{Name: name, URL: serverURL}
+		compensate, tokenErr := config.CommitToken(store, ref, token)
+		tokenCommitted := tokenErr == nil
+		if tokenErr != nil {
+			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
+				return tokenErr
 			}
 			warnings = append(warnings,
 				"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
+		}
+		if pendingTrust != nil {
+			// The token write (or its declared ErrTokenStoreUnsupported
+			// exception) already ran; the CA/fingerprint write is the second
+			// half of the same commit. A failure here, after a real token
+			// commit, is compensated when the backend can — never a silent
+			// orphan.
+			cfg.Servers[name] = config.Server{URL: serverURL, CA: pendingTrust.pem, CAFingerprint: pendingTrust.fingerprint}
+			writeConfig := cfg.Write
+			if trustCommitConfigWriteHookForTest != nil {
+				writeConfig = trustCommitConfigWriteHookForTest
+			}
+			if werr := writeConfig(); werr != nil {
+				compensated, compensateErr := false, ""
+				if tokenCommitted && compensate != nil {
+					if cerr := compensate(); cerr != nil {
+						compensateErr = cerr.Error()
+					} else {
+						compensated = true
+					}
+				}
+				return clierr.New(clierr.CodeGeneric,
+					fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())).
+					WithDetails(clierr.TrustCommitFailureDetails{
+						TokenCommitted:   tokenCommitted,
+						Compensated:      compensated,
+						CompensateError:  compensateErr,
+						ConfigWriteError: werr.Error(),
+					}).
+					WithHint(config.LoginHintFor(name))
+			}
 		}
 		currentServer = cfg.CurrentServer
 		if currentServer != "" {
