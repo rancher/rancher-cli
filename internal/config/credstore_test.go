@@ -831,7 +831,7 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 // (a re-auth for the same server+cluster+user in another process) refreshes
 // the SAME key with a valid credential. The lock-held re-read must detect the
 // refresh, keep the entry, and serve the fresh credential — not delete the
-// just-minted token and return ErrNoToken.
+// just-created token and return ErrNoToken.
 // No t.Parallel(): uses the package-level getCachedPruneHook.
 func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
 	dir := t.TempDir()

@@ -54,8 +54,8 @@ what drifted the previous revision of this doc).
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and project-namespace lookup. |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
-| `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-minted kubeconfigs), plus the shared `--ttl` duration parser. |
-| `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (mint the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
+| `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
+| `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
 | `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) — the sanctioned two-resource public-API user-password workflow, never Norman. |
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded — deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
@@ -71,7 +71,7 @@ what drifted the previous revision of this doc).
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
-| `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative mint/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
+| `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
 | `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-real`) and replayed against the composite façade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Test-only. |
 
 ## Package dependency diagram
@@ -455,7 +455,7 @@ Logout has two paths, not one, because they need different completeness/cost tra
   rather than by config-entry name is deliberate fail-safe behavior, not an oversight: a
   cache entry embeds the entry name only by kubeconfig naming convention (structurally
   unreliable to match on), while over-deleting a neighbor account on the same host costs
-  it one silent re-auth on next use (the exec plugin re-mints transparently) —
+  it one silent re-auth on next use (the exec plugin re-creates transparently) —
   under-deleting leaves a live credential behind after the user asked to log out.
 - **`--all`** calls `DeleteLoginToken` per configured server (never `DeleteTokenEverywhere` — a
   per-server host-scoped cache delete, looped over every server, would cost
@@ -593,7 +593,7 @@ or Result envelopes — the schema manifest is the single published source.
 
 **Reserved `RancherClient` port.** `ClusterClient` covers the two cluster-scoped endpoint
 families (`/k8s/clusters/local` and `/k8s/clusters/<id>`). Management-*plane* operations
-that are not operations on any cluster — minting a token, generating a kubeconfig — need
+that are not operations on any cluster — creating a token, generating a kubeconfig — need
 a third scope against the Rancher server itself. That port, `RancherClient`, is reserved
 now and added when the first consumer needs it: migrating `internal/token` off its
 hand-rolled Norman HTTP, the `auth status` preflight, and a future `rancher kubeconfig`
@@ -603,7 +603,7 @@ command. The factory struct is the seam that will later hand out both.
 `/k8s/clusters/<id>` proxy into envtest — stays exactly what it always was: a router, not
 a Rancher emulator. `internal/testrancher` is a separate façade layered in front of it:
 the public auth endpoints (`/v1-public/authproviders`, `/v1-public/login`) and the
-ext.cattle.io/v1 Token store's imperative mint/revoke behavior are matched first and
+ext.cattle.io/v1 Token store's imperative create/revoke behavior are matched first and
 served by the façade; everything else falls through to the router untouched. Every txtar
 script gets its own façade + TLS server instance, composed over the one shared envtest
 reverse-proxy transport, so deterministic per-instance token names and secrets stay

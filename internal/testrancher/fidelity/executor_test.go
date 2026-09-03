@@ -93,7 +93,7 @@ func TestRunProbeExtBearerNameCapture(t *testing.T) {
 		Name: "fam/ext-capture",
 		Observations: []Observation{
 			{
-				Name:     "mint",
+				Name:     "create",
 				Request:  RequestSpec{Method: "POST", Path: "/tokens", Body: `{"spec":{}}`, Identity: IdentityAdmin},
 				Captures: map[string]Capture{"tokname": {Path: "status.bearerToken", ExtBearerName: true}},
 			},
@@ -104,7 +104,7 @@ func TestRunProbeExtBearerNameCapture(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	assert.Equal(t, "/tokens/fac-token-7", gotPath,
-		"the named request must reach the minted record via the bearer-derived name")
+		"the named request must reach the created record via the bearer-derived name")
 	assert.Equal(t, http.StatusOK, results[1].Status)
 }
 
@@ -428,7 +428,7 @@ func TestRunProbeExtBearerCaptureTransformFailureFails(t *testing.T) {
 		Name: "fam/badbearer",
 		Observations: []Observation{
 			{
-				Name:     "mint",
+				Name:     "create",
 				Request:  RequestSpec{Method: "POST", Path: "/t", Body: `{}`, Identity: IdentityAdmin},
 				Captures: map[string]Capture{"tokname": {Path: "status.bearerToken", ExtBearerName: true}},
 			},

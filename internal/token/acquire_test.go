@@ -44,7 +44,7 @@ func TestAcquireDerivedSuccess(t *testing.T) {
 	assert.Equal(t, TokenKindExt, cred.Ref.Kind)
 	assert.Regexp(t, `^[0-9a-f]{12}$`, cred.Marker)
 	descs := f.LoginDescriptions()
-	require.Len(t, descs, 2, "login body and mint body both carry the description")
+	require.Len(t, descs, 2, "login body and create body both carry the description")
 	assert.Contains(t, descs[0], "[op:"+cred.Marker+"]")
 	assert.Contains(t, descs[1], "[op:"+cred.Marker+"]")
 	assert.Equal(t, ResultRevoked, cred.SessionTokenCleanup.Result)
@@ -58,12 +58,12 @@ func TestAcquireDerivedSuccess(t *testing.T) {
 	assert.LessOrEqual(t, cred.SessionCreatedAt, cred.DerivedCreatedAt)
 }
 
-// TestAcquireMintFailuresRevokeSessionBeforeReturn pins that S is revoked
-// and its exact outcome is on the returned error for every mint failure
+// TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn pins that S is revoked
+// and its exact outcome is on the returned error for every create failure
 // class, including when the S delete itself answers 404 or 500, and that
 // D's cleanup is notAttempted whenever D cannot be addressed and a real
 // DELETE outcome when D is known with an unusable bearer.
-func TestAcquireMintFailuresRevokeSessionBeforeReturn(t *testing.T) {
+func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name        string
@@ -74,13 +74,13 @@ func TestAcquireMintFailuresRevokeSessionBeforeReturn(t *testing.T) {
 		sDeleteMode string // "", "gone", "fail"
 		wantS       RevokeResult
 	}{
-		{"mint 500", testrancher.Options{MintStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "", ResultRevoked},
-		{"mint 401", testrancher.Options{MintStatus: 401}, CreateNotCreated, ResultNotAttempted, 1, "", ResultRevoked},
-		{"mint drop response", testrancher.Options{DropMintResponse: true}, CreateUnknown, ResultNotAttempted, 1, "", ResultRevoked},
-		{"mint malformed", testrancher.Options{MalformedMintResponse: true}, CreateUnidentified, ResultNotAttempted, 1, "", ResultRevoked},
-		{"mint known, unusable bearer", testrancher.Options{MintBearerOverride: "garbage"}, CreateKnown, ResultRevoked, 2, "", ResultRevoked},
-		{"mint 500, S already gone", testrancher.Options{MintStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "gone", ResultAlreadyGone},
-		{"mint 500, S delete fails", testrancher.Options{MintStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "fail", ResultFailed},
+		{"create 500", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "", ResultRevoked},
+		{"create 401", testrancher.Options{DerivedCreateStatus: 401}, CreateNotCreated, ResultNotAttempted, 1, "", ResultRevoked},
+		{"create drop response", testrancher.Options{DropDerivedCreateResponse: true}, CreateUnknown, ResultNotAttempted, 1, "", ResultRevoked},
+		{"create malformed", testrancher.Options{MalformedDerivedCreateResponse: true}, CreateUnidentified, ResultNotAttempted, 1, "", ResultRevoked},
+		{"create known, unusable bearer", testrancher.Options{DerivedBearerOverride: "garbage"}, CreateKnown, ResultRevoked, 2, "", ResultRevoked},
+		{"create 500, S already gone", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "gone", ResultAlreadyGone},
+		{"create 500, S delete fails", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "fail", ResultFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestAcquireMintFailuresRevokeSessionBeforeReturn(t *testing.T) {
 			require.True(t, ok, "got %v", err)
 			assert.Equal(t, CreateKnown, ae.SessionTokenOutcome)
 			require.NotNil(t, ae.SessionTokenRef)
-			assert.Equal(t, tc.wantD, ae.DerivedMintOutcome)
+			assert.Equal(t, tc.wantD, ae.DerivedCreateOutcome)
 			assert.Equal(t, tc.wantDClean, ae.DerivedTokenCleanup.Result, "D cleanup is always an explicit outcome")
 			assert.Equal(t, tc.wantS, ae.SessionTokenCleanup.Result, "the cleanup outcome is on the error, not lost to a deferred write")
 			assert.NotEmpty(t, ae.Marker)
@@ -110,13 +110,13 @@ func TestAcquireMintFailuresRevokeSessionBeforeReturn(t *testing.T) {
 	}
 }
 
-// TestAcquireCancellationDuringMintStillRevokesSession pins that cleanup
+// TestAcquireCancellationDuringDerivedCreateStillRevokesSession pins that cleanup
 // runs on a detached context: the façade sees S's DELETE after the
 // operation context is cancelled.
-func TestAcquireCancellationDuringMintStillRevokesSession(t *testing.T) {
+func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	f := testrancher.New(testrancher.Options{MintHook: func(r *http.Request) { cancel(); <-r.Context().Done() }})
+	f := testrancher.New(testrancher.Options{DerivedCreateHook: func(r *http.Request) { cancel(); <-r.Context().Done() }})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	var notices bytes.Buffer
@@ -133,7 +133,7 @@ func TestAcquireCancellationDuringMintStillRevokesSession(t *testing.T) {
 // response and a body that establishes no shape are unknown of unknown
 // kind; a recognized body with neither name nor usable bearer is
 // unidentified; a name-only body and a body whose bearer fails validation
-// are known. In every case no mint is attempted and both cleanups are
+// are known. In every case no derived token create is attempted and both cleanups are
 // notAttempted.
 func TestAcquireSessionCreateIndeterminate(t *testing.T) {
 	t.Parallel()
@@ -159,11 +159,11 @@ func TestAcquireSessionCreateIndeterminate(t *testing.T) {
 			assert.Equal(t, tc.want, ae.SessionTokenOutcome)
 			assert.Equal(t, tc.kind, ae.SessionTokenKind)
 			assert.Equal(t, tc.ref, ae.SessionTokenRef != nil)
-			assert.Equal(t, CreateNotAttempted, ae.DerivedMintOutcome)
+			assert.Equal(t, CreateNotAttempted, ae.DerivedCreateOutcome)
 			assert.Equal(t, ResultNotAttempted, ae.SessionTokenCleanup.Result)
 			assert.Equal(t, ResultNotAttempted, ae.DerivedTokenCleanup.Result)
 			assert.Empty(t, f.DeleteRequests(), "no usable bearer, no delete")
-			assert.Empty(t, f.MintRequests(), "no usable bearer, no mint")
+			assert.Empty(t, f.DerivedCreateRequests(), "no usable bearer, no derived token create")
 		})
 	}
 }
@@ -182,7 +182,7 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 	assert.Empty(t, cred.DerivedCreatedAt)
 }
 
-// TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups pins the no-mint path
+// TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups pins the no-create path
 // of the full acquisition: a SAML sign-in the browser never completes is an
 // unknown, unmarked S with the handoff, D not attempted, both cleanups
 // explicitly notAttempted, and no operation marker (no marked create was
@@ -198,7 +198,7 @@ func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
 	assert.True(t, ae.SessionTokenUnmarked)
 	require.NotNil(t, ae.SessionTokenSearch)
 	assert.Equal(t, ResultNotAttempted, ae.SessionTokenCleanup.Result)
-	assert.Equal(t, CreateNotAttempted, ae.DerivedMintOutcome)
+	assert.Equal(t, CreateNotAttempted, ae.DerivedCreateOutcome)
 	assert.Equal(t, ResultNotAttempted, ae.DerivedTokenCleanup.Result)
 	assert.Empty(t, ae.Marker)
 	assert.Empty(t, f.DeleteRequests())
@@ -221,7 +221,7 @@ func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 	assert.Equal(t, "x509", ae.Err.Error(), "the original is untouched")
 	// Every field is copied: a field added to the struct without being
 	// checked here fails the count.
-	assert.Equal(t, 13, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, DerivedMintOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
+	assert.Equal(t, 13, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
 }
 
 // TestAcquireSessionCreateKindKnowledge pins what the acquisition knows
@@ -258,7 +258,7 @@ func TestAcquireSessionCreateKindKnowledge(t *testing.T) {
 
 // TestAcquireExtShapedSessionThroughLogin pins the ownership state machine
 // over an ext-shaped S (a json request Rancher answers with an ext Token
-// object): S is revoked on the ext route with D as the bearer, a mint
+// object): S is revoked on the ext route with D as the bearer, a derived token create
 // failure cleans the ext S, and the legacy fallback transfers an ext ref.
 func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 	t.Parallel()
@@ -274,9 +274,9 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 		assert.Equal(t, "ext", recs[0].Kind)
 		assert.Equal(t, cred.Token, recs[0].Bearer, "S is revoked with D as the bearer")
 	})
-	t.Run("mint failure cleans the ext S", func(t *testing.T) {
+	t.Run("create failure cleans the ext S", func(t *testing.T) {
 		t.Parallel()
-		f, _, _, err := acquireAgainst(t, testrancher.Options{LoginShape: "ext", MintStatus: 500})
+		f, _, _, err := acquireAgainst(t, testrancher.Options{LoginShape: "ext", DerivedCreateStatus: 500})
 		ae, ok := errors.AsType[*AcquireError](err)
 		require.True(t, ok, "got %v", err)
 		require.NotNil(t, ae.SessionTokenRef)

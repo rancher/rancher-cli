@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const mintTokensPath = token.MintTokensPath
+const extTokensPath = token.ExtTokensPath
 
 // recordingHandler captures every request it receives, for asserting a
-// mint-discrimination or unknown-name case actually fell through instead of
+// create-discrimination or unknown-name case actually fell through instead of
 // being served by the façade itself.
 type recordingHandler struct {
 	requests []*http.Request
@@ -198,23 +198,23 @@ func postForm(t *testing.T, client *http.Client, url string, form map[string]str
 	return resp, body
 }
 
-func TestMintDiscriminatesCRCreateFromMint(t *testing.T) {
+func TestDerivedCreateDiscriminatesCRCreateFromImperativeCreate(t *testing.T) {
 	t.Parallel()
 	fall := &recordingHandler{}
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, fall)
 
 	// A full CR (metadata.name present) must fall through untouched.
-	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"apiVersion": "ext.cattle.io/v1", "kind": "Token", "metadata": map[string]string{"name": "cr-token"}},
 		"e2e:secret")
 	assert.Equal(t, http.StatusTeapot, resp.StatusCode, "CR-shaped body must reach the recording fallthrough")
 	require.Len(t, fall.requests, 1)
 
-	// A bare {"spec": ...} body is a mint and must not reach fallthrough.
-	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	// A bare {"spec": ...} body is a derived token create and must not reach fallthrough.
+	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"spec": map[string]any{"description": "d"}}, "e2e:secret")
 	assert.Equal(t, http.StatusCreated, resp2.StatusCode)
-	assert.Len(t, fall.requests, 1, "the mint branch must not fall through")
+	assert.Len(t, fall.requests, 1, "the derived token create branch must not fall through")
 	var tok struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
@@ -224,12 +224,12 @@ func TestMintDiscriminatesCRCreateFromMint(t *testing.T) {
 	assert.Equal(t, "ext/fac-token-1:fac-secret-1", tok.Status.BearerToken)
 }
 
-func TestMintTTLHonoredAndDefaulted(t *testing.T) {
+func TestDerivedCreateTTLHonoredAndDefaulted(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
 	before := time.Now()
-	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"spec": map[string]any{"ttl": 60_000}}, "e2e:secret")
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var tok struct {
@@ -243,7 +243,7 @@ func TestMintTTLHonoredAndDefaulted(t *testing.T) {
 	assert.WithinDuration(t, before.Add(60*time.Second), expiresAt, 5*time.Second, "spec.ttl must be honored")
 
 	before2 := time.Now()
-	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"spec": map[string]any{}}, "e2e:secret")
 	require.Equal(t, http.StatusCreated, resp2.StatusCode)
 	var tok2 struct {
@@ -257,11 +257,11 @@ func TestMintTTLHonoredAndDefaulted(t *testing.T) {
 	assert.WithinDuration(t, before2.Add(15*time.Minute), expiresAt2, 5*time.Second, "absent spec.ttl must default to +15m")
 }
 
-func TestMintClusterNameRecorded(t *testing.T) {
+func TestDerivedCreateClusterNameRecorded(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
-	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"spec": map[string]any{"clusterName": "c-test"}}, "e2e:secret")
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var tok struct {
@@ -272,7 +272,7 @@ func TestMintClusterNameRecorded(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &tok))
 	name := "fac-token-1"
 
-	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/"+name, nil, "e2e:secret")
+	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/"+name, nil, "e2e:secret")
 	require.Equal(t, http.StatusOK, getResp.StatusCode)
 	var cr struct {
 		Spec struct {
@@ -287,9 +287,9 @@ func TestDeterministicNameAndSecretSequenceIncludingProviderLoginTwoSlots(t *tes
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
-	// Slot 1: two independent mints in sequence are strictly incrementing.
-	_, body1 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
-	_, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	// Slot 1: two independent creates in sequence are strictly incrementing.
+	_, body1 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	_, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
 	var t1, t2 struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
@@ -305,8 +305,8 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
-	// Reproduces resolveProviderLoginToken (login_ext.go): login mints session
-	// token S (slot 1), MintDerivedToken mints derived token D (slot 2) using S
+	// Reproduces resolveProviderLoginToken (login_ext.go): login creates session
+	// token S (slot 1), CreateDerivedToken creates derived token D (slot 2) using S
 	// as bearer, then S is revoked. The stored credential is D = fac-token-2.
 	_, loginBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
 		map[string]string{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass"}, "")
@@ -318,18 +318,18 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	require.NoError(t, json.Unmarshal(loginBody, &s))
 	require.Equal(t, "ext/fac-token-1:fac-secret-1", s.Status.BearerToken)
 
-	mintResp, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	createResp, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"spec": map[string]any{}}, s.Status.BearerToken)
-	require.Equal(t, http.StatusCreated, mintResp.StatusCode)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	var d struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		}
 	}
-	require.NoError(t, json.Unmarshal(mintBody, &d))
+	require.NoError(t, json.Unmarshal(createBody, &d))
 	assert.Equal(t, "ext/fac-token-2:fac-secret-2", d.Status.BearerToken, "the stored credential after a provider login is fac-token-2")
 
-	revokeResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", nil, s.Status.BearerToken)
+	revokeResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", nil, s.Status.BearerToken)
 	assert.Equal(t, http.StatusOK, revokeResp.StatusCode)
 }
 
@@ -338,16 +338,16 @@ func TestNamedGetServedUnknownFallsThroughAndListMerges(t *testing.T) {
 	fall := &recordingHandler{}
 	f, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, fall)
 
-	_, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	_, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
 	var tok struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		}
 	}
-	require.NoError(t, json.Unmarshal(mintBody, &tok))
+	require.NoError(t, json.Unmarshal(createBody, &tok))
 	require.True(t, f.ValidBearer(tok.Status.BearerToken))
 
-	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, "e2e:secret")
+	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, "e2e:secret")
 	require.Equal(t, http.StatusOK, getResp.StatusCode)
 	var cr struct {
 		Metadata struct {
@@ -365,7 +365,7 @@ func TestNamedGetServedUnknownFallsThroughAndListMerges(t *testing.T) {
 	assert.Empty(t, cr.Status.BearerToken, "bearer must never be served on GET")
 	assert.Empty(t, cr.Status.Value, "value must never be served on GET")
 
-	getResp2, getBody2 := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, "e2e:secret")
+	getResp2, getBody2 := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, "e2e:secret")
 	require.Equal(t, http.StatusOK, getResp2.StatusCode)
 	var cr2 struct {
 		Metadata struct {
@@ -375,11 +375,11 @@ func TestNamedGetServedUnknownFallsThroughAndListMerges(t *testing.T) {
 	require.NoError(t, json.Unmarshal(getBody2, &cr2))
 	assert.Equal(t, cr.Metadata.ResourceVersion, cr2.Metadata.ResourceVersion, "resourceVersion must be stable across reads")
 
-	unknownResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/no-such-token", nil, "e2e:secret")
+	unknownResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/no-such-token", nil, "e2e:secret")
 	assert.Equal(t, http.StatusTeapot, unknownResp.StatusCode, "unknown-name GET must fall through")
 
 	before := len(fall.requests)
-	listResp, listBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath, nil, "e2e:secret")
+	listResp, listBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath, nil, "e2e:secret")
 	require.Equal(t, http.StatusOK, listResp.StatusCode)
 	assert.Len(t, fall.requests, before+1, "LIST asks the fallthrough for its own items first")
 	var list struct {
@@ -401,15 +401,15 @@ func TestDeleteDryRunRealDeleteReDeleteFallsThrough(t *testing.T) {
 	fall := &recordingHandler{}
 	f, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, fall)
 
-	_, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	_, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
 	var tok struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		}
 	}
-	require.NoError(t, json.Unmarshal(mintBody, &tok))
+	require.NoError(t, json.Unmarshal(createBody, &tok))
 
-	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, "e2e:secret")
+	getResp, getBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, "e2e:secret")
 	require.Equal(t, http.StatusOK, getResp.StatusCode)
 	var cr struct {
 		Metadata struct {
@@ -419,44 +419,44 @@ func TestDeleteDryRunRealDeleteReDeleteFallsThrough(t *testing.T) {
 	require.NoError(t, json.Unmarshal(getBody, &cr))
 
 	dryRunBody := map[string]any{"dryRun": []string{"All"}, "preconditions": map[string]string{"resourceVersion": cr.Metadata.ResourceVersion}}
-	dryResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", dryRunBody, "e2e:secret")
+	dryResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", dryRunBody, "e2e:secret")
 	assert.Equal(t, http.StatusOK, dryResp.StatusCode)
 	assert.True(t, f.ValidBearer(tok.Status.BearerToken), "dry-run delete must not revoke")
 
 	// Wrong precondition on the real delete must be rejected, still not revoking.
 	badPrecondition := map[string]any{"preconditions": map[string]string{"resourceVersion": "stale"}}
-	badResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", badPrecondition, "e2e:secret")
+	badResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", badPrecondition, "e2e:secret")
 	assert.Equal(t, http.StatusConflict, badResp.StatusCode)
 	assert.True(t, f.ValidBearer(tok.Status.BearerToken))
 
 	realBody := map[string]any{"preconditions": map[string]string{"resourceVersion": cr.Metadata.ResourceVersion}}
-	realResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", realBody, "e2e:secret")
+	realResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", realBody, "e2e:secret")
 	assert.Equal(t, http.StatusOK, realResp.StatusCode)
 	assert.False(t, f.ValidBearer(tok.Status.BearerToken), "the real delete must revoke")
 
-	reDeleteResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", nil, "e2e:secret")
+	reDeleteResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", nil, "e2e:secret")
 	assert.Equal(t, http.StatusTeapot, reDeleteResp.StatusCode, "re-delete of an already-gone name must fall through")
 	require.Len(t, fall.requests, 1)
 }
 
-func TestLegacyModeMintNotFoundCRFallthroughIntact(t *testing.T) {
+func TestLegacyModeDerivedCreateNotFoundCRFallthroughIntact(t *testing.T) {
 	t.Parallel()
 	fall := &recordingHandler{}
 	_, srv := newFacade(t, testrancher.Options{Legacy: true, SeedToken: "e2e:secret"}, fall)
 
-	mintResp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
-	assert.Equal(t, http.StatusNotFound, mintResp.StatusCode, "legacy mode 404s the mint route")
+	createResp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	assert.Equal(t, http.StatusNotFound, createResp.StatusCode, "legacy mode 404s the derived token create route")
 
-	crResp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath,
+	crResp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
 		map[string]any{"metadata": map[string]string{"name": "cr-token"}}, "e2e:secret")
 	assert.Equal(t, http.StatusTeapot, crResp.StatusCode, "CR-create fallthrough stays intact under legacy mode")
 	require.Len(t, fall.requests, 1)
 }
 
-func TestMintRejectsUnauthorizedBearer(t *testing.T) {
+func TestDerivedCreateRejectsUnauthorizedBearer(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
-	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "garbage:garbage")
+	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "garbage:garbage")
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
@@ -464,24 +464,24 @@ func TestNamedGetAndDeleteRejectUnauthorizedBearer(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, &recordingHandler{})
 
-	_, mintBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+mintTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	_, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
 	var tok struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		}
 	}
-	require.NoError(t, json.Unmarshal(mintBody, &tok))
+	require.NoError(t, json.Unmarshal(createBody, &tok))
 
 	for _, bearer := range []string{"", "garbage:garbage"} {
-		getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, bearer)
+		getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, bearer)
 		assert.Equal(t, http.StatusUnauthorized, getResp.StatusCode, "GET with bearer %q must 401", bearer)
 
-		delResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+mintTokensPath+"/fac-token-1", nil, bearer)
+		delResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", nil, bearer)
 		assert.Equal(t, http.StatusUnauthorized, delResp.StatusCode, "DELETE with bearer %q must 401", bearer)
 	}
 
 	// The token is still valid after both rejections — neither failed call revoked it.
-	getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/fac-token-1", nil, tok.Status.BearerToken)
+	getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, tok.Status.BearerToken)
 	assert.Equal(t, http.StatusOK, getResp.StatusCode)
 }
 
@@ -706,14 +706,14 @@ func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
 	cases := []struct {
 		name   string
 		opts   testrancher.Options
-		mint   bool
+		create bool
 		status int
 		want   int
 	}{
 		{"login 401", testrancher.Options{LoginStatus: 401}, false, 401, 0},
 		{"login 500", testrancher.Options{LoginStatus: 500}, false, 500, 1},
-		{"mint 401", testrancher.Options{MintStatus: 401, SeedToken: "seed:secret"}, true, 401, 0},
-		{"mint 500", testrancher.Options{MintStatus: 500, SeedToken: "seed:secret"}, true, 500, 1},
+		{"create 401", testrancher.Options{DerivedCreateStatus: 401, SeedToken: "seed:secret"}, true, 401, 0},
+		{"create 500", testrancher.Options{DerivedCreateStatus: 500, SeedToken: "seed:secret"}, true, 500, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -723,8 +723,8 @@ func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
 			t.Cleanup(srv.Close)
 			var req *http.Request
 			var err error
-			if tc.mint {
-				req, err = http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{}}`))
+			if tc.create {
+				req, err = http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{}}`))
 				require.NoError(t, err)
 				req.Header.Set("Authorization", "Bearer seed:secret")
 			} else {
@@ -769,10 +769,10 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 				sessionKind = "ext"
 			}
 			sBearer := f.BearersOfKind(sessionKind)[0]
-			mint, err := http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{}}`))
+			create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{}}`))
 			require.NoError(t, err)
-			mint.Header.Set("Authorization", "Bearer "+sBearer)
-			resp, err := http.DefaultClient.Do(mint)
+			create.Header.Set("Authorization", "Bearer "+sBearer)
+			resp, err := http.DefaultClient.Do(create)
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 			var dBearer string
@@ -785,7 +785,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 			del := func(kind, name, bearer string) int {
 				path := "/k8s/clusters/local/apis/management.cattle.io/v3/tokens/"
 				if kind == "ext" {
-					path = mintTokensPath + "/"
+					path = extTokensPath + "/"
 				}
 				req, err := http.NewRequest(http.MethodDelete, srv.URL+path+name, nil)
 				require.NoError(t, err)
@@ -830,17 +830,17 @@ func TestFacadeRelayDepositOnCommand(t *testing.T) {
 // with a resourceVersion, a dry-run delete with the current precondition
 // changes nothing, a stale precondition is refused with 409, and every
 // attempt is recorded with its dry-run flag and precondition. The record is
-// created through the mint POST, so it is an ext token, not a v3 login
+// created through the derived token create POST, so it is an ext token, not a v3 login
 // token.
 func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	t.Parallel()
 	f := testrancher.New(testrancher.Options{SeedToken: "seed:secret"})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	mint, err := http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
+	create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
 	require.NoError(t, err)
-	mint.Header.Set("Authorization", "Bearer seed:secret")
-	resp, err := http.DefaultClient.Do(mint)
+	create.Header.Set("Authorization", "Bearer seed:secret")
+	resp, err := http.DefaultClient.Do(create)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -853,7 +853,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 		} `json:"metadata"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
-	assert.Equal(t, names[0], created.Metadata.Name, "the mint response names the created resource")
+	assert.Equal(t, names[0], created.Metadata.Name, "the derived token create response names the created resource")
 
 	get := func(path string) map[string]any {
 		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
@@ -867,7 +867,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
 		return got
 	}
-	list := get(mintTokensPath)
+	list := get(extTokensPath)
 	assert.Equal(t, "TokenList", list["kind"])
 	items, _ := list["items"].([]any)
 	descriptions := map[string]string{}
@@ -880,13 +880,13 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	}
 	require.Contains(t, descriptions, names[0], "the ext collection lists the ext record")
 	assert.Equal(t, "x [op:0123456789ab]", descriptions[names[0]], "the list carries the description the recovery searches")
-	one := get(mintTokensPath + "/" + names[0])
+	one := get(extTokensPath + "/" + names[0])
 	meta, _ := one["metadata"].(map[string]any)
 	rv, _ := meta["resourceVersion"].(string)
 	require.NotEmpty(t, rv)
 
 	del := func(body string) int {
-		req, err := http.NewRequest(http.MethodDelete, srv.URL+mintTokensPath+"/"+names[0], strings.NewReader(body))
+		req, err := http.NewRequest(http.MethodDelete, srv.URL+extTokensPath+"/"+names[0], strings.NewReader(body))
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer seed:secret")
 		req.Header.Set("Content-Type", "application/json")

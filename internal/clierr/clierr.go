@@ -74,7 +74,7 @@ func (d CapabilityUnsupportedDetails) TextDetails() []string {
 // missing/malformed delivered value, or a wait timeout. Naming the
 // resource and a non-mutating recovery keeps every post-commit failure
 // from reading as an invitation to blindly retry — retrying a committed
-// create/add/rotate mints a second credential. PartialOutput is set only
+// create/add/rotate creates a second credential. PartialOutput is set only
 // by the render-failure path, when the final stdout write may already have
 // exposed part of the payload.
 type CommittedContextDetails struct {

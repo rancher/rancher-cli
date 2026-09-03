@@ -734,7 +734,7 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // embeds the config-entry name only by kubeconfig naming convention, so
 // matching by name is structurally unreliable, while over-deleting a
 // neighbor account on the same host costs it one silent re-auth on next use
-// (the exec plugin re-mints transparently) — under-deleting leaves a live
+// (the exec plugin re-creates transparently) — under-deleting leaves a live
 // credential behind after the user asked to log out, the exact failure this
 // function exists to prevent.
 //

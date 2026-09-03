@@ -221,7 +221,7 @@ func TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-// TestCreateKubeconfigExecEmptyValueIsError mirrors mintDerivedToken's
+// TestCreateKubeconfigExecEmptyValueIsError mirrors createDerivedToken's
 // empty-bearer guard: an absent or empty status.value must be a real error,
 // never exit-0 with a header-only file that fails to parse downstream.
 func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {

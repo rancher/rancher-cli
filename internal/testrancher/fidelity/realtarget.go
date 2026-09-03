@@ -114,7 +114,7 @@ func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 
 const standardUsername = "e2e-fid-standard"
 
-// newStandardPassword mints a fresh random password for the throwaway standard
+// newStandardPassword generates a fresh random password for the throwaway standard
 // user. It is generated per RealTarget instance rather than hardcoded so no
 // usable credential for a provisioned user lives in this (public) source.
 func newStandardPassword() (string, error) {
@@ -169,20 +169,20 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 	})
 }
 
-// revokedBearer mints a derived token as admin, then revokes it by the name
+// revokedBearer creates a derived token as admin, then revokes it by the name
 // embedded in the ext bearer.
 func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
 	return t.revoked.Get(func() (string, error) {
-		body, _, err := t.adminJSON(ctx, http.MethodPost, token.MintTokensPath, map[string]any{"spec": map[string]any{}}, http.StatusCreated)
+		body, _, err := t.adminJSON(ctx, http.MethodPost, token.ExtTokensPath, map[string]any{"spec": map[string]any{}}, http.StatusCreated)
 		if err != nil {
-			return "", fmt.Errorf("minting token to revoke: %w", err)
+			return "", fmt.Errorf("creating token to revoke: %w", err)
 		}
 		bearer := extBearerFrom(body)
 		name, ok := NameFromExtBearer(bearer)
 		if !ok {
-			return "", fmt.Errorf("mint response bearer is not ext-shaped (credential value withheld)")
+			return "", fmt.Errorf("create response bearer is not ext-shaped (credential value withheld)")
 		}
-		if _, _, err := t.adminJSON(ctx, http.MethodDelete, token.MintTokensPath+"/"+name, nil, http.StatusOK); err != nil {
+		if _, _, err := t.adminJSON(ctx, http.MethodDelete, token.ExtTokensPath+"/"+name, nil, http.StatusOK); err != nil {
 			return "", fmt.Errorf("revoking token %s: %w", name, err)
 		}
 		return bearer, nil

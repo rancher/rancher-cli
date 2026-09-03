@@ -98,7 +98,7 @@ func usableBearer(kind TokenKind, name, bearer string) bool {
 type CreateResult struct {
 	Outcome CreateOutcome
 	// Kind is the created token's kind when it is known independently of a
-	// name: the mint endpoint creates only ext tokens, the SAML authtokens
+	// name: the derived token create endpoint creates only ext tokens, the SAML authtokens
 	// flow only v3 tokens, and a recognized login body declares its shape. Empty when
 	// a login response was lost or unrecognizable: the token may then be of
 	// either kind.
@@ -116,7 +116,7 @@ type CreateResult struct {
 var deterministicNotCreated = map[int]bool{400: true, 401: true, 403: true, 404: true, 409: true, 422: true}
 
 // classifyCreate applies only to the POST requests that perform a token
-// create (the login body for basic and OAuth, and the ext mint); the SAML
+// create (the login body for basic and OAuth, and the ext derived token create); the SAML
 // authtokens flow has no create response and takes a different path.
 func classifyCreate(resp *http.Response, body []byte, err error, createdAt string, marked bool, kind TokenKind) CreateResult {
 	r := CreateResult{Outcome: CreateUnknown, Kind: kind, Marked: marked, CreatedAt: createdAt}

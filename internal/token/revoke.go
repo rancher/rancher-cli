@@ -30,7 +30,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 	out := RevokeOutcome{Ref: &ref}
 	path := base + V3TokensPath + "/" + ref.Name
 	if ref.Kind == TokenKindExt {
-		path = base + MintTokensPath + "/" + ref.Name
+		path = base + ExtTokensPath + "/" + ref.Name
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {

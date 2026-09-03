@@ -253,8 +253,8 @@ func captureValue(body map[string]any, path string) (string, error) {
 }
 
 // NameFromExtBearer extracts the token name from an ext-style bearer
-// ("ext/<name>:<secret>"). Both testrancher and real Rancher mint this shape,
-// which lets targets revoke a token without depending on the mint response
+// ("ext/<name>:<secret>"). Both testrancher and real Rancher create this shape,
+// which lets targets revoke a token without depending on the create response
 // carrying metadata.name.
 func NameFromExtBearer(bearer string) (string, bool) {
 	rest, ok := strings.CutPrefix(bearer, "ext/")

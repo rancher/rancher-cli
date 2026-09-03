@@ -33,7 +33,7 @@ func TestNormalizeScrubsAndDeletes(t *testing.T) {
 	assert.Equal(t, "<secret>", status["bearerToken"])
 	assert.Equal(t, "<secret>", status["value"], "the bare token value is a live secret too")
 	assert.Equal(t, "<secret>", status["hash"], "the stored token digest is scrubbed too")
-	assert.Equal(t, "<ts>", status["lastUpdateTime"], "the per-mint timestamp is volatile")
+	assert.Equal(t, "<ts>", status["lastUpdateTime"], "the per-create timestamp is volatile")
 }
 
 func TestNormalizeTraversesArraysAndWildcards(t *testing.T) {

@@ -5,11 +5,11 @@ import "strings"
 // DefaultNormalizeRules scrub the volatile or secret fields present on most
 // Rancher and Kubernetes response bodies. Presence is preserved — a
 // placeholder is written in — except managedFields, which is dropped whole.
-// A minted ext Token carries its plaintext credential in BOTH status.bearerToken
+// A created ext Token carries its plaintext credential in BOTH status.bearerToken
 // (the "ext/<name>:<value>" form) and status.value (the bare value); both are
 // live secrets and must never reach a golden. status.hash is the token's stored
 // verification digest — secret-adjacent and per-token unique — and is scrubbed
-// too. status.lastUpdateTime is a per-mint timestamp, the same volatile class as
+// too. status.lastUpdateTime is a per-create timestamp, the same volatile class as
 // status.expiresAt.
 func DefaultNormalizeRules() []NormalizeRule {
 	return []NormalizeRule{

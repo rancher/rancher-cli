@@ -143,7 +143,7 @@ type UnmarkedTokenSearch struct {
 // TokenFate is one token's outcome and cleanup.
 type TokenFate struct {
 	Outcome CreateOutcome `json:"outcome"`
-	// Kind is the token's kind when it is known without a name: the mint
+	// Kind is the token's kind when it is known without a name: the derived token create
 	// endpoint only creates ext tokens, the SAML authtokens flow only v3
 	// tokens, and a readable login response declares its shape. Empty when
 	// a synchronous login response was lost or established no shape: the

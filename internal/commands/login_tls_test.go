@@ -287,7 +287,7 @@ func TestLoginPlainPreflightUnreachableServerNeverFailsLogin(t *testing.T) {
 	require.NoError(t, err, "an unreachable server must not become a preflight failure")
 }
 
-// TestLoginPlainPreflightRunsBeforeTokenRead pins the ordering the minted-token
+// TestLoginPlainPreflightRunsBeforeTokenRead pins the ordering the created-token
 // safety depends on: a failed preflight must surface before any token is
 // read or auth flow launched — with garbage on stdin, the TLS_TRUST error
 // (not a token-shape error) must come back.

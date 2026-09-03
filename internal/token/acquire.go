@@ -36,7 +36,7 @@ type AcquireError struct {
 	SessionTokenSearch   *SAMLHandoff
 	SessionTokenCleanup  RevokeOutcome
 	SessionCreatedAt     string
-	DerivedMintOutcome   CreateOutcome
+	DerivedCreateOutcome CreateOutcome
 	DerivedTokenRef      *TokenRef
 	DerivedTokenCleanup  RevokeOutcome
 	DerivedCreatedAt     string
@@ -81,7 +81,7 @@ func (st *acquireState) finishAcquireError(primary error) *AcquireError {
 	}
 	marker := st.marker
 	if !st.session.Create.Marked && st.derived.Outcome == CreateNotAttempted {
-		// No marked create was attempted: a SAML S with no mint. The marker
+		// No marked create was attempted: a SAML S with no derived token create. The marker
 		// identifies nothing on the server.
 		marker = ""
 	}
@@ -90,7 +90,7 @@ func (st *acquireState) finishAcquireError(primary error) *AcquireError {
 		SessionTokenOutcome: st.session.Create.Outcome, SessionTokenKind: st.session.Create.Kind, SessionTokenRef: st.session.Create.Ref,
 		SessionTokenUnmarked: !st.session.Create.Marked, SessionTokenSearch: st.session.Handoff,
 		SessionTokenCleanup: st.sClean, SessionCreatedAt: st.session.Create.CreatedAt,
-		DerivedMintOutcome: st.derived.Outcome, DerivedTokenRef: st.derived.Ref,
+		DerivedCreateOutcome: st.derived.Outcome, DerivedTokenRef: st.derived.Ref,
 		DerivedTokenCleanup: st.dClean, DerivedCreatedAt: st.derived.CreatedAt,
 	}
 }
@@ -142,7 +142,7 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		}
 	}()
 
-	dr, err := MintDerivedToken(ctx, client, st.base, s.Bearer, "", ttlMs, input.description)
+	dr, err := CreateDerivedToken(ctx, client, st.base, s.Bearer, "", ttlMs, input.description)
 	st.derived = dr
 	// D's cleanup is an explicit outcome from here on: notAttempted until a
 	// DELETE runs, so no report ever carries an empty result for a token

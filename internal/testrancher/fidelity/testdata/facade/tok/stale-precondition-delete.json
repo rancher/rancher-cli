@@ -2,7 +2,7 @@
   "oracleImage": "",
   "observations": [
     {
-      "name": "mint",
+      "name": "create",
       "status": 201,
       "contentType": "application/json",
       "body": {

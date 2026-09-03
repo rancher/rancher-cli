@@ -145,7 +145,7 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 // cmdSeedExecCache pre-warms the exec-credential cache `rancher auth
 // get-token` reads: seedexeccache <name> <cluster>. Scenarios that want
 // warm-cache state without exercising login use this instead of the
-// façade's cold mint/login paths. Seeding through the real
+// façade's cold create/login paths. Seeding through the real
 // config.CacheKey/SetCachedCred keeps the key composition and file format
 // guaranteed-consistent with what get-token reads; a hand-written fixture
 // can't work here since the cache key embeds the façade's host:port, which

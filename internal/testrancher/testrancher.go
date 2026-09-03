@@ -1,6 +1,6 @@
 // Package testrancher fakes just enough of Rancher's public auth surface
 // (/v1-public/*) and its ext.cattle.io/v1 Token store's imperative
-// mint/revoke behavior to drive the CLI's login and get-token flows
+// create/revoke behavior to drive the CLI's login and get-token flows
 // end-to-end without a real Rancher. It is test-only by convention: no
 // production package may import it.
 package testrancher
@@ -26,12 +26,12 @@ const (
 	authProvidersPath = "/v1-public/authproviders"
 	loginPath         = "/v1-public/login"
 
-	// mintTokensPath is the ext token collection behind the local-cluster
-	// proxy. It repeats production's token.MintTokensPath as a literal
+	// extTokensPath is the ext token collection behind the local-cluster
+	// proxy. It repeats production's token.ExtTokensPath as a literal
 	// because the token package's own tests exercise this façade, and an
 	// import of token here would make that a cycle; a test asserts the two
 	// stay equal.
-	mintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
+	extTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 
 	// v3TokensPath is the deprecated management.cattle.io/v3 token
 	// collection behind the local-cluster proxy — where a session token
@@ -44,7 +44,7 @@ const (
 	// deposited.
 	relayPathPrefix = "/v1-public/authtokens/"
 
-	defaultMintTTL = 15 * time.Minute
+	defaultDerivedTTL = 15 * time.Minute
 
 	// CRTCollectionPath is the Steve /v1 collection route for
 	// clusterregistrationtokens (Task 5, spec D-4). It must match
@@ -70,7 +70,7 @@ type Options struct {
 	// Fallthrough handles every request the façade does not own: the
 	// existing bearer-checked router in front of envtest.
 	Fallthrough http.Handler
-	// Legacy makes the mint branch of the token POST 404 (ErrExtGroupAbsent),
+	// Legacy makes the derived token create branch of the token POST 404 (ErrExtGroupAbsent),
 	// while CR-create fallthrough is unaffected.
 	Legacy bool
 	// LoginUser/LoginPass are the fixed local-provider credentials; default
@@ -88,9 +88,9 @@ type Options struct {
 	// serving /idp/* itself; the caller serves IdPHandler there. Empty keeps
 	// the stub on the façade's own origin.
 	IdPURL string
-	// SeedToken, when set, is accepted as a valid bearer for the mint
+	// SeedToken, when set, is accepted as a valid bearer for the derived token create
 	// endpoint alongside façade-issued tokens — the static seed token every
-	// existing e2e script already authenticates with (FA-1: "the mint
+	// existing e2e script already authenticates with (FA-1: "the derived token create
 	// requires a valid façade-issued (or seed) bearer").
 	SeedToken string
 	// ExtraProviders are provider types listed alongside localProvider, for
@@ -123,22 +123,22 @@ type Options struct {
 	// follows the response type: json is v3, kubeconfig is ext.
 	LoginShape string
 
-	// DropMintResponse creates the derived token and then closes the
+	// DropDerivedCreateResponse creates the derived token and then closes the
 	// connection without writing.
-	DropMintResponse bool
-	// MalformedMintResponse answers a created mint with a 201 whose body
+	DropDerivedCreateResponse bool
+	// MalformedDerivedCreateResponse answers a created derived token with a 201 whose body
 	// establishes no token shape.
-	MalformedMintResponse bool
-	// MintBearerOverride replaces the bearer in the mint response with this
+	MalformedDerivedCreateResponse bool
+	// DerivedBearerOverride replaces the bearer in the derived token create response with this
 	// string.
-	MintBearerOverride string
-	// MintStatus forces a status on the mint POST, with LoginStatus's rule
+	DerivedBearerOverride string
+	// DerivedCreateStatus forces a status on the derived token create POST, with LoginStatus's rule
 	// about when the record is created.
-	MintStatus int
-	// MintHook runs when a mint POST arrives, before the record is created
+	DerivedCreateStatus int
+	// DerivedCreateHook runs when a derived token create POST arrives, before the record is created
 	// or answered. A hook that cancels the client's context must then block
 	// on the request context so the answer cannot race the cancellation.
-	MintHook func(r *http.Request)
+	DerivedCreateHook func(r *http.Request)
 
 	// SessionDeleteMode and DerivedDeleteMode fail the revoke of a located
 	// record by its role, on either route: "" answers normally, "gone"
@@ -164,7 +164,7 @@ type record struct {
 	// client is later shown, because a server creates one definite kind.
 	kind string
 	// role is what the operation created the token for: "session" for the
-	// login handler and the SAML authtokens flow, "derived" for the mint
+	// login handler and the SAML authtokens flow, "derived" for the derived token create
 	// endpoint. The
 	// delete fault modes select on it.
 	role      string
@@ -202,19 +202,19 @@ type Facade struct {
 	opts Options
 	idp  *idpStub
 
-	mu           sync.Mutex
-	counter      int
-	tokens       map[string]*record
-	descriptions []string
-	deletes      []DeleteRecord
-	relayReqs    []RelayRecord
-	relay        map[string]string // request id → encrypted base64 bearer
-	logins       int
-	mints        int
+	mu             sync.Mutex
+	counter        int
+	tokens         map[string]*record
+	descriptions   []string
+	deletes        []DeleteRecord
+	relayReqs      []RelayRecord
+	relay          map[string]string // request id → encrypted base64 bearer
+	logins         int
+	derivedCreates int
 }
 
 // LoginDescriptions returns the descriptions the token-creating requests of
-// a login carried — the login POST and the mint POST — in order.
+// a login carried — the login POST and the derived token create POST — in order.
 func (f *Facade) LoginDescriptions() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -228,12 +228,12 @@ func (f *Facade) LoginCount() int {
 	return f.logins
 }
 
-// MintRequests is how many mint POSTs the façade received, whatever it
+// DerivedCreateRequests is how many derived token create POSTs the façade received, whatever it
 // answered.
-func (f *Facade) MintRequests() int {
+func (f *Facade) DerivedCreateRequests() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.mints
+	return f.derivedCreates
 }
 
 // DeleteRequests returns every recorded DELETE attempt, in order.
@@ -290,7 +290,7 @@ func (f *Facade) BearersOfKind(kind string) []string {
 // DepositRelay creates a v3 session token and deposits it for requestID,
 // encrypted to publicKeyB64 the way the browser sign-in does.
 func (f *Facade) DepositRelay(requestID, publicKeyB64 string) {
-	rec := f.mintToken("", 0)
+	rec := f.newToken("", 0)
 	f.mu.Lock()
 	rec.kind = "v3"
 	rec.role = "session"
@@ -354,14 +354,14 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleAuthProviders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == loginPath:
 		f.handleLogin(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == mintTokensPath:
+	case r.Method == http.MethodPost && r.URL.Path == extTokensPath:
 		f.handleTokensPOST(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == mintTokensPath:
+	case r.Method == http.MethodGet && r.URL.Path == extTokensPath:
 		f.handleExtCollection(w, r)
-	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
-		f.handleNamedGet(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
-	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
-		f.handleDelete(w, r, "ext", strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, extTokensPath+"/"):
+		f.handleNamedGet(w, r, strings.TrimPrefix(r.URL.Path, extTokensPath+"/"))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, extTokensPath+"/"):
+		f.handleDelete(w, r, "ext", strings.TrimPrefix(r.URL.Path, extTokensPath+"/"))
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, v3TokensPath+"/"):
 		f.handleDelete(w, r, "v3", strings.TrimPrefix(r.URL.Path, v3TokensPath+"/"))
 	case f.opts.EnableSAMLRelay && strings.HasPrefix(r.URL.Path, relayPathPrefix):
@@ -473,7 +473,7 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rec := f.mintToken("", 0)
+	rec := f.newToken("", 0)
 	f.mu.Lock()
 	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
 	rec.role = "session"
@@ -553,8 +553,8 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "reading body", http.StatusBadRequest)
 		return
 	}
-	// A full CR (create resource -f) carries metadata.name; a mint request
-	// (MintDerivedToken) is a bare {"spec": ...} body. Restore the body
+	// A full CR (create resource -f) carries metadata.name; a derived token create request
+	// (CreateDerivedToken) is a bare {"spec": ...} body. Restore the body
 	// before any fallthrough so the real handler can read it again.
 	var probe struct {
 		Metadata *struct {
@@ -569,10 +569,10 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f.mu.Lock()
-	f.mints++
+	f.derivedCreates++
 	f.mu.Unlock()
-	if f.opts.MintHook != nil {
-		f.opts.MintHook(r)
+	if f.opts.DerivedCreateHook != nil {
+		f.opts.DerivedCreateHook(r)
 	}
 
 	if f.opts.Legacy {
@@ -584,40 +584,40 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if deterministic4xx(f.opts.MintStatus) {
-		w.WriteHeader(f.opts.MintStatus)
+	if deterministic4xx(f.opts.DerivedCreateStatus) {
+		w.WriteHeader(f.opts.DerivedCreateStatus)
 		return
 	}
 
-	var mintReq struct {
+	var createReq struct {
 		Spec struct {
 			TTL         int64  `json:"ttl"`
 			ClusterName string `json:"clusterName"`
 			Description string `json:"description"`
 		} `json:"spec"`
 	}
-	_ = json.Unmarshal(body, &mintReq)
-	rec := f.mintToken(mintReq.Spec.ClusterName, mintReq.Spec.TTL)
+	_ = json.Unmarshal(body, &createReq)
+	rec := f.newToken(createReq.Spec.ClusterName, createReq.Spec.TTL)
 	f.mu.Lock()
 	rec.kind = "ext"
 	rec.role = "derived"
-	rec.description = mintReq.Spec.Description
-	if mintReq.Spec.Description != "" {
-		f.descriptions = append(f.descriptions, mintReq.Spec.Description)
+	rec.description = createReq.Spec.Description
+	if createReq.Spec.Description != "" {
+		f.descriptions = append(f.descriptions, createReq.Spec.Description)
 	}
 	f.mu.Unlock()
 
 	switch {
-	case f.opts.MintStatus != 0:
-		w.WriteHeader(f.opts.MintStatus)
-	case f.opts.DropMintResponse:
+	case f.opts.DerivedCreateStatus != 0:
+		w.WriteHeader(f.opts.DerivedCreateStatus)
+	case f.opts.DropDerivedCreateResponse:
 		dropConnection(w)
-	case f.opts.MalformedMintResponse:
+	case f.opts.MalformedDerivedCreateResponse:
 		writeJSON(w, http.StatusCreated, map[string]any{"broken": true})
 	default:
 		bearer := rec.bearer()
-		if f.opts.MintBearerOverride != "" {
-			bearer = f.opts.MintBearerOverride
+		if f.opts.DerivedBearerOverride != "" {
+			bearer = f.opts.DerivedBearerOverride
 		}
 		writeExtTokenAs(w, http.StatusCreated, rec, rec.name, bearer)
 	}
@@ -681,7 +681,7 @@ func (f *Facade) handleRelay(w http.ResponseWriter, r *http.Request, id string) 
 	default:
 		writeJSON(w, http.StatusOK, map[string]any{
 			"token":     payload,
-			"expiresAt": time.Now().Add(defaultMintTTL).UTC().Format(time.RFC3339),
+			"expiresAt": time.Now().Add(defaultDerivedTTL).UTC().Format(time.RFC3339),
 		})
 	}
 }
@@ -945,11 +945,11 @@ func bearerFromHeader(r *http.Request) string {
 	return strings.TrimPrefix(h, prefix)
 }
 
-// mintToken issues the next deterministic name/secret pair from the
+// newToken issues the next deterministic name/secret pair from the
 // instance-local counter, shared by /v1-public/login (the session token) and
-// the mint endpoint (the derived token) — the same mechanism that makes a
+// the derived token create endpoint (the derived token) — the same mechanism that makes a
 // provider login consume two counter slots.
-func (f *Facade) mintToken(clusterName string, ttlMs int64) *record {
+func (f *Facade) newToken(clusterName string, ttlMs int64) *record {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.counter++
@@ -963,7 +963,7 @@ func (f *Facade) mintToken(clusterName string, ttlMs int64) *record {
 	if ttlMs > 0 {
 		rec.expiresAt = time.Now().Add(time.Duration(ttlMs) * time.Millisecond)
 	} else {
-		rec.expiresAt = time.Now().Add(defaultMintTTL)
+		rec.expiresAt = time.Now().Add(defaultDerivedTTL)
 	}
 	f.tokens[rec.name] = rec
 	return rec

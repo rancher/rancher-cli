@@ -285,25 +285,25 @@ func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
 	assert.Equal(t, "https-tok", cred.Status.Token, "schemeless --server must hit the current https:// cache record")
 }
 
-// TestGetTokenMintsFromStoredLoginCredential is the exercise-bug-4 repro: on
-// a cache miss, get-token must mint a cluster-scoped token from the stored
+// TestGetTokenCreatesFromStoredLoginCredential is the exercise-bug-4 repro: on
+// a cache miss, get-token must create a cluster-scoped token from the stored
 // login credential for the matching configured server BEFORE ever touching
 // the interactive provider flow. authProviderHits stays at 0 to prove the
 // interactive path was provably not invoked.
-func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
-	var authProviderHits, mintHits int32
+func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
+	var authProviderHits, derivedCreateHits int32
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
 			atomic.AddInt32(&authProviderHits, 1)
 			w.WriteHeader(http.StatusNotFound)
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
-			atomic.AddInt32(&mintHits, 1)
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
+			atomic.AddInt32(&derivedCreateHits, 1)
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -323,23 +323,23 @@ func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "ext/minted:secret", cred.Status.Token)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&mintHits))
-	assert.Equal(t, "Bearer stored-login-token", gotAuth, "the mint request must bear the stored login token, not a fresh session token")
-	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "the interactive provider flow must not run when the stored credential mints successfully")
+	assert.Equal(t, "ext/created:secret", cred.Status.Token)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&derivedCreateHits))
+	assert.Equal(t, "Bearer stored-login-token", gotAuth, "the derived token create request must bear the stored login token, not a fresh session token")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "the interactive provider flow must not run when the stored credential creates successfully")
 }
 
-// TestGetTokenFallsBackToInteractiveWhenMintRejected covers the "mint is
-// rejected" half of the fallback: a stored credential exists but the mint
+// TestGetTokenFallsBackToInteractiveWhenCreateRejected covers the "create is
+// rejected" half of the fallback: a stored credential exists but the derived token create
 // call fails, so get-token must still fall through to the interactive flow
-// (observed here as an authproviders hit) rather than surfacing the mint
+// (observed here as an authproviders hit) rather than surfacing the derived token create
 // error directly.
 // TestGetTokenLegacyFallbackCachesWithBoundedTTL is the round-3 repro for
 // finding 5: a legacy (pre-ext.cattle.io) Rancher's stored-credential
 // fallback must still be cached — with a bounded, conservative TTL, since
 // the raw stored token carries no expiry of its own — rather than never
 // (a zero expiry trips round-2's own no-zero-expiry-cache gate, forcing a
-// full mint-then-404 round trip on every single invocation).
+// full create-then-404 round trip on every single invocation).
 func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // no ext.cattle.io on this Rancher at all
@@ -363,10 +363,10 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 
 	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
 	require.NoError(t, cerr, "the legacy fallback must be cached, not treated as zero-expiry")
-	assert.WithinDuration(t, time.Now().Add(legacyMintTTL), expiry, time.Minute)
+	assert.WithinDuration(t, time.Now().Add(legacyTokenTTL), expiry, time.Minute)
 }
 
-func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
+func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -374,7 +374,7 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 			authProviderHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusForbidden)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -397,17 +397,17 @@ func TestGetTokenFallsBackToInteractiveWhenMintRejected(t *testing.T) {
 	// is that the flow reached the provider dance at all.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, int32(1), authProviderHits.Load(), "a rejected mint must fall through to the interactive flow")
+	assert.Equal(t, int32(1), authProviderHits.Load(), "a rejected create must fall through to the interactive flow")
 }
 
-// TestGetTokenMintTimeoutSurfacesAsGenericTransportError asserts a stalled
-// mint request is bounded by httpx's client-level timeout rather than
-// hanging forever, and that the resulting error keeps MintDerivedToken's
+// TestGetTokenCreateTimeoutSurfacesAsGenericTransportError asserts a stalled
+// create request is bounded by httpx's client-level timeout rather than
+// hanging forever, and that the resulting error keeps CreateDerivedToken's
 // existing classification: a *clierr.Error with CodeGeneric, the same shape
 // any other transport failure at this call site already takes (a timeout is
-// not errMintDenied, so it must NOT fall back to the interactive flow the
-// way a rejected 401/403 mint does).
-func TestGetTokenMintTimeoutSurfacesAsGenericTransportError(t *testing.T) {
+// not errDerivedCreateDenied, so it must NOT fall back to the interactive flow the
+// way a rejected 401/403 create does).
+func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout.
 	restore := httpx.SetDefaultTimeoutForTest(20 * time.Millisecond)
 	defer restore()
@@ -420,7 +420,7 @@ func TestGetTokenMintTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 			authProviderHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			<-block
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -428,7 +428,7 @@ func TestGetTokenMintTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 		}
 	}))
 	// close(block) before srv.Close(): Close waits for in-flight handlers to
-	// return, and the mint handler is still parked on <-block after the
+	// return, and the derived token create handler is still parked on <-block after the
 	// client gives up — closing the server first would deadlock.
 	defer func() { close(block); srv.Close() }()
 
@@ -449,8 +449,8 @@ func TestGetTokenMintTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is not errMintDenied and must not trigger the interactive fallback")
-	assert.Less(t, elapsed, 5*time.Second, "the mint request must be bounded by the client timeout, not hang on the blocked handler")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is not errDerivedCreateDenied and must not trigger the interactive fallback")
+	assert.Less(t, elapsed, 5*time.Second, "the derived token create request must be bounded by the client timeout, not hang on the blocked handler")
 }
 
 // TestGetTokenFallsBackToInteractiveWithNoStoredCredential covers the "no
@@ -483,15 +483,15 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 	assert.Equal(t, int32(1), authProviderHits.Load(), "no stored credential must fall through to the interactive flow")
 }
 
-// TestGetTokenCachesMintedExpiry is the round-2 repro for finding 1: the
-// stored-credential mint's status.expiresAt must be propagated into the
+// TestGetTokenCachesCreatedExpiry is the round-2 repro for finding 1: the
+// stored-credential create's status.expiresAt must be propagated into the
 // cached credential's real expiry, not silently dropped.
-func TestGetTokenCachesMintedExpiry(t *testing.T) {
+func TestGetTokenCachesCreatedExpiry(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = fmt.Fprintf(w, `{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret","expiresAt":%q}}`, expiresAt)
+			_, _ = fmt.Fprintf(w, `{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret","expiresAt":%q}}`, expiresAt)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -516,15 +516,15 @@ func TestGetTokenCachesMintedExpiry(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(time.Hour), gotExpiry, time.Minute)
 }
 
-// TestGetTokenSkipsCacheWhenMintCarriesNoExpiry is the round-2 repro for
-// finding 1: a mint response with no expiresAt must never be cached — a
+// TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry is the round-2 repro for
+// finding 1: a derived token create response with no expiresAt must never be cached — a
 // zero expiry reads back as never-expiring (GetCachedCred only evicts a
 // past, non-zero expiry), so caching it would serve a stale token forever.
-func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
+func TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -545,23 +545,23 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 		ui.New(&notices, strings.NewReader(""), true, false))
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "ext/minted:secret", cred.Status.Token, "the token is still usable for this call")
+	assert.Equal(t, "ext/created:secret", cred.Status.Token, "the token is still usable for this call")
 
 	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
 	require.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
 	assert.Contains(t, notices.String(), "not caching")
 }
 
-// TestZeroExpiryCachedWhenAllowed mirrors TestGetTokenSkipsCacheWhenMintCarriesNoExpiry
+// TestZeroExpiryCachedWhenAllowed mirrors TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry
 // but runs as the legacy shim (legacyShim, the field that opts into zero-expiry
 // caching). The credential must be written to the store (zero expiry =
 // never-expiring on the legacy path), and the emitted ExecCredential must
 // carry no ExpirationTimestamp.
 func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -583,30 +583,30 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	}, ui.Discard())
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "ext/minted:secret", cred.Status.Token)
+	assert.Equal(t, "ext/created:secret", cred.Status.Token)
 	assert.Nil(t, cred.Status.ExpirationTimestamp, "zero expiry must not set ExpirationTimestamp")
 
 	tok, exp, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
 	require.NoError(t, cerr, "zero-expiry credential must be cached on the legacy shim path")
-	assert.Equal(t, "ext/minted:secret", tok)
+	assert.Equal(t, "ext/created:secret", tok)
 	assert.True(t, exp.IsZero(), "cached expiry must be zero")
 }
 
-// TestGetTokenMintScopesToCluster is the round-2 repro for finding 2:
-// --cluster must be threaded into the mint request as spec.clusterName, so
-// two different --cluster values produce two distinct scoped mints.
-func TestGetTokenMintScopesToCluster(t *testing.T) {
+// TestGetTokenCreateScopesToCluster is the round-2 repro for finding 2:
+// --cluster must be threaded into the derived token create request as spec.clusterName, so
+// two different --cluster values produce two distinct scoped creates.
+func TestGetTokenCreateScopesToCluster(t *testing.T) {
 	var gotClusters []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == clustersPath:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-a"}},{"metadata":{"name":"c-b"}}]}`))
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -637,7 +637,7 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 // TestGetTokenClusterDisplayNameResolves is the round-3 repro for finding
 // 3: an unresolved display name passed to --cluster must resolve to the
 // cluster's id (via the cluster list, using the stored credential) before
-// minting — a raw, unresolved display name must never reach spec.clusterName.
+// creating — a raw, unresolved display name must never reach spec.clusterName.
 func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var gotCluster, gotAuth string
 	var listHits atomic.Int32
@@ -648,11 +648,11 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-m-abc"},"spec":{"displayName":"prod"}}]}`))
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -671,23 +671,23 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 		tin{s: map[string]string{"server": srv.URL, "cluster": "prod"}},
 		ui.Discard())
 	require.NoError(t, err)
-	assert.Equal(t, "c-m-abc", gotCluster, "the resolved id, not the raw display name, must reach the mint")
+	assert.Equal(t, "c-m-abc", gotCluster, "the resolved id, not the raw display name, must reach the derived token create")
 	assert.Equal(t, int32(1), listHits.Load())
 	assert.Equal(t, "Bearer stored-login-token", gotAuth, "cluster resolution uses the stored credential, not a fresh session")
 }
 
-// TestGetTokenClusterMissErrorsWithoutMinting is the round-3 repro for
+// TestGetTokenClusterMissErrorsWithoutCreating is the round-3 repro for
 // finding 3's "unresolvable → propagate the resolution error" half: an
-// unresolvable --cluster must fail directly, never mint an unscoped token.
-func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
-	var mintHits atomic.Int32
+// unresolvable --cluster must fail directly, never create an unscoped token.
+func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
+	var derivedCreateHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case clustersPath:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"items":[]}`))
-		case MintTokensPath:
-			mintHits.Add(1)
+		case ExtTokensPath:
+			derivedCreateHits.Add(1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -709,18 +709,18 @@ func TestGetTokenClusterMissErrorsWithoutMinting(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Equal(t, int32(0), mintHits.Load(), "an unresolvable cluster must never reach the mint call")
+	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an unresolvable cluster must never reach the derived token create call")
 }
 
 // TestGetTokenClusterIDDisplayCollisionIsAmbiguous is the round-4 repro:
-// resolveMintClusterID must not let an id-based match short-circuit ahead
+// resolveClusterIDForCreate must not let an id-based match short-circuit ahead
 // of checking every cluster's spec.displayName too. A string that matches
 // one cluster's id AND a different cluster's display name is ambiguous —
-// silently minting a token scoped to the id match would produce a token
+// silently creating a token scoped to the id match would produce a token
 // for the wrong cluster whenever an admin names a cluster's display name
 // after another cluster's raw id.
 func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
-	var listHits, mintHits int32
+	var listHits, derivedCreateHits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case clustersPath:
@@ -734,8 +734,8 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 				{"metadata":{"name":"c-2"},"spec":{"displayName":"c-1"}},
 				{"metadata":{"name":"c-xyz"},"spec":{"displayName":"staging"}}
 			]}`))
-		case MintTokensPath:
-			atomic.AddInt32(&mintHits, 1)
+		case ExtTokensPath:
+			atomic.AddInt32(&derivedCreateHits, 1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -761,7 +761,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	assert.NotContains(t, candidateIDsToken(ce.Candidates), "c-xyz",
 		"non-collider must be excluded from narrowed candidates")
 	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits), "no list scan beyond the collision check")
-	assert.Equal(t, int32(0), atomic.LoadInt32(&mintHits), "an ambiguous cluster must never reach the mint call")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&derivedCreateHits), "an ambiguous cluster must never reach the derived token create call")
 }
 
 // TestGetTokenRejectsLegacyPrefixName is the fix-3 failing test: the native
@@ -892,18 +892,18 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 	assert.Empty(t, notices.String(), "a rank-0 exact --name win is a certainty, not a tie-break")
 }
 
-// TestGetTokenSurfacesRealMintFailureNotInteractive is the round-2 repro for
-// finding 6: a non-auth mint failure (a 500 here, standing in for
+// TestGetTokenSurfacesRealCreateFailureNotInteractive is the round-2 repro for
+// finding 6: a non-auth create failure (a 500 here, standing in for
 // network/TLS failures too) must surface as the real error, never papered
 // over as "interactive login required".
-func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
+func TestGetTokenSurfacesRealCreateFailureNotInteractive(t *testing.T) {
 	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
 			authProviderHits.Add(1)
 			w.WriteHeader(http.StatusNotFound)
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -925,7 +925,7 @@ func TestGetTokenSurfacesRealMintFailureNotInteractive(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required")
 	require.ErrorContains(t, err, "500")
-	assert.Equal(t, int32(0), authProviderHits.Load(), "a real mint failure must not fall through to the interactive flow")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a real create failure must not fall through to the interactive flow")
 }
 
 // TestGetTokenNoticesUnreadableConfigOnStoredCredPath is the round-2 repro

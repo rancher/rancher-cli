@@ -827,7 +827,7 @@ func failAcquire(ae *token.AcquireError, server string) error {
 	d := clierr.LoginFailureDetails{Primary: pf, Stage: clierr.StageAuthentication, OperationMarker: ae.Marker,
 		SessionToken: fateOf(ae.SessionTokenOutcome, ae.SessionTokenKind, ae.SessionTokenRef, !ae.SessionTokenUnmarked,
 			ae.SessionCreatedAt, ae.SessionTokenCleanup, ae.SessionTokenSearch),
-		DerivedToken: fateOf(ae.DerivedMintOutcome, clierr.TokenKindExt, ae.DerivedTokenRef, true,
+		DerivedToken: fateOf(ae.DerivedCreateOutcome, clierr.TokenKindExt, ae.DerivedTokenRef, true,
 			ae.DerivedCreatedAt, ae.DerivedTokenCleanup, nil),
 	}
 	d.Recovery = recoveryText(d, server, false)

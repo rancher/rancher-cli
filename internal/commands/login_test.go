@@ -281,7 +281,7 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 // TestLoginTokenStdinRejectsProviderFlags pins the fix for combining
 // --token-stdin with any provider flag: the two paths are mutually
 // exclusive, and silently ignoring the provider flags would surprise a
-// caller who set --ttl expecting it to reach the mint request.
+// caller who set --ttl expecting it to reach the derived token create request.
 func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
 	t.Parallel()
 	for _, extra := range []string{"auth-provider", "auth-flow", "ttl"} {
@@ -1211,17 +1211,17 @@ func TestLoginSerializedUnderConfigLock(t *testing.T) {
 
 // extLoginFakeOpts configures the httptest fake server standing in for
 // Rancher across the EXT-R-8 provider-flow tests: the IdP dance
-// (/v1-public/*) and the ext Token store mint/revoke, both reached ONLY
+// (/v1-public/*) and the ext Token store create/revoke, both reached ONLY
 // through the /k8s/clusters/local proxy prefix — a bare /apis/... path is
 // deliberately unregistered, so a proxy-path regression 404s here exactly as
 // it would against a real Rancher.
 type extLoginFakeOpts struct {
-	sessionToken  string // the /v1-public/login response's "token" (S)
-	mintNotFound  bool   // ext group absent: mint POST 404s
-	revokeStatus  int    // revoke DELETE response status (0 -> 200)
-	mintBodyCh    chan []byte
-	revokedPathCh chan string
-	mintBlock     chan struct{} // if set, the mint handler blocks reading this until closed
+	sessionToken          string // the /v1-public/login response's "token" (S)
+	derivedCreateNotFound bool   // ext group absent: derived token create POST 404s
+	revokeStatus          int    // revoke DELETE response status (0 -> 200)
+	createBodyCh          chan []byte
+	revokedPathCh         chan string
+	createBlock           chan struct{} // if set, the derived token create handler blocks reading this until closed
 }
 
 func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
@@ -1241,15 +1241,15 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			id, _, _ := strings.Cut(opts.sessionToken, ":")
 			_ = json.NewEncoder(w).Encode(map[string]string{"id": id, "token": opts.sessionToken})
 
-		case r.URL.Path == token.MintTokensPath && r.Method == http.MethodPost:
-			if opts.mintBlock != nil {
-				<-opts.mintBlock
+		case r.URL.Path == token.ExtTokensPath && r.Method == http.MethodPost:
+			if opts.createBlock != nil {
+				<-opts.createBlock
 			}
-			if opts.mintBodyCh != nil {
+			if opts.createBodyCh != nil {
 				b, _ := io.ReadAll(r.Body)
-				opts.mintBodyCh <- b
+				opts.createBodyCh <- b
 			}
-			if opts.mintNotFound {
+			if opts.derivedCreateNotFound {
 				http.NotFound(w, r)
 				return
 			}
@@ -1257,7 +1257,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"derived-1"},"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
 
-		case (strings.HasPrefix(r.URL.Path, token.V3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.MintTokensPath+"/")) && r.Method == http.MethodDelete:
+		case (strings.HasPrefix(r.URL.Path, token.V3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.ExtTokensPath+"/")) && r.Method == http.MethodDelete:
 			if opts.revokedPathCh != nil {
 				opts.revokedPathCh <- r.URL.Path
 			}
@@ -1271,7 +1271,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 	return srv
 }
 
-func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T) {
+func TestLoginProviderFlowCreatesAndStoresDerivedTokenRevokesSession(t *testing.T) {
 	t.Parallel()
 	revokedPathCh := make(chan string, 1)
 	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess1:sessionsecret", revokedPathCh: revokedPathCh})
@@ -1298,7 +1298,7 @@ func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T)
 
 func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	t.Parallel()
-	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess2:sessionsecret", mintNotFound: true})
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess2:sessionsecret", derivedCreateNotFound: true})
 
 	dir, store := filePolicyDir(t)
 	seedServer(t, dir, "prod", fake.URL, "", false)
@@ -1314,19 +1314,19 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	assert.Contains(t, errBuf.String(), "does not serve ext.cattle.io")
 }
 
-// TestLoginProviderFlowMintTimeoutIsBoundedAndNotMistakenForExtAbsent
-// asserts the ext token mint call is bounded by httpx's client-level
+// TestLoginProviderFlowDerivedCreateTimeoutIsBoundedAndNotMistakenForExtAbsent
+// asserts the ext token create call is bounded by httpx's client-level
 // timeout rather than hanging on an unresponsive server, and that a timeout
 // surfaces as a plain error distinct from the 404 (ext group absent)
 // fallback shape — the two must never collapse into the same behavior.
-func TestLoginProviderFlowMintTimeoutIsBoundedAndNotMistakenForExtAbsent(t *testing.T) {
+func TestLoginProviderFlowDerivedCreateTimeoutIsBoundedAndNotMistakenForExtAbsent(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout,
 	// which would race other parallel subtests' real requests.
 	restore := httpx.SetDefaultTimeoutForTest(20 * time.Millisecond)
 	defer restore()
 
 	block := make(chan struct{})
-	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", mintBlock: block})
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", createBlock: block})
 	defer close(block)
 
 	dir, store := filePolicyDir(t)
@@ -1340,10 +1340,10 @@ func TestLoginProviderFlowMintTimeoutIsBoundedAndNotMistakenForExtAbsent(t *test
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, token.ErrExtGroupAbsent, "a timeout must not be mistaken for the ext-group-absent fallback")
-	assert.Less(t, elapsed, 5*time.Second, "the mint request must be bounded by the client timeout, not hang on the unresponsive handler")
+	assert.Less(t, elapsed, 5*time.Second, "the derived token create request must be bounded by the client timeout, not hang on the unresponsive handler")
 
 	_, err = store.GetToken(config.ServerRef{Name: "prod"})
-	assert.Error(t, err, "a failed mint must not leave a token stored")
+	assert.Error(t, err, "a failed create must not leave a token stored")
 }
 
 func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T) {
@@ -1364,10 +1364,10 @@ func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T)
 	assert.Len(t, res.Data.(map[string]any)["residualTokens"], 1)
 }
 
-func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
+func TestLoginProviderFlowTTLPlumbedToCreateBodyInMilliseconds(t *testing.T) {
 	t.Parallel()
 	bodyCh := make(chan []byte, 1)
-	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess4:sessionsecret", mintBodyCh: bodyCh})
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess4:sessionsecret", createBodyCh: bodyCh})
 
 	dir, store := filePolicyDir(t)
 	seedServer(t, dir, "prod", fake.URL, "", false)
@@ -1386,19 +1386,19 @@ func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
 		require.NoError(t, json.Unmarshal(b, &payload))
 		assert.Equal(t, int64(12*60*60*1000), payload.Spec.TTL, "12h in milliseconds")
 	default:
-		t.Fatal("the mint request body was never captured")
+		t.Fatal("the derived token create request body was never captured")
 	}
 }
 
-// TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent pins mintDerivedToken's
-// omit-when-unset idiom (fix #5) end to end: no --ttl must mean the mint
+// TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent pins createDerivedToken's
+// omit-when-unset idiom (fix #5) end to end: no --ttl must mean the derived token create
 // request body carries no "ttl" key at all, not an explicit ttl: 0 — the
 // unit tests in duration_test.go cover TTLMilliseconds itself, but not that
 // login's own request-building actually omits the key.
-func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
+func TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent(t *testing.T) {
 	t.Parallel()
 	bodyCh := make(chan []byte, 1)
-	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", mintBodyCh: bodyCh})
+	fake := newExtLoginFake(t, extLoginFakeOpts{sessionToken: "token-sess5:sessionsecret", createBodyCh: bodyCh})
 
 	dir, store := filePolicyDir(t)
 	seedServer(t, dir, "prod", fake.URL, "", false)
@@ -1416,7 +1416,7 @@ func TestLoginProviderFlowOmitsTTLFromMintBodyWhenAbsent(t *testing.T) {
 		_, hasTTL := spec["ttl"]
 		assert.False(t, hasTTL, "no --ttl must omit spec.ttl entirely, not send ttl: 0")
 	default:
-		t.Fatal("the mint request body was never captured")
+		t.Fatal("the derived token create request body was never captured")
 	}
 }
 
@@ -1436,7 +1436,7 @@ func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
 	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
-	assert.Error(t, tokErr, "a rejected ttl must never reach the mint/store step")
+	assert.Error(t, tokErr, "a rejected ttl must never reach the derived token create/store step")
 }
 
 func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
@@ -1870,7 +1870,7 @@ func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
 
 // TestLoginReadOnlyHelperRecoveryMatrix pins finishUnsupportedStore's
 // aggregate rule across credential shapes. Every residual here has a known
-// name (S's name arrives with its bearer, D's with the mint response), so
+// name (S's name arrives with its bearer, D's with the derived token create response), so
 // the recovery is re-login followed by the exact kind-correct command, with
 // no hint because nothing was persisted; marker search and handoff facts
 // are never rendered for a named token, though a SAML fate still carries
@@ -2149,11 +2149,11 @@ func TestLoginReconciledKeyringNoticeIsAWarning(t *testing.T) {
 }
 
 // TestLoginAuthStageFailureCarriesDetails pins the authentication-stage
-// shape: a mint 500 after S exists yields stage authentication, S known
+// shape: a derived token create 500 after S exists yields stage authentication, S known
 // and revoked, D unknown, marker present, no config or credential state.
 func TestLoginAuthStageFailureCarriesDetails(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{MintStatus: 500})
+	f := testrancher.New(testrancher.Options{DerivedCreateStatus: 500})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	dir, store := filePolicyDir(t)

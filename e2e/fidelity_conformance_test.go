@@ -63,10 +63,10 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 	case fidelity.IdentityAdmin:
 		return testToken, nil
 	case fidelity.IdentityStandard:
-		return c.standard.Get(func() (string, error) { return c.mintBearer(ctx) })
+		return c.standard.Get(func() (string, error) { return c.derivedBearer(ctx) })
 	case fidelity.IdentityRevoked:
 		return c.revoked.Get(func() (string, error) {
-			bearer, err := c.mintBearer(ctx)
+			bearer, err := c.derivedBearer(ctx)
 			if err != nil {
 				return "", err
 			}
@@ -84,7 +84,7 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 	}
 }
 
-func (c *compositeTarget) mintBearer(ctx context.Context) (string, error) {
+func (c *compositeTarget) derivedBearer(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.srv.URL+"/v1-public/login",
 		newJSONBody(`{"type":"localProvider","username":"e2e-user","password":"e2e-pass"}`))
@@ -100,23 +100,23 @@ func (c *compositeTarget) mintBearer(ctx context.Context) (string, error) {
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("façade login: status %d", resp.StatusCode)
 	}
-	var minted struct {
+	var created struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		} `json:"status"`
 	}
-	if err := decodeJSONBody(resp, &minted); err != nil {
+	if err := decodeJSONBody(resp, &created); err != nil {
 		return "", err
 	}
-	if minted.Status.BearerToken == "" {
+	if created.Status.BearerToken == "" {
 		return "", errors.New("façade login: empty bearerToken")
 	}
-	return minted.Status.BearerToken, nil
+	return created.Status.BearerToken, nil
 }
 
 func (c *compositeTarget) deleteToken(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.srv.URL+mintTokensPathForTest+"/"+name, nil)
+		c.srv.URL+extTokensPathForTest+"/"+name, nil)
 	if err != nil {
 		return err
 	}
@@ -170,9 +170,9 @@ func TestFidelityConformance(t *testing.T) {
 	}
 }
 
-// mintTokensPathForTest re-exports the production constant for the delete
+// extTokensPathForTest re-exports the production constant for the delete
 // helper without a bare literal.
-const mintTokensPathForTest = token.MintTokensPath
+const extTokensPathForTest = token.ExtTokensPath
 
 func newJSONBody(s string) *strings.Reader { return strings.NewReader(s) }
 

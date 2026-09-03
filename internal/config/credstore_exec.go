@@ -18,7 +18,7 @@ import (
 // ShortLivedTokenStore is the optional interface a CredStore implements when it
 // can report the in-memory expiry of the last short-lived token it served for
 // an identity. get-token's legacy (pre-ext.cattle.io) fallback consults it so a
-// helper-minted short-lived token is never written to the on-disk cache past —
+// helper-created short-lived token is never written to the on-disk cache past —
 // or at all beyond — its real expiry.
 type ShortLivedTokenStore interface {
 	ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool)

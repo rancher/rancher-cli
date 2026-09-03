@@ -52,7 +52,7 @@ var (
 const testToken = "e2e:secret"
 
 // legacyScripts marks per-script façade instances that must run in legacy
-// mode (the ext.cattle.io mint route 404s), keyed by txtar base name
+// mode (the ext.cattle.io create route 404s), keyed by txtar base name
 // (matched against the testscript WorkDir, "script-<name>").
 var legacyScripts = map[string]bool{
 	"get-token-legacy": true,
@@ -275,8 +275,8 @@ func TestBuildAndStartEnvNoErrorDoesNotStop(t *testing.T) {
 // TestRouterValidatesSeedAndFacadeBearersAcrossRevocation proves the
 // per-script wiring TestScenarios' Setup builds: a router composed from
 // "seed OR this instance's façade.ValidBearer" authorizes both the static
-// seed token and a façade-minted bearer through the cluster proxy, and stops
-// authorizing the minted bearer the moment it is revoked.
+// seed token and a façade-created bearer through the cluster proxy, and stops
+// authorizing the created bearer the moment it is revoked.
 func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	var facade *testrancher.Facade
 	router := newRouter(func(tok string) bool {
@@ -300,23 +300,23 @@ func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, getClusters(testToken), "the seed token must still authorize through a per-script instance")
 
-	mintReq, err := http.NewRequest(http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens",
+	createReq, err := http.NewRequest(http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens",
 		strings.NewReader(`{"spec":{}}`))
 	require.NoError(t, err)
-	mintReq.Header.Set("Authorization", "Bearer "+testToken)
-	mintResp, err := client.Do(mintReq)
+	createReq.Header.Set("Authorization", "Bearer "+testToken)
+	createResp, err := client.Do(createReq)
 	require.NoError(t, err)
-	defer func() { _ = mintResp.Body.Close() }()
-	require.Equal(t, http.StatusCreated, mintResp.StatusCode)
-	var minted struct {
+	defer func() { _ = createResp.Body.Close() }()
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	var created struct {
 		Status struct {
 			BearerToken string `json:"bearerToken"`
 		}
 	}
-	require.NoError(t, json.NewDecoder(mintResp.Body).Decode(&minted))
-	require.NotEmpty(t, minted.Status.BearerToken)
+	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&created))
+	require.NotEmpty(t, created.Status.BearerToken)
 
-	assert.Equal(t, http.StatusOK, getClusters(minted.Status.BearerToken), "a façade-minted bearer must authorize")
+	assert.Equal(t, http.StatusOK, getClusters(created.Status.BearerToken), "a façade-created bearer must authorize")
 
 	delReq, err := http.NewRequest(http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens/fac-token-1", nil)
 	require.NoError(t, err)
@@ -326,7 +326,7 @@ func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	defer func() { _ = delResp.Body.Close() }()
 	require.Equal(t, http.StatusOK, delResp.StatusCode)
 
-	assert.Equal(t, http.StatusUnauthorized, getClusters(minted.Status.BearerToken), "the same bearer must 401 at the proxy after revocation")
+	assert.Equal(t, http.StatusUnauthorized, getClusters(created.Status.BearerToken), "the same bearer must 401 at the proxy after revocation")
 }
 
 func TestScenarios(t *testing.T) {

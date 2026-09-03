@@ -99,7 +99,7 @@ func TestClassifyCreate(t *testing.T) {
 			t.Parallel()
 			r := classifyCreate(tc.resp, tc.body, tc.err, "2026-09-02T00:00:00Z", true, TokenKindExt)
 			assert.Equal(t, tc.outcome, r.Outcome)
-			assert.Equal(t, TokenKindExt, r.Kind, "the mint endpoint's kind is known whatever the response")
+			assert.Equal(t, TokenKindExt, r.Kind, "the derived token create endpoint's kind is known whatever the response")
 			assert.Equal(t, tc.bearer, r.Bearer)
 			assert.True(t, r.Marked)
 			assert.Equal(t, "2026-09-02T00:00:00Z", r.CreatedAt)

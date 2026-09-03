@@ -28,9 +28,9 @@ func TestAllProbesAreValidAndUniquelyNamed(t *testing.T) {
 func TestExpectedProbeSet(t *testing.T) {
 	t.Parallel()
 	want := []string{
-		"auth/no-token", "auth/garbage-token", "auth/revoked-token", "auth/standard-mint",
+		"auth/no-token", "auth/garbage-token", "auth/revoked-token", "auth/standard-create",
 		"auth/forbidden-read", "auth/forbidden-write",
-		"tok/mint-shape", "tok/dryrun-delete", "tok/stale-precondition-delete", "tok/revoke",
+		"tok/create-shape", "tok/dryrun-delete", "tok/stale-precondition-delete", "tok/revoke",
 		"mut/dryrun-create", "mut/dryrun-invalid", "mut/stale-rv-update",
 		"mut/rv-precondition-delete", "mut/dryrun-then-apply",
 		"capability/edition-and-oidc-provider-classification",
@@ -186,12 +186,12 @@ func TestCreateSecretFixtureNon201Errors(t *testing.T) {
 func TestTokenProbesUseTheProductionPathConstant(t *testing.T) {
 	t.Parallel()
 	for _, p := range All() {
-		if !strings.HasPrefix(p.Name, "tok/") && p.Name != "auth/standard-mint" {
+		if !strings.HasPrefix(p.Name, "tok/") && p.Name != "auth/standard-create" {
 			continue
 		}
 		for _, o := range p.Observations {
-			assert.True(t, strings.HasPrefix(o.Request.Path, token.MintTokensPath),
-				"%s %s path %q must be rooted at token.MintTokensPath", p.Name, o.Name, o.Request.Path)
+			assert.True(t, strings.HasPrefix(o.Request.Path, token.ExtTokensPath),
+				"%s %s path %q must be rooted at token.ExtTokensPath", p.Name, o.Name, o.Request.Path)
 		}
 	}
 }
@@ -208,7 +208,7 @@ func TestFixtureNamesCarryTheFidelityPrefix(t *testing.T) {
 	}
 }
 
-func TestMintCapturesDeriveTheNameFromTheBearer(t *testing.T) {
+func TestCreateCapturesDeriveTheNameFromTheBearer(t *testing.T) {
 	t.Parallel()
 	for _, p := range All() {
 		for _, o := range p.Observations {
@@ -217,7 +217,7 @@ func TestMintCapturesDeriveTheNameFromTheBearer(t *testing.T) {
 				continue
 			}
 			assert.Equal(t, Capture{Path: "status.bearerToken", ExtBearerName: true}, c,
-				"%s %s: the mint response carries no metadata.name; the name must derive from the ext bearer", p.Name, o.Name)
+				"%s %s: the create response carries no metadata.name; the name must derive from the ext bearer", p.Name, o.Name)
 		}
 	}
 }

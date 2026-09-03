@@ -75,7 +75,7 @@ func TestDoJSONRedactsCredentialBodiesInErrors(t *testing.T) {
 	_, _, err := tgt.adminJSON(t.Context(), http.MethodPost, "/v3/tokens", map[string]any{}, http.StatusCreated)
 	require.Error(t, err, "status 200 != want 201 must error")
 	assert.NotContains(t, err.Error(), "sentinel-sekrit",
-		"a token minted under an unexpected status is still live; the error must redact it")
+		"a token created under an unexpected status is still live; the error must redact it")
 	assert.ErrorContains(t, err, "<secret>", "the redacted shape stays visible for diagnosis")
 }
 
@@ -194,18 +194,18 @@ func TestJSONMarshalNoEscapeSurfacesEncodeError(t *testing.T) {
 		"an unmarshalable value surfaces the encoder error behind redactBody's defensive unrenderable branch")
 }
 
-func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {
+func TestRevokedBearerCreatesThenRevokesByDerivedName(t *testing.T) {
 	t.Parallel()
 	var deletedPath string
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+token.MintTokensPath, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST "+token.ExtTokensPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": map[string]any{"bearerToken": "ext/tok-rev:sec-rev"},
 		})
 	})
-	mux.HandleFunc("DELETE "+token.MintTokensPath+"/tok-rev", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE "+token.ExtTokensPath+"/tok-rev", func(w http.ResponseWriter, r *http.Request) {
 		deletedPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	})
@@ -215,8 +215,8 @@ func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {
 	tgt := newTestRealTarget(srv)
 	bearer, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.NoError(t, err)
-	assert.Equal(t, "ext/tok-rev:sec-rev", bearer, "the revoked bearer is the minted (now-deleted) credential")
-	assert.Equal(t, token.MintTokensPath+"/tok-rev", deletedPath,
+	assert.Equal(t, "ext/tok-rev:sec-rev", bearer, "the revoked bearer is the created (now-deleted) credential")
+	assert.Equal(t, token.ExtTokensPath+"/tok-rev", deletedPath,
 		"the delete targets the name embedded in the ext bearer, not a metadata.name")
 
 	again, err := tgt.Bearer(t.Context(), IdentityRevoked)
@@ -224,7 +224,7 @@ func TestRevokedBearerMintsThenRevokesByDerivedName(t *testing.T) {
 	assert.Equal(t, bearer, again, "the revoked bearer is memoized")
 }
 
-func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
+func TestRevokedBearerNonExtCreateErrorsWithoutLeaking(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -240,7 +240,7 @@ func TestRevokedBearerNonExtMintErrorsWithoutLeaking(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "not ext-shaped")
 	assert.NotContains(t, err.Error(), "plain-secret-xyz",
-		"a mint response bearer of the wrong shape is still a live secret; the error withholds it")
+		"a create response bearer of the wrong shape is still a live secret; the error withholds it")
 }
 
 func TestLoginAcceptsNormanShape(t *testing.T) {

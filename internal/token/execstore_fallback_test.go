@@ -49,13 +49,13 @@ func useTokenFakeHelper(t *testing.T, mode string) {
 // impl-review finding-1 repro: when the credential store is a helper serving a
 // SHORT-LIVED token and get-token falls back to the legacy (pre-ext.cattle.io)
 // path, the returned credential must carry the helper's REAL expiry (never the
-// fabricated now+legacyMintTTL) and must never be written to the on-disk cache.
+// fabricated now+legacyTokenTTL) and must never be written to the on-disk cache.
 func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T) {
 	useTokenFakeHelper(t, "expiresat")
-	helperExp := time.Now().Add(2 * time.Minute).UTC() // sooner than legacyMintTTL (15m)
+	helperExp := time.Now().Add(2 * time.Minute).UTC() // sooner than legacyTokenTTL (15m)
 	t.Setenv("FAKEHELPER_EXPIRESAT", helperExp.Format(time.RFC3339))
 
-	// A legacy Rancher: no ext.cattle.io served, so the mint 404s.
+	// A legacy Rancher: no ext.cattle.io served, so the derived token create 404s.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -78,8 +78,8 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	assert.Equal(t, "short-lived", cred.Status.Token)
 	require.NotNil(t, cred.Status.ExpirationTimestamp, "the credential must carry an expiry")
 	assert.WithinDuration(t, helperExp, *cred.Status.ExpirationTimestamp, 2*time.Second,
-		"the returned expiry must be the helper's real one, not now+legacyMintTTL")
-	assert.False(t, cred.Status.ExpirationTimestamp.After(time.Now().Add(legacyMintTTL)),
+		"the returned expiry must be the helper's real one, not now+legacyTokenTTL")
+	assert.False(t, cred.Status.ExpirationTimestamp.After(time.Now().Add(legacyTokenTTL)),
 		"a short-lived helper token must never be extended to the legacy TTL")
 
 	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))

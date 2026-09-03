@@ -83,16 +83,16 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 }
 
 // TestLegacyTokenEmitsV1Beta1 verifies the ExecCredential shape: Kind,
-// APIVersion, and that ExpirationTimestamp is nil when the mint response
+// APIVersion, and that ExpirationTimestamp is nil when the derived token create response
 // carries no expiresAt (the zero-expiry case the shim opts into caching).
 func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
-	// The mint succeeds but returns no expiresAt — a zero-expiry token that
+	// The create succeeds but returns no expiresAt — a zero-expiry token that
 	// the native get-token would refuse to cache; the shim (legacyShim)
 	// caches it and must not set ExpirationTimestamp in the emitted credential.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"legacy-minted"},"status":{"bearerToken":"ext/legacy-minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"legacy-created"},"status":{"bearerToken":"ext/legacy-created:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -116,7 +116,7 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ExecCredential", cred.Kind)
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", cred.APIVersion)
-	assert.Nil(t, cred.Status.ExpirationTimestamp, "no-expiry mint response must not set ExpirationTimestamp")
+	assert.Nil(t, cred.Status.ExpirationTimestamp, "no-expiry create response must not set ExpirationTimestamp")
 }
 
 // TestLegacyTokenAuthFlowEnvPrecedence verifies the three-level resolution:
@@ -148,16 +148,16 @@ func TestLegacyTokenAuthFlowEnvPrecedence(t *testing.T) {
 
 // TestLegacyTokenNoContextCluster verifies that the shim never inherits the
 // ambient current-context cluster when --cluster is omitted: the cache slot
-// must be unscoped (empty cluster component) and the mint request body must
+// must be unscoped (empty cluster component) and the derived token create request body must
 // carry no clusterName, regardless of whatever cluster the operator's local
 // interactive CLI session has set.
 func TestLegacyTokenNoContextCluster(t *testing.T) {
-	var mintBody []byte
+	var createBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			var err error
-			mintBody, err = io.ReadAll(r.Body)
+			createBody, err = io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
@@ -191,9 +191,9 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/no-cluster:tok", cred.Status.Token)
 
-	// The mint request body must not include a clusterName field.
-	assert.False(t, gjson.GetBytes(mintBody, "spec.clusterName").Exists(),
-		"mint request must be unscoped when --cluster is omitted; got body: %s", mintBody)
+	// The create request body must not include a clusterName field.
+	assert.False(t, gjson.GetBytes(createBody, "spec.clusterName").Exists(),
+		"create request must be unscoped when --cluster is omitted; got body: %s", createBody)
 
 	// The cache slot must be unscoped: CacheKey with empty cluster.
 	serverID := config.CanonicalServerIdentity(srv.URL)
@@ -274,15 +274,15 @@ func (s *errGetTokenStore) GetToken(ref config.ServerRef) (string, error) {
 	return s.CredStore.GetToken(ref)
 }
 
-// TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint is the round-3
+// TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate is the round-3
 // repro for finding 1: a hard credential-store error for the ambient
-// current-context server (A) must not abort a cache-miss shim mint for an
+// current-context server (A) must not abort a cache-miss shim create for an
 // unrelated target server (B). Before the fix, resolveConn called
 // cfg.Effective unconditionally on a cache miss, and Effective's GetToken for
 // A hard-failed even though A was never the target.
-func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
+func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
+		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"b-tok"},"status":{"bearerToken":"ext/b-tok:secret"}}`))
@@ -318,7 +318,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srvB.URL, "user": "b-user"}},
 		ui.Discard())
-	require.NoError(t, err, "store error for ambient server A must not block a mint against server B")
+	require.NoError(t, err, "store error for ambient server A must not block a derived token create against server B")
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/b-tok:secret", cred.Status.Token)
 }
@@ -355,7 +355,7 @@ func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 // empty or whitespace-only --server passes the pipeline's Required check
 // (which only rejects the literal empty string when the flag is absent) and
 // would otherwise fall through to resolveConn's config fallback, silently
-// minting against the ambient current-context server. Execute must reject it
+// creating against the ambient current-context server. Execute must reject it
 // with a VALIDATION clierr, symmetric with the --user checks above.
 func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 	t.Parallel()
@@ -424,7 +424,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 
 // TestLegacyTokenPaddedClusterHitsSameCacheSlot is the Fix-4 test for --cluster:
 // a padded cluster value ("  local  ") must be trimmed to "local" before the cache
-// slot is computed. This also exercises the resolveMintClusterID short-circuit for
+// slot is computed. This also exercises the resolveClusterIDForCreate short-circuit for
 // "local" — no cluster-list HTTP round-trip is needed, keeping the server stub minimal.
 func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -482,7 +482,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"ambient-guard"},"status":{"bearerToken":"ext/ambient-guard:tok"}}`))
@@ -521,7 +521,7 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testuser"}},
 		ui.Discard())
-	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a mint via right-server")
+	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a derived token create via right-server")
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/ambient-guard:tok", cred.Status.Token)
 }

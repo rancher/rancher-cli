@@ -51,8 +51,8 @@ type RequestSpec struct {
 // Capture extracts one value from an observation's raw (pre-normalization)
 // response body. Path is dotted. ExtBearerName additionally derives the token
 // name embedded in an ext-style bearer ("ext/<name>:<secret>") from the
-// captured string — the imperative mint response carries its credential only
-// under status.bearerToken, so the minted name is not otherwise available.
+// captured string — the imperative create response carries its credential only
+// under status.bearerToken, so the created name is not otherwise available.
 type Capture struct {
 	Path          string
 	ExtBearerName bool

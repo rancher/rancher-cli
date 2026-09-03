@@ -113,7 +113,7 @@ type loginInput struct {
 //     the current-server entry, and stored-login selection ignores both
 //     wantName (the shim's Name is a cache-slot label, not an entry-name
 //     preference) and the current-server tier.
-//   - zero-expiry caching: a minted token that carries no expiry is cached
+//   - zero-expiry caching: a created token that carries no expiry is cached
 //     (never-expiring on the legacy path); the native path refuses to.
 //   - legacy cache slots: a config.LegacyCachePrefix Name passes
 //     runWithParams's reservation guard; every other caller is blocked.
@@ -548,7 +548,7 @@ type LoginRequest struct {
 }
 
 // Login runs the identity-provider dance (provider discovery/selection, then
-// basic/SAML/OAuth as appropriate) and returns the resulting Rancher-minted
+// basic/SAML/OAuth as appropriate) and returns the resulting Rancher-created
 // session token. It is a thin exported wrapper around loginAndGenerateCred —
 // get-token's own call site is untouched, so this is purely additive.
 func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime.Prompter) (Token, error) {
@@ -990,10 +990,10 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
 	}
 
-	// The native get-token path requires --cluster: a token must never mint
+	// The native get-token path requires --cluster: a token must never be created
 	// for a cluster the caller didn't name. Shim calls (noAmbientContext) keep
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
-	// mint — still purely flag-driven, never filled from ambient state.
+	// create — still purely flag-driven, never filled from ambient state.
 	if cluster == "" && !noAmbientContext {
 		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
@@ -1010,7 +1010,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, noAmbientCon
 		// (!explicitServer). With an explicit --server and noAmbientContext (every
 		// shim call), config.yaml may still be needed for caForServer, but
 		// Effective must not run — a hard store error for an unrelated server must
-		// never abort an otherwise healthy mint.
+		// never abort an otherwise healthy create.
 		// needsEff mirrors the two Effective fields consumed below:
 		//   - eff.URL when server == ""
 		//   - eff.CA  when caIn == "" && !explicitServer
@@ -1067,37 +1067,37 @@ func applyDefaultScheme(s string) string {
 	return s
 }
 
-// mintTokensPath and ErrExtGroupAbsent are reached ONLY through the Rancher
+// extTokensPath and ErrExtGroupAbsent are reached ONLY through the Rancher
 // proxy path on the LOCAL cluster's apiserver — ext.cattle.io is an
 // aggregated/CRD API, never served at the server root, so a bare /apis/...
 // 404s on every Rancher.
-const MintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
+const ExtTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 
-// ErrExtGroupAbsent signals a 404 on the mint call itself — the aggregated
+// ErrExtGroupAbsent signals a 404 on the derived token create call itself — the aggregated
 // ext.cattle.io API isn't served (an older Rancher), not that some other
 // resource is missing.
 var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
 
-// errMintDenied wraps a 401/403 from the mint call: the bearer credential
+// errDerivedCreateDenied wraps a 401/403 from the derived token create call: the bearer credential
 // itself is invalid or insufficient, as opposed to a network/TLS failure or
 // a server error — the two classes need different handling by the caller
 // (fall back to interactive vs. surface the real failure).
-var errMintDenied = errors.New("token create rejected: invalid or insufficient credential")
+var errDerivedCreateDenied = errors.New("token create rejected: invalid or insufficient credential")
 
-// MintDerivedToken asks the ext Token store to mint a purpose-made derived
+// CreateDerivedToken asks the ext Token store to create a purpose-made derived
 // token (bearer bearerToken), scoped to clusterID when set (spec.clusterName,
 // the same field internal/engine/extres/create.go's `create token --cluster`
 // uses), carrying description as spec.description. It returns what the create
 // left behind — the resource name, bearer, and expiry when the response
 // identified them — on the error path too, so a caller that must clean up
 // knows what exists. ErrExtGroupAbsent signals the group-level 404 that means
-// an older Rancher; errMintDenied signals a 401/403 (the bearer credential is
+// an older Rancher; errDerivedCreateDenied signals a 401/403 (the bearer credential is
 // bad), distinct from any other error (network/TLS/5xx), which callers must
 // treat as a real failure, not a "try something else" signal. ttlMs <= 0 omits
 // spec.ttl entirely (server default). This is the SAME derived-token path
 // `auth login` uses (via resolveProviderLoginToken in package commands), so
-// get-token's stored-credential path mints exactly the same shape of token.
-func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
+// get-token's stored-credential path creates exactly the same shape of token.
+func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
 	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindExt, Marked: description != ""}
 	spec := map[string]any{
 		"description": description,
@@ -1112,7 +1112,7 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	if err != nil {
 		return notAttempted, fmt.Errorf("building the token create request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+MintTokensPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+ExtTokensPath, bytes.NewReader(body))
 	if err != nil {
 		return notAttempted, fmt.Errorf("building the token create request: %w", err)
 	}
@@ -1131,7 +1131,7 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	case http.StatusNotFound:
 		return r, ErrExtGroupAbsent
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return r, fmt.Errorf("%w: %d %s", errMintDenied, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return r, fmt.Errorf("%w: %d %s", errDerivedCreateDenied, resp.StatusCode, http.StatusText(resp.StatusCode))
 	case http.StatusOK, http.StatusCreated:
 		if r.Bearer == "" {
 			return r, clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
@@ -1144,7 +1144,7 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 }
 
 // hostLoginDescription is the description a token create carries when no
-// login operation owns it: get-token's per-cluster mints, which no cleanup
+// login operation owns it: get-token's per-cluster creates, which no cleanup
 // path has to find again.
 func hostLoginDescription() string {
 	host, err := os.Hostname()
@@ -1172,8 +1172,8 @@ func matchingServerNames(cfg *config.Config, server string) []string {
 
 // errNoStoredCredential is storedCredToken's sentinel for "try the
 // interactive provider flow instead" — no usable stored credential exists,
-// or the mint was rejected as an invalid/insufficient credential
-// (errMintDenied). Any other error storedCredToken returns is a real
+// or the create was rejected as an invalid/insufficient credential
+// (errDerivedCreateDenied). Any other error storedCredToken returns is a real
 // failure (network/TLS/5xx, or a resolution error for --cluster) that the
 // caller must surface directly, never paper over with "interactive login
 // required".
@@ -1290,19 +1290,19 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 }
 
 // clustersPath is the management Cluster collection/object path, reached
-// through the same local-cluster proxy MintTokensPath uses.
+// through the same local-cluster proxy ExtTokensPath uses.
 const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 
-// resolveMintClusterID resolves clusterID (an id, a display name, "", or
-// "local") to its Cluster id before minting, using the stored login
+// resolveClusterIDForCreate resolves clusterID (an id, a display name, "", or
+// "local") to its Cluster id before creating, using the stored login
 // credential as bearer. It shares projects.MatchOneOrError — the same
 // collision-and-narrowing helper get/patch's ResolveCluster and the
 // cloud-credential resolver use — so an id match never short-circuits
 // ahead of checking every cluster's spec.displayName (id/display
-// collisions are ambiguous, never a silent id-wins mint), and ambiguous
+// collisions are ambiguous, never a silent id-wins create), and ambiguous
 // errors list only the colliding candidates. One list call serves both
 // checks.
-func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
+func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
 	if clusterID == "" || clusterID == "local" {
 		return clusterID, nil
 	}
@@ -1342,20 +1342,20 @@ func resolveMintClusterID(ctx context.Context, client *http.Client, base, bearer
 		}, "")
 }
 
-// legacyMintTTL is the bounded staleness a legacy (pre-ext.cattle.io)
+// legacyTokenTTL is the bounded staleness a legacy (pre-ext.cattle.io)
 // Rancher's stored-credential fallback caches under, since the raw stored
 // login token carries no expiry of its own to propagate: caching nothing
-// (a zero expiry) would force a full mint-then-404 round trip on every
+// (a zero expiry) would force a full create-then-404 round trip on every
 // single invocation, but caching forever would mean serving a revoked
 // token indefinitely. 15 minutes trades a little staleness for a lot fewer
 // round trips.
-const legacyMintTTL = 15 * time.Minute
+const legacyTokenTTL = 15 * time.Minute
 
-// storedCredToken mints a cluster-scoped token from the stored login
+// storedCredToken creates a cluster-scoped token from the stored login
 // credential for server, non-interactively, using the same derived-token
 // path `auth login` uses. errNoStoredCredential means the caller should
 // fall through to the interactive provider flow exactly as if no stored
-// credential existed — either none was found, or the mint was rejected as
+// credential existed — either none was found, or the create was rejected as
 // an invalid/insufficient credential. An unreadable config.yaml is noticed
 // and also falls through to errNoStoredCredential (the config load failure
 // itself is never returned as a hard error here — see the doc on the
@@ -1381,12 +1381,12 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		return Token{}, errNoStoredCredential
 	}
 	base := kube.BaseURL(server)
-	resolvedCluster, rerr := resolveMintClusterID(ctx, client, base, stored, clusterID)
+	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
 		return Token{}, rerr
 	}
-	mint, err := MintDerivedToken(ctx, client, base, stored, resolvedCluster, 0, hostLoginDescription())
-	bearer, expiresAt := mint.Bearer, mint.ExpiresAt
+	created, err := CreateDerivedToken(ctx, client, base, stored, resolvedCluster, 0, hostLoginDescription())
+	bearer, expiresAt := created.Bearer, created.ExpiresAt
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrExtGroupAbsent):
@@ -1401,7 +1401,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			// only), that token must NOT be persisted to the on-disk cache,
 			// and its returned expiry must never outlast the helper's real
 			// one: cap the expiry at the helper's, and mark it noDiskCache.
-			expiry := time.Now().Add(legacyMintTTL)
+			expiry := time.Now().Add(legacyTokenTTL)
 			noDiskCache := false
 			if slt, isSLT := t.store.(config.ShortLivedTokenStore); isSLT {
 				if helperExp, short := slt.ShortLivedTokenExpiry(ref); short {
@@ -1414,10 +1414,10 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			if noDiskCache {
 				p.Notice("this Rancher does not serve ext.cattle.io; serving the credential-helper token from memory only (not cached to disk)")
 			} else {
-				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyMintTTL))
+				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
 			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
-		case errors.Is(err, errMintDenied):
+		case errors.Is(err, errDerivedCreateDenied):
 			p.Notice(fmt.Sprintf("creating a token from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
 			return Token{}, errNoStoredCredential
 		default:
