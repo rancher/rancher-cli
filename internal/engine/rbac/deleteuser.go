@@ -114,8 +114,7 @@ func guardVerifyRefusal(cause error) *clierr.Error {
 // else — raw errors and the error map's unclassified catch-all — refuses retryably
 // per the guard contract.
 func passClassifiedOrRefuse(err error) error {
-	var ce *clierr.Error
-	if errors.As(err, &ce) && clierr.Classified(ce) {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok && clierr.Classified(ce) {
 		return err
 	}
 	return guardVerifyRefusal(err)

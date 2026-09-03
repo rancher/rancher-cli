@@ -122,8 +122,7 @@ func TestFactoryRejectsEmptyClusterID(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
 	_, err := f.Cluster(t.Context(), "")
-	var ce *clierr.Error
-	if !errors.As(err, &ce) || ce.Code != clierr.CodeValidation {
+	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeValidation {
 		t.Errorf("empty cluster id: got %v, want VALIDATION error", err)
 	}
 }

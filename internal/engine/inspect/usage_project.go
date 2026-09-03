@@ -45,8 +45,8 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		// Member path (mirrors projects.ResolveProject): a project member
 		// cannot LIST the collection, but a named --project can still be
 		// fetched directly — their per-project usage stays reachable.
-		var ce *clierr.Error
-		if !errors.As(err, &ce) || ce.Code != clierr.CodeRBAC {
+		ce, ok := errors.AsType[*clierr.Error](err)
+		if !ok || ce.Code != clierr.CodeRBAC {
 			return runtime.Result{}, err
 		}
 		if projectFlag == "" {

@@ -108,8 +108,8 @@ func isUnexpectedServerError(err error) bool {
 	if !apierrors.IsInternalError(err) {
 		return false
 	}
-	var se *apierrors.StatusError
-	if !errors.As(err, &se) {
+	se, ok := errors.AsType[*apierrors.StatusError](err)
+	if !ok {
 		return false
 	}
 	if d := se.ErrStatus.Details; d != nil {

@@ -235,8 +235,7 @@ var knownCodes = func() map[string]bool {
 // degradedCode is the entry's code: the collector error's clierr code when
 // it carries a known one, GENERIC otherwise.
 func degradedCode(err error) string {
-	var ce *clierr.Error
-	if errors.As(err, &ce) && knownCodes[ce.Code] {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok && knownCodes[ce.Code] {
 		return ce.Code
 	}
 	return clierr.CodeGeneric

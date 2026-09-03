@@ -250,8 +250,7 @@ func Wrap(err error, msg string) *Error {
 // nil otherwise — for callers that also need the concrete error (message,
 // hint) without a second chain walk.
 func AsNotFound(err error) *Error {
-	var ce *Error
-	if errors.As(err, &ce) && ce.Code == CodeNotFound {
+	if ce, ok := errors.AsType[*Error](err); ok && ce.Code == CodeNotFound {
 		return ce
 	}
 	return nil

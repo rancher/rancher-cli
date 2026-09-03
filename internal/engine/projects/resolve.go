@@ -103,8 +103,7 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 	projectKind, _ := kinds.Lookup("project")
 	list, err := client.List(ctx, projectKind.GVR, clusterID, "")
 	if err != nil {
-		var ce *clierr.Error
-		if errors.As(err, &ce) && ce.Code == clierr.CodeRBAC {
+		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeRBAC {
 			if _, gerr := ResolveByGet(ctx, client, clusterID, nameOrID, ce); gerr != nil {
 				return "", gerr
 			}
@@ -151,13 +150,13 @@ func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, n
 	if gerr == nil {
 		return obj, nil
 	}
-	var ge *clierr.Error
+	ge, isClassified := errors.AsType[*clierr.Error](gerr)
 	switch {
-	case errors.As(gerr, &ge) && ge.Code == clierr.CodeNotFound:
+	case isClassified && ge.Code == clierr.CodeNotFound:
 		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID+
 			"; you cannot list projects, so display names cannot be resolved — "+
 			"pass the exact project id (metadata.name)")
-	case errors.As(gerr, &ge) && ge.Code == clierr.CodeRBAC:
+	case isClassified && ge.Code == clierr.CodeRBAC:
 		return nil, listErr.WithMessage(listErr.Message +
 			"; you cannot list projects; pass the exact project id " +
 			"(metadata.name) of a project you have access to")

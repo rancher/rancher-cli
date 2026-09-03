@@ -110,8 +110,7 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 	obj, err := mgmt.Get(ctx, c.k.GVR, ns, args[0])
 	if err != nil {
-		var ce *clierr.Error
-		if errors.As(err, &ce) && ce.Code == clierr.CodeNotFound {
+		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeNotFound {
 			// Target doesn't exist; fall through to the inner Plan's own NOT_FOUND.
 			return c.inner.Plan(ctx, in)
 		}
