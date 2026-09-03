@@ -1252,7 +1252,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"derived-1"},"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
 
 		case (strings.HasPrefix(r.URL.Path, v3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.MintTokensPath+"/")) && r.Method == http.MethodDelete:
 			if opts.revokedPathCh != nil {

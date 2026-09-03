@@ -1016,21 +1016,20 @@ var errMintDenied = errors.New("token create rejected: invalid or insufficient c
 // MintDerivedToken asks the ext Token store to mint a purpose-made derived
 // token (bearer bearerToken), scoped to clusterID when set (spec.clusterName,
 // the same field internal/engine/extres/create.go's `create token --cluster`
-// uses), and returns its status.bearerToken and status.expiresAt.
-// ErrExtGroupAbsent signals the group-level 404 that means an older Rancher;
-// errMintDenied signals a 401/403 (the bearer credential is bad), distinct
-// from any other error (network/TLS/5xx), which callers must treat as a
-// real failure, not a "try something else" signal. ttlMs <= 0 omits
+// uses), carrying description as spec.description. It returns what the create
+// left behind — the resource name, bearer, and expiry when the response
+// identified them — on the error path too, so a caller that must clean up
+// knows what exists. ErrExtGroupAbsent signals the group-level 404 that means
+// an older Rancher; errMintDenied signals a 401/403 (the bearer credential is
+// bad), distinct from any other error (network/TLS/5xx), which callers must
+// treat as a real failure, not a "try something else" signal. ttlMs <= 0 omits
 // spec.ttl entirely (server default). This is the SAME derived-token path
 // `auth login` uses (via resolveProviderLoginToken in package commands), so
 // get-token's stored-credential path mints exactly the same shape of token.
-func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64) (bearer, expiresAt string, err error) {
-	host, err := os.Hostname()
-	if err != nil {
-		host = "unknown"
-	}
+func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
+	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindExt, Marked: description != ""}
 	spec := map[string]any{
-		"description": fmt.Sprintf("rancher-cli login @ %s", host),
+		"description": description,
 	}
 	if ttlMs > 0 {
 		spec["ttl"] = ttlMs
@@ -1040,34 +1039,46 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	}
 	body, err := json.Marshal(map[string]any{"spec": spec})
 	if err != nil {
-		return "", "", fmt.Errorf("building the token create request: %w", err)
+		return notAttempted, fmt.Errorf("building the token create request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+MintTokensPath, bytes.NewReader(body))
 	if err != nil {
-		return "", "", fmt.Errorf("building the token create request: %w", err)
+		return notAttempted, fmt.Errorf("building the token create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+bearerToken)
 
+	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
+	r := classifyCreate(resp, respBody, err, createdAt, description != "", TokenKindExt)
 	if err != nil {
-		return "", "", clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error())
+		return r, clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error())
 	}
 	switch resp.StatusCode {
 	case http.StatusNotFound:
-		return "", "", ErrExtGroupAbsent
+		return r, ErrExtGroupAbsent
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return "", "", fmt.Errorf("%w: %d %s", errMintDenied, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return r, fmt.Errorf("%w: %d %s", errMintDenied, resp.StatusCode, http.StatusText(resp.StatusCode))
 	case http.StatusOK, http.StatusCreated:
-		bearer = gjson.GetBytes(respBody, "status.bearerToken").String()
-		if bearer == "" {
-			return "", "", clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
+		if r.Bearer == "" {
+			return r, clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
 		}
-		return bearer, gjson.GetBytes(respBody, "status.expiresAt").String(), nil
+		return r, nil
 	default:
-		return "", "", clierr.New(clierr.CodeGeneric,
+		return r, clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("creating derived token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
+}
+
+// hostLoginDescription is the description a token create carries when no
+// login operation owns it: get-token's per-cluster mints, which no cleanup
+// path has to find again.
+func hostLoginDescription() string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "unknown"
+	}
+	return "rancher-cli login @ " + host
 }
 
 // matchingServerNames returns the names of the cfg.Servers entries whose URL
@@ -1301,7 +1312,8 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	if rerr != nil {
 		return Token{}, rerr
 	}
-	bearer, expiresAt, err := MintDerivedToken(ctx, client, base, stored, resolvedCluster, 0)
+	mint, err := MintDerivedToken(ctx, client, base, stored, resolvedCluster, 0, hostLoginDescription())
+	bearer, expiresAt := mint.Bearer, mint.ExpiresAt
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrExtGroupAbsent):

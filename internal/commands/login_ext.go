@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -88,7 +89,12 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpCli
 	// auth login has no cluster-scoping concept of its own; the stored
 	// login token this mints is later scoped per-cluster by get-token's own
 	// derived-token call.
-	d, _, err := token.MintDerivedToken(ctx, client, base, s, "", ttlMs)
+	host, herr := os.Hostname()
+	if herr != nil {
+		host = "unknown"
+	}
+	dr, err := token.MintDerivedToken(ctx, client, base, s, "", ttlMs, "rancher-cli login @ "+host)
+	d := dr.Bearer
 	if err != nil {
 		if errors.Is(err, token.ErrExtGroupAbsent) {
 			note := fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); storing the session token directly", config.MinRancherVersion)

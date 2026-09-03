@@ -92,7 +92,7 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"legacy-minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"legacy-minted"},"status":{"bearerToken":"ext/legacy-minted:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -164,7 +164,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"shim/no-cluster:tok"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"no-cluster"},"status":{"bearerToken":"ext/no-cluster:tok"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -189,7 +189,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "shim/no-cluster:tok", cred.Status.Token)
+	assert.Equal(t, "ext/no-cluster:tok", cred.Status.Token)
 
 	// The mint request body must not include a clusterName field.
 	assert.False(t, gjson.GetBytes(mintBody, "spec.clusterName").Exists(),
@@ -285,7 +285,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"b-tok"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"b-tok"},"status":{"bearerToken":"ext/b-tok:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -320,7 +320,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockMint(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err, "store error for ambient server A must not block a mint against server B")
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "b-tok", cred.Status.Token)
+	assert.Equal(t, "ext/b-tok:secret", cred.Status.Token)
 }
 
 // TestLegacyTokenRejectsEmptyUser is the round-3 repro for finding 5:
@@ -485,7 +485,7 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 		case r.URL.Path == MintTokensPath && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"shim/ambient-guard:tok"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"ambient-guard"},"status":{"bearerToken":"ext/ambient-guard:tok"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -523,7 +523,7 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a mint via right-server")
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "shim/ambient-guard:tok", cred.Status.Token)
+	assert.Equal(t, "ext/ambient-guard:tok", cred.Status.Token)
 }
 
 // noticeRecordingStore wraps a CredStore with a pre-loaded notice buffer,

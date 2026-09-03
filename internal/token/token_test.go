@@ -303,7 +303,7 @@ func TestGetTokenMintsFromStoredLoginCredential(t *testing.T) {
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -491,7 +491,7 @@ func TestGetTokenCachesMintedExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = fmt.Fprintf(w, `{"status":{"bearerToken":"ext/minted:secret","expiresAt":%q}}`, expiresAt)
+			_, _ = fmt.Fprintf(w, `{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret","expiresAt":%q}}`, expiresAt)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -524,7 +524,7 @@ func TestGetTokenSkipsCacheWhenMintCarriesNoExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -561,7 +561,7 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == MintTokensPath && r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -606,7 +606,7 @@ func TestGetTokenMintScopesToCluster(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -652,7 +652,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"status":{"bearerToken":"ext/minted:secret"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"minted"},"status":{"bearerToken":"ext/minted:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

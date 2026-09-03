@@ -76,14 +76,7 @@ type extToken struct {
 // keeps its "ext/" prefix — the server authenticator parses it back out of
 // the Bearer header, so it is opaque data here.
 func parseLoginResponse(body []byte) (Token, error) {
-	var hdr struct {
-		APIVersion string `json:"apiVersion"`
-		Kind       string `json:"kind"`
-	}
-	if err := json.Unmarshal(body, &hdr); err != nil {
-		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
-	}
-	if hdr.APIVersion == "ext.cattle.io/v1" && hdr.Kind == "Token" {
+	if kind, ok := LoginResponseShape(body); ok && kind == TokenKindExt {
 		var et extToken
 		if err := json.Unmarshal(body, &et); err != nil {
 			return Token{}, fmt.Errorf("error unmarshaling ext token login response: %w", err)
@@ -94,8 +87,15 @@ func parseLoginResponse(body []byte) (Token, error) {
 	if err := json.Unmarshal(body, &tok); err != nil {
 		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
 	}
-	if tok.Token == "" && hdr.APIVersion != "" {
-		return Token{}, fmt.Errorf("unsupported token API version %q (kind %q) in login response", hdr.APIVersion, hdr.Kind)
+	if tok.Token == "" {
+		var hdr struct {
+			APIVersion string `json:"apiVersion"`
+			Kind       string `json:"kind"`
+		}
+		_ = json.Unmarshal(body, &hdr)
+		if hdr.APIVersion != "" {
+			return Token{}, fmt.Errorf("unsupported token API version %q (kind %q) in login response", hdr.APIVersion, hdr.Kind)
+		}
 	}
 	return tok, nil
 }
