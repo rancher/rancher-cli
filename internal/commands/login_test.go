@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -1351,15 +1353,15 @@ func TestLoginProviderFlowRevokeFailureToleratedLoginStillSucceeds(t *testing.T)
 	dir, store := filePolicyDir(t)
 	seedServer(t, dir, "prod", fake.URL, "", false)
 	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
-	var errBuf bytes.Buffer
-	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
-	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	p := ui.New(&bytes.Buffer{}, newLineReader("alice", "secret"), false, true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
 
 	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "ext/derived-1:secretvalue", tok, "a revoke failure must not block login")
-	assert.Contains(t, errBuf.String(), "could not revoke the transient session token")
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "could not be revoked")
+	assert.Len(t, res.Data.(map[string]any)["residualTokens"], 1)
 }
 
 func TestLoginProviderFlowTTLPlumbedToMintBodyInMilliseconds(t *testing.T) {
@@ -1622,4 +1624,551 @@ func TestLoginProviderFlowRefusesCrossOriginRedirectOnLogin(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	require.ErrorContains(t, err, "refused to follow a redirect from "+fake.URL+" to "+elsewhere.URL)
 	assert.Zero(t, elsewhereHits.Load(), "the password-bearing body must never reach the other origin")
+}
+
+// unsupportedStore is a read-only credential helper: every write reports
+// notWritten with the sentinel, every read reports no token.
+type unsupportedStore struct{}
+
+func (unsupportedStore) GetToken(config.ServerRef) (string, error) { return "", config.ErrNoToken }
+
+func (s unsupportedStore) SetToken(ref config.ServerRef, tok string) error {
+	_, err := s.SetTokenWithOutcome(ref, tok)
+	return err
+}
+
+func (unsupportedStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+	return config.CommitOutcome{Backend: clierr.BackendExec, State: config.CommitNotWritten, PriorSource: clierr.PriorUnknown},
+		fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)
+}
+
+func (unsupportedStore) DeleteToken(config.ServerRef) error { return nil }
+
+func (unsupportedStore) GetCachedCred(string) (string, time.Time, error) {
+	return "", time.Time{}, config.ErrNoToken
+}
+
+func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+	return nil
+}
+func (unsupportedStore) DeleteCachedCred(string) error                     { return nil }
+func (unsupportedStore) DeleteAllCachedCreds() error                       { return nil }
+func (unsupportedStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }
+
+// commitThenErrorKeyring is a keyring seam whose Set stores the value and
+// then reports an error: the write committed, the transport did not say so.
+type commitThenErrorKeyring struct {
+	mu    sync.Mutex
+	items map[string]string
+	err   error
+}
+
+func (k *commitThenErrorKeyring) Set(service, user, password string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.items[service+"\x00"+user] = password
+	return k.err
+}
+
+func (k *commitThenErrorKeyring) Get(service, user string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	v, ok := k.items[service+"\x00"+user]
+	if !ok {
+		return "", keyring.ErrNotFound
+	}
+	return v, nil
+}
+
+func (k *commitThenErrorKeyring) Delete(service, user string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.items, service+"\x00"+user)
+	return nil
+}
+
+// depositingPrompter stands in for the browser on the SAML path: it reads
+// the published login URL and runs onHandoff before the CLI's first poll.
+// The embedded prompter is silent and non-TTY with NoInput false — the SAML
+// gate refuses a NoInput prompter before any handoff.
+type depositingPrompter struct {
+	runtime.Prompter
+	onHandoff func(requestID, publicKey string)
+}
+
+func (h *depositingPrompter) Notice(msg string) {
+	before, _, found := strings.Cut(msg, "/dashboard/auth/login?")
+	if !found {
+		return
+	}
+	u, err := neturl.Parse(strings.TrimSpace(msg[strings.LastIndex(before, " ")+1:]))
+	if err != nil {
+		return
+	}
+	if h.onHandoff != nil {
+		h.onHandoff(u.Query().Get("requestId"), u.Query().Get("publicKey"))
+	}
+}
+
+func newDepositingPrompter(onHandoff func(requestID, publicKey string)) *depositingPrompter {
+	return &depositingPrompter{Prompter: ui.New(io.Discard, strings.NewReader(""), false, false), onHandoff: onHandoff}
+}
+
+func countOf(lines []string, s string) int {
+	n := 0
+	for _, l := range lines {
+		if l == s {
+			n++
+		}
+	}
+	return n
+}
+
+func indexOf(lines []string, s string) int {
+	for i, l := range lines {
+		if l == s {
+			return i
+		}
+	}
+	return -1
+}
+
+// decodeLoginFailure decodes the details every post-credential failure
+// must carry.
+func decodeLoginFailure(t *testing.T, err error) (*clierr.Error, clierr.LoginFailureDetails) {
+	t.Helper()
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	d, ok := ce.Details.(clierr.LoginFailureDetails)
+	require.True(t, ok, "details %T", ce.Details)
+	return ce, d
+}
+
+// TestLoginConflictAfterDerivedTokenRevokesAndReports pins a commit-stage
+// failure on a derived credential: the derived token is revoked with
+// itself as the bearer, the details name both tokens' fates, and the
+// primary's code and hint survive composition.
+func TestLoginConflictAfterDerivedTokenRevokesAndReports(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	cmd := newPlainLoginCmd(dir, store)
+	cmd.beforeCommitHook = func() {
+		cfg, _ := config.Load(config.FilePath(dir))
+		cfg.Servers["prod"] = config.Server{URL: srv.URL + "/changed"}
+		_ = cfg.Write()
+	}
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err := cmd.Execute(t.Context(), in, p)
+	ce, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Equal(t, clierr.CodeConflict, d.Primary.Code)
+	assert.Equal(t, "rancher auth login "+shquote("prod"), ce.Hint)
+	assert.Equal(t, clierr.StageCommit, d.Stage)
+	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
+	assert.Equal(t, clierr.CredentialNotWritten, d.CredentialState)
+	assert.Nil(t, d.CredentialRecovery, "nothing local can be left behind")
+	require.NotNil(t, d.DerivedToken)
+	assert.Equal(t, clierr.CreateKnown, d.DerivedToken.Outcome)
+	require.NotNil(t, d.DerivedToken.Cleanup)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+	require.NotNil(t, d.SessionToken)
+	assert.Equal(t, clierr.ResultRevoked, d.SessionToken.Cleanup.Result)
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 2, "S revoked during acquire, D revoked at commit failure")
+	assert.Equal(t, "ext", recs[1].Kind)
+	_, storedErr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.ErrorIs(t, storedErr, config.ErrNoToken)
+}
+
+// TestLoginPastedTokenFailureNeverRevokes pins that a user-supplied token
+// is never deleted, and the details say so.
+func TestLoginPastedTokenFailureNeverRevokes(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	cmd := newPlainLoginCmd(dir, store)
+	cmd.beforeCommitHook = func() {
+		cfg, _ := config.Load(config.FilePath(dir))
+		cfg.Servers["prod"] = config.Server{URL: srv.URL + "/changed"}
+		_ = cfg.Write()
+	}
+	in := args{b: map[string]bool{"token-stdin": true, "no-verify": true}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("id:secret"), false, true)
+	_, err := cmd.Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Nil(t, d.DerivedToken)
+	assert.Nil(t, d.SessionToken)
+	assert.Empty(t, d.OperationMarker)
+	assert.Empty(t, f.DeleteRequests())
+}
+
+// TestLoginReadOnlyHelperRevokesDerivedToken pins the unsupported-store
+// branch: the login succeeds, but the derived token created for it is
+// revoked, and a failed revoke is reported as residual with no executable
+// hint because nothing was stored.
+func TestLoginReadOnlyHelperRevokesDerivedToken(t *testing.T) {
+	t.Parallel()
+	for _, deleteMode := range []string{"", "fail"} {
+		t.Run("delete "+deleteMode, func(t *testing.T) {
+			f := testrancher.New(testrancher.Options{DerivedDeleteMode: deleteMode})
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			dir, _ := filePolicyDir(t)
+			seedServer(t, dir, "prod", srv.URL, "", false)
+			cmd := newPlainLoginCmd(dir, unsupportedStore{})
+			in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+			p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+			res, err := cmd.Execute(t.Context(), in, p)
+			require.NoError(t, err)
+			recs := f.DeleteRequests()
+			require.Len(t, recs, 2)
+			assert.Equal(t, "ext", recs[1].Kind, "D is revoked, not stored")
+			residual, _ := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+			if deleteMode == "fail" {
+				require.Len(t, residual, 1)
+				assert.Equal(t, clierr.ResultFailed, residual[0].Cleanup.Result)
+				joined := strings.Join(res.Warnings, "\n")
+				assert.Contains(t, joined, "no credential was stored")
+				_, revoke := clierr.RecoveryCommands(*residual[0].Ref)
+				assert.Contains(t, joined, revoke, "the exact ext delete command follows the re-login")
+			} else {
+				assert.Empty(t, residual)
+			}
+		})
+	}
+}
+
+// TestLoginSuccessWithFailedSessionCleanupWarns pins the successful login
+// whose S revoke failed: the login succeeds, the warning names the v3 token
+// with the deprecated-kind delete command, and residualTokens carries it.
+func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{SessionDeleteMode: "fail"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	require.NoError(t, err)
+	joined := strings.Join(res.Warnings, "\n")
+	assert.Contains(t, joined, "rancher delete management-token ")
+	assert.Contains(t, joined, "--apply --yes --allow-deprecated")
+	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+	require.Len(t, residual, 1)
+	assert.Equal(t, clierr.TokenKindV3, residual[0].Ref.Kind, "the façade answers a json request with the Norman shape by default")
+}
+
+// TestLoginReadOnlyHelperRecoveryMatrix pins finishUnsupportedStore's
+// aggregate rule across credential shapes. Every residual here has a known
+// name (S's name arrives with its bearer, D's with the mint response), so
+// the recovery is re-login followed by the exact kind-correct command, with
+// no hint because nothing was persisted; marker search and handoff facts
+// are never rendered for a named token, though a SAML fate still carries
+// its search data. Not parallel: the SAML cases shrink the token package's
+// poll timing.
+func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
+	restore := token.SetSAMLTimingForTest(2*time.Second, 10*time.Millisecond)
+	defer restore()
+	cases := []struct {
+		name         string
+		opts         testrancher.Options
+		saml         bool
+		wantResidual int
+		wantKinds    []clierr.TokenKind
+	}{
+		{"derived, S cleanup failed", testrancher.Options{SessionDeleteMode: "fail"}, false, 1, []clierr.TokenKind{clierr.TokenKindV3}},
+		{"derived, D revoke failed", testrancher.Options{DerivedDeleteMode: "fail"}, false, 1, []clierr.TokenKind{clierr.TokenKindExt}},
+		{"derived, both failed", testrancher.Options{SessionDeleteMode: "fail", DerivedDeleteMode: "fail"}, false, 2, []clierr.TokenKind{clierr.TokenKindV3, clierr.TokenKindExt}},
+		{"SAML derived, S cleanup failed", testrancher.Options{SessionDeleteMode: "fail"}, true, 1, []clierr.TokenKind{clierr.TokenKindV3}},
+		{"SAML legacy, S revoke failed", testrancher.Options{Legacy: true, SessionDeleteMode: "fail"}, true, 1, []clierr.TokenKind{clierr.TokenKindV3}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := tc.opts
+			var f *testrancher.Facade
+			var p runtime.Prompter
+			if tc.saml {
+				opts.EnableSAMLRelay = true
+				opts.ExtraProviders = []string{"oktaProvider"}
+				f = testrancher.New(opts)
+				p = newDepositingPrompter(func(id, pub string) { f.DepositRelay(id, pub) })
+			} else {
+				f = testrancher.New(opts)
+				p = ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+			}
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			dir, _ := filePolicyDir(t)
+			seedServer(t, dir, "prod", srv.URL, "", false)
+			provider := "localProvider"
+			if tc.saml {
+				provider = "oktaProvider"
+			}
+			in := args{s: map[string]string{"auth-provider": provider}, a: []string{"prod"}}
+			res, err := newPlainLoginCmd(dir, unsupportedStore{}).Execute(t.Context(), in, p)
+			require.NoError(t, err)
+			residual, _ := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+			require.Len(t, residual, tc.wantResidual)
+			for i, r := range residual {
+				require.NotNil(t, r.Ref)
+				assert.Equal(t, tc.wantKinds[i], r.Ref.Kind)
+				assert.Equal(t, clierr.ResultFailed, r.Cleanup.Result)
+				assert.Equal(t, !tc.saml || r.Ref.Kind == clierr.TokenKindExt, r.Marked)
+				if tc.saml && r.Ref.Kind == clierr.TokenKindV3 {
+					require.NotNil(t, r.Search)
+					assert.Equal(t, "oktaProvider", r.Search.AuthProvider)
+				}
+			}
+			joined := strings.Join(res.Warnings, "\n")
+			assert.Contains(t, joined, "no credential was stored")
+			// Every residual here has a known name, so the prose is the exact
+			// command after a re-login; marker search and handoff facts are
+			// for tokens without a name and must not appear.
+			assert.NotContains(t, joined, "[op:")
+			assert.NotContains(t, joined, "at or after")
+			login := strings.Index(joined, "rancher auth login "+shquote("prod"))
+			require.GreaterOrEqual(t, login, 0)
+			for _, r := range residual {
+				_, revoke := clierr.RecoveryCommands(*r.Ref)
+				at := strings.Index(joined, revoke)
+				require.GreaterOrEqual(t, at, 0, "a known name gets its exact revoke command in the prose: %s", revoke)
+				assert.Less(t, login, at, "re-login is ordered before the delete")
+				if r.Ref.Kind == clierr.TokenKindV3 {
+					assert.Contains(t, revoke, "--allow-deprecated")
+				}
+			}
+		})
+	}
+}
+
+// TestLoginFailureKeepsThePrimaryCauseChain pins that composition never
+// breaks errors.Is/As: a cancelled commit still is context.Canceled, a
+// store sentinel is still reachable, and the classified primary is still
+// found by errors.As beneath the composed error.
+func TestLoginFailureKeepsThePrimaryCauseChain(t *testing.T) {
+	t.Parallel()
+	primary := clierr.New(clierr.CodeGeneric, "store failed").WithCause(fmt.Errorf("wrapped: %w", context.Canceled))
+	err := failLogin(primary, clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
+	require.ErrorIs(t, err, context.Canceled)
+	got, ok := errors.AsType[*clierr.Error](errors.Unwrap(err))
+	require.True(t, ok, "the classified primary is the cause")
+	assert.Same(t, primary, got)
+	sentinel := failLogin(fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported), clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
+	assert.ErrorIs(t, sentinel, config.ErrTokenStoreUnsupported)
+}
+
+// TestLoginTLSFailureKeepsCertificateFactsInText pins the default-format
+// projection of a composed failure: the TLS classification's own detail
+// lines are rendered before the login stage and cleanup lines, once. The
+// classified primary is produced by a real x509 failure against a
+// self-signed server and handed to failLogin directly: in the login flow
+// an x509 failure happens before any create and never reaches the schema,
+// so the projection is a property of composition, tested at that level.
+func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
+	t.Parallel()
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	srv := newTLSFake(t, fix)
+	_, err := http.Get(srv.URL + "/rancherversion") // the default client does not trust the fixture
+	require.Error(t, err)
+	u, perr := neturl.Parse(srv.URL)
+	require.NoError(t, perr)
+	origin, perr := httpx.OriginOf(u)
+	require.NoError(t, perr)
+	primary := tlstrust.ClassifyForOrigin(err, origin, time.Now())
+	require.NotNil(t, primary)
+	inner, ok := primary.Details.(clierr.TextDetails)
+	require.True(t, ok, "the TLS classification carries text details: %T", primary.Details)
+
+	composed := failLogin(primary, clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
+	_, d := decodeLoginFailure(t, composed)
+	lines := d.TextDetails()
+	for _, want := range inner.TextDetails() {
+		assert.Equal(t, 1, countOf(lines, want), "certificate fact %q rendered exactly once", want)
+	}
+	assert.Less(t, indexOf(lines, inner.TextDetails()[0]), indexOf(lines, "stage: "+string(d.Stage)), "certificate facts precede the login stage")
+}
+
+// TestLoginLostResponseRecoveryNamesBothCollections pins recovery for a
+// marked S whose login response was lost: its kind is unknown, so the
+// procedure lists both token collections for the marker; with the façade
+// answering the json request with an ext object, the leftover really is
+// in the ext collection, which a v3-only search would have missed.
+func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
+	t.Parallel()
+	for _, shape := range []string{"v3", "ext"} {
+		t.Run("server created "+shape, func(t *testing.T) {
+			t.Parallel()
+			f := testrancher.New(testrancher.Options{DropLoginResponse: true, LoginShape: shape})
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			dir, store := filePolicyDir(t)
+			seedServer(t, dir, "prod", srv.URL, "", false)
+			in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+			p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+			_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+			_, d := decodeLoginFailure(t, err)
+			require.NotNil(t, d.SessionToken)
+			assert.Equal(t, clierr.CreateUnknown, d.SessionToken.Outcome)
+			assert.Empty(t, d.SessionToken.Kind, "a lost response establishes no kind")
+			assert.Nil(t, d.SessionToken.Ref)
+			assert.True(t, d.SessionToken.Marked)
+			v3List, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
+			extList, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
+			assert.Contains(t, d.Recovery, v3List)
+			assert.Contains(t, d.Recovery, extList)
+			assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
+			assert.Contains(t, strings.Join(d.TextDetails(), "\n"), "(kind unknown)")
+			assert.Len(t, f.TokensWithDescriptionContaining(shape, "[op:"+d.OperationMarker+"]"), 1, "the leftover is in the collection the server chose")
+		})
+	}
+}
+
+// TestLoginSuccessWithFailedExtSessionCleanupNamesTheTokenKind pins the
+// kind-correct command for an ext-shaped S whose revoke failed after a
+// successful login: rancher delete token, never management-token.
+func TestLoginSuccessWithFailedExtSessionCleanupNamesTheTokenKind(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{LoginShape: "ext", SessionDeleteMode: "fail"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	require.NoError(t, err)
+	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+	require.Len(t, residual, 1)
+	assert.Equal(t, clierr.TokenKindExt, residual[0].Ref.Kind)
+	joined := strings.Join(res.Warnings, "\n")
+	_, revoke := clierr.RecoveryCommands(*residual[0].Ref)
+	assert.Contains(t, joined, revoke)
+	assert.Contains(t, revoke, "rancher delete token ")
+	assert.NotContains(t, joined, "management-token")
+}
+
+// TestLoginSAMLTimeoutRecoveryNamesHandoffFacts pins the one place the
+// unmarked-token prose is rendered: a SAML sign-in the browser never
+// completes. The session token is unknown and unmarked, the details carry
+// the handoff facts, the recovery names them and the management-tokens
+// route, no marker exists, and no marker text is shown. Not parallel: it
+// shrinks the token package's poll timing.
+func TestLoginSAMLTimeoutRecoveryNamesHandoffFacts(t *testing.T) {
+	restore := token.SetSAMLTimingForTest(100*time.Millisecond, 10*time.Millisecond)
+	defer restore()
+	f := testrancher.New(testrancher.Options{EnableSAMLRelay: true, ExtraProviders: []string{"oktaProvider"}})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "oktaProvider"}, a: []string{"prod"}}
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(nil))
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.StageAuthentication, d.Stage)
+	assert.Empty(t, d.OperationMarker, "no marked create was attempted")
+	require.NotNil(t, d.SessionToken)
+	assert.Equal(t, clierr.CreateUnknown, d.SessionToken.Outcome)
+	assert.False(t, d.SessionToken.Marked)
+	assert.Nil(t, d.SessionToken.Ref)
+	require.NotNil(t, d.SessionToken.Search)
+	assert.Equal(t, "oktaProvider", d.SessionToken.Search.AuthProvider)
+	assert.NotEmpty(t, d.SessionToken.Search.HandoffAt)
+	assert.NotEmpty(t, d.SessionToken.Search.PollEndedAt)
+	assert.Nil(t, d.DerivedToken)
+	assert.Contains(t, d.Recovery, "oktaProvider")
+	assert.Contains(t, d.Recovery, "at or after "+d.SessionToken.Search.HandoffAt)
+	assert.Contains(t, d.Recovery, "stopped waiting at "+d.SessionToken.Search.PollEndedAt)
+	assert.Contains(t, d.Recovery, "rancher get management-tokens -o json")
+	assert.NotContains(t, d.Recovery, "[op:")
+	assert.Empty(t, f.DeleteRequests())
+}
+
+// TestLoginCommitStageFailureCarriesCreateTimestamps pins that a failure
+// after acquisition still reports when each token was created.
+func TestLoginCommitStageFailureCarriesCreateTimestamps(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	cmd := newPlainLoginCmd(dir, store)
+	cmd.beforeCommitHook = func() {
+		cfg, _ := config.Load(config.FilePath(dir))
+		cfg.Servers["prod"] = config.Server{URL: srv.URL + "/changed"}
+		_ = cfg.Write()
+	}
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err := cmd.Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	require.NotNil(t, d.SessionToken)
+	require.NotNil(t, d.DerivedToken)
+	_, serr := time.Parse(time.RFC3339, d.SessionToken.CreatedAt)
+	require.NoError(t, serr, "session createdAt %q", d.SessionToken.CreatedAt)
+	_, derr := time.Parse(time.RFC3339, d.DerivedToken.CreatedAt)
+	require.NoError(t, derr, "derived createdAt %q", d.DerivedToken.CreatedAt)
+	assert.LessOrEqual(t, d.SessionToken.CreatedAt, d.DerivedToken.CreatedAt)
+}
+
+// TestLoginReconciledKeyringNoticeIsAWarning pins the committed-with-notice
+// keyring branch through the command: the login succeeds, the credential
+// is usable, and the keyring's advisory appears exactly once in warnings.
+// Not parallel: it swaps the package-global keyring seam.
+func TestLoginReconciledKeyringNoticeIsAWarning(t *testing.T) {
+	keyring.MockInit()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	fk := &commitThenErrorKeyring{items: map[string]string{}, err: errors.New("dbus: reply lost")}
+	restore := config.SetKeyringBackendForTest(fk)
+	defer restore()
+	store, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	require.NoError(t, err)
+	joined := strings.Join(res.Warnings, "\n")
+	assert.Equal(t, 1, strings.Count(joined, "keyring reported an error after storing the token"), "the notice appears exactly once")
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, tok)
+}
+
+// TestLoginAuthStageFailureCarriesDetails pins the authentication-stage
+// shape: a mint 500 after S exists yields stage authentication, S known
+// and revoked, D unknown, marker present, no config or credential state.
+func TestLoginAuthStageFailureCarriesDetails(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{MintStatus: 500})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.StageAuthentication, d.Stage)
+	assert.Empty(t, d.ConfigState)
+	assert.Empty(t, d.CredentialState)
+	assert.NotEmpty(t, d.OperationMarker)
+	assert.Equal(t, clierr.CreateKnown, d.SessionToken.Outcome)
+	assert.Equal(t, clierr.ResultRevoked, d.SessionToken.Cleanup.Result)
+	assert.Equal(t, clierr.CreateUnknown, d.DerivedToken.Outcome)
+	assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
+	assert.Contains(t, d.Recovery, "rancher get tokens")
 }

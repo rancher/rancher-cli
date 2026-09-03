@@ -50,6 +50,10 @@ type loginCmd struct {
 	// system roots only); tests inject a client pinned to their IdP fixture.
 	// nil means the production default.
 	newIdPClient func() *http.Client
+	// beforeCommitHook runs inside the config lock, before the commit reads
+	// the current entry state, so a test can make a concurrent change land
+	// exactly in the window the snapshot check guards. nil in production.
+	beforeCommitHook func()
 }
 
 // idpClient resolves newIdPClient with its production default.
@@ -481,15 +485,17 @@ func (l loginCmd) authenticateAndStore(
 	cred, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
 	bearer := cred.Token
 	viaProvider := cred.Provenance != token.ProvenanceUserSupplied
-	if authErr == nil && cred.SessionTokenCleanup.Result == token.ResultFailed && cred.SessionTokenCleanup.Ref != nil {
-		p.Notice(fmt.Sprintf("could not revoke the transient session token %s: %s",
-			cred.SessionTokenCleanup.Ref.Name, cred.SessionTokenCleanup.Error))
+	if ae, ok := errors.AsType[*token.AcquireError](authErr); ok {
+		authErr = failAcquire(ae, name)
 	}
 	if authErr == nil {
 		id, secret, ok := strings.Cut(bearer, ":")
 		if !ok || id == "" || secret == "" {
-			authErr = clierr.New(clierr.CodeValidation,
-				"invalid token (expected non-empty id:secret); get one from the Rancher UI")
+			// The credential this operation created is unusable: revoke it and
+			// report it with the same shape every later failure carries.
+			authErr = failLogin(clierr.New(clierr.CodeValidation,
+				"invalid token (expected non-empty id:secret); get one from the Rancher UI"),
+				clierr.StageCommit, loginStates{config: clierr.ConfigNotWritten}, cred, name)
 		}
 	}
 	if authErr != nil {
@@ -507,14 +513,15 @@ func (l loginCmd) authenticateAndStore(
 	noVerify := in.Bool("no-verify")
 	if !viaProvider && !noVerify && l.verify != nil {
 		if _, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: bearer, ServerName: name}); verr != nil {
-			if delegated {
-				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, verr, snap)
-			}
-			if ce, ok := errors.AsType[*clierr.Error](verr); ok {
-				return runtime.Result{}, ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
+			if ce, ok := errors.AsType[*clierr.Error](verr); ok && !delegated {
+				verr = ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
 					WithHint("")
 			}
-			return runtime.Result{}, verr
+			composed := failLogin(verr, clierr.StageCommit, loginStates{config: clierr.ConfigNotWritten}, cred, name)
+			if delegated {
+				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, composed, snap)
+			}
+			return runtime.Result{}, composed
 		}
 	}
 
@@ -525,20 +532,38 @@ func (l loginCmd) authenticateAndStore(
 	var (
 		currentServer string
 		currentValid  bool
+		residual      = []clierr.TokenFate{}
+		persisted     bool
 	)
 	if err := config.WithLock(ctx, l.dir, func() error {
+		// st accumulates what each persistence system holds as the commit
+		// proceeds, so any failure below reports the state reached, not the
+		// state intended.
+		st := loginStates{config: clierr.ConfigNotWritten}
+		fail := func(primary error) error {
+			// A cancelled operation is reported as cancellation: the local
+			// symptom (a lock timeout, a half-read config) describes the
+			// cancellation, not a fault of its own.
+			if cerr := ctx.Err(); cerr != nil {
+				primary = cerr
+			}
+			return failLogin(primary, clierr.StageCommit, st, cred, name)
+		}
+		if l.beforeCommitHook != nil {
+			l.beforeCommitHook()
+		}
 		cfg, err := config.Load(config.FilePath(l.dir))
 		if err != nil {
-			return err
+			return fail(err)
 		}
 		if !snapshotMatchesCurrent(cfg, snap) {
-			return clierr.New(clierr.CodeConflict,
+			return fail(clierr.New(clierr.CodeConflict,
 				fmt.Sprintf("server entry %q changed during login", name)).
-				WithHint(fmt.Sprintf("rancher auth login %s", shquote(name)))
+				WithHint(fmt.Sprintf("rancher auth login %s", shquote(name))))
 		}
 		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
 		if err != nil {
-			return err
+			return fail(err)
 		}
 		if storeNotice != "" {
 			warnings = append(warnings, storeNotice)
@@ -549,7 +574,7 @@ func (l loginCmd) authenticateAndStore(
 		// before RepinForLogin — see RepinForLogin's else-branch comment.
 		store, pinNotice, err := config.RepinForLogin(l.dir, cfg.CredentialStore, rawStore)
 		if err != nil {
-			return err
+			return fail(err)
 		}
 		if pinNotice != "" {
 			warnings = append(warnings, pinNotice)
@@ -558,15 +583,21 @@ func (l loginCmd) authenticateAndStore(
 		out, tokenErr := config.CommitToken(store, ref, bearer)
 		compensate := out.Compensate
 		tokenCommitted := tokenErr == nil
-		if tokenErr == nil && out.Notice != "" {
-			warnings = append(warnings, out.Notice)
+		st.commit = &out
+		if tokenErr == nil {
+			persisted = true
+			if out.Notice != "" {
+				warnings = append(warnings, out.Notice)
+				st.notice = out.Notice
+			}
 		}
 		if tokenErr != nil {
 			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
-				return tokenErr
+				return fail(tokenErr)
 			}
-			warnings = append(warnings,
-				"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
+			w, r := finishUnsupportedStore(cred, name)
+			warnings = append(warnings, w...)
+			residual = append(residual, r...)
 		}
 		if pendingTrust != nil {
 			// The token write (or its declared ErrTokenStoreUnsupported
@@ -580,24 +611,19 @@ func (l loginCmd) authenticateAndStore(
 				writeConfig = trustCommitConfigWriteHookForTest
 			}
 			if werr := writeConfig(); werr != nil {
-				compensated, compensateErr := false, ""
+				st.config = clierr.ConfigWriteFailed
 				if tokenCommitted && compensate != nil {
 					if cerr := compensate(); cerr != nil {
-						compensateErr = cerr.Error()
+						st.compensate, st.compErr = clierr.CredentialCompensationFailed, cerr.Error()
 					} else {
-						compensated = true
+						st.compensate = clierr.CredentialCompensated
 					}
 				}
-				return clierr.New(clierr.CodeGeneric,
+				return fail(clierr.New(clierr.CodeGeneric,
 					fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())).
-					WithDetails(clierr.TrustCommitFailureDetails{
-						TokenCommitted:   tokenCommitted,
-						Compensated:      compensated,
-						CompensateError:  compensateErr,
-						ConfigWriteError: werr.Error(),
-					}).
-					WithHint(config.LoginHintFor(name))
+					WithHint(config.LoginHintFor(name)))
 			}
+			st.config = clierr.ConfigWritten
 		}
 		currentServer = cfg.CurrentServer
 		if currentServer != "" {
@@ -614,8 +640,21 @@ func (l loginCmd) authenticateAndStore(
 	// construction, so it reads true even though no explicit round-trip ran.
 	verified := !noVerify || viaProvider
 
+	// A session token this login created and could not revoke outlives the
+	// login that succeeded: it is listed with the command that clears it.
+	if persisted && cred.SessionTokenCleanup.Result == clierr.ResultFailed && cred.SessionTokenCleanup.Ref != nil {
+		if f := fateOf(clierr.CreateKnown, "", cred.SessionTokenCleanup.Ref, !cred.SessionTokenUnmarked,
+			cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch); f != nil {
+			text, _ := residualRecovery(*f, name, cred.Marker, true)
+			warnings = append(warnings, fmt.Sprintf("the transient session token %s created by this login could not be revoked (%s); %s",
+				f.Ref.String(), f.Cleanup.Error, text))
+			residual = append(residual, *f)
+		}
+	}
+
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
+		"residualTokens": residual,
 	}}
 	res.Warnings = warnings
 	var lines []string
@@ -645,6 +684,319 @@ func (l loginCmd) authenticateAndStore(
 	}
 	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
+}
+
+// loginStates is what the commit closure knows at a failure point.
+type loginStates struct {
+	config clierr.ConfigState
+	// commit is the backend's own account of the token write; nil before
+	// the store was reached.
+	commit *config.CommitOutcome
+	// compensate is compensated or compensationFailed once compensation
+	// ran, empty when it was not attempted.
+	compensate clierr.CredentialState
+	compErr    string
+	// notice is CommitOutcome.Notice from a nil-error commit; it reaches
+	// the warnings whether the login then succeeds or fails.
+	notice string
+}
+
+// credentialStateOf derives the reported state from the backend outcome
+// and whether compensation ran.
+func credentialStateOf(st loginStates) clierr.CredentialState {
+	if st.commit == nil {
+		return clierr.CredentialNotWritten
+	}
+	if st.compensate != "" {
+		return st.compensate
+	}
+	return st.commit.State
+}
+
+// credentialRecoveryFor builds the local half of recovery, only for states
+// that can leave a local residue.
+func credentialRecoveryFor(st loginStates, server string) *clierr.CredentialRecovery {
+	state := credentialStateOf(st)
+	switch state {
+	case clierr.CredentialNotWritten, clierr.CredentialCompensated:
+		return nil
+	}
+	if st.commit == nil {
+		return nil
+	}
+	return &clierr.CredentialRecovery{
+		Backend: st.commit.Backend, State: state, PriorSource: st.commit.PriorSource,
+		HelperRecordRetained: st.commit.HelperRecordRetained, CompensationError: st.compErr,
+		Command: "rancher auth logout " + shquote(server), DataLossRisk: clierr.DataLossRiskText(server),
+	}
+}
+
+// fateOf projects one token's evidence onto the schema.
+func fateOf(outcome clierr.CreateOutcome, kind clierr.TokenKind, ref *clierr.TokenRef, marked bool, createdAt string, cleanup clierr.RevokeOutcome, search *token.SAMLHandoff) *clierr.TokenFate {
+	if outcome == "" || outcome == clierr.CreateNotAttempted {
+		return nil
+	}
+	if ref != nil {
+		kind = ref.Kind
+	}
+	f := &clierr.TokenFate{Outcome: outcome, Kind: kind, Ref: ref, Marked: marked, CreatedAt: createdAt}
+	if cleanup.Result != "" {
+		c := cleanup
+		f.Cleanup = &c
+	}
+	if search != nil && !marked {
+		f.Search = &clierr.UnmarkedTokenSearch{AuthProvider: search.Provider, HandoffAt: search.HandoffAt,
+			PollEndedAt: search.PollEndedAt, ServerRelayExpiresAt: search.ServerRelayExpiresAt}
+	}
+	return f
+}
+
+// sessionRefOf names the session token of a derived credential: its
+// revocation attempt is the only place its name survives.
+func sessionRefOf(cred token.LoginCredential) *clierr.TokenRef { return cred.SessionTokenCleanup.Ref }
+
+// primaryOf projects an error onto PrimaryFailure, classifying a plain
+// error as GENERIC.
+func primaryOf(err error) (*clierr.Error, clierr.PrimaryFailure) {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok {
+		ce = clierr.Wrap(err, err.Error())
+	}
+	return ce, clierr.PrimaryFailure{Code: ce.Code, Message: ce.Message, Hint: ce.Hint,
+		Retryable: ce.Retryable, Candidates: ce.Candidates, Details: ce.Details}
+}
+
+// compose builds the outer error: the primary's code, message, hint,
+// retryability, candidates, and warnings copied once; the details are the
+// LoginFailureDetails around the primary.
+func compose(primary *clierr.Error, d clierr.LoginFailureDetails) *clierr.Error {
+	// The primary stays the cause so errors.Is/As through the composed
+	// error still reach context.Canceled, store sentinels, and the
+	// classified primary itself; the serialized projection is d.Primary.
+	out := clierr.New(primary.Code, primary.Message).WithCause(primary).
+		WithRetryable(primary.Retryable).WithCandidates(primary.Candidates).WithDetails(d)
+	if primary.Hint != "" {
+		out = out.WithHint(primary.Hint)
+	}
+	if w := primary.Warnings(); len(w) > 0 {
+		out = out.WithWarnings(w...)
+	}
+	return out
+}
+
+// failLogin turns a post-credential failure into the one structured shape:
+// it revokes what this operation created (never a user-supplied token),
+// then composes LoginFailureDetails around the primary error.
+func failLogin(primary error, stage clierr.LoginStage, st loginStates, cred token.LoginCredential, server string) error {
+	ce, pf := primaryOf(primary)
+	d := clierr.LoginFailureDetails{Primary: pf, Stage: stage, OperationMarker: cred.Marker}
+	if stage == clierr.StageCommit {
+		d.ConfigState = st.config
+		d.CredentialState = credentialStateOf(st)
+		d.CredentialRecovery = credentialRecoveryFor(st, server)
+	}
+	dClean := cred.Revoke()
+	switch cred.Provenance {
+	case token.ProvenanceDerived:
+		d.SessionToken = fateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch)
+		d.DerivedToken = fateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil)
+	case token.ProvenanceLegacySession:
+		d.SessionToken = fateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch)
+	}
+	persisted := d.CredentialState == clierr.CredentialCommitted ||
+		d.CredentialState == clierr.CredentialHelperNonAtomic ||
+		d.CredentialState == clierr.CredentialCommittedUncompensatable
+	d.Recovery = recoveryText(d, server, persisted)
+	out := compose(ce, d)
+	if h := recoveryHint(d, server, persisted); h != "" {
+		out = out.WithHint(h)
+	}
+	if st.notice != "" {
+		// The keyring advisory belongs to a write that did happen; a later
+		// failure must not swallow it.
+		out = out.WithWarnings(st.notice)
+	}
+	return out
+}
+
+// failAcquire reports a failure that happened while the credential was
+// still being acquired: the token fates are the ones acquisition recorded,
+// and no persistence system was reached.
+func failAcquire(ae *token.AcquireError, server string) error {
+	ce, pf := primaryOf(ae.Err)
+	d := clierr.LoginFailureDetails{Primary: pf, Stage: clierr.StageAuthentication, OperationMarker: ae.Marker,
+		SessionToken: fateOf(ae.SessionTokenOutcome, ae.SessionTokenKind, ae.SessionTokenRef, !ae.SessionTokenUnmarked,
+			ae.SessionCreatedAt, ae.SessionTokenCleanup, ae.SessionTokenSearch),
+		DerivedToken: fateOf(ae.DerivedMintOutcome, clierr.TokenKindExt, ae.DerivedTokenRef, true,
+			ae.DerivedCreatedAt, ae.DerivedTokenCleanup, nil),
+	}
+	d.Recovery = recoveryText(d, server, false)
+	out := compose(ce, d)
+	if h := recoveryHint(d, server, false); h != "" {
+		out = out.WithHint(h)
+	}
+	return out
+}
+
+// residualRecovery renders the recovery for one token fate. A hint is
+// returned only when the name is known and a credential the command can
+// use was persisted; every other case is prose, and an unmarked token
+// never mentions a marker.
+func residualRecovery(f clierr.TokenFate, server, marker string, persisted bool) (text, hint string) {
+	login := "rancher auth login " + shquote(server)
+	switch {
+	case f.Ref != nil:
+		_, revoke := clierr.RecoveryCommands(*f.Ref)
+		if persisted {
+			return fmt.Sprintf("revoke %s with: %s", f.Ref.String(), revoke), revoke
+		}
+		return fmt.Sprintf("no credential was stored; log in again with: %s, then revoke %s with: %s", login, f.Ref.String(), revoke), ""
+	case f.Marked:
+		// A nameless marked token of known kind is listed in its collection;
+		// of unknown kind (a lost or unrecognizable login response) it may be
+		// in either, and both are named so the marker search cannot miss it.
+		kinds := []clierr.TokenKind{f.Kind}
+		if f.Kind == "" {
+			kinds = []clierr.TokenKind{clierr.TokenKindV3, clierr.TokenKindExt}
+		}
+		var lists []string
+		for _, k := range kinds {
+			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: k})
+			lists = append(lists, list)
+		}
+		prefix := ""
+		if !persisted {
+			prefix = "no credential was stored; log in again with: " + login + ", then "
+		}
+		return fmt.Sprintf("%slist tokens with: %s; a leftover token created by this login carries %q in its description; revoke it with the found name",
+			prefix, strings.Join(lists, " and: "), "[op:"+marker+"]"), ""
+	case f.Search != nil:
+		return unmarkedSessionText(*f.Search), ""
+	}
+	return "", ""
+}
+
+// unmarkedSessionText describes a session token the CLI cannot name: the
+// SAML sign-in carries no description to mark, so only the provider and the
+// client-side window of the browser handoff are known. These narrow the
+// candidates; they cannot identify one token, and the text says so rather
+// than offering a command that would delete the wrong one.
+func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
+	window := "at or after " + s.HandoffAt
+	if s.ServerRelayExpiresAt != "" {
+		window += " and not after " + s.ServerRelayExpiresAt
+	}
+	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
+		"but the browser sign-in can still complete after that, so the token may be newer; "+
+		"these facts narrow the candidates but cannot identify one token; "+
+		"inspect them with: rancher get management-tokens -o json, or in the UI under Account & API Keys",
+		s.AuthProvider, window, s.PollEndedAt)
+}
+
+// cleanFate is true when a token's create is settled and nothing it created
+// outlives this operation.
+func cleanFate(f *clierr.TokenFate) bool {
+	if f == nil {
+		return true
+	}
+	switch f.Outcome {
+	case clierr.CreateNotAttempted, clierr.CreateNotCreated:
+		return true
+	case clierr.CreateKnown:
+		return f.Cleanup != nil && (f.Cleanup.Result == clierr.ResultRevoked || f.Cleanup.Result == clierr.ResultAlreadyGone)
+	}
+	return false
+}
+
+// recoveryText joins the recovery for every token this operation may have
+// left behind with the local credential's own recovery text.
+func recoveryText(d clierr.LoginFailureDetails, server string, persisted bool) string {
+	var parts []string
+	for _, f := range []*clierr.TokenFate{d.SessionToken, d.DerivedToken} {
+		if cleanFate(f) {
+			continue
+		}
+		if text, _ := residualRecovery(*f, server, d.OperationMarker, persisted); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if t := credentialRecoveryText(d.CredentialRecovery, server); t != "" {
+		parts = append(parts, t)
+	}
+	if len(parts) == 0 {
+		return "log in again with: rancher auth login " + shquote(server)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// credentialRecoveryText states what the reached backend may hold; the
+// command that clears it rides CredentialRecovery itself.
+func credentialRecoveryText(cr *clierr.CredentialRecovery, server string) string {
+	if cr == nil {
+		return ""
+	}
+	switch {
+	case cr.State == clierr.CredentialCompensationFailed:
+		return fmt.Sprintf("the %s entry for %s may still hold this login's token; restoring the earlier value failed (%s)",
+			cr.Backend, server, cr.CompensationError)
+	case cr.Backend == clierr.BackendExec:
+		return fmt.Sprintf("the credential helper may hold either this login's token or a credential from an earlier login for %s", server)
+	case cr.Backend == clierr.BackendKeyring && cr.State == clierr.CredentialPossiblyCommitted:
+		return fmt.Sprintf("the keychain item for %s may be this login's token, the earlier value, or another value; the CLI could not confirm which", server)
+	case cr.Backend == clierr.BackendKeyring && cr.State == clierr.CredentialCommittedUncompensatable:
+		return fmt.Sprintf("the keychain holds this login's token for %s and the earlier item could not be read, so it was not restored", server)
+	}
+	return fmt.Sprintf("the %s entry for %s holds this login's token", cr.Backend, server)
+}
+
+// recoveryHint offers a command only when running it is the right next
+// step: the exact revoke when a name is known and a usable credential was
+// persisted, a re-login when nothing was persisted and something may
+// outlive this operation. Otherwise the primary keeps its own hint.
+func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) string {
+	unclean := false
+	for _, f := range []*clierr.TokenFate{d.SessionToken, d.DerivedToken} {
+		if cleanFate(f) {
+			continue
+		}
+		unclean = true
+		if _, hint := residualRecovery(*f, server, d.OperationMarker, persisted); hint != "" {
+			return hint
+		}
+	}
+	if !persisted && unclean {
+		return "rancher auth login " + shquote(server)
+	}
+	return ""
+}
+
+// finishUnsupportedStore is the one finalizer for a read-only credential
+// helper: it starts from the fates the credential already carries, revokes
+// what this operation created, and derives warnings and residual tokens
+// from the aggregate under one rule — nothing was persisted, so every
+// residual gets the nothing-persisted recovery and no delete hint.
+func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings []string, residual []clierr.TokenFate) {
+	warnings = append(warnings,
+		"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
+	dClean := cred.Revoke()
+	add := func(f *clierr.TokenFate) {
+		if f != nil && f.Cleanup != nil && f.Cleanup.Result == clierr.ResultFailed {
+			residual = append(residual, *f)
+		}
+	}
+	switch cred.Provenance {
+	case token.ProvenanceDerived:
+		add(fateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch))
+		add(fateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil))
+	case token.ProvenanceLegacySession:
+		add(fateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch))
+	}
+	for _, r := range residual {
+		text, _ := residualRecovery(r, server, cred.Marker, false)
+		warnings = append(warnings, fmt.Sprintf("the token %s created by this login could not be revoked (%s); %s",
+			r.Ref.String(), r.Cleanup.Error, text))
+	}
+	return warnings, residual
 }
 
 // decorateDelegatedAuthFailure scopes a failed delegated login's retry hint
