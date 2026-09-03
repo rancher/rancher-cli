@@ -3,7 +3,9 @@
 // fail, garbage, hang, expired, expiresat (uses FAKEHELPER_EXPIRESAT),
 // badexpiry (get returns a token with a non-RFC3339 expiresAt), silent
 // (store/erase exit 0 with NO stdout — protocol-compliant empty success;
-// get behaves like ok). FAKEHELPER_STATE points at a JSON state file.
+// get behaves like ok), commit-fail / commit-garbage / commit-hang (store
+// persists the credential and only then fails, answers garbage, or hangs).
+// FAKEHELPER_STATE points at a JSON state file.
 package main
 
 import (
@@ -222,7 +224,22 @@ func (h handler) Store(u, n, tok string) error {
 	}
 	h.log(s, "store", u, n)
 	s.Creds[u+"\n"+n] = tok
-	return h.save(s)
+	if err := h.save(s); err != nil {
+		return err
+	}
+	// The commit-* modes prove a credential can land and the helper still
+	// fail to say so: the caller must classify these as possiblyCommitted.
+	switch h.mode {
+	case "commit-fail":
+		fmt.Fprintln(os.Stderr, "fakehelper: stored, then deliberate failure")
+		os.Exit(1)
+	case "commit-garbage":
+		fmt.Print("this is not json")
+		os.Exit(0)
+	case "commit-hang":
+		time.Sleep(10 * time.Minute)
+	}
+	return nil
 }
 
 func (h handler) Erase(u, n string) (credhelper.EraseOutcome, error) {

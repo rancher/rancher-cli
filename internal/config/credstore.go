@@ -63,23 +63,15 @@ type ServerRef struct {
 type CredStore interface {
 	GetToken(ref ServerRef) (string, error)
 	SetToken(ref ServerRef, token string) error
+	// SetTokenWithOutcome persists token and reports exactly what the
+	// backend did, including when it failed.
+	SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error)
 	DeleteToken(ref ServerRef) error
 	GetCachedCred(key string) (token string, expiry time.Time, err error)
 	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error
 	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
 	ListCachedCreds() ([]CachedCredInfo, error)
-}
-
-// NonAtomicStore is implemented by a CredStore backend whose SetToken cannot
-// be safely compensated: reading its prior state first would itself be a
-// side effect (an exec helper's GetToken may MINT a fresh credential rather
-// than reveal persisted state), so a snapshot taken before the write would
-// not describe restorable prior state. CommitToken checks for this
-// interface and skips compensation entirely rather than building one that
-// would write back state that never existed.
-type NonAtomicStore interface {
-	NonAtomic() bool
 }
 
 type cachedCred struct {
@@ -271,17 +263,44 @@ func (f *fileStore) GetToken(ref ServerRef) (string, error) {
 // from a new command reintroduces the concurrent lost-update this file's
 // tests pin.
 func (f *fileStore) SetToken(ref ServerRef, token string) error {
+	_, err := f.SetTokenWithOutcome(ref, token)
+	return err
+}
+
+// SetTokenWithOutcome is SetToken reporting what the write did. A read or
+// decode failure refuses the write outright: without the parsed map the
+// write would drop every other server's entry, so the file is left as it
+// was and the prior token is unknown.
+func (f *fileStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	out := CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}
 	m, err := f.read()
 	if err != nil {
-		return err
+		out.PriorSource = clierr.PriorUnknown
+		return out, err
+	}
+	prior, had := m[ref.Name]
+	out.PriorSource = clierr.PriorNone
+	if had {
+		out.PriorSource = clierr.PriorFile
 	}
 	m[ref.Name] = token
 	if setTokenHook != nil {
 		setTokenHook()
 	}
-	return f.write(m)
+	if werr := f.write(m); werr != nil {
+		// The write renames a fully written temp file into place, so a
+		// failure before the rename leaves credentials.yaml unchanged.
+		return out, werr
+	}
+	out.State = CommitCommitted
+	if had {
+		out.Compensate = func() error { return f.SetToken(ref, prior) }
+	} else {
+		out.Compensate = func() error { return f.DeleteToken(ref) }
+	}
+	return out, nil
 }
 
 func (f *fileStore) DeleteToken(ref ServerRef) error {
@@ -529,7 +548,7 @@ func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
 	if keyringObserverFn != nil {
 		keyringObserverFn("get")
 	}
-	tok, err := keyring.Get(keyringService, ref.Name)
+	tok, err := keyringBackend.Get(keyringService, ref.Name)
 	if err == nil {
 		return tok, nil
 	}
@@ -561,18 +580,105 @@ func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
 }
 
 func (k *keyringStore) SetToken(ref ServerRef, token string) error {
+	out, err := k.SetTokenWithOutcome(ref, token)
+	// A write that committed and then reported an error carries its
+	// advisory here instead of in a return value this signature has no
+	// room for; the invocation's drain surfaces it.
+	k.notices.record(out.Notice)
+	return err
+}
+
+// SetTokenWithOutcome writes the token and normalizes what the keychain
+// did. A keyring Set can commit and still report an error, so a failed Set
+// is followed by exactly one read-back: the value that came back is what
+// decides between not written, written, and unknown.
+func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
+	priorRaw, hasKeyringPrior, src := k.priorState(ref)
+	out := CommitOutcome{Backend: clierr.BackendKeyring, State: CommitNotWritten, PriorSource: src}
+	// Compensation restores THIS backend's prior physical state: the
+	// keychain's own prior value, or the removal of an item that was not
+	// there before. A file entry belongs to the file store and is never
+	// touched here, so a keychain undo can never erase it.
+	compensate := func() error {
+		if hasKeyringPrior {
+			if keyringObserverFn != nil {
+				keyringObserverFn("set")
+			}
+			return keyringBackend.Set(keyringService, ref.Name, priorRaw)
+		}
+		if keyringObserverFn != nil {
+			keyringObserverFn("delete")
+		}
+		return keyringBackend.Delete(keyringService, ref.Name)
+	}
+	commit := func() CommitOutcome {
+		if src == clierr.PriorUnknown {
+			// No prior snapshot: the write landed and cannot be undone.
+			out.State = CommitCommittedUncompensatable
+			return out
+		}
+		out.State = CommitCommitted
+		out.Compensate = compensate
+		return out
+	}
+
 	if keyringObserverFn != nil {
 		keyringObserverFn("set")
 	}
-	err := keyring.Set(keyringService, ref.Name, token)
+	err := keyringBackend.Set(keyringService, ref.Name, token)
 	if err == nil {
-		return nil
+		return commit(), nil
 	}
+	if keyringObserverFn != nil {
+		keyringObserverFn("get")
+	}
+	back, berr := keyringBackend.Get(keyringService, ref.Name)
+	switch {
+	case berr == nil && back == token:
+		out = commit()
+		out.Notice = "keyring reported an error after storing the token: " + err.Error()
+		return out, nil
+	case berr == nil && hasKeyringPrior && back == priorRaw,
+		errors.Is(berr, keyring.ErrNotFound) && !hasKeyringPrior && src != clierr.PriorUnknown:
+		// The keychain holds exactly what it held before the write.
+		return out, k.setError(ref, err)
+	default:
+		out.State = CommitPossiblyCommitted
+		return out, k.setError(ref, err)
+	}
+}
+
+// priorState classifies where the effective prior token for ref lives and
+// returns the keychain's own raw prior when it holds one — the only value a
+// compensation may restore. The classification is fixed before the write
+// and never revised by the read-back.
+func (k *keyringStore) priorState(ref ServerRef) (raw string, hasKeyringPrior bool, src PriorSource) {
+	if keyringObserverFn != nil {
+		keyringObserverFn("get")
+	}
+	v, err := keyringBackend.Get(keyringService, ref.Name)
+	switch {
+	case err == nil:
+		return v, true, clierr.PriorKeyring
+	case !errors.Is(err, keyring.ErrNotFound):
+		return "", false, clierr.PriorUnknown
+	}
+	switch _, ferr := k.cache.GetToken(ref); {
+	case ferr == nil:
+		return "", false, clierr.PriorFile
+	case errors.Is(ferr, ErrNoToken):
+		return "", false, clierr.PriorNone
+	default:
+		return "", false, clierr.PriorUnknown
+	}
+}
+
+// setError renders a failed keychain write. XP-6 write path: NEVER silently
+// degrade a login write to the plaintext file — the pin's guarantee is that
+// a transient keychain failure cannot downgrade the machine's storage.
+// Refuse with the explicit opt-in remedy instead.
+func (k *keyringStore) setError(ref ServerRef, err error) error {
 	if keyringUnreachable(err) {
-		// XP-6 write path: NEVER silently degrade a login write to the
-		// plaintext file — the pin's guarantee is that a transient keychain
-		// failure cannot downgrade the machine's storage. Refuse with the
-		// explicit opt-in remedy instead.
 		return fmt.Errorf(
 			"keyring set %q: %w — credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
 			ref.Name, err, EnvCredentialStore, k.pinHint)
@@ -584,7 +690,7 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 	if keyringObserverFn != nil {
 		keyringObserverFn("delete")
 	}
-	err := keyring.Delete(keyringService, ref.Name)
+	err := keyringBackend.Delete(keyringService, ref.Name)
 	if keyringUnreachable(err) {
 		// XP-6: treat unreachable like a miss — delete the file store below
 		// (removing plaintext is strictly safe) — but say so: the keychain
@@ -663,7 +769,7 @@ func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, polic
 // cache once via DeleteAllExecCache instead of per server).
 func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) (from, notices []string, err error) {
 	var errs []error
-	if kerr := keyring.Delete(keyringService, ref.Name); kerr == nil {
+	if kerr := keyringBackend.Delete(keyringService, ref.Name); kerr == nil {
 		from = append(from, "keychain")
 	} else if errors.Is(kerr, keyring.ErrNotFound) {
 		// nothing stored in the keychain backend — fine
@@ -1001,10 +1107,10 @@ var keyringProbeTimeout = 5 * time.Second
 // tests can stub it with a never-returning body to exercise the timeout.
 var keyringProbe = func() bool {
 	const probe = "__rancher_cli_probe__"
-	if err := keyring.Set(keyringService, probe, "1"); err != nil {
+	if err := keyringBackend.Set(keyringService, probe, "1"); err != nil {
 		return false
 	}
-	_ = keyring.Delete(keyringService, probe)
+	_ = keyringBackend.Delete(keyringService, probe)
 	return true
 }
 

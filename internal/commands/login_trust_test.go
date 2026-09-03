@@ -494,16 +494,34 @@ func TestLoginDelegatedKnownEntryRotatedCANeverAutoTrusts(t *testing.T) {
 	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
 }
 
-// controllableStore wraps a real CredStore and fails SetToken/DeleteToken
-// on chosen call ordinals (a shared counter across both — CommitToken's
-// compensation calls whichever one applies, DeleteToken when the ref had no
-// prior token) — used to exercise the commit protocol's abort-before-
-// config-write and compensation-failure paths, neither of which a real
-// backend failure is practical to trigger on demand.
+// controllableStore wraps a real CredStore and fails a chosen call ordinal
+// on a counter shared by the token write and the compensation it hands
+// back (call 1 is the write, call 2 the undo) — used to exercise the commit
+// protocol's abort-before-config-write and compensation-failure paths,
+// neither of which a real backend failure is practical to trigger on
+// demand.
 type controllableStore struct {
 	config.CredStore
 	failOnCall map[int]error
 	calls      int
+}
+
+func (s *controllableStore) SetTokenWithOutcome(ref config.ServerRef, token string) (config.CommitOutcome, error) {
+	s.calls++
+	if err, ok := s.failOnCall[s.calls]; ok {
+		return config.CommitOutcome{Backend: clierr.BackendFile, State: config.CommitNotWritten, PriorSource: clierr.PriorUnknown}, err
+	}
+	out, err := s.CredStore.SetTokenWithOutcome(ref, token)
+	if inner := out.Compensate; inner != nil {
+		out.Compensate = func() error {
+			s.calls++
+			if cerr, ok := s.failOnCall[s.calls]; ok {
+				return cerr
+			}
+			return inner()
+		}
+	}
+	return out, err
 }
 
 func (s *controllableStore) SetToken(ref config.ServerRef, token string) error {

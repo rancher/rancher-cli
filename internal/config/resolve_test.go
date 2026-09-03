@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,10 @@ type stubStore struct {
 
 func (s stubStore) GetToken(ServerRef) (string, error) { return s.token, s.tokenErr }
 func (s stubStore) SetToken(ServerRef, string) error   { return nil }
-func (s stubStore) DeleteToken(ServerRef) error        { return nil }
+func (s stubStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) {
+	return CommitOutcome{Backend: clierr.BackendFile, State: CommitCommitted, PriorSource: clierr.PriorNone}, nil
+}
+func (s stubStore) DeleteToken(ServerRef) error { return nil }
 func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }

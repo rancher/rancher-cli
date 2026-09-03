@@ -144,13 +144,27 @@ func TestLoginCompletesServerNames(t *testing.T) {
 	assert.Equal(t, []string{"prod", "qa"}, loginCmd{}.CompleteArgs(context.Background(), view))
 }
 
-// setErrStore wraps a real store, failing SetToken with a fixed error.
+// setErrStore wraps a real store, failing the token write with a fixed
+// error. The failure is injected at SetTokenWithOutcome — the method the
+// commit path calls — so SetToken delegating to it keeps both spellings on
+// the same behavior.
 type setErrStore struct {
 	config.CredStore
 	setErr error
 }
 
-func (s setErrStore) SetToken(config.ServerRef, string) error { return s.setErr }
+func (s setErrStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+	backend := clierr.BackendFile
+	if errors.Is(s.setErr, config.ErrTokenStoreUnsupported) {
+		backend = clierr.BackendExec
+	}
+	return config.CommitOutcome{Backend: backend, State: config.CommitNotWritten, PriorSource: clierr.PriorUnknown}, s.setErr
+}
+
+func (s setErrStore) SetToken(ref config.ServerRef, tok string) error {
+	_, err := s.SetTokenWithOutcome(ref, tok)
+	return err
+}
 
 func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 	t.Parallel()

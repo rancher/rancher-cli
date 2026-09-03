@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // ShortLivedTokenStore is the optional interface a CredStore implements when it
@@ -73,11 +74,6 @@ func newExecStore(helper, dir string) *execStore {
 }
 
 func (s *execStore) binary() string { return "rancher-credential-" + s.helper }
-
-// NonAtomic implements NonAtomicStore: a helper's get may mint a fresh
-// credential rather than reveal persisted state, so no snapshot-based
-// compensation is safe for this backend.
-func (s *execStore) NonAtomic() bool { return true }
 
 // invoke runs one helper verb with req on stdin and decodes the response.
 // Decoding is verb-aware: get MUST return versioned JSON (not-found is a
@@ -233,12 +229,26 @@ func (s *execStore) expired(exp time.Time) bool {
 }
 
 func (s *execStore) SetToken(ref ServerRef, token string) error {
+	_, err := s.SetTokenWithOutcome(ref, token)
+	return err
+}
+
+// SetTokenWithOutcome is SetToken reporting what the write did. The
+// protocol has no read or snapshot operation — a helper's get may create a
+// fresh credential rather than reveal persisted state — so the prior token
+// is always unknown and no compensation is ever offered. A helper that
+// failed to answer may still have stored the credential, which is why an
+// invocation error reports possiblyCommitted rather than a clean refusal;
+// a helper that answered cleanly is still not atomic with the config write
+// that follows it.
+func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
+	out := CommitOutcome{Backend: clierr.BackendExec, State: CommitNotWritten, PriorSource: clierr.PriorUnknown}
 	req, err := wireRequest(ref)
 	if err != nil {
-		return err
+		return out, err
 	}
 	entry := HelperRecord{Helper: s.helper, Name: ref.Name, CanonicalURL: req.ServerURL}
-	return withHelperRecordsLock(context.Background(), s.dir, func(st *helperRecords) error {
+	lerr := withHelperRecordsLock(context.Background(), s.dir, func(st *helperRecords) error {
 		// Write-ahead: persist the intent before the helper can create a
 		// remote credential. persist-now, then invoke.
 		st.add(entry)
@@ -251,6 +261,8 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 		req.Token = token
 		resp, ierr := s.invoke(credhelper.VerbStore, req)
 		if ierr != nil {
+			out.State = CommitPossiblyCommitted
+			out.HelperRecordRetained = true
 			return ierr // intent stays: idempotent erase cleans up later
 		}
 		if resp.Unsupported {
@@ -261,12 +273,16 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 			// intent re-runs this helper on every future delete).
 			st.remove(entry)
 			if perr := persistHelperRecords(s.dir, st); perr != nil {
+				out.HelperRecordRetained = true
 				return fmt.Errorf("credential helper %s reported unsupported store, but recording that failed: %v", s.binary(), perr)
 			}
 			return fmt.Errorf("credential helper %s: %w", s.binary(), ErrTokenStoreUnsupported)
 		}
+		out.State = CommitHelperNonAtomic
+		out.HelperRecordRetained = true
 		return nil
 	})
+	return out, lerr
 }
 
 // eraseCredential runs the erase verb and interprets the response's erased

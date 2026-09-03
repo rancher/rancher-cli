@@ -1,52 +1,49 @@
 package config
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
 
-// fakeCredStore lets a test control exactly what GetToken/SetToken return,
-// including whether GetToken ran at all, without a real backend's failure
-// modes. CommitToken never calls the embedded (nil) CredStore's other
-// methods, so leaving them unimplemented is safe.
+// fakeCredStore lets a test control exactly what a commit reports, and
+// whether GetToken ran at all, without a real backend's failure modes.
+// CommitToken never calls the embedded (nil) CredStore's other methods, so
+// leaving them unimplemented is safe.
 type fakeCredStore struct {
 	CredStore
-	getErr    error
+	out       CommitOutcome
+	err       error
 	getCalled bool
-	setErr    error
 }
 
 func (s *fakeCredStore) GetToken(ServerRef) (string, error) {
 	s.getCalled = true
-	return "", s.getErr
+	return "", nil
 }
 
-func (s *fakeCredStore) SetToken(ServerRef, string) error { return s.setErr }
-
-// fakeNonAtomicStore is a fakeCredStore that also declares itself
-// NonAtomicStore.
-type fakeNonAtomicStore struct{ fakeCredStore }
-
-func (s *fakeNonAtomicStore) NonAtomic() bool { return true }
+func (s *fakeCredStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) {
+	return s.out, s.err
+}
 
 func TestCommitTokenFileStoreNoPriorTokenCompensateDeletes(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	compensate, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.NoError(t, err)
-	require.NotNil(t, compensate)
+	require.NotNil(t, out.Compensate)
+	assert.Equal(t, clierr.PriorNone, out.PriorSource)
 
 	tok, gerr := store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "new-token", tok)
 
-	require.NoError(t, compensate())
+	require.NoError(t, out.Compensate())
 	_, gerr = store.GetToken(ref)
 	assert.ErrorIs(t, gerr, ErrNoToken)
 }
@@ -57,30 +54,30 @@ func TestCommitTokenFileStoreReplacesExistingTokenCompensateRestores(t *testing.
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 	require.NoError(t, store.SetToken(ref, "old-token"))
 
-	compensate, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.NoError(t, err)
-	require.NotNil(t, compensate)
+	require.NotNil(t, out.Compensate)
 
 	tok, gerr := store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "new-token", tok)
 
-	require.NoError(t, compensate())
+	require.NoError(t, out.Compensate())
 	tok, gerr = store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "old-token", tok, "compensation restores the exact prior token, never a bare delete")
 }
 
-func TestCommitTokenExecStoreNonAtomicNeverCompensates(t *testing.T) {
+func TestCommitTokenExecStoreNeverCompensates(t *testing.T) {
 	dir := t.TempDir()
-	execStore := newExecStore("does-not-exist", dir)
-	var store CredStore = execStore
+	var store CredStore = newExecStore("does-not-exist", dir)
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	_, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.Error(t, err, "the helper binary is not on PATH")
-
-	assert.True(t, execStore.NonAtomic())
+	assert.Equal(t, clierr.BackendExec, out.Backend)
+	assert.Equal(t, CommitPossiblyCommitted, out.State)
+	assert.Nil(t, out.Compensate)
 }
 
 func TestCommitTokenKeyringStoreReplacesExistingTokenCompensateRestores(t *testing.T) {
@@ -90,44 +87,42 @@ func TestCommitTokenKeyringStoreReplacesExistingTokenCompensateRestores(t *testi
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 	require.NoError(t, store.SetToken(ref, "old-token"))
 
-	compensate, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.NoError(t, err)
-	require.NotNil(t, compensate)
+	require.NotNil(t, out.Compensate)
+	assert.Equal(t, clierr.PriorKeyring, out.PriorSource)
 
 	tok, gerr := store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "new-token", tok)
 
-	require.NoError(t, compensate())
+	require.NoError(t, out.Compensate())
 	tok, gerr = store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "old-token", tok)
 }
 
-func TestCommitTokenUnreadablePriorTokenNeverCompensates(t *testing.T) {
-	store := &fakeCredStore{getErr: errors.New("keychain locked")}
+func TestCommitTokenNeverReadsPrior(t *testing.T) {
+	store := &fakeCredStore{out: CommitOutcome{
+		Backend:              clierr.BackendExec,
+		State:                CommitHelperNonAtomic,
+		PriorSource:          clierr.PriorUnknown,
+		HelperRecordRetained: true,
+	}}
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	compensate, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.NoError(t, err)
-	assert.Nil(t, compensate, "an unreadable prior token must never yield a delete-compensation")
-}
-
-func TestCommitTokenNeverReadsPriorOnNonAtomicStore(t *testing.T) {
-	store := &fakeNonAtomicStore{}
-	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
-
-	compensate, err := CommitToken(store, ref, "new-token")
-	require.NoError(t, err)
-	assert.Nil(t, compensate)
-	assert.False(t, store.getCalled, "GetToken must never run on a NonAtomicStore")
+	assert.Equal(t, store.out, out, "the backend's own account is returned unchanged")
+	assert.False(t, store.getCalled, "CommitToken must never read a prior value itself")
 }
 
 func TestCommitTokenFileStoreSetTokenFailurePropagatesNoCompensate(t *testing.T) {
 	store := &fileStore{path: string([]byte{0}), notices: &noticeBuffer{}}
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	compensate, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token")
 	require.Error(t, err)
-	assert.Nil(t, compensate)
+	assert.Equal(t, CommitNotWritten, out.State)
+	assert.Nil(t, out.Compensate)
 }

@@ -548,8 +548,12 @@ func (l loginCmd) authenticateAndStore(
 			warnings = append(warnings, pinNotice)
 		}
 		ref := config.ServerRef{Name: name, URL: serverURL}
-		compensate, tokenErr := config.CommitToken(store, ref, token)
+		out, tokenErr := config.CommitToken(store, ref, token)
+		compensate := out.Compensate
 		tokenCommitted := tokenErr == nil
+		if tokenErr == nil && out.Notice != "" {
+			warnings = append(warnings, out.Notice)
+		}
 		if tokenErr != nil {
 			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
 				return tokenErr
