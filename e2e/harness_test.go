@@ -70,6 +70,18 @@ var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
 	"login-recovery": checkLoginRecovery,
 }
 
+// scriptSkipped reports whether the script ended in a skip (a `[!unix]
+// skip` line, for one), in which case the façade saw none of the requests
+// a scriptChecks entry asserts on and the check must not run. Deferred
+// functions run after a skip too, so this is the only place to tell the
+// two teardowns apart. testscript's T is backed by *testing.T, whose
+// Skipped carries the answer; a T of another shape reports false and the
+// check runs as before.
+func scriptSkipped(t testscript.T) bool {
+	s, ok := t.(interface{ Skipped() bool })
+	return ok && s.Skipped()
+}
+
 // checkLoginRecovery asserts what login-recovery.txtar cannot see: the
 // delete verb ran a dry run and an execution against the leftover token,
 // bound to one resource version, and the token the failed login left
@@ -444,7 +456,12 @@ func TestScenarios(t *testing.T) {
 			}
 			facade = testrancher.New(opts)
 			if check := scriptChecks[scriptName]; check != nil {
-				e.Defer(func() { check(e.T(), facade) })
+				e.Defer(func() {
+					if scriptSkipped(e.T()) {
+						return
+					}
+					check(e.T(), facade)
+				})
 			}
 			facadeSrv := httptest.NewTLSServer(facade)
 			e.Defer(facadeSrv.Close)
