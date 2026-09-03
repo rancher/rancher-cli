@@ -119,6 +119,10 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 
 	st.session, err = loginAndGenerateCred(ctx, client, input, p)
 	st.sClean = RevokeOutcome{Ref: st.session.Create.Ref, Result: ResultNotAttempted}
+	// Ownership begins the moment a session token the CLI can address
+	// exists: a name and a usable bearer, whatever status or error came
+	// with them. Every failure from here on revokes it.
+	st.sOwned = st.session.Create.Ref != nil && st.session.Create.Bearer != ""
 	if err != nil {
 		switch st.session.Create.Outcome {
 		case CreateNotAttempted, CreateNotCreated:
@@ -128,10 +132,9 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		return LoginCredential{}, st.finishAcquireError(err)
 	}
 	s := st.session.Create
-	if s.Bearer == "" || s.Ref == nil {
+	if !st.sOwned {
 		return LoginCredential{}, st.finishAcquireError(clierr.New(clierr.CodeAuth, "authentication returned no usable token; check the auth provider and credentials"))
 	}
-	st.sOwned = true
 	defer func() {
 		// Panic safety net only: ordinary returns have already transferred
 		// or revoked S through the explicit paths above and below.
@@ -157,13 +160,17 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 				SessionCreatedAt: s.CreatedAt,
 				parent:           ctx, client: client, base: st.base}, nil
 		}
+		// One bounded context covers both cleanups, so a slow server costs
+		// at most one cleanup timeout before the failure is reported. D
+		// goes first, by name with S as the bearer, while S is still valid;
+		// then S itself. The two are sequential by necessity.
+		c, cancel := cleanupContext(ctx)
 		if dr.Outcome == CreateKnown && dr.Ref != nil {
-			// D exists but its bearer failed validation: delete it by name
-			// with S as the bearer, before S itself is revoked.
-			c, cancel := cleanupContext(ctx)
 			st.dClean = revokeToken(c, client, st.base, *dr.Ref, s.Bearer)
-			cancel()
 		}
+		st.sClean = revokeToken(c, client, st.base, *s.Ref, s.Bearer)
+		st.sOwned = false
+		cancel()
 		return LoginCredential{}, st.finishAcquireError(err)
 	}
 	st.sOwned = false

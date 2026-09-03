@@ -177,10 +177,16 @@ func LoginResponseShape(body []byte) (kind TokenKind, recognized bool) {
 	switch {
 	case hdr.APIVersion == "ext.cattle.io/v1" && hdr.Kind == "Token":
 		return TokenKindExt, true
-	case hdr.APIVersion == "" && (len(hdr.Token) > 0 || len(hdr.ID) > 0):
+	case hdr.APIVersion == "" && (jsonPresent(hdr.Token) || jsonPresent(hdr.ID)):
 		return TokenKindV3, true
 	}
 	return "", false
+}
+
+// jsonPresent reports whether a raw JSON field was present with a value: a
+// missing field and a literal null both establish nothing.
+func jsonPresent(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
 }
 
 // extractIdentity reads the resource name, bearer, and expiry from the two

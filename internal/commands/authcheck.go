@@ -314,9 +314,9 @@ const rotatedTokenAdvisory = "token metadata unavailable: stored token not found
 
 // probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
 // never the stored credential directly, so a RANCHER_CLI_TOKEN override is
-// always the one reported on). The "ext/" prefix sniff mirrors
-// login_ext.go's revokeSessionToken, applied here to the long-lived
-// effective credential rather than the transient session token.
+// always the one reported on). The "ext/" prefix sniff is the one the
+// token package's bearer validation uses, applied here to the long-lived
+// effective credential rather than a token the login created.
 //
 // For ext/ tokens the probe delegates to a.token (EffectiveTokenMetadata).
 // For all other tokens (management.cattle.io/v3, the common case for Rancher

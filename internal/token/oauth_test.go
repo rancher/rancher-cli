@@ -145,7 +145,10 @@ func writeTestJSON(w http.ResponseWriter, status int, v any) {
 type splitOrigin struct {
 	rancher, idp             *httptest.Server
 	rancherClient, idpClient *http.Client
-	idpRequests              atomic.Int32
+	// rejectLogin makes the Rancher login answer 401, as Rancher does when
+	// the identity provider's token is not accepted.
+	rejectLogin bool
+	idpRequests atomic.Int32
 }
 
 // splitOriginFacade starts a minimal Rancher fixture on TLS server A,
@@ -186,6 +189,10 @@ func splitOriginFacade(t *testing.T) *splitOrigin {
 				},
 			}})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1-public/login":
+			if so.rejectLogin {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			var body struct {
 				IDToken string `json:"id_token"`
 			}
@@ -224,11 +231,11 @@ func interactivePrompter() *ui.Prompter {
 func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	t.Parallel()
 	so := splitOriginFacade(t)
-	tok, err := Login(t.Context(), so.rancherClient, LoginRequest{
+	cred, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
 		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
-	}, interactivePrompter())
+	}, 0, interactivePrompter())
 	require.NoError(t, err)
-	assert.NotEmpty(t, tok.Token)
+	assert.NotEmpty(t, cred.Token)
 	// One device-authorization request, one pending poll, one token issue.
 	assert.Equal(t, int32(3), so.idpRequests.Load())
 }
@@ -271,9 +278,9 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *testing.T) {
 	t.Parallel()
 	so := splitOriginFacade(t)
-	_, err := Login(t.Context(), so.rancherClient, LoginRequest{
+	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
 		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.rancherClient,
-	}, interactivePrompter())
+	}, 0, interactivePrompter())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -286,9 +293,9 @@ func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *test
 func TestDeviceCodeFlowNilIdPClientIsError(t *testing.T) {
 	t.Parallel()
 	so := splitOriginFacade(t)
-	_, err := Login(t.Context(), so.rancherClient, LoginRequest{
+	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
 		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow,
-	}, interactivePrompter())
+	}, 0, interactivePrompter())
 	require.ErrorContains(t, err, "identity provider client is not configured")
 }
 
@@ -478,4 +485,24 @@ func TestIdPCertificateErrorPassesThroughOtherErrors(t *testing.T) {
 	_, dialErr := client.Do(req)
 	require.Error(t, dialErr)
 	assert.Same(t, dialErr, idpCertificateError(dialErr, "https://other.example/token"))
+}
+
+// TestDeviceCodeFlowRancherRejectionIsAnAuthError pins that an OAuth login
+// Rancher rejects exits with the AUTH code, as a rejected basic login does:
+// a scripted caller reading .error.code must see the same class for the
+// same fact, whichever flow produced it.
+func TestDeviceCodeFlowRancherRejectionIsAnAuthError(t *testing.T) {
+	t.Parallel()
+	so := splitOriginFacade(t)
+	so.rejectLogin = true
+	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
+	}, 0, interactivePrompter())
+	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	require.ErrorContains(t, err, "login rejected: 401")
+	_, isAcquire := errors.AsType[*AcquireError](err)
+	assert.False(t, isAcquire, "a deterministic rejection created nothing; there is no cleanup to report")
 }

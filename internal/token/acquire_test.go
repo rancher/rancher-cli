@@ -427,3 +427,23 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 		assert.Empty(t, res.Create.Bearer)
 	})
 }
+
+// TestAcquireRevokesSessionCreatedUnderAnUnexpectedStatus pins that
+// ownership begins the moment a usable session token exists, whatever
+// status carried it: a 200 with a full token body is a create the CLI
+// refuses (a create answers 201), and the token it created is revoked
+// before the failure is reported.
+func TestAcquireRevokesSessionCreatedUnderAnUnexpectedStatus(t *testing.T) {
+	t.Parallel()
+	f, _, _, err := acquireAgainst(t, testrancher.Options{LoginStatus: http.StatusOK})
+	ae, ok := errors.AsType[*AcquireError](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, CreateKnown, ae.SessionTokenOutcome)
+	require.NotNil(t, ae.SessionTokenRef)
+	assert.Equal(t, ResultRevoked, ae.SessionTokenCleanup.Result, "a token the CLI could reach is revoked, not left for manual recovery")
+	assert.Equal(t, CreateNotAttempted, ae.DerivedCreateOutcome)
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 1)
+	assert.Equal(t, "v3", recs[0].Kind)
+	assert.Equal(t, ae.SessionTokenRef.Name, recs[0].Name)
+}

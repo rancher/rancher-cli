@@ -547,26 +547,6 @@ type LoginRequest struct {
 	ResponseType string
 }
 
-// Login runs the identity-provider dance (provider discovery/selection, then
-// basic/SAML/OAuth as appropriate) and returns the resulting Rancher-created
-// session token. It is a thin exported wrapper around loginAndGenerateCred —
-// get-token's own call site is untouched, so this is purely additive.
-func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime.Prompter) (Token, error) {
-	input := &loginInput{
-		server:       req.Server,
-		clusterID:    req.ClusterID,
-		authProvider: req.AuthProvider,
-		authFlow:     req.AuthFlow,
-		idpClient:    req.IdPClient,
-		responseType: req.ResponseType,
-	}
-	res, err := loginAndGenerateCred(ctx, client, input, p)
-	if err != nil {
-		return Token{}, err
-	}
-	return Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}, nil
-}
-
 // loginNotAttempted is the result of a login that failed before its request
 // reached the wire: nothing was created, and the marker names nothing.
 func loginNotAttempted(input *loginInput) CreateResult {

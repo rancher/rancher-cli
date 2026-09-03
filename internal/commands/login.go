@@ -547,6 +547,7 @@ func (l loginCmd) authenticateAndStore(
 			if cerr := ctx.Err(); cerr != nil {
 				primary = cerr
 			}
+			st.warnings = warnings
 			return failLogin(primary, clierr.StageCommit, st, cred, name)
 		}
 		if l.beforeCommitHook != nil {
@@ -588,16 +589,16 @@ func (l loginCmd) authenticateAndStore(
 			persisted = true
 			if out.Notice != "" {
 				warnings = append(warnings, out.Notice)
-				st.notice = out.Notice
 			}
 		}
 		if tokenErr != nil {
 			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
 				return fail(tokenErr)
 			}
-			w, r := finishUnsupportedStore(cred, name)
+			w, r, dClean := finishUnsupportedStore(cred, name)
 			warnings = append(warnings, w...)
 			residual = append(residual, r...)
+			st.derivedCleanup = &dClean
 		}
 		if pendingTrust != nil {
 			// The token write (or its declared ErrTokenStoreUnsupported
@@ -696,9 +697,14 @@ type loginStates struct {
 	// ran, empty when it was not attempted.
 	compensate clierr.CredentialState
 	compErr    string
-	// notice is CommitOutcome.Notice from a nil-error commit; it reaches
-	// the warnings whether the login then succeeds or fails.
-	notice string
+	// warnings are the advisories accumulated before the failure (a
+	// keyring notice, the read-only-helper warnings); they belong to steps
+	// that did happen and a later failure must not swallow them.
+	warnings []string
+	// derivedCleanup is set when the derived token was already revoked
+	// before the failure (the read-only-helper finalizer ran); failLogin
+	// reports that outcome instead of revoking a second time.
+	derivedCleanup *clierr.RevokeOutcome
 }
 
 // credentialStateOf derives the reported state from the backend outcome
@@ -784,6 +790,22 @@ func compose(primary *clierr.Error, d clierr.LoginFailureDetails) *clierr.Error 
 	return out
 }
 
+// tokenFatesFrom projects a credential's tokens onto their fates given the
+// derived token's cleanup outcome: on the derived path the session token's
+// fate is the cleanup acquisition already performed and the derived token
+// takes dClean; on the legacy path the session token is the credential and
+// takes dClean itself; a user-supplied credential has no fates.
+func tokenFatesFrom(cred token.LoginCredential, dClean clierr.RevokeOutcome) (session, derived *clierr.TokenFate) {
+	switch cred.Provenance {
+	case token.ProvenanceDerived:
+		session = fateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch)
+		derived = fateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil)
+	case token.ProvenanceLegacySession:
+		session = fateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch)
+	}
+	return session, derived
+}
+
 // failLogin turns a post-credential failure into the one structured shape:
 // it revokes what this operation created (never a user-supplied token),
 // then composes LoginFailureDetails around the primary error.
@@ -795,14 +817,15 @@ func failLogin(primary error, stage clierr.LoginStage, st loginStates, cred toke
 		d.CredentialState = credentialStateOf(st)
 		d.CredentialRecovery = credentialRecoveryFor(st, server)
 	}
-	dClean := cred.Revoke()
-	switch cred.Provenance {
-	case token.ProvenanceDerived:
-		d.SessionToken = fateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch)
-		d.DerivedToken = fateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil)
-	case token.ProvenanceLegacySession:
-		d.SessionToken = fateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch)
+	// The credential is revoked once: when the read-only-helper finalizer
+	// already did it, its outcome is the one reported.
+	var dClean clierr.RevokeOutcome
+	if st.derivedCleanup != nil {
+		dClean = *st.derivedCleanup
+	} else {
+		dClean = cred.Revoke()
 	}
+	d.SessionToken, d.DerivedToken = tokenFatesFrom(cred, dClean)
 	persisted := d.CredentialState == clierr.CredentialCommitted ||
 		d.CredentialState == clierr.CredentialHelperNonAtomic ||
 		d.CredentialState == clierr.CredentialCommittedUncompensatable
@@ -811,10 +834,8 @@ func failLogin(primary error, stage clierr.LoginStage, st loginStates, cred toke
 	if h := recoveryHint(d, server, persisted); h != "" {
 		out = out.WithHint(h)
 	}
-	if st.notice != "" {
-		// The keyring advisory belongs to a write that did happen; a later
-		// failure must not swallow it.
-		out = out.WithWarnings(st.notice)
+	if len(st.warnings) > 0 {
+		out = out.WithWarnings(st.warnings...)
 	}
 	return out
 }
@@ -975,7 +996,7 @@ func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) s
 // what this operation created, and derives warnings and residual tokens
 // from the aggregate under one rule — nothing was persisted, so every
 // residual gets the nothing-persisted recovery and no delete hint.
-func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings []string, residual []clierr.TokenFate) {
+func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings []string, residual []clierr.TokenFate, derivedCleanup clierr.RevokeOutcome) {
 	warnings = append(warnings,
 		"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
 	dClean := cred.Revoke()
@@ -984,19 +1005,15 @@ func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings
 			residual = append(residual, *f)
 		}
 	}
-	switch cred.Provenance {
-	case token.ProvenanceDerived:
-		add(fateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch))
-		add(fateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil))
-	case token.ProvenanceLegacySession:
-		add(fateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch))
-	}
+	session, derived := tokenFatesFrom(cred, dClean)
+	add(session)
+	add(derived)
 	for _, r := range residual {
 		text, _ := residualRecovery(r, server, cred.Marker, false)
 		warnings = append(warnings, fmt.Sprintf("the token %s created by this login could not be revoked (%s); %s",
 			r.Ref.String(), r.Cleanup.Error, text))
 	}
-	return warnings, residual
+	return warnings, residual, dClean
 }
 
 // decorateDelegatedAuthFailure scopes a failed delegated login's retry hint

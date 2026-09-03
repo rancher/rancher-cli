@@ -8,12 +8,15 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2579,4 +2582,67 @@ func TestLoginFailureEnvelopeGoldens(t *testing.T) {
 		_, err := cmd.Execute(t.Context(), in, p)
 		checkLoginFailureGolden(t, "testdata/loginfailure/combined-worst-case.json", loginFailureEnvelope(t, err, srv.URL), ignore...)
 	})
+}
+
+// TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce asserts the
+// read-only-helper branch followed by a failed guided-trust config write:
+// the derived token created for the login is revoked exactly once, the
+// failure reports that revoke, and the read-only warning the first step
+// produced reaches the operator on the error. Not parallel: it mutates the
+// package-level trustCommitConfigWriteHookForTest.
+func TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce(t *testing.T) {
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	f := testrancher.New(testrancher.Options{})
+	srv := newTLSFacade(t, fix, f)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	cmd := &loginCmd{
+		dir:          dir,
+		newStore:     func(string, string) (config.CredStore, string, error) { return unsupportedStore{}, "", nil },
+		tlsPreflight: tlsPreflightDefault,
+	}
+	restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+	defer restore()
+
+	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	ce, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.ConfigWriteFailed, d.ConfigState)
+	assert.Equal(t, clierr.CredentialNotWritten, d.CredentialState)
+	require.NotNil(t, d.DerivedToken)
+	require.NotNil(t, d.DerivedToken.Cleanup)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result, "the one revoke's outcome, not a second attempt's 404")
+	var extDeletes int
+	for _, r := range f.DeleteRequests() {
+		if r.Kind == "ext" {
+			extDeletes++
+		}
+	}
+	assert.Equal(t, 1, extDeletes, "the derived token is revoked exactly once")
+	assert.Contains(t, strings.Join(ce.Warnings(), "\n"), "credential helper is read-only", "the first step's warning survives the failure")
+}
+
+// TestRecoveryCommandsNameKindsFromTheTable pins the recovery commands to
+// the kind table they cannot import: the list and delete commands name a
+// kind or alias the table declares, and the deprecated gate appears exactly
+// when the table marks the kind deprecated.
+func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []clierr.TokenKind{clierr.TokenKindV3, clierr.TokenKindExt} {
+		list, revoke := clierr.RecoveryCommands(clierr.TokenRef{Kind: kind, Name: "tok-1"})
+		listWords, revokeWords := strings.Fields(list), strings.Fields(revoke)
+		require.GreaterOrEqual(t, len(listWords), 3, list)
+		require.GreaterOrEqual(t, len(revokeWords), 3, revoke)
+		assert.Equal(t, []string{"rancher", "get"}, listWords[:2], list)
+		assert.Equal(t, []string{"rancher", "delete"}, revokeWords[:2], revoke)
+		k, ok := kinds.Lookup(revokeWords[2])
+		require.True(t, ok, "delete names a kind the table knows: %q", revokeWords[2])
+		lk, ok := kinds.Lookup(listWords[2])
+		require.True(t, ok, "list names a kind or alias the table knows: %q", listWords[2])
+		assert.Equal(t, k.Key, lk.Key, "list and delete name the same kind")
+		assert.Equal(t, k.Binding.Stability == safety.Deprecated, slices.Contains(revokeWords, "--allow-deprecated"),
+			"the deprecated gate follows the table for %s", k.Name)
+		assert.Contains(t, revokeWords, "tok-1")
+	}
 }

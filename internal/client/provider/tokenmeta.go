@@ -48,8 +48,8 @@ func getToken(ctx context.Context, eff config.Effective, gvr schema.GroupVersion
 }
 
 // EffectiveTokenMetadata GETs the ext.cattle.io/v1 Token named name — the id
-// portion of eff.Token after its "ext/" prefix (the same id-shape sniff
-// login_ext.go's revokeSessionToken applies to the transient session token,
+// portion of eff.Token after its "ext/" prefix (the same id-shape sniff the
+// token package's bearer validation applies to a token the login created,
 // here applied to the long-lived effective credential). Callers pre-check
 // the prefix themselves; non-ext tokens fall through to V3TokenMetadata.
 // Always targets engine.LocalCluster, like RancherVersion and Identity.

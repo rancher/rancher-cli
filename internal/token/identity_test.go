@@ -133,6 +133,9 @@ func TestLoginResponseShapeFollowsTheBody(t *testing.T) {
 		{`{"apiVersion":"ext.cattle.io/v1","kind":"Session","metadata":{"name":"ext-1"},"status":{"bearerToken":"ext/ext-1:s"}}`, "", false},
 		{`{"apiVersion":"other.io/v1","kind":"Token","token":"x:y"}`, "", false},
 		{`{"broken":true}`, "", false},
+		{`{"id": null}`, "", false},
+		{`{"id": null, "token": null}`, "", false},
+		{`{"id": null, "token": "token-x:k"}`, TokenKindV3, true},
 	}
 	for _, tc := range cases {
 		kind, ok := LoginResponseShape([]byte(tc.body))

@@ -115,8 +115,10 @@ type Options struct {
 	LoginBearerOverride string
 	// LoginStatus forces a status on the login POST. A deterministic 4xx
 	// (400, 401, 403, 404, 409, 422) is answered before any record exists;
-	// any other status is answered after, modelling a create the client never
-	// learned of.
+	// any other status is answered after. A 2xx other than 201 carries the
+	// normal token body (a create the client can read but must refuse);
+	// any other status carries no body, modelling a create the client
+	// never learned of.
 	LoginStatus int
 	// LoginShape forces the login response shape and the created record's
 	// kind ("ext" or "v3") regardless of the requested responseType. Empty
@@ -499,18 +501,25 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		name = ""
 	}
 
+	// A forced 2xx other than 201 answers with the normal body under that
+	// status: the token exists and the client can read it, but the status
+	// is not the one a create promises. Any other forced status answers
+	// with no body: the record exists and the client learns nothing.
+	status := http.StatusCreated
+	if f.opts.LoginStatus != 0 {
+		status = f.opts.LoginStatus
+	}
 	switch {
-	case f.opts.LoginStatus != 0:
-		// The record exists and the client learns nothing about it.
-		w.WriteHeader(f.opts.LoginStatus)
+	case f.opts.LoginStatus != 0 && (status < 200 || status > 299):
+		w.WriteHeader(status)
 	case f.opts.DropLoginResponse:
 		dropConnection(w)
 	case f.opts.MalformedLoginResponse:
-		writeJSON(w, http.StatusCreated, map[string]any{"broken": true})
+		writeJSON(w, status, map[string]any{"broken": true})
 	case rec.kind == "v3":
-		writeV3Token(w, http.StatusCreated, rec, name, bearer)
+		writeV3Token(w, status, rec, name, bearer)
 	default:
-		writeExtTokenAs(w, http.StatusCreated, rec, name, bearer)
+		writeExtTokenAs(w, status, rec, name, bearer)
 	}
 }
 
