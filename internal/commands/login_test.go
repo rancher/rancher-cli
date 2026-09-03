@@ -1236,7 +1236,8 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/login") && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]string{"token": opts.sessionToken})
+			id, _, _ := strings.Cut(opts.sessionToken, ":")
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": id, "token": opts.sessionToken})
 
 		case r.URL.Path == token.MintTokensPath && r.Method == http.MethodPost:
 			if opts.mintBlock != nil {
@@ -1254,7 +1255,7 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"derived-1"},"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
 
-		case (strings.HasPrefix(r.URL.Path, v3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.MintTokensPath+"/")) && r.Method == http.MethodDelete:
+		case (strings.HasPrefix(r.URL.Path, token.V3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.MintTokensPath+"/")) && r.Method == http.MethodDelete:
 			if opts.revokedPathCh != nil {
 				opts.revokedPathCh <- r.URL.Path
 			}
@@ -1287,7 +1288,7 @@ func TestLoginProviderFlowMintsAndStoresDerivedTokenRevokesSession(t *testing.T)
 
 	select {
 	case revokedPath := <-revokedPathCh:
-		assert.Equal(t, v3TokensPath+"/token-sess1", revokedPath, "S is v3-shaped, revoked via the v3 Token CRD path")
+		assert.Equal(t, token.V3TokensPath+"/token-sess1", revokedPath, "S is v3-shaped, revoked via the v3 Token CRD path")
 	default:
 		t.Fatal("the transient session token was never revoked")
 	}

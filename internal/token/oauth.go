@@ -65,16 +65,17 @@ func resolveAuthFlow(flag string) string {
 	return firstNonEmptyEnv(config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow)
 }
 
-func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
+func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (CreateResult, error) {
+	notAttempted := loginNotAttempted(input)
 	input.authFlow = strings.ToLower(resolveAuthFlow(input.authFlow))
 
 	if p.NoInput() {
-		return nil, clierr.New(clierr.CodeAuth,
+		return notAttempted, clierr.New(clierr.CodeAuth,
 			"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
 	}
 
 	if input.idpClient == nil {
-		return nil, errors.New("identity provider client is not configured")
+		return notAttempted, errors.New("identity provider client is not configured")
 	}
 
 	switch input.authFlow {
@@ -83,7 +84,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	case deviceAuthFlow, "":
 		return oauthDeviceCodeAuth(ctx, client, input, provider, p)
 	default:
-		return nil, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
+		return notAttempted, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
 	}
 }
 
@@ -115,22 +116,23 @@ func oauthAuthCodeAuth(
 	timeoutAfter time.Duration,
 	openBrowser openBrowserFunc,
 	p iruntime.Prompter,
-) (*Token, error) {
+) (CreateResult, error) {
+	notAttempted := loginNotAttempted(input)
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create oauth config: %w", err)
+		return notAttempted, fmt.Errorf("failed to create oauth config: %w", err)
 	}
 
 	callbackPort, err := getCallbackPort(p)
 	if err != nil {
-		return nil, err
+		return notAttempted, err
 	}
 
 	verifier := oauth2.GenerateVerifier()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", callbackPort))
 	if err != nil {
-		return nil, fmt.Errorf("failed to start local callback server on port %d: %w", callbackPort, err)
+		return notAttempted, fmt.Errorf("failed to start local callback server on port %d: %w", callbackPort, err)
 	}
 	defer func() { _ = listener.Close() }()
 
@@ -142,7 +144,7 @@ func oauthAuthCodeAuth(
 
 	state, err := generateState()
 	if err != nil {
-		return nil, err
+		return notAttempted, err
 	}
 
 	authURL := oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
@@ -168,7 +170,7 @@ func oauthAuthCodeAuth(
 	select {
 	case result := <-resultCh:
 		if result.err != nil {
-			return nil, result.err
+			return notAttempted, result.err
 		}
 
 		exchangeCtx, cancel := context.WithTimeout(ctx, oauthCodeExchangeTimeout)
@@ -177,18 +179,18 @@ func oauthAuthCodeAuth(
 
 		oauthToken, err := oauthConfig.Exchange(exchangeCtx, result.code, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return nil, fmt.Errorf("failed to exchange authorization code for token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
+			return notAttempted, fmt.Errorf("failed to exchange authorization code for token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
 		}
 
 		return rancherLogin(ctx, client, input, oauthToken)
 	case <-timeout.C:
-		return nil, clierr.Retryable(clierr.CodeAuth, "timed out waiting for browser authentication")
+		return notAttempted, clierr.Retryable(clierr.CodeAuth, "timed out waiting for browser authentication")
 	case <-ctx.Done():
 		// Abort promptly on caller cancellation (Ctrl-C via main's
 		// signal-cancellable context, SIGTERM, test timeout) instead of
 		// waiting for the browser callback and only then failing later at
 		// the exchange with a confusing post-callback context.Canceled.
-		return nil, ctx.Err()
+		return notAttempted, ctx.Err()
 	}
 }
 
@@ -287,17 +289,18 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 	return srv
 }
 
-func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (*Token, error) {
+func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (CreateResult, error) {
+	notAttempted := loginNotAttempted(input)
 	oauthConfig, err := newOauthConfig(provider)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create oauth config: %w", err)
+		return notAttempted, fmt.Errorf("failed to create oauth config: %w", err)
 	}
 
 	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, input.idpClient)
 
 	deviceAuthResp, err := oauthConfig.DeviceAuth(ctxWithClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initiate device authorization: %w", idpCertificateError(err, oauthConfig.Endpoint.DeviceAuthURL))
+		return notAttempted, fmt.Errorf("failed to initiate device authorization: %w", idpCertificateError(err, oauthConfig.Endpoint.DeviceAuthURL))
 	}
 
 	p.Notice(fmt.Sprintf(
@@ -308,15 +311,15 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve access token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
+		return notAttempted, fmt.Errorf("failed to retrieve access token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
 	}
 
-	token, err := rancherLogin(ctx, client, input, oauthToken)
+	r, err := rancherLogin(ctx, client, input, oauthToken)
 	if err != nil {
-		return nil, fmt.Errorf("error during auth login: %w", err)
+		return r, fmt.Errorf("error during auth login: %w", err)
 	}
 
-	return token, nil
+	return r, nil
 }
 
 func newOauthConfig(provider typedProvider) (*oauth2.Config, error) {
@@ -369,40 +372,37 @@ func validateOAuthEndpoint(field, raw string) error {
 		"identity provider endpoint %s must be an https URL with a host and no credentials, got %s", field, rendered))
 }
 
-func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token) (*Token, error) {
+func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, oauthToken *oauth2.Token) (CreateResult, error) {
+	notAttempted := CreateResult{Outcome: CreateNotAttempted, Marked: input.description != ""}
 	reqURL := fmt.Sprintf(loginURL, input.server)
 
-	responseType := "kubeconfig"
-	if input.clusterID != "" {
-		responseType = fmt.Sprintf("%s_%s", responseType, input.clusterID)
-	}
-
-	reqBody, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"type":         input.authProvider,
-		"responseType": responseType,
+		"responseType": loginResponseType(input),
 		"id_token":     oauthToken.Extra("id_token"),
-	})
+	}
+	if input.description != "" {
+		body["description"] = input.description
+	}
+	reqBody, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		return notAttempted, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+		return notAttempted, fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
+	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
 	if err == nil && resp.StatusCode != http.StatusCreated {
 		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	if err != nil {
-		return nil, err
+		return r, err
 	}
-
-	token, err := parseLoginResponse(respBody)
-	if err != nil {
-		return nil, err
-	}
-	return &token, nil
+	return r, nil
 }

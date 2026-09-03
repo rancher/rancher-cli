@@ -74,6 +74,12 @@ type loginInput struct {
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
+	// responseType is the shape the login request asks Rancher for. Empty
+	// keeps get-token's kubeconfig form; `auth login` asks for json.
+	responseType string
+	// description is the description every token this login creates
+	// carries. Empty creates an unmarked token.
+	description string
 	// idpClient dials the identity provider's OAuth endpoints. It trusts the
 	// operating system store, never the Rancher entry's CA: the entry's
 	// trust must not extend to a third-party origin, and a self-signed
@@ -281,10 +287,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// path, the steady state under kubectl's exec plugin, never dials
 		// an identity provider.
 		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
-		rancherToken, err = loginAndGenerateCred(ctx, client, input, p)
+		var res SessionAcquireResult
+		res, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
 			return runtime.Result{}, err
 		}
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}
 	case err != nil:
 		return runtime.Result{}, err
 	}
@@ -534,6 +542,9 @@ type LoginRequest struct {
 	// IdPClient dials the identity provider's OAuth endpoints (see
 	// loginInput.idpClient). Required for OAuth providers.
 	IdPClient *http.Client
+	// ResponseType is the shape asked of Rancher's login endpoint. Empty
+	// keeps get-token's kubeconfig form.
+	ResponseType string
 }
 
 // Login runs the identity-provider dance (provider discovery/selection, then
@@ -547,44 +558,66 @@ func Login(ctx context.Context, client *http.Client, req LoginRequest, p runtime
 		authProvider: req.AuthProvider,
 		authFlow:     req.AuthFlow,
 		idpClient:    req.IdPClient,
+		responseType: req.ResponseType,
 	}
-	return loginAndGenerateCred(ctx, client, input, p)
-}
-
-func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
-	authProviders, err := getAuthProviders(ctx, client, input.server)
+	res, err := loginAndGenerateCred(ctx, client, input, p)
 	if err != nil {
 		return Token{}, err
+	}
+	return Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}, nil
+}
+
+// loginNotAttempted is the result of a login that failed before its request
+// reached the wire: nothing was created, and the marker names nothing.
+func loginNotAttempted(input *loginInput) CreateResult {
+	return CreateResult{Outcome: CreateNotAttempted, Marked: input.description != ""}
+}
+
+// loginResponseType is the responseType a login carries: the caller's when
+// set, else the kubeconfig form get-token has always asked for, scoped to
+// the cluster when one is named.
+func loginResponseType(input *loginInput) string {
+	if input.responseType != "" {
+		return input.responseType
+	}
+	if input.clusterID != "" {
+		return "kubeconfig_" + input.clusterID
+	}
+	return "kubeconfig"
+}
+
+// loginAndGenerateCred creates the session token S. Its result is
+// authoritative even when the error is non-nil: the outcome says whether S
+// may exist, and the SAML handoff says where to look for it.
+func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
+	authProviders, err := getAuthProviders(ctx, client, input.server)
+	if err != nil {
+		return SessionAcquireResult{}, err
 	}
 	selectedProvider, err := selectAuthProvider(ctx, authProviders, input.authProvider, p)
 	if err != nil {
-		return Token{}, err
+		return SessionAcquireResult{}, err
 	}
 	input.authProvider = selectedProvider.GetType()
 
-	var token Token
 	if samlProviders[input.authProvider] {
 		if p.NoInput() {
-			return Token{}, clierr.New(clierr.CodeAuth,
+			return SessionAcquireResult{}, clierr.New(clierr.CodeAuth,
 				"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
 		}
-		token, err = samlAuth(ctx, client, input, p)
-	} else if oauthProviders[input.authProvider] {
-		var tokenPtr *Token
-		tokenPtr, err = oauthAuth(ctx, client, input, selectedProvider, p)
-		if err == nil {
-			token = *tokenPtr
-		}
+		return samlAuth(ctx, client, input, p)
+	}
+	var create CreateResult
+	if oauthProviders[input.authProvider] {
+		create, err = oauthAuth(ctx, client, input, selectedProvider, p)
 	} else {
-		token, err = basicAuth(ctx, client, input, p)
+		create, err = basicAuth(ctx, client, input, p)
 	}
-	if err != nil {
-		return Token{}, err
-	}
-	return token, nil
+	return SessionAcquireResult{Create: create}, err
 }
 
-func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
+func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (CreateResult, error) {
+	notAttempted := loginNotAttempted(input)
 	label := "Enter username: "
 	if def := input.usernameDefault; def != "" {
 		label = "Enter username [" + def + "]: "
@@ -592,10 +625,10 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return Token{}, clierr.New(clierr.CodeAuth,
+			return notAttempted, clierr.New(clierr.CodeAuth,
 				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
 		}
-		return Token{}, err
+		return notAttempted, err
 	}
 	// Trim before both the emptiness check and the request: incidental
 	// padding (a paste with a trailing newline) must not reach the auth
@@ -607,40 +640,50 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return Token{}, clierr.New(clierr.CodeAuth,
+			return notAttempted, clierr.New(clierr.CodeAuth,
 				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
 		}
-		return Token{}, err
+		return notAttempted, err
 	}
 
-	responseType := "kubeconfig"
-	if input.clusterID != "" {
-		responseType = "kubeconfig_" + input.clusterID
-	}
-	reqBody, err := json.Marshal(map[string]any{
-		"type": input.authProvider, "responseType": responseType,
+	body := map[string]any{
+		"type": input.authProvider, "responseType": loginResponseType(input),
 		"username": username, "password": password,
-	})
+	}
+	if input.description != "" {
+		body["description"] = input.description
+	}
+	reqBody, err := json.Marshal(body)
 	if err != nil {
-		return Token{}, fmt.Errorf("failed to marshal request body: %w", err)
+		return notAttempted, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	reqURL := fmt.Sprintf(loginURL, input.server)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return Token{}, fmt.Errorf("error creating request: %w", err)
+		return notAttempted, fmt.Errorf("error creating request: %w", err)
 	}
+	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
+	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
 	if err != nil {
-		return Token{}, fmt.Errorf("error logging user in: %w", err)
+		return r, fmt.Errorf("error logging user in: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return Token{}, clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return r, clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return Token{}, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return r, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
-	return parseLoginResponse(respBody)
+	return r, nil
+}
+
+// loginCreateResult classifies a login response: the body declares which
+// token kind Rancher created, and the classifier reads the identity out of
+// that shape. A response that declares no shape leaves the kind unknown.
+func loginCreateResult(resp *http.Response, body []byte, err error, createdAt string, marked bool) CreateResult {
+	kind, _ := LoginResponseShape(body)
+	return classifyCreate(resp, body, err, createdAt, marked, kind)
 }
 
 // samlAuthTimeout and samlPollInterval are package vars so tests can shrink
@@ -651,58 +694,76 @@ var (
 	samlPollInterval = 10 * time.Second
 )
 
-func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (Token, error) {
-	token := Token{}
+// SetSAMLTimingForTest shrinks the SAML wait so a test can drive the
+// asynchronous state machine without waiting out a real poll tick, and
+// returns the function that puts the production timing back.
+func SetSAMLTimingForTest(timeout, interval time.Duration) (restore func()) {
+	prevTimeout, prevInterval := samlAuthTimeout, samlPollInterval
+	samlAuthTimeout, samlPollInterval = timeout, interval
+	return func() { samlAuthTimeout, samlPollInterval = prevTimeout, prevInterval }
+}
+
+// samlAuth signs in through the browser: it publishes a URL carrying a
+// request id and a public key, then polls Rancher's authtokens collection
+// for the encrypted token the browser deposits there. Nothing here creates a
+// token — the server does, out of band — so every failure after the URL is
+// published leaves a session token that may exist and can only be found
+// through the handoff this returns. The created token is always v3 and never
+// carries a description, so it can never be marked.
+func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
+	res := SessionAcquireResult{Create: CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindV3}}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return token, fmt.Errorf("error generating key: %w", err)
+		return res, fmt.Errorf("error generating key: %w", err)
 	}
 
 	publicKey := privateKey.PublicKey
 	marshalKey, err := json.Marshal(publicKey)
 	if err != nil {
-		return token, fmt.Errorf("error marshaling public key: %w", err)
+		return res, fmt.Errorf("error marshaling public key: %w", err)
 	}
 	encodedKey := base64.StdEncoding.EncodeToString(marshalKey)
 
 	id, err := generateKey()
 	if err != nil {
-		return token, fmt.Errorf("error generating request id: %w", err)
-	}
-
-	responseType := "kubeconfig"
-	if input.clusterID != "" {
-		responseType = fmt.Sprintf("%s_%s", responseType, input.clusterID)
+		return res, fmt.Errorf("error generating request id: %w", err)
 	}
 
 	tokenURL := fmt.Sprintf(authTokenURL, input.server, id)
 
 	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, bytes.NewBuffer(nil))
 	if err != nil {
-		return token, fmt.Errorf("error creating get token request: %w", err)
+		return res, fmt.Errorf("error creating get token request: %w", err)
 	}
 	getReq.Header.Set("content-type", "application/json")
 	getReq.Header.Set("accept", "application/json")
 
 	deleteReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, tokenURL, bytes.NewBuffer(nil))
 	if err != nil {
-		return token, fmt.Errorf("error creating delete token request: %w", err)
+		return res, fmt.Errorf("error creating delete token request: %w", err)
 	}
 	deleteReq.Header.Set("content-type", "application/json")
 	deleteReq.Header.Set("accept", "application/json")
 
 	loginURL, err := url.Parse(input.server + "/dashboard/auth/login")
 	if err != nil {
-		return token, fmt.Errorf("error parsing login url: %w", err)
+		return res, fmt.Errorf("error parsing login url: %w", err)
 	}
 
 	q := url.Values{}
 	q.Set("cli", "true")
 	q.Set("requestId", id)
 	q.Set("publicKey", encodedKey)
-	q.Set("responseType", responseType)
+	q.Set("responseType", loginResponseType(input))
 	loginURL.RawQuery = q.Encode()
+
+	// The handoff is recorded before the URL reaches the operator: from the
+	// moment it can be opened, a token may exist, and every exit below must
+	// carry the criteria that find it.
+	res.Handoff = &SAMLHandoff{Provider: input.authProvider, RequestID: id, HandoffAt: time.Now().UTC().Format(time.RFC3339)}
+	res.Create.Outcome = CreateUnknown
+	defer func() { res.Handoff.PollEndedAt = time.Now().UTC().Format(time.RFC3339) }()
 
 	p.Notice(fmt.Sprintf("\nLogin Request Id: %s\n", id))
 	p.Notice(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
@@ -717,32 +778,33 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 		case <-poll.C:
 			resp, respBody, err := httpx.Do(client, getReq)
 			if err != nil {
-				return token, fmt.Errorf("error fetching auth token: %w", err)
+				return res, fmt.Errorf("error fetching auth token: %w", err)
 			}
 			switch resp.StatusCode {
 			case http.StatusOK:
 			case http.StatusNotFound:
 				continue
 			default:
-				return token, fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+				return res, fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 			}
 
-			err = json.Unmarshal(respBody, &token)
+			var deposited Token
+			err = json.Unmarshal(respBody, &deposited)
 			if err != nil {
-				return token, fmt.Errorf("error unmarshaling auth token response: %w", err)
+				return res, fmt.Errorf("error unmarshaling auth token response: %w", err)
 			}
-			if token.Token == "" {
+			if deposited.Token == "" {
 				continue
 			}
-			decoded, err := base64.StdEncoding.DecodeString(token.Token)
+			decoded, err := base64.StdEncoding.DecodeString(deposited.Token)
 			if err != nil {
-				return token, fmt.Errorf("error decoding auth token: %w", err)
+				return res, fmt.Errorf("error decoding auth token: %w", err)
 			}
 			decryptedBytes, err := privateKey.Decrypt(nil, decoded, &rsa.OAEPOptions{Hash: crypto.SHA256})
 			if err != nil {
-				return token, fmt.Errorf("error decrypting auth token: %w", err)
+				return res, fmt.Errorf("error decrypting auth token: %w", err)
 			}
-			token.Token = string(decryptedBytes)
+			bearer := string(decryptedBytes)
 
 			resp, _, err = httpx.Do(client, deleteReq)
 			if err == nil {
@@ -756,15 +818,24 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 				p.Notice("error deleting auth token: " + err.Error())
 			}
 
-			return token, nil
+			res.Create.ExpiresAt = deposited.ExpiresAt
+			// The deposited bearer is the only evidence of the token's
+			// identity: this flow has no create response to read a name from.
+			ref, ok := TokenRefFromValidatedBearer(TokenKindV3, bearer)
+			if !ok {
+				res.Create.Outcome = CreateUnidentified
+				return res, clierr.New(clierr.CodeAuth, "the auth token deposited for this login is not a usable Rancher token")
+			}
+			res.Create.Outcome, res.Create.Ref, res.Create.Bearer = CreateKnown, &ref, bearer
+			return res, nil
 
 		case <-timeout.C:
-			return token, clierr.Retryable(clierr.CodeAuth, "timed out waiting for the auth token")
+			return res, clierr.Retryable(clierr.CodeAuth, "timed out waiting for the auth token")
 		case <-ctx.Done():
 			// Abort promptly on caller cancellation (Ctrl-C via main's
 			// signal-cancellable context, SIGTERM, test timeout) instead of
 			// waiting for the next poll tick, mirroring oauthAuthCodeAuth's wait.
-			return token, ctx.Err()
+			return res, ctx.Err()
 		}
 	}
 }
@@ -1052,7 +1123,9 @@ func MintDerivedToken(ctx context.Context, client *http.Client, base, bearerToke
 	resp, respBody, err := httpx.Do(client, req)
 	r := classifyCreate(resp, respBody, err, createdAt, description != "", TokenKindExt)
 	if err != nil {
-		return r, clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error())
+		// The cause is kept: a cancelled operation must still be recognizable
+		// as cancellation after cleanup has wrapped the failure.
+		return r, clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error()).WithCause(err)
 	}
 	switch resp.StatusCode {
 	case http.StatusNotFound:

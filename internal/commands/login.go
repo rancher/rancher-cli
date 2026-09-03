@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 type loginCmd struct {
@@ -477,9 +478,15 @@ func (l loginCmd) authenticateAndStore(
 		caBytes = pendingTrust.pem
 	}
 
-	token, viaProvider, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
+	cred, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
+	bearer := cred.Token
+	viaProvider := cred.Provenance != token.ProvenanceUserSupplied
+	if authErr == nil && cred.SessionTokenCleanup.Result == token.ResultFailed && cred.SessionTokenCleanup.Ref != nil {
+		p.Notice(fmt.Sprintf("could not revoke the transient session token %s: %s",
+			cred.SessionTokenCleanup.Ref.Name, cred.SessionTokenCleanup.Error))
+	}
 	if authErr == nil {
-		id, secret, ok := strings.Cut(token, ":")
+		id, secret, ok := strings.Cut(bearer, ":")
 		if !ok || id == "" || secret == "" {
 			authErr = clierr.New(clierr.CodeValidation,
 				"invalid token (expected non-empty id:secret); get one from the Rancher UI")
@@ -499,7 +506,7 @@ func (l loginCmd) authenticateAndStore(
 	// says so.
 	noVerify := in.Bool("no-verify")
 	if !viaProvider && !noVerify && l.verify != nil {
-		if _, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: token, ServerName: name}); verr != nil {
+		if _, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: bearer, ServerName: name}); verr != nil {
 			if delegated {
 				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, verr, snap)
 			}
@@ -548,7 +555,7 @@ func (l loginCmd) authenticateAndStore(
 			warnings = append(warnings, pinNotice)
 		}
 		ref := config.ServerRef{Name: name, URL: serverURL}
-		out, tokenErr := config.CommitToken(store, ref, token)
+		out, tokenErr := config.CommitToken(store, ref, bearer)
 		compensate := out.Compensate
 		tokenCommitted := tokenErr == nil
 		if tokenErr == nil && out.Notice != "" {
@@ -697,33 +704,33 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 		WithHint(config.LoginHintFor(snap.name))
 }
 
-// resolveLoginToken returns the resolved token and whether it came from the
-// provider/OAuth sign-in flow (viaProvider) — true only when
-// resolveProviderLoginToken produced it, since a server-issued token is
-// authenticated by construction and must never take a second verification
-// round-trip.
-func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (string, bool, error) {
+// resolveLoginToken returns the credential to store. Its provenance says
+// where it came from: only a credential the provider sign-in flow produced
+// needs no second verification round-trip, since a server-issued token is
+// authenticated by construction.
+func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (token.LoginCredential, error) {
 	if in.Bool("token-stdin") {
 		if in.String("auth-provider") != "" || in.String("auth-flow") != "" || in.String("ttl") != "" {
-			return "", false, clierr.New(clierr.CodeValidation,
+			return token.LoginCredential{}, clierr.New(clierr.CodeValidation,
 				"--auth-provider/--auth-flow/--ttl apply to the provider sign-in flow and are incompatible with --token-stdin; "+
 					"drop --token-stdin to use the provider flow, or drop the provider flags to paste/pipe a token")
 		}
 	}
 	if in.Bool("no-verify") && (in.String("auth-provider") != "" || in.String("auth-flow") != "") {
-		return "", false, clierr.New(clierr.CodeValidation,
+		return token.LoginCredential{}, clierr.New(clierr.CodeValidation,
 			"--no-verify has no effect on the provider sign-in flow, which is already authenticated by construction; "+
 				"drop --no-verify, or drop the provider flags to skip verification for a pasted token")
 	}
 
 	var (
-		tok         string
-		viaProvider bool
-		err         error
+		cred token.LoginCredential
+		err  error
 	)
 	switch {
 	case in.Bool("token-stdin"):
-		tok, err = p.ReadLine(ctx)
+		var pasted string
+		pasted, err = p.ReadLine(ctx)
+		cred = token.UserSupplied(pasted)
 	// The provider flow is allowed without a TTY when --auth-provider is
 	// explicitly named: the finer-grained gates already inside it (SAML's
 	// NoInput check, basicAuth's per-prompt CanPrompt check, OAuth's lack of
@@ -731,55 +738,56 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient f
 	// already runs its OAuth device-code/auth-code flows headlessly. Without
 	// an explicit provider, the paste-or-provider menu itself needs a TTY.
 	case p.CanPrompt() || in.String("auth-provider") != "":
-		tok, viaProvider, err = promptForToken(ctx, server, caPEM, newIdPClient, in, p)
+		cred, err = promptForToken(ctx, server, caPEM, newIdPClient, in, p)
 	default:
-		return "", false, clierr.New(clierr.CodeValidation, "token required; pipe it via --token-stdin, or run in a terminal")
+		return token.LoginCredential{}, clierr.New(clierr.CodeValidation, "token required; pipe it via --token-stdin, or run in a terminal")
 	}
 	if err != nil {
 		// A typed clierr (from the provider flow, or an invalid menu pick) is
 		// already the right error to surface — the io.EOF/generic mapping
-		// below is for the plain-paste read paths only.
+		// below is for the plain-paste read paths only. An AcquireError
+		// carries its own primary and all the cleanup evidence, so it is
+		// surfaced whole.
+		if _, ok := errors.AsType[*token.AcquireError](err); ok {
+			return token.LoginCredential{}, err
+		}
 		if _, ok := errors.AsType[*clierr.Error](err); ok {
-			return "", false, err
+			return token.LoginCredential{}, err
 		}
 		if errors.Is(err, io.EOF) {
-			return "", false, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
+			return token.LoginCredential{}, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
 		}
-		return "", false, clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
+		return token.LoginCredential{}, clierr.New(clierr.CodeGeneric, "reading token: "+err.Error())
 	}
-	tok = strings.TrimSpace(tok)
-	if tok == "" {
-		return "", false, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
+	cred.Token = strings.TrimSpace(cred.Token)
+	if cred.Token == "" {
+		return token.LoginCredential{}, clierr.New(clierr.CodeValidation, "no token provided; pipe it via --token-stdin, or enter it at the prompt")
 	}
-	return tok, viaProvider, nil
+	return cred, nil
 }
 
 // promptForToken offers the paste-or-provider choice (EXT-R-8): --auth-provider
 // or --auth-flow already signal provider intent and skip straight to it,
 // mirroring get-token's own explicit-flag shortcut past its provider menu.
-// The bool return is viaProvider, true exactly when resolveProviderLoginToken
-// produced the token.
 // newIdPClient is a constructor, not a client: the identity-provider client
 // is built only on the provider branches, so a pasted or piped token never
 // pays for a transport it will not use.
-func promptForToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (string, bool, error) {
+func promptForToken(ctx context.Context, server, caPEM string, newIdPClient func() *http.Client, in runtime.Input, p runtime.Prompter) (token.LoginCredential, error) {
 	if in.String("auth-provider") != "" || in.String("auth-flow") != "" {
-		tok, err := resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
-		return tok, true, err
+		return resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
 	}
 	p.Notice("1) paste an API token\n2) sign in via an identity provider")
 	choice, err := p.Prompt(ctx, "Select [1]: ")
 	if err != nil {
-		return "", false, err
+		return token.LoginCredential{}, err
 	}
 	switch strings.TrimSpace(choice) {
 	case "", "1":
-		tok, err := p.PromptSecret(ctx, "Enter token (id:secret): ")
-		return tok, false, err
+		pasted, err := p.PromptSecret(ctx, "Enter token (id:secret): ")
+		return token.UserSupplied(pasted), err
 	case "2":
-		tok, err := resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
-		return tok, true, err
+		return resolveProviderLoginToken(ctx, server, caPEM, newIdPClient(), in, p)
 	default:
-		return "", false, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider); re-run and answer 1 or 2")
+		return token.LoginCredential{}, clierr.New(clierr.CodeAmbiguousSelection, "select 1 (paste) or 2 (identity provider); re-run and answer 1 or 2")
 	}
 }

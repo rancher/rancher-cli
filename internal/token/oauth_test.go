@@ -195,7 +195,8 @@ func splitOriginFacade(t *testing.T) *splitOrigin {
 				http.Error(w, "missing id_token", http.StatusBadRequest)
 				return
 			}
-			writeTestJSON(w, http.StatusCreated, map[string]any{"token": "rancher-session-" + body.IDToken})
+			name := "rancher-session-" + body.IDToken
+			writeTestJSON(w, http.StatusCreated, map[string]any{"id": name, "token": name + ":s"})
 		default:
 			http.NotFound(w, r)
 		}
@@ -260,7 +261,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	input := &loginInput{server: so.rancher.URL, authProvider: "azureADProvider", idpClient: so.idpClient}
 	tok, err := oauthAuthCodeAuth(t.Context(), so.rancherClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.NoError(t, err)
-	assert.NotEmpty(t, tok.Token)
+	assert.NotEmpty(t, tok.Bearer)
 	assert.Equal(t, int32(1), so.idpRequests.Load(), "exactly one token exchange reaches this fixture's IdP")
 }
 

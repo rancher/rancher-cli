@@ -176,7 +176,7 @@ func TestLoginProviderFlowReloginUsesStoredCAWithoutCacert(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/login"):
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"token":"token-sess1:sessionsecret"}`))
+			_, _ = w.Write([]byte(`{"id":"token-sess1","token":"token-sess1:sessionsecret"}`))
 		case r.URL.Path == "/rancherversion":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"Version":"v2.20.0"}`))

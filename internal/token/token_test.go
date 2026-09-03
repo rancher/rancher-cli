@@ -2018,7 +2018,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 			gotBody, _ = io.ReadAll(r.Body)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"token":"test-tok"}`))
+			_, _ = w.Write([]byte(`{"id":"test-tok","token":"test-tok:s"}`))
 			return
 		}
 		http.NotFound(w, r)
@@ -2039,7 +2039,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 
 	assert.Contains(t, errBuf.String(), "[alice]", "prompt label must include the default in brackets")
 	assert.Equal(t, "alice", gjson.GetBytes(gotBody, "username").String(), "empty answer must fall back to the default")
-	assert.Equal(t, "test-tok", tok.Token)
+	assert.Equal(t, "test-tok:s", tok.Bearer)
 }
 
 // TestBasicAuthTrimsPaddedUsername is the round-7 finding-4 repro: a
@@ -2055,7 +2055,7 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 			gotBody, _ = io.ReadAll(r.Body)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"token":"test-tok"}`))
+			_, _ = w.Write([]byte(`{"id":"test-tok","token":"test-tok:s"}`))
 			return
 		}
 		http.NotFound(w, r)

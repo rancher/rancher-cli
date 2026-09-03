@@ -93,6 +93,10 @@ type Options struct {
 	// existing e2e script already authenticates with (FA-1: "the mint
 	// requires a valid façade-issued (or seed) bearer").
 	SeedToken string
+	// ExtraProviders are provider types listed alongside localProvider, for
+	// a flow the façade does not itself serve (the SAML authtokens flow
+	// completes in the browser).
+	ExtraProviders []string
 
 	// DropLoginResponse creates the token and then closes the connection
 	// without writing: the client never learns what the server did.
@@ -131,6 +135,10 @@ type Options struct {
 	// MintStatus forces a status on the mint POST, with LoginStatus's rule
 	// about when the record is created.
 	MintStatus int
+	// MintHook runs when a mint POST arrives, before the record is created
+	// or answered. A hook that cancels the client's context must then block
+	// on the request context so the answer cannot race the cancellation.
+	MintHook func(r *http.Request)
 
 	// SessionDeleteMode and DerivedDeleteMode fail the revoke of a located
 	// record by its role, on either route: "" answers normally, "gone"
@@ -201,14 +209,31 @@ type Facade struct {
 	deletes      []DeleteRecord
 	relayReqs    []RelayRecord
 	relay        map[string]string // request id → encrypted base64 bearer
+	logins       int
+	mints        int
 }
 
-// LoginDescriptions returns the descriptions login requests carried, in
-// order.
+// LoginDescriptions returns the descriptions the token-creating requests of
+// a login carried — the login POST and the mint POST — in order.
 func (f *Facade) LoginDescriptions() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.descriptions)
+}
+
+// LoginCount is how many login POSTs the façade answered.
+func (f *Facade) LoginCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.logins
+}
+
+// MintRequests is how many mint POSTs the façade received, whatever it
+// answered.
+func (f *Facade) MintRequests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.mints
 }
 
 // DeleteRequests returns every recorded DELETE attempt, in order.
@@ -271,6 +296,13 @@ func (f *Facade) DepositRelay(requestID, publicKeyB64 string) {
 	rec.role = "session"
 	f.mu.Unlock()
 	f.DepositRelayRaw(requestID, encryptToPublicKey(publicKeyB64, rec.bearer()))
+}
+
+// DepositRelayPlaintext deposits plaintext for requestID, encrypted to
+// publicKeyB64 in place of a real bearer, for a payload the client can
+// decrypt but cannot read as a token.
+func (f *Facade) DepositRelayPlaintext(requestID, publicKeyB64, plaintext string) {
+	f.DepositRelayRaw(requestID, encryptToPublicKey(publicKeyB64, plaintext))
 }
 
 // DepositRelayRaw deposits b64 for requestID as it is, for a payload the
@@ -392,10 +424,16 @@ func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 			"tokenUrl":      base + "/idp/token",
 		})
 	}
+	for _, p := range f.opts.ExtraProviders {
+		data = append(data, map[string]any{"type": p})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
 func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.logins++
+	f.mu.Unlock()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "reading body", http.StatusBadRequest)
@@ -530,6 +568,13 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	f.mu.Lock()
+	f.mints++
+	f.mu.Unlock()
+	if f.opts.MintHook != nil {
+		f.opts.MintHook(r)
+	}
+
 	if f.opts.Legacy {
 		http.NotFound(w, r)
 		return
@@ -557,6 +602,9 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	rec.kind = "ext"
 	rec.role = "derived"
 	rec.description = mintReq.Spec.Description
+	if mintReq.Spec.Description != "" {
+		f.descriptions = append(f.descriptions, mintReq.Spec.Description)
+	}
 	f.mu.Unlock()
 
 	switch {
