@@ -12,6 +12,7 @@ const (
 	ansiRed    = "\x1b[31m"
 	ansiYellow = "\x1b[33m"
 	ansiCyan   = "\x1b[36m"
+	ansiGreen  = "\x1b[32m"
 )
 
 // Style wraps text in ANSI escape codes when Enabled, and returns text
@@ -20,13 +21,14 @@ type Style struct {
 	Enabled bool
 }
 
-// Bold, Red, Yellow, and Cyan each wrap text in the named SGR code and a
-// trailing reset. Disabled or empty text passes through unchanged — an
-// empty wrap would place codes around nothing visible.
+// Bold, Red, Yellow, Cyan, and Green each wrap text in the named SGR code
+// and a trailing reset. Disabled or empty text passes through unchanged —
+// an empty wrap would place codes around nothing visible.
 func (s Style) Bold(text string) string   { return s.wrap(ansiBold, text) }
 func (s Style) Red(text string) string    { return s.wrap(ansiRed, text) }
 func (s Style) Yellow(text string) string { return s.wrap(ansiYellow, text) }
 func (s Style) Cyan(text string) string   { return s.wrap(ansiCyan, text) }
+func (s Style) Green(text string) string  { return s.wrap(ansiGreen, text) }
 
 func (s Style) wrap(code, text string) string {
 	if !s.Enabled || text == "" {
