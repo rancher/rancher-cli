@@ -302,8 +302,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 - `PRIME_REQUIRED` (exit `9`) means the command needs a capability this
   server's edition does not have — Rancher Prime. Do not retry and do not
   look for a workaround; tell the user what was refused and pass along the
-  message's learn-more link. `rancher schema` marks such commands and kinds
-  `[prime]`, so you can check before running.
+  message's learn-more link. `rancher schema` marks such a command with a
+  `[Prime]` token in its usage column, and such a kind with a `prime` trait,
+  so you can check before running.
 
 ### 6. Waits
 

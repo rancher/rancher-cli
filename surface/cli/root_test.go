@@ -355,6 +355,163 @@ func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
 	assert.False(t, commandIsPrime(byName["cluster"]), "cluster mixes Prime and non-Prime verbs")
 }
 
+// TestPrimeMarkerConformance is the manifest-wide conformance check for the
+// "[Prime]" marker: every command's help row carries it iff the manifest
+// says the command is Prime, and every named group's root help row and
+// schema TOC label carry it iff every member of that group is Prime. It
+// walks the real manifest rather than a curated list, so a future command
+// or group is covered automatically.
+func TestPrimeMarkerConformance(t *testing.T) {
+	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	require.NoError(t, err)
+	manifest := wr.reg.Schema("golden", config.MinRancherVersion)
+	primeByName := map[string]bool{}
+	for _, c := range manifest.Commands {
+		primeByName[c.Name] = c.Prime
+	}
+	// The rule is restated here from the design on purpose rather than
+	// imported from runtime: a conformance test that asked the code under
+	// test what to expect would only check that the code agrees with itself.
+	groupAllPrime := func(g runtime.SchemaGroup) bool {
+		if len(g.Commands) == 0 {
+			return false
+		}
+		for _, name := range g.Commands {
+			if !primeByName[name] {
+				return false
+			}
+		}
+		return true
+	}
+
+	rootHelp := renderHelp(t, "")
+	schemaText := runSchemaText(t)
+
+	var checkedCommands, checkedGroups int
+	for _, g := range manifest.Groups {
+		if g.Name == "" {
+			continue
+		}
+		checkedGroups++
+		wantGroupPrime := groupAllPrime(g)
+
+		rootLine := lineForCommandName(t, rootHelp, g.Name)
+		if wantGroupPrime {
+			assert.Contains(t, rootLine, "[Prime]", "all-Prime group %q must carry the marker on root help", g.Name)
+		} else {
+			assert.NotContains(t, rootLine, "[Prime]", "group %q must carry no marker on root help", g.Name)
+		}
+
+		tocLine := lineForCommandName(t, schemaText, g.Name)
+		if wantGroupPrime {
+			assert.Contains(t, tocLine, "[Prime]", "all-Prime group %q must carry the marker on the schema TOC label", g.Name)
+		} else {
+			assert.NotContains(t, tocLine, "[Prime]", "group %q must carry no marker on the schema TOC label", g.Name)
+		}
+
+		groupHelp := renderHelp(t, "", g.Name)
+		for _, name := range g.Commands {
+			leaf, _, _ := strings.Cut(strings.TrimPrefix(name, g.Name+" "), " ")
+			line := lineForCommandName(t, groupHelp, leaf)
+			checkedCommands++
+			if primeByName[name] {
+				assert.Contains(t, line, "[Prime]", "command %q must carry the marker on its group's help", name)
+			} else {
+				assert.NotContains(t, line, "[Prime]", "command %q must carry no marker on its group's help", name)
+			}
+		}
+	}
+	require.NotZero(t, checkedGroups)
+	require.NotZero(t, checkedCommands)
+}
+
+// lineForCommandName finds a rendered COMMANDS row by its canonical name —
+// the row's comma-joined name list may carry aliases after it (e.g.
+// "deployment, deployments, deploy:"), so a plain substring match on
+// "name:" alone would miss it.
+func lineForCommandName(t *testing.T, text, name string) string {
+	t.Helper()
+	for line := range strings.SplitSeq(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, name+":") || strings.HasPrefix(trimmed, name+",") {
+			return line
+		}
+	}
+	t.Fatalf("no COMMANDS row for %q in:\n%s", name, text)
+	return ""
+}
+
+// runSchemaText runs `rancher schema` and returns its rendered text.
+func runSchemaText(t *testing.T) string {
+	t.Helper()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "schema"}))
+	return out.String()
+}
+
+// TestNoUsageCarriesPrimeMarker asserts no command's Usage text contains the
+// marker literal: the renderers prepend it, and the colorizers color the
+// first occurrence on a row, so a Usage that carried its own copy would
+// render two tokens and color the wrong one. The manifest is the source.
+func TestNoUsageCarriesPrimeMarker(t *testing.T) {
+	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	require.NoError(t, err)
+	for _, c := range wr.reg.Schema("golden", config.MinRancherVersion).Commands {
+		assert.NotContains(t, c.Usage, runtime.PrimeMarker, "%s: Usage must not carry the marker literal", c.Name)
+	}
+}
+
+// TestGroupPrimeMetadataEmptyGroupIsNotPrime asserts the group rollup's
+// rule matches groupAllPrime's: a group with no leaves is never Prime, even
+// though "every leaf is Prime" is vacuously true of an empty slice.
+func TestGroupPrimeMetadataEmptyGroupIsNotPrime(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, groupPrimeMetadata(nil))
+	assert.Nil(t, groupPrimeMetadata([]*ucli.Command{}))
+}
+
+// TestNoLowercasePrimeMarkerLiteral asserts the retired "[prime]" spelling
+// appears nowhere in the repository's Go, Markdown, or txtar files — the
+// capitalized "[Prime]" is the one spelling. It walks the whole tree, not
+// just this package: the retired spelling lived in internal/runtime, and the
+// docs and skill are where a reader would copy it from.
+func TestNoLowercasePrimeMarkerLiteral(t *testing.T) {
+	t.Parallel()
+	check := func(t *testing.T, path string) {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "[prime]", "banned lowercase marker in %s", path)
+	}
+	root := filepath.Join("..", "..")
+	skip := map[string]bool{".git": true, "bin": true, "docs": true, "vendor": true, "graphify-out": true, "node_modules": true}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if skip[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".go", ".md", ".txtar":
+		default:
+			return nil
+		}
+		if strings.HasSuffix(path, filepath.Join("surface", "cli", "root_test.go")) {
+			return nil
+		}
+		check(t, path)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 // TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape — the
 // progressive-disclosure contract (spec 2026-08-06): orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.
