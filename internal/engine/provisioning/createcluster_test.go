@@ -169,7 +169,7 @@ func requireValidation(t *testing.T, err error) *clierr.Error {
 	return ce
 }
 
-// TestCreateClusterImportedOmitsRKEConfigEntirely pins the nil-vs-{}
+// TestCreateClusterImportedOmitsRKEConfigEntirely asserts the nil-vs-{}
 // discriminator (rancher cluster/controller.go:493,666 —
 // NormalizeCluster(newCluster, cluster.Spec.RKEConfig == nil) treats a nil
 // RKEConfig as "not managed by RKE"): an imported cluster's built object
@@ -211,7 +211,7 @@ func TestCreateClusterCustomRequiresK8sVersion(t *testing.T) {
 	assert.Contains(t, ce.Message, "k8s-version")
 }
 
-// TestCreateClusterCustomHasEmptyRKEConfigNoMachinePools pins the other half
+// TestCreateClusterCustomHasEmptyRKEConfigNoMachinePools asserts the other half
 // of the nil-vs-{} discriminator: --custom's rkeConfig key IS present, as an
 // empty map, and carries no machinePools.
 func TestCreateClusterCustomHasEmptyRKEConfigNoMachinePools(t *testing.T) {
@@ -239,7 +239,7 @@ func TestCreateClusterCustomHasEmptyRKEConfigNoMachinePools(t *testing.T) {
 	assert.Equal(t, "v1.30.5+rke2r1", kv)
 }
 
-// TestCreateClusterNodeDriverBuildsFullPoolAndResolvesCredential pins the
+// TestCreateClusterNodeDriverBuildsFullPoolAndResolvesCredential asserts the
 // node-driver object shape (rancher cluster_types.go:11-105,121-169,176+):
 // a single machine pool with the resolved cloud-credential secret name and
 // the Task 3 K8sKind casing on machineConfigRef.
@@ -439,7 +439,7 @@ func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-// TestMachineConfigFlagDescListsClosedKindSet pins the schema-visible Desc of
+// TestMachineConfigFlagDescListsClosedKindSet asserts the schema-visible Desc of
 // --machine-config to the closed kind set, spelled as a LITERAL — deliberately
 // not recomputed via machineConfigKindsHint(), which would restate the
 // production derivation (same independent-source doctrine as
@@ -461,7 +461,7 @@ func TestMachineConfigFlagDescListsClosedKindSet(t *testing.T) {
 		desc)
 }
 
-// TestMachineConfigFlagCarriesNoEnum pins that the closed kind set is carried
+// TestMachineConfigFlagCarriesNoEnum asserts that the closed kind set is carried
 // in Desc, never as ArgSpec.Enum: the flag's values are kind/name composites,
 // and the runtime enum validator would reject every real value.
 func TestMachineConfigFlagCarriesNoEnum(t *testing.T) {
@@ -601,7 +601,7 @@ func TestCreateClusterMissingNameIsValidation(t *testing.T) {
 	_ = requireValidation(t, err)
 }
 
-// TestNewCreateClusterDescribe pins the Descriptor shape.
+// TestNewCreateClusterDescribe asserts the Descriptor shape.
 func TestNewCreateClusterDescribe(t *testing.T) {
 	t.Parallel()
 	d := NewCreateCluster(fakeFactory{}, fakeRootFactory{}).Describe()

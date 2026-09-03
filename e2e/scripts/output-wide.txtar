@@ -19,7 +19,7 @@ stdout 'some-node'
 # -o wide on a kind with no Wide columns (namespace) renders the same column
 # set as -o table — presentation, never a scope change. (AGE ticks between
 # the two invocations, so this checks the header/shape, not a byte-identical
-# capture; TestRenderWideFallsBackToTabularByteIdentical pins the exact
+# capture; TestRenderWideFallsBackToTabularByteIdentical asserts the exact
 # byte-identical guarantee at the unit level.)
 exec rancher get namespace default --cluster testcluster -o wide
 stdout 'NAME\s+STATUS\s+AGE'

@@ -36,7 +36,7 @@ func clusterFamilyPoolServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalClusterFamilyClusterName pins clusterFamilyPositionalKind:
+// TestLivePositionalClusterFamilyClusterName asserts clusterFamilyPositionalKind:
 // every cluster-family bespoke verb's <cluster> positional lists
 // provisioning-cluster names via the SAME fleet-default path
 // get/delete provisioning-cluster use, keyed off the op name rather than
@@ -81,7 +81,7 @@ func TestLivePositionalClusterFamilyClusterNameNamespaceOverride(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load())
 }
 
-// TestLivePositionalClusterFamilyClusterNameIDOnlyBoundary pins the
+// TestLivePositionalClusterFamilyClusterNameIDOnlyBoundary asserts the
 // management-token boundary for the family's <cluster> positional: an
 // exec-cred-only capability cannot authorize the management-plane list.
 func TestLivePositionalClusterFamilyClusterNameIDOnlyBoundary(t *testing.T) {
@@ -126,7 +126,7 @@ func setClusterFamilyCompletionConfig(t *testing.T, srv *httptest.Server) {
 	t.Setenv(config.EnvToken, "mgmt-token")
 }
 
-// TestLiveFlagValueClusterFamilyPool pins the DEPENDENT --pool flag site: a
+// TestLiveFlagValueClusterFamilyPool asserts the DEPENDENT --pool flag site: a
 // client-scoped GET of the already-typed <cluster> positional's
 // spec.rkeConfig.machinePools names, hostile names sanitized, suggestions
 // valid verbatim.
@@ -161,7 +161,7 @@ func TestLiveFlagValueClusterFamilyPoolNamespaceOverride(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load())
 }
 
-// TestLiveFlagValueClusterFamilyPoolNoClusterTyped pins the dependent-site
+// TestLiveFlagValueClusterFamilyPoolNoClusterTyped asserts the dependent-site
 // gate: no <cluster> typed yet means zero candidates and zero requests.
 // NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 func TestLiveFlagValueClusterFamilyPoolNoClusterTyped(t *testing.T) {

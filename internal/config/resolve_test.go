@@ -104,7 +104,7 @@ func TestEffectiveFromFile(t *testing.T) {
 // Round-4 repro: an explicit default port (:443 https, :80 http) spelled out
 // on one side and omitted on the other is the same server, not divergence —
 // the third normalization axis to recur here (after case, then trailing
-// slash), pinned in one exported matrix so a fourth lands in one place too.
+// slash), asserted in one exported matrix so a fourth lands in one place too.
 func TestSameServerURL(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -232,7 +232,7 @@ func TestResolveDirWindowsDefault(t *testing.T) {
 	assert.Equal(t, filepath.Join(ucd, "rancher"), got)
 }
 
-// TestResolveDirWindowsPrecedenceUnchanged pins that the Windows branch
+// TestResolveDirWindowsPrecedenceUnchanged asserts that the Windows branch
 // sits BELOW flag/env/XDG: an explicit XDG_CONFIG_HOME still wins.
 func TestResolveDirWindowsPrecedenceUnchanged(t *testing.T) {
 	t.Setenv(EnvConfigDir, "")

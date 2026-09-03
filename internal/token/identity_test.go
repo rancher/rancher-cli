@@ -23,7 +23,7 @@ func TestNewOperationMarkerShape(t *testing.T) {
 	assert.Equal(t, "rancher-cli login @ host1 [op:"+a+"]", TokenDescription("host1", a))
 }
 
-// TestTokenRefFromValidatedBearer pins the one place a name is derived
+// TestTokenRefFromValidatedBearer asserts the one place a name is derived
 // from a bearer (the SAML authtokens flow): exactly one non-empty
 // name:secret split.
 func TestTokenRefFromValidatedBearer(t *testing.T) {
@@ -37,7 +37,7 @@ func TestTokenRefFromValidatedBearer(t *testing.T) {
 	}
 }
 
-// TestUsableBearer pins the validator that decides whether a returned
+// TestUsableBearer asserts the validator that decides whether a returned
 // bearer may be used: one name:secret split, a non-empty secret, and an
 // embedded name equal to the resource name the response identified. It
 // only ever compares; it never supplies the name.
@@ -66,7 +66,7 @@ func TestUsableBearer(t *testing.T) {
 	}
 }
 
-// TestClassifyCreate pins the conservative classification: only a
+// TestClassifyCreate asserts the conservative classification: only a
 // deterministic 4xx proves absence; transport errors, 5xx, and unreadable
 // bodies are unknown; a name without a usable bearer is known with an
 // empty bearer, whatever the body carried in the bearer field.
@@ -114,7 +114,7 @@ func TestClassifyCreate(t *testing.T) {
 	}
 }
 
-// TestLoginResponseShapeFollowsTheBody pins that the kind of a login
+// TestLoginResponseShapeFollowsTheBody asserts that the kind of a login
 // token is read from the body and that nothing else is assumed: an ext
 // Token object is ext, a Norman body is v3, and unreadable JSON, a foreign
 // apiVersion, an ext object of another kind, and an empty object establish
@@ -144,7 +144,7 @@ func TestLoginResponseShapeFollowsTheBody(t *testing.T) {
 	}
 }
 
-// TestClassifyCreateDeterministic4xxWithUnknownKind pins that a login
+// TestClassifyCreateDeterministic4xxWithUnknownKind asserts that a login
 // rejection proves absence whatever the body: a bodyless or error-bodied
 // 401/403/409 with no recognized shape is notCreated, not unknown, while a
 // 500 with no shape stays unknown of unknown kind.
@@ -162,7 +162,7 @@ func TestClassifyCreateDeterministic4xxWithUnknownKind(t *testing.T) {
 	assert.Empty(t, r.Kind)
 }
 
-// TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown pins that the
+// TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown asserts that the
 // classifier never consumes a bearer from a body the shape reader did not
 // recognize: an ext apiVersion with another kind stays unknown with no
 // bearer, and parseLoginResponse rejects the same body.
@@ -180,7 +180,7 @@ func TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown(t *testing.T) {
 	require.Error(t, perr)
 }
 
-// TestClassifyCreateKubeconfigLoginExtShape pins the façade's kubeconfig
+// TestClassifyCreateKubeconfigLoginExtShape asserts the façade's kubeconfig
 // login response (an ext Token object) end to end through the kind reader
 // and the classifier: known, ext kind, usable ext bearer.
 func TestClassifyCreateKubeconfigLoginExtShape(t *testing.T) {
@@ -196,7 +196,7 @@ func TestClassifyCreateKubeconfigLoginExtShape(t *testing.T) {
 	assert.Equal(t, "ext/fac-token-1:fac-secret-1", r.Bearer)
 }
 
-// TestClassifyCreateV3Login pins the json login response shape: the
+// TestClassifyCreateV3Login asserts the json login response shape: the
 // resource name is the id field, the bearer is name:key, and a bearer
 // that fails validation leaves a known token with no usable bearer.
 func TestClassifyCreateV3Login(t *testing.T) {

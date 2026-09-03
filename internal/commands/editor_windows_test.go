@@ -7,7 +7,7 @@ package commands
 
 import "testing"
 
-// TestResolveEditorFallsBackToNotepadOnWindows pins the Windows-only
+// TestResolveEditorFallsBackToNotepadOnWindows asserts the Windows-only
 // positive contract that makes the non-Windows validation-error test
 // (config_edit_test.go) inapplicable there: with both VISUAL and EDITOR
 // unset, resolveEditor must resolve to notepad, not fail.

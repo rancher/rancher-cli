@@ -225,7 +225,7 @@ func interactivePrompter() *ui.Prompter {
 	return ui.New(io.Discard, strings.NewReader(""), false, false)
 }
 
-// TestDeviceCodeFlowSucceedsAcrossSplitOrigins pins the topology the design
+// TestDeviceCodeFlowSucceedsAcrossSplitOrigins asserts the topology the design
 // exists for: Rancher on one self-signed origin, the identity provider on
 // another, each verified by its own client, and the flow completes.
 func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
@@ -240,7 +240,7 @@ func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	assert.Equal(t, int32(3), so.idpRequests.Load())
 }
 
-// TestAuthCodeFlowSucceedsAcrossSplitOrigins pins the same topology for
+// TestAuthCodeFlowSucceedsAcrossSplitOrigins asserts the same topology for
 // the auth-code flow: the token exchange reaches the IdP origin through the
 // injected client, the Rancher login reaches the Rancher origin, and the
 // browser stub drives the loopback callback directly with the generated
@@ -272,7 +272,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	assert.Equal(t, int32(1), so.idpRequests.Load(), "exactly one token exchange reaches this fixture's IdP")
 }
 
-// TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority pins
+// TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority asserts
 // the leak the design closes from the other side: dialing the IdP with the
 // Rancher-pinned client fails as an IdP certificate error, never TLS_TRUST.
 func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *testing.T) {
@@ -288,7 +288,7 @@ func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *test
 	assert.Zero(t, so.idpRequests.Load(), "the handshake fails before any request is served")
 }
 
-// TestDeviceCodeFlowNilIdPClientIsError pins that an OAuth path without an
+// TestDeviceCodeFlowNilIdPClientIsError asserts that an OAuth path without an
 // IdP client fails closed instead of falling back to the Rancher client.
 func TestDeviceCodeFlowNilIdPClientIsError(t *testing.T) {
 	t.Parallel()
@@ -299,7 +299,7 @@ func TestDeviceCodeFlowNilIdPClientIsError(t *testing.T) {
 	require.ErrorContains(t, err, "identity provider client is not configured")
 }
 
-// TestValidateOAuthEndpoint pins the endpoint gate per field and case, and
+// TestValidateOAuthEndpoint asserts the endpoint gate per field and case, and
 // that the rendered value never carries path, query, or userinfo.
 func TestValidateOAuthEndpoint(t *testing.T) {
 	t.Parallel()
@@ -342,7 +342,7 @@ func (c *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("unexpected request")
 }
 
-// TestEndpointGateStopsBothFlowsBeforeSideEffects pins the gate's wiring
+// TestEndpointGateStopsBothFlowsBeforeSideEffects asserts the gate's wiring
 // and ordering per field and per rejected shape: exactly one endpoint is
 // invalid while the other two are valid https, and neither flow opens a
 // browser or sends a request.
@@ -383,7 +383,7 @@ func TestEndpointGateStopsBothFlowsBeforeSideEffects(t *testing.T) {
 	}
 }
 
-// TestNewOauthConfigAcceptsEndpointsOnDifferentOrigins pins that the three
+// TestNewOauthConfigAcceptsEndpointsOnDifferentOrigins asserts that the three
 // endpoints are not required to share an origin.
 func TestNewOauthConfigAcceptsEndpointsOnDifferentOrigins(t *testing.T) {
 	t.Parallel()
@@ -434,7 +434,7 @@ func idpFixture(t *testing.T, dnsName string, notBefore, notAfter time.Time, tru
 	return srv, &http.Client{Transport: tr, CheckRedirect: httpx.RejectCrossOriginRedirect}
 }
 
-// TestIdPCertificateErrorPerKind pins the per-kind wording: only unknown
+// TestIdPCertificateErrorPerKind asserts the per-kind wording: only unknown
 // authority mentions the trust store, no kind is TLS_TRUST, and the
 // remediation never says to add a CA for a failure a CA cannot fix.
 func TestIdPCertificateErrorPerKind(t *testing.T) {
@@ -473,7 +473,7 @@ func TestIdPCertificateErrorPerKind(t *testing.T) {
 	}
 }
 
-// TestIdPCertificateErrorPassesThroughOtherErrors pins that a non-certificate
+// TestIdPCertificateErrorPassesThroughOtherErrors asserts that a non-certificate
 // failure and a certificate failure at another origin are returned as is.
 func TestIdPCertificateErrorPassesThroughOtherErrors(t *testing.T) {
 	t.Parallel()
@@ -487,7 +487,7 @@ func TestIdPCertificateErrorPassesThroughOtherErrors(t *testing.T) {
 	assert.Same(t, dialErr, idpCertificateError(dialErr, "https://other.example/token"))
 }
 
-// TestDeviceCodeFlowRancherRejectionIsAnAuthError pins that an OAuth login
+// TestDeviceCodeFlowRancherRejectionIsAnAuthError asserts that an OAuth login
 // Rancher rejects exits with the AUTH code, as a rejected basic login does:
 // a scripted caller reading .error.code must see the same class for the
 // same fact, whichever flow produced it.

@@ -359,7 +359,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 // kind, each verb line is derived from the manifest's own VerbState via the
 // spec wording — available (contract · stability) | refused — <note> |
 // not available — <reason> | not available — then the four interesting
-// states are pinned so the fixture cannot drift silently.
+// states are asserted so the fixture cannot drift silently.
 func TestSchemaKindCardVerbTable(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
@@ -455,7 +455,7 @@ func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	assert.Contains(t, ce.Message, "--kind")
 }
 
-// TestSchemaKindFlagWithGlobalFlags pins the SE-20 success case: --kind
+// TestSchemaKindFlagWithGlobalFlags asserts the SE-20 success case: --kind
 // composes with global flags — `schema kubeconfig --kind -o json` succeeds
 // and emits the kind-filtered envelope.
 func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
@@ -630,7 +630,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
 
-	// TestSchemaUnknownSelectionPaddedSingleTokenGetsDualHint pins round-2 Low-6:
+	// TestSchemaUnknownSelectionPaddedSingleTokenGetsDualHint asserts round-2 Low-6:
 	// a single arg with surrounding whitespace (e.g. " pod") contains a space
 	// but is a single token — strings.Fields splits it to one element, so it
 	// must stay in the dual tier, not the command tier.
@@ -1093,7 +1093,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 	}
 }
 
-// TestSchemaAllReturnsFullManifest pins --all as exact delegation: the
+// TestSchemaAllReturnsFullManifest asserts --all as exact delegation: the
 // result marshals byte-equivalent to the registry's own manifest —
 // nothing filtered, nothing added (review P2). Text is the TOC (the
 // table view stays the TOC under --all; structured output carries the
@@ -1116,7 +1116,7 @@ func TestSchemaAllReturnsFullManifest(t *testing.T) {
 		"--all text must not carry the self-referential footer")
 }
 
-// TestSchemaAllConflicts pins the VALIDATION conflicts: --all crossed with
+// TestSchemaAllConflicts asserts the VALIDATION conflicts: --all crossed with
 // a selector, any filter, or --kind.
 func TestSchemaAllConflicts(t *testing.T) {
 	t.Parallel()
@@ -1137,7 +1137,7 @@ func TestSchemaAllConflicts(t *testing.T) {
 	}
 }
 
-// TestSchemaResultStyledTextWiring pins which schema views carry a
+// TestSchemaResultStyledTextWiring asserts which schema views carry a
 // StyledText builder: the bare TOC, --all, the filtered TOC, the command
 // card, and the group card each set one whose active-style output strips
 // back to Text exactly; the kind card sets none.
@@ -1209,7 +1209,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 	})
 }
 
-// TestSchemaPositionalCompletionShape pins SE-12's candidate shape: command
+// TestSchemaPositionalCompletionShape asserts SE-12's candidate shape: command
 // aliases appear only in their full typed form ("get pods", never a bare
 // "projects"), kind names/keys/aliases appear as bare tokens, the
 // command/kind collision (kubeconfig) dedupes to one candidate, and the set
@@ -1400,7 +1400,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 	})
 }
 
-// TestSchemaGroupKindFlagBlocksGroupResolution pins finding 1 of the
+// TestSchemaGroupKindFlagBlocksGroupResolution asserts finding 1 of the
 // independent review: --kind forces the kind-only interpretation, so a
 // group-only selector with --kind must return kind-not-found (the kindOnly
 // unknownSelection path), never fall through to the group tier.
@@ -1468,7 +1468,7 @@ func TestSchemaUnknownSelectionSuggestsGroups(t *testing.T) {
 }
 
 // mixedGroupRegistry builds a registry whose "get" group contains both a
-// bespoke command and generated per-kind commands — enough to pin the
+// bespoke command and generated per-kind commands — enough to assert the
 // collapse behavior in text and JSON.
 func mixedGroupRegistry() *Registry {
 	ks := []SchemaKind{
@@ -1501,7 +1501,7 @@ func mixedGroupRegistry() *Registry {
 	return reg
 }
 
-// TestSchemaGroupCardCollapsesGeneratedCommands pins finding 2 of the
+// TestSchemaGroupCardCollapsesGeneratedCommands asserts finding 2 of the
 // independent review: the group card reuses the TOC's generated-command
 // collapse — bespoke commands listed individually; generated per-kind
 // commands collapsed to one summary line. Both text and JSON are covered.

@@ -172,7 +172,7 @@ func TestClassifyNotYetValid(t *testing.T) {
 	assert.Contains(t, ce.Message, "check the local clock")
 }
 
-// TestClassifyNullableDetailsOnEmptyChain pins the nullable-details
+// TestClassifyNullableDetailsOnEmptyChain asserts the nullable-details
 // contract directly: when a certificate-verification failure carries no
 // presented certificates at all (the handshake failed before any could be
 // captured), the classified error still carries its Kind but no fingerprint
@@ -188,7 +188,7 @@ func TestClassifyNullableDetailsOnEmptyChain(t *testing.T) {
 	assert.Empty(t, details.NotAfter)
 }
 
-// TestDetailsTextDetailsAllFieldsPresent pins the full projection order:
+// TestDetailsTextDetailsAllFieldsPresent asserts the full projection order:
 // certificate, issuer, fingerprint, valid — each only when the underlying
 // field is present.
 func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
@@ -208,7 +208,7 @@ func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
 	}, d.TextDetails())
 }
 
-// TestDetailsTextDetailsNullableFieldsOmitLines pins the nullable-details
+// TestDetailsTextDetailsNullableFieldsOmitLines asserts the nullable-details
 // case (classifyKind's empty-chain path): every field but Kind may be
 // absent, and an absent field prints no line — never an empty label.
 func TestDetailsTextDetailsNullableFieldsOmitLines(t *testing.T) {
@@ -327,7 +327,7 @@ func TestClassifyExpiredDetailsDescribeTheFailingCertificate(t *testing.T) {
 		"notAfter must be the failing certificate's, not the anchor's")
 }
 
-// TestClassifyUnknownAuthorityDetailsDescribeTheCandidateAnchor pins the
+// TestClassifyUnknownAuthorityDetailsDescribeTheCandidateAnchor asserts the
 // one deliberate exception: unknown authority shows the certificate a user
 // could pin, which for a chain [leaf, CA] is the CA.
 func TestClassifyUnknownAuthorityDetailsDescribeTheCandidateAnchor(t *testing.T) {

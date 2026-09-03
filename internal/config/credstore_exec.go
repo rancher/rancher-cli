@@ -330,7 +330,7 @@ func (s *execStore) DeleteToken(ref ServerRef) error {
 // execStoreLockedHook is a test-only synchronization point, invoked (when
 // non-nil) while the helper-records lock is HELD: "store" fires after the
 // write-ahead intent is persisted and before the helper runs; "erase" fires
-// before the helper erase. It lets tests pin an exact interleaving of
+// before the helper erase. It lets tests force an exact interleaving of
 // concurrent operations. Nil in production.
 var execStoreLockedHook func(op string)
 

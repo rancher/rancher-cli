@@ -38,7 +38,7 @@ func runCompletionTraced(t *testing.T, words []string) (stdout, trace string) {
 	return out.String(), traceBuf.String()
 }
 
-// TestCompletionDebugTrace pins the RANCHER_CLI_COMPLETION_DEBUG seam: with
+// TestCompletionDebugTrace asserts the RANCHER_CLI_COMPLETION_DEBUG seam: with
 // the variable set, a live request writes one line per phase to the trace
 // sink and stdout is byte-identical to the untraced run; with it unset,
 // nothing is traced.
@@ -117,7 +117,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 	})
 }
 
-// TestCompletionDebugSilentOutsideCompletion pins that the trace is bound to
+// TestCompletionDebugSilentOutsideCompletion asserts that the trace is bound to
 // a completion request: with the variable set but no completion protocol
 // active, the helper writes nothing.
 func TestCompletionDebugSilentOutsideCompletion(t *testing.T) {

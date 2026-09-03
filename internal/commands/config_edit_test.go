@@ -319,7 +319,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 	})
 }
 
-// TestConfigEditCanceledLockWaitPassesThrough pins the re-review P2 finding:
+// TestConfigEditCanceledLockWaitPassesThrough asserts the re-review P2 finding:
 // a cancellation hitting the write-lock wait must surface as the caller's
 // own context.Canceled — never dressed as "writing config failed" — while
 // the edits stay preserved in the temp file.
@@ -346,7 +346,7 @@ func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 	require.NoError(t, statErr, "edits must stay preserved on cancellation")
 }
 
-// TestConfigEditReadFailureNamedAsReadFailure pins the third-review P2: a
+// TestConfigEditReadFailureNamedAsReadFailure asserts the third-review P2: a
 // failed comparison read during write-back must say the CHECK failed, not
 // claim "writing config failed" for a write that was never attempted.
 func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
@@ -373,7 +373,7 @@ func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
 	assert.NotContains(t, err.Error(), "writing config failed")
 }
 
-// TestConfigEditLockTimeoutNamesPreservedEdits pins the fourth-review P2:
+// TestConfigEditLockTimeoutNamesPreservedEdits asserts the fourth-review P2:
 // when lock acquisition itself times out — before the write-back closure
 // ever runs — the error must still tell the user their edits are preserved
 // at the temp path; that branch is the one guaranteed-safe case and was the
@@ -426,7 +426,7 @@ func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
 	require.NoError(t, statErr, "edits preserved")
 }
 
-// TestConfigEditRejectsAddingAServer pins that config edit no longer
+// TestConfigEditRejectsAddingAServer asserts that config edit no longer
 // bypasses the registration path: writing raw YAML would let an added
 // entry skip canonicalization, trust, and update-server's credential
 // purge. Adding a server via edit must be VALIDATION naming the owning
@@ -447,7 +447,7 @@ func TestConfigEditRejectsAddingAServer(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "the real config file must never be created by this edit")
 }
 
-// TestConfigEditRejectsChangingAServersURL pins the exact credential-boundary
+// TestConfigEditRejectsChangingAServersURL asserts the exact credential-boundary
 // violation config edit's restriction closes: editing an existing entry's
 // URL from server A to server B would skip update-server's credential
 // purge, after which A's name-keyed token is served for B.
@@ -470,7 +470,7 @@ func TestConfigEditRejectsChangingAServersURL(t *testing.T) {
 	assert.YAMLEq(t, validConfigYAML, string(got), "the real config file must be untouched")
 }
 
-// TestConfigEditRejectsRemovingAServer pins the delete-server half of the
+// TestConfigEditRejectsRemovingAServer asserts the delete-server half of the
 // same invariant: removing an entry via edit would skip delete-server's
 // credential purge.
 func TestConfigEditRejectsRemovingAServer(t *testing.T) {
@@ -488,7 +488,7 @@ func TestConfigEditRejectsRemovingAServer(t *testing.T) {
 	assert.Contains(t, ce.Message, "use-server")
 }
 
-// TestConfigEditRejectsChangingCurrentServer pins the pointer half: use-server
+// TestConfigEditRejectsChangingCurrentServer asserts the pointer half: use-server
 // is the only switch verb.
 func TestConfigEditRejectsChangingCurrentServer(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")

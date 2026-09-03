@@ -260,7 +260,7 @@ func TestSanitizedArgsStripsEmptyCurField(t *testing.T) {
 	assert.Equal(t, []string{"rancher", "usage", "--generate-shell-completion"}, got)
 }
 
-// TestParseArgTailRepeatableFlagArity pins MC-6a's completion arity: a
+// TestParseArgTailRepeatableFlagArity asserts MC-6a's completion arity: a
 // stringSlice flag takes a value on EVERY occurrence — a second --set after
 // a completed first one is a flag-value site, and a completed pair counts
 // no positional.

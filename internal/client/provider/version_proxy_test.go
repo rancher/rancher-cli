@@ -143,7 +143,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestRancherVersionTraversesConnectProxyWithPinnedCA pins the login
+// TestRancherVersionTraversesConnectProxyWithPinnedCA asserts the login
 // preflight's real network path (RancherVersion, called by every HTTPS
 // `auth login`, including --token-stdin, before any credential is
 // persisted): behind an HTTPS_PROXY, its GET /rancherversion tunnels through

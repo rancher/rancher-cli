@@ -32,7 +32,7 @@ const placeholderToken = "{token}"
 
 // placeholderError is the NAMED-get policy over PlaceholderFields' report:
 // one bad object IS the one thing the caller asked for, so failing loud is
-// correct (spec D-4; TestNewGetCRTPlaceholderGuardTable pins the message).
+// correct (spec D-4; TestNewGetCRTPlaceholderGuardTable asserts the message).
 // The list path degrades in place instead — see the Execute list loop.
 func placeholderError(path, field string) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,

@@ -1,5 +1,5 @@
 # RANCHER_CLI_CREDENTIAL_STORE=file is already Setup's default (headless CI has
-# no keyring; deliberately why there is no `logout` txtar either) — pinned
+# no keyring; deliberately why there is no `logout` txtar either) — set
 # here explicitly too since delete-server deletes a real credential store.
 env RANCHER_CLI_CREDENTIAL_STORE=file
 

@@ -23,7 +23,7 @@ func reqTo(t *testing.T, raw string) *http.Request {
 	return req
 }
 
-// TestRejectCrossOriginRedirectTable pins the policy on the origin tuple:
+// TestRejectCrossOriginRedirectTable asserts the policy on the origin tuple:
 // equivalent spellings are followed, any scheme/host/port change is refused
 // with a GENERIC error, and the hop cap matches Go's default.
 func TestRejectCrossOriginRedirectTable(t *testing.T) {
@@ -75,7 +75,7 @@ func TestRejectCrossOriginRedirectHopCap(t *testing.T) {
 	assert.False(t, ce.Retryable)
 }
 
-// TestRejectCrossOriginRedirectUnusableTargetIsStructured pins that a
+// TestRejectCrossOriginRedirectUnusableTargetIsStructured asserts that a
 // redirect target with no usable origin (an unsupported scheme) is refused
 // with the same structured, non-retryable shape as a cross-origin target.
 func TestRejectCrossOriginRedirectUnusableTargetIsStructured(t *testing.T) {
@@ -89,7 +89,7 @@ func TestRejectCrossOriginRedirectUnusableTargetIsStructured(t *testing.T) {
 	assert.NotNil(t, errors.Unwrap(ce), "the origin parse error stays reachable as the cause")
 }
 
-// TestRejectCrossOriginRedirectHopCapWinsOverUnusableOrigin pins the
+// TestRejectCrossOriginRedirectHopCapWinsOverUnusableOrigin asserts the
 // precedence: at the hop cap a loop is reported even when the first request
 // has no usable origin, and the origin is named only when it parses.
 func TestRejectCrossOriginRedirectHopCapWinsOverUnusableOrigin(t *testing.T) {
@@ -134,7 +134,7 @@ func twoServers(t *testing.T, status int) (a, b *httptest.Server, bHits *atomic.
 	return a, b, bHits, caPEM
 }
 
-// TestNewRefusesCrossOriginRedirects pins, over real TLS servers, that every
+// TestNewRefusesCrossOriginRedirects asserts, over real TLS servers, that every
 // redirect status is refused before any request reaches the other origin.
 func TestNewRefusesCrossOriginRedirects(t *testing.T) {
 	t.Parallel()
@@ -157,7 +157,7 @@ func TestNewRefusesCrossOriginRedirects(t *testing.T) {
 	}
 }
 
-// TestNewFollowsSameOriginRedirectWithBody pins that a same-origin 307 is
+// TestNewFollowsSameOriginRedirectWithBody asserts that a same-origin 307 is
 // followed and replays the body.
 func TestNewFollowsSameOriginRedirectWithBody(t *testing.T) {
 	t.Parallel()
@@ -172,7 +172,7 @@ func TestNewFollowsSameOriginRedirectWithBody(t *testing.T) {
 	assert.Equal(t, "payload", string(body))
 }
 
-// TestNewExternalRefusesCrossOriginRedirectWithoutServerWording pins that
+// TestNewExternalRefusesCrossOriginRedirectWithoutServerWording asserts that
 // the external client carries the same policy and that the refusal names
 // only the origins, never a server entry.
 func TestNewExternalRefusesCrossOriginRedirectWithoutServerWording(t *testing.T) {

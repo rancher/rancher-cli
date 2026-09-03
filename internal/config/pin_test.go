@@ -94,7 +94,7 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 	assert.Equal(t, cur, s, "expected the injected store returned unchanged")
 }
 
-// TestRepinForLoginFreshPinNotices pins the direct-call contract: calling
+// TestRepinForLoginFreshPinNotices asserts the direct-call contract: calling
 // RepinForLogin on a never-pinned dir (no prior openStoreResolved) returns a
 // first-pin notice. This covers RepinForLogin's else branch in isolation.
 // The production loginCmd.Execute path is covered by

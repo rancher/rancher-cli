@@ -174,7 +174,7 @@ func errBodyVault(t *testing.T, status int, errs ...string) *vaultHandler {
 	}))
 }
 
-// TestVaultErrorsSurfaceResponseBody pins the live-exercise S-12 finding:
+// TestVaultErrorsSurfaceResponseBody asserts the live-exercise S-12 finding:
 // the helper must surface Vault's own error reason (e.g. "invalid token"),
 // not substitute one canned policy hint for every non-2xx. The policy hint
 // stays, but only on 403 and only as a parenthetical after the real cause.
@@ -259,7 +259,7 @@ func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *va
 	}))
 }
 
-// TestVaultEraseOutcomeClassification pins round-2 findings 3 and 4: the
+// TestVaultEraseOutcomeClassification asserts round-2 findings 3 and 4: the
 // erase's presence read shares Get's semantics (a 200 whose data is
 // null/empty reads as absent, exactly as a get would), and a denied read
 // under a delete-only policy yields an UNKNOWN outcome with a successful
@@ -293,7 +293,7 @@ func TestVaultEraseOutcomeClassification(t *testing.T) {
 	})
 }
 
-// TestVaultGetEmptyDataIsNotFound pins the Get side of the same class: a
+// TestVaultGetEmptyDataIsNotFound asserts the Get side of the same class: a
 // 200 response with null/empty data (a soft-deleted latest version) is a
 // clean not-found, not an error and not a credential.
 func TestVaultGetEmptyDataIsNotFound(t *testing.T) {

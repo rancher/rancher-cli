@@ -39,7 +39,7 @@ type doCuratedFlag struct {
 
 // doCuratedFlags — field names source-confirmed against the DigitalOcean
 // machine driver (kinds.MachineConfigFieldsFor's file doc names the exact
-// upstream files); the Curated set in kinds/machineconfigfields.go pins
+// upstream files); the Curated set in kinds/machineconfigfields.go asserts
 // the same seven fields.
 var doCuratedFlags = []doCuratedFlag{
 	{flag: "region", field: "region"},
@@ -294,7 +294,7 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 		// a future kind with its own Curated set but no doCuratedFlags entries
 		// would produce an empty-string flag name, making IsSet meaningless and
 		// every such field appear spuriously unset. Presence in the flag map is
-		// the gate; TestDoCuratedFlagsMatchKindsCurated pins that doCuratedFlags
+		// the gate; TestDoCuratedFlagsMatchKindsCurated asserts that doCuratedFlags
 		// and MachineConfigFields.Curated stay in sync for the DO kind.
 		flag, known := fieldToFlag[field]
 		if !known {

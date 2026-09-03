@@ -21,7 +21,7 @@ var oidcBespokeCommandNames = []string{
 	"oidc-client remove-secret",
 }
 
-// TestOIDCBespokeCommandsCapabilityEqualsRow pins that every bespoke OIDC
+// TestOIDCBespokeCommandsCapabilityEqualsRow asserts that every bespoke OIDC
 // command's Capability equals the oidcclient row's exactly, and that the
 // schema manifest projects identical prime/learnMore across all of them
 // and the row's generated verbs.

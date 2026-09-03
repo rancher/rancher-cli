@@ -31,7 +31,7 @@ func managedFieldsOf(t *testing.T) []any {
 	return mf
 }
 
-// TestApplyOwnersMapsDiffPathsToApplyManagers pins the mapping from a diff
+// TestApplyOwnersMapsDiffPathsToApplyManagers asserts the mapping from a diff
 // path (a JSON pointer) to the managers that own it through server-side
 // apply: a map field by its f: key, a whole subtree when the owner's entry
 // ends above the path, a list by its field when the path indexes into it
@@ -59,7 +59,7 @@ func TestApplyOwnersMapsDiffPathsToApplyManagers(t *testing.T) {
 	assert.Nil(t, applyOwners(nil, "/spec/replicas"), "no managed fields, no owners")
 }
 
-// TestPatchWarnsWhenAnApplyManagerOwnsAChangedField pins the plan-time
+// TestPatchWarnsWhenAnApplyManagerOwnsAChangedField asserts the plan-time
 // warning: a change to a field an Apply manager owns names that manager
 // and says it may revert the change; a change to a field only Update
 // managers own, or that nobody owns, produces no warning; the warning never
@@ -95,7 +95,7 @@ func TestPatchWarnsWhenAnApplyManagerOwnsAChangedField(t *testing.T) {
 	}
 }
 
-// TestApplyOwnersHandlesKeysDiffPathsCannotSplit pins the shapes the plain
+// TestApplyOwnersHandlesKeysDiffPathsCannotSplit asserts the shapes the plain
 // segment walk got wrong: a label or annotation key containing "/" is one
 // f: key in managed fields but two segments in a diff path; an all-digit
 // map key is a map key, not a list index; an entry whose fieldsV1 is empty

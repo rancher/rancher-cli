@@ -18,7 +18,7 @@ import (
 // /bin/bash when it differs (macOS ships stock bash 3.2 there — the shell
 // the continuation handling must work on WITHOUT compopt). The assertions
 // are on COMPREPLY content, which is version-independent, so running under
-// bash 3 and 4+ pins that no 4+-only construct sneaked into the code path.
+// bash 3 and 4+ asserts that no 4+-only construct sneaked into the code path.
 func nospaceBashes(t *testing.T) []string {
 	t.Helper()
 	var out []string
@@ -127,7 +127,7 @@ printf 'DONE\n'
 	return entries
 }
 
-// TestBashCompletionCandidateBoundaries pins the bash-3-compatible
+// TestBashCompletionCandidateBoundaries asserts the bash-3-compatible
 // continuation handling: the script is registered with -o nospace (readline
 // never appends the argument-ending space itself), so the script marks each
 // candidate's own boundary in COMPREPLY. A FINISHED candidate carries an
@@ -207,7 +207,7 @@ func TestBashCompletionCandidateBoundaries(t *testing.T) {
 	}
 }
 
-// TestBashCompletionRegistersNospace pins the registration line itself: the
+// TestBashCompletionRegistersNospace asserts the registration line itself: the
 // candidate-boundary contract above only holds if readline's own space
 // appending is off, and that must be the compspec option -o nospace —
 // set at registration precisely because bash 3 has no compopt to set it
@@ -244,7 +244,7 @@ func fallbackCorpus(t *testing.T) string {
 	return dir
 }
 
-// TestBash3FallbackGeneratesFileCandidates pins the bash-3-only filename
+// TestBash3FallbackGeneratesFileCandidates asserts the bash-3-only filename
 // fallback: with no compopt the script cannot re-enable readline's appended
 // space for the -o default fallback, so it must generate the file/directory
 // candidates itself with the same per-candidate boundaries its own
@@ -318,7 +318,7 @@ func TestBash3FallbackGeneratesFileCandidates(t *testing.T) {
 	}
 }
 
-// TestModernBashKeepsNativeFallback pins the bash 4+ side: when compopt IS
+// TestModernBashKeepsNativeFallback asserts the bash 4+ side: when compopt IS
 // available the script must NOT take the self-generated path — COMPREPLY
 // stays empty so readline's own -o default filename completion (with its
 // native quoting, tilde handling, and the compopt-restored space) owns the

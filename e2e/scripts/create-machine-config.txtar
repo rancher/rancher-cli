@@ -21,7 +21,7 @@ jsonquery typo-eff.json warnings.0 'field(s) pruned by the server: regoin — un
 exec rancher create machine-config digitaloceanconfig min-cfg --dry-run -o json
 stdout 'stale: image, region, size, tags'
 
-# apply, then pin the ROOT-level driver fields on the CREATED config —
+# apply, then assert the ROOT-level driver fields on the CREATED config —
 # a spec-nested implementation fails here. sshPort is a STRING field on
 # the typed DO CRD (Rancher publishes IntFlag driver fields as strings):
 # a numeric --set value must submit as its literal string or the typed

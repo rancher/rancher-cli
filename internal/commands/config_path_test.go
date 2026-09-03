@@ -41,7 +41,7 @@ func TestConfigPathExistsTrueWhenFilePresent(t *testing.T) {
 	assert.Equal(t, true, data["exists"])
 }
 
-// TestConfigPathRendersByteIdenticalUnderColor pins the exemption: config
+// TestConfigPathRendersByteIdenticalUnderColor asserts the exemption: config
 // path hand-builds Text directly (the bare, copyable path) and sets no
 // StyledText, so --color=always renders byte-identical to plain.
 func TestConfigPathRendersByteIdenticalUnderColor(t *testing.T) {

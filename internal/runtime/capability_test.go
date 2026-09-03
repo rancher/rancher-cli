@@ -13,7 +13,7 @@ import (
 )
 
 // stubChecker is a CapabilityChecker test double: it returns a fixed
-// decision and counts calls so tests can pin both the outcome handling and
+// decision and counts calls so tests can assert both the outcome handling and
 // "zero checks for ordinary commands."
 type stubChecker struct {
 	dec   CapabilityDecision
@@ -86,7 +86,7 @@ func TestRunCapabilityUnknownExecutesNormally(t *testing.T) {
 	assert.Equal(t, 0, status)
 }
 
-// TestRunCapabilityNilCheckerFailsLoud pins the mis-wiring guard: a
+// TestRunCapabilityNilCheckerFailsLoud asserts the mis-wiring guard: a
 // requirement-bearing command registered without a checker is a harness
 // defect, not an unknown signal — it must error, never silently skip the
 // mandatory stage.
@@ -113,7 +113,7 @@ func TestRunCapabilityDisabledOnPrimeRefusesWithEnableHint(t *testing.T) {
 	assert.Empty(t, ce.Hint)
 }
 
-// TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint pins the
+// TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint asserts the
 // amended outcome 2: an explicit disabled reading refuses on every edition,
 // but a server not known to be Prime gets a message that holds regardless
 // of tier rather than the Prime-specific "enable feature" instruction.

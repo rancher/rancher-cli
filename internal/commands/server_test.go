@@ -60,7 +60,7 @@ func TestGetServersTabular(t *testing.T) {
 	assert.Equal(t, []string{"", "beta", "https://b"}, rows[1])
 }
 
-// TestServerSwitchSetsCurrentAndRendersText pins `config use-server`'s exact
+// TestServerSwitchSetsCurrentAndRendersText asserts `config use-server`'s exact
 // text: "current server set to <name>".
 func TestServerSwitchSetsCurrentAndRendersText(t *testing.T) {
 	dir := t.TempDir()
@@ -77,7 +77,7 @@ func TestServerSwitchSetsCurrentAndRendersText(t *testing.T) {
 }
 
 // TestServerSwitchCompleteArgsDelegatesToServerNames proves only the
-// wiring: sort order is a ConfigView-level fact, pinned once at
+// wiring: sort order is a ConfigView-level fact, asserted once at
 // newConfigView in surface/cli.
 func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()

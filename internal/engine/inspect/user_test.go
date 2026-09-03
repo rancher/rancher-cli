@@ -415,7 +415,7 @@ func listOfGRB(items ...*unstructured.Unstructured) *unstructured.UnstructuredLi
 	return listOfCRTB(items...)
 }
 
-// TestInspectUserMalformedProjectBindingSurfacesWarning pins the composite
+// TestInspectUserMalformedProjectBindingSurfacesWarning asserts the composite
 // end of the blank-scope drop: a matched prtb with no projectName never
 // renders (no blank PROJECT heading), and the omission reaches the caller
 // as a named warning — losing the collectRoles wiring must fail here, not
@@ -445,7 +445,7 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	assert.NotContains(t, res.Text, "PROJECT \n", "no blank project heading")
 }
 
-// TestStyleUserTextStripInvariant pins inspect user's bold spans: the
+// TestStyleUserTextStripInvariant asserts inspect user's bold spans: the
 // dynamic USER header (by prefix, since it carries [system]/[disabled]
 // qualifiers), the GROUPS/ROLES headers (exact), and each dynamic role
 // sub-header (by prefix, since it carries a scope label) — all bold, whole

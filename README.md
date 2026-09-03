@@ -187,7 +187,7 @@ Every server-mutating command runs one pipeline, in order:
    plan — if the resource changes between the plan's preview and execution,
    the mutation fails (exit `5`) instead of clobbering. A separate
    `--dry-run` invocation is a preview only; the later `--apply` run
-   re-plans and pins against the state it sees then. Creates have no
+   re-plans and binds its precondition to the state it sees then. Creates have no
    precondition (there is no existing object to pin).
 
 Rule of thumb: `--apply` says "yes, mutate"; `--yes` says "yes, I saw it's

@@ -22,7 +22,7 @@ jsonquery stdout 'data.principalIds.0' local://u-alice
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.hint 'rancher get roletemplates'
 # a needle with no substring overlap must still carry at-scope candidates:
-# pin the first candidate's id as non-empty (stable regardless of list order).
+# assert the first candidate's id is non-empty (stable regardless of list order).
 ! jsonquery stderr data.error.candidates.0.id ''
 
 # grant dry-run preview: effect carries action + target prefix.

@@ -934,7 +934,7 @@ var (
 )
 
 // handleRelease serves a channel-server release collection envelope
-// ({"data":[{"version": "..."}, ...]}) — the "data" key is pinned to match
+// ({"data":[{"version": "..."}, ...]}) — the "data" key is kept identical to
 // internal/engine/provisioning's fetchReleaseVersions decode (channelserver
 // model/config.go:22-30's own collection key; the acceptance pass against a
 // real server corrects this fixture if the real shape differs). Unlike the

@@ -211,7 +211,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 // never varies with -o, so an unhonored format is a conformance failure
 // rather than a silently ignored value. kubeconfig and completion follow the
 // create-kubeconfig precedent (table only); auth get-token and the token
-// shim pin the two exec-credential formats they have always honored.
+// shim assert the two exec-credential formats they have always honored.
 var bytesAndExecJSONOutputPolicy = map[string]runtime.OutputPolicy{
 	"kubeconfig":        {AllowedFormats: []string{"table"}},
 	"create kubeconfig": {AllowedFormats: []string{"table"}},
@@ -220,7 +220,7 @@ var bytesAndExecJSONOutputPolicy = map[string]runtime.OutputPolicy{
 	"token":             {AllowedFormats: []string{"table", "json"}},
 }
 
-// TestOutputShapeClosedWorldConformance pins the declared OutputShape
+// TestOutputShapeClosedWorldConformance asserts the declared OutputShape
 // bidirectionally over the real, registered command set: every registered
 // command must have a reviewed inventory entry with the exact shape its
 // Descriptor declares, and every inventory entry must name a command the

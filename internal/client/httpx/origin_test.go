@@ -18,7 +18,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	return u
 }
 
-// TestOriginOfNormalizes pins that scheme and hostname are lowercased, the
+// TestOriginOfNormalizes asserts that scheme and hostname are lowercased, the
 // port is defaulted and canonicalized, and IPv6 brackets are stripped for
 // comparison and restored for display.
 func TestOriginOfNormalizes(t *testing.T) {
@@ -50,7 +50,7 @@ func TestOriginOfNormalizes(t *testing.T) {
 	}
 }
 
-// TestOriginOfDistinguishes pins the three axes that make two URLs different
+// TestOriginOfDistinguishes asserts the three axes that make two URLs different
 // origins.
 func TestOriginOfDistinguishes(t *testing.T) {
 	t.Parallel()
@@ -72,7 +72,7 @@ func TestOriginOfDistinguishes(t *testing.T) {
 	}
 }
 
-// TestOriginOfRejects pins the constructor's errors: nil, unsupported scheme,
+// TestOriginOfRejects asserts the constructor's errors: nil, unsupported scheme,
 // no host, and a port outside 1..65535.
 func TestOriginOfRejects(t *testing.T) {
 	t.Parallel()
@@ -86,7 +86,7 @@ func TestOriginOfRejects(t *testing.T) {
 	}
 }
 
-// TestOriginZeroValueIsInvalid pins that the zero value is unusable: Valid is
+// TestOriginZeroValueIsInvalid asserts that the zero value is unusable: Valid is
 // false, Equal is false even against itself, String is empty.
 func TestOriginZeroValueIsInvalid(t *testing.T) {
 	t.Parallel()

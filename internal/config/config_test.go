@@ -61,7 +61,7 @@ func TestCurrentServerEntryUnsetIsNotLoggedIn(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 }
 
-// TestCompletionTimeoutWithRaw pins the floor/cap/default contract for
+// TestCompletionTimeoutWithRaw asserts the floor/cap/default contract for
 // CompletionTimeoutWithRaw, and indirectly EffectiveCompletionTimeout (now a
 // thin wrapper). Covers the pre-existing gap noted in the review: the contract
 // was previously only exercised indirectly via set_completion_test.go.

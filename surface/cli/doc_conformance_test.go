@@ -116,7 +116,7 @@ func deriveSurface(t *testing.T) (counts surfaceCounts, generated, fixed []strin
 	return counts, generated, fixed, manifest
 }
 
-// TestGeneratedCommandMembership pins the exact generated command set
+// TestGeneratedCommandMembership asserts the exact generated command set
 // to the kind table plus the explicit override list, not just its size: a
 // per-kind override added or removed (a new refused verb, another
 // delete-on-non-deletable wiring) reshapes the surface without moving any
@@ -163,7 +163,7 @@ func TestGeneratedCommandMembership(t *testing.T) {
 		"generated commands in the manifest with no kind-table or override justification — update REFERENCE.md's verb prose and this test's override list together")
 }
 
-// TestSurfaceCountsMatchManifest pins COMMANDS.md's counts paragraph (the
+// TestSurfaceCountsMatchManifest asserts COMMANDS.md's counts paragraph (the
 // conformance:surface-counts block) to the live manifest. The regex is tied
 // to the paragraph's sentence shape on purpose: rewording the sentence is a
 // deliberate act that must also revisit this test, while a silent count
@@ -204,11 +204,11 @@ func TestSurfaceCountsMatchManifest(t *testing.T) {
 	}
 }
 
-// TestCRTPatchRefusalClaim pins REFERENCE.md's verb prose
+// TestCRTPatchRefusalClaim asserts REFERENCE.md's verb prose
 // "patch clusterregistrationtoken is refused — read-only" to the override
 // that implements it. Membership cannot see this: a refusing override
 // replaces the generic patch under the same command name, so removing the
-// refusal changes no command set. The pin is behavioral — the override
+// refusal changes no command set. The assertion is behavioral — the override
 // must exist and its Plan must refuse.
 func TestCRTPatchRefusalClaim(t *testing.T) {
 	t.Parallel()
@@ -236,7 +236,7 @@ func TestCRTPatchRefusalClaim(t *testing.T) {
 	assert.ErrorContains(t, err, "read-only")
 }
 
-// TestKindClaimsMatchTable pins the kind names REFERENCE.md's prose singles
+// TestKindClaimsMatchTable asserts the kind names REFERENCE.md's prose singles
 // out — deletable in the counts paragraph, not deletable in the verbs
 // section — to the kind table. The counts alone can stay balanced while two
 // kinds swap Deletable; this catches the swap the moment it contradicts a
@@ -300,7 +300,7 @@ func primeCommandNames(t *testing.T) map[string]bool {
 	return out
 }
 
-// TestCommandsTablePrimeLabels pins COMMANDS.md's per-row Prime label to the
+// TestCommandsTablePrimeLabels asserts COMMANDS.md's per-row Prime label to the
 // manifest, both ways: every FIXED Prime command's row carries the label, and
 // no row carries the label without a matching Prime command. Scoped to fixed
 // commands the same way TestCommandsTableMatchesManifest is: generated
@@ -375,7 +375,7 @@ func commandRows(t *testing.T) []commandTableRow {
 	return rows
 }
 
-// TestCommandsTableMatchesManifest pins COMMANDS.md's Commands table to the
+// TestCommandsTableMatchesManifest asserts COMMANDS.md's Commands table to the
 // live manifest, both ways: every fixed command has a row, and every row
 // names a real command. Generated get/patch/delete-per-kind commands are
 // exempt from needing rows — the counts paragraph covers them.

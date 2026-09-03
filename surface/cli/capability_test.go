@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestDecideCapabilityTruthTable pins the four-outcome capability truth table
+// TestDecideCapabilityTruthTable asserts the four-outcome capability truth table
 // exactly, including the stated precedence and contradiction resolutions.
 func TestDecideCapabilityTruthTable(t *testing.T) {
 	t.Parallel()
@@ -325,7 +325,7 @@ func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) 
 }
 
 // TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired
-// pins the live-captured community shape: a Prime-classified feature whose Feature
+// asserts the live-captured community shape: a Prime-classified feature whose Feature
 // object reads enabled=true only because status.default is true (spec.value
 // unset — no operator ever touched it) must still resolve PRIME_REQUIRED on
 // a confirmed community server. Rancher's own Feature.Enabled() disables any

@@ -177,7 +177,7 @@ func runInlineScript(t *testing.T, script string) (string, bool) {
 	return rec.result()
 }
 
-// TestJSONGetWritesSelectedValue pins that the selected value reaches the
+// TestJSONGetWritesSelectedValue asserts that the selected value reaches the
 // output file with no trailing newline, so a later setenvfrom carries it
 // verbatim.
 func TestJSONGetWritesSelectedValue(t *testing.T) {
@@ -191,7 +191,7 @@ grep '\Afac-token-2\z' out.txt
 	assert.False(t, failed, log)
 }
 
-// TestJSONGetFailures pins the three ways the command refuses to carry a
+// TestJSONGetFailures asserts the three ways the command refuses to carry a
 // value forward.
 func TestJSONGetFailures(t *testing.T) {
 	t.Parallel()
@@ -247,7 +247,7 @@ func TestJSONGetFailures(t *testing.T) {
 	}
 }
 
-// TestSetenvFromSetsTrimmedValue pins the round trip the recovery scenario
+// TestSetenvFromSetsTrimmedValue asserts the round trip the recovery scenario
 // depends on: what jsonget wrote is what later lines expand.
 func TestSetenvFromSetsTrimmedValue(t *testing.T) {
 	t.Parallel()
@@ -262,7 +262,7 @@ exists fac-token-1.out
 	assert.False(t, failed, log)
 }
 
-// TestSetenvFromFailures pins that a missing argument or an empty file stops
+// TestSetenvFromFailures asserts that a missing argument or an empty file stops
 // the script rather than setting an empty variable.
 func TestSetenvFromFailures(t *testing.T) {
 	t.Parallel()

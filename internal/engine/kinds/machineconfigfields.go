@@ -13,7 +13,7 @@ package kinds
 //     the driver prefix — pkg/controllers/management/drivers/nodedriver/
 //     utils.go (FlagToField/ToLowerCamelCase) — with FileToFieldAliases
 //     renames applied (machine_driver.go: DO publishes sshKeyContents,
-//     never sshKeyPath; rancher's clusters/node_test.go pins that).
+//     never sshKeyPath; rancher's clusters/node_test.go asserts that).
 //   - DO driver flags: the rancher/machine module (go.mod pin in
 //     rancher/rancher), drivers/digitalocean/digitalocean.go GetCreateFlags.
 type MachineConfigFields struct {

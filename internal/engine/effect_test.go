@@ -81,7 +81,7 @@ func (c *obsClient) Logs(context.Context, string, string, LogOptions) (string, e
 	return "", nil
 }
 
-// TestPlanCreateObservedExposesDryRunResult pins the MC-12 seam: the
+// TestPlanCreateObservedExposesDryRunResult asserts the MC-12 seam: the
 // caller receives the SERVER's dry-run object (not its own submission),
 // the Effect stays the diff-less create shape, and the executor still
 // performs the real write.
@@ -189,7 +189,7 @@ func TestPlanCreatePropagatesError(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestPlanCreateDestructiveParameter pins the fix for the class of bug where
+// TestPlanCreateDestructiveParameter asserts the fix for the class of bug where
 // a Sensitive kind's create silently skipped the gate because the caller
 // forgot the after-the-fact `eff.Destructive = kind.Sensitive` assignment:
 // destructive is now a required parameter, not an opt-in follow-up.

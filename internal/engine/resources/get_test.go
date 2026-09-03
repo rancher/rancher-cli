@@ -211,7 +211,7 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner", ""}, tab.Rows()[1])
 }
 
-// TestGetNodeDriverListsWithColumns pins the nodedriver row's read surface:
+// TestGetNodeDriverListsWithColumns asserts the nodedriver row's read surface:
 // the served v3 NodeDriver carries spec.displayName (string) and spec.active/
 // spec.builtin (bools — rendered through the table renderer's bool fallback).
 // The non-builtin driver's JSON omits spec.builtin entirely (omitempty on the
@@ -238,7 +238,7 @@ func TestGetNodeDriverListsWithColumns(t *testing.T) {
 	assert.Equal(t, []string{"custom-driver", "My Driver", "false", "false", ""}, tab.Rows()[1])
 }
 
-// TestGetNodeDriverSingle pins the named get: nodedrivers are cluster-scoped
+// TestGetNodeDriverSingle asserts the named get: nodedrivers are cluster-scoped
 // (NSNone) management resources, so the Get goes to the local cluster with no
 // namespace.
 func TestGetNodeDriverSingle(t *testing.T) {
@@ -333,7 +333,7 @@ func TestGetDescribeNilFactory(t *testing.T) {
 	assert.Equal(t, []string{"pods", "po"}, d.Aliases)
 }
 
-// TestGetDescribeInheritsCapability pins the requirement-inheritance rule: a
+// TestGetDescribeInheritsCapability asserts the requirement-inheritance rule: a
 // kind row's Capability flows unchanged into the generated get command's
 // Descriptor — one source, never a separately authored value.
 func TestGetDescribeInheritsCapability(t *testing.T) {
@@ -401,7 +401,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	assert.Equal(t, []string{""}, listAll.listNS, "empty --cluster lists across all clusters")
 }
 
-// TestGetNamedNotFoundCurated pins the curated NOT_FOUND shape for a named get:
+// TestGetNamedNotFoundCurated asserts the curated NOT_FOUND shape for a named get:
 // the dynamic client now produces "<kind> not found: <name>" with a list hint;
 // the fake simulates that by returning a pre-curated error.
 func TestGetNamedNotFoundCurated(t *testing.T) {
@@ -417,7 +417,7 @@ func TestGetNamedNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get users", ce.Hint)
 }
 
-// TestGetWaitNotFoundCurated pins that the --wait path surfaces a curated
+// TestGetWaitNotFoundCurated asserts that the --wait path surfaces a curated
 // NOT_FOUND from the dynamic client: the fake returns the pre-curated shape
 // (as the real dynamic client now produces) and it propagates unchanged.
 func TestGetWaitNotFoundCurated(t *testing.T) {
@@ -438,7 +438,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get clusters", ce.Hint)
 }
 
-// TestGetNamedNotFoundWithHintPassesThrough pins Fix 1's has-hint guard: a
+// TestGetNamedNotFoundWithHintPassesThrough asserts Fix 1's has-hint guard: a
 // NOT_FOUND that already carries a hint (e.g. resolveVersion's unsupported-
 // group diagnostic) must pass through verbatim — its message and hint must
 // not be overwritten by the generic "<kind> not found: <name>" curation.
@@ -458,7 +458,7 @@ func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through untouched")
 }
 
-// TestGetNamedNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// TestGetNamedNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the
 // client reaches the caller unchanged (code, message) without re-wrapping.
 // Uses delClient (defined in delete_test.go) — the two stubs serve the same
 // purpose; a fourth type would be the duplication.
@@ -474,7 +474,7 @@ func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
 	assert.Equal(t, "forbidden", ce.Message)
 }
 
-// TestRoutePolicyMatrix pins the routing contract for every NamespacePolicy:
+// TestRoutePolicyMatrix asserts the routing contract for every NamespacePolicy:
 // which cluster serves the client, which namespace reaches the API, and which
 // inputs are VALIDATION errors. Route is shared by get, delete, and (branch 2)
 // create/patch, so this matrix is the single behavior spec.
@@ -568,10 +568,10 @@ func TestRoutePolicyMatrix(t *testing.T) {
 	}
 }
 
-// TestRouteIgnoresUntypedProjectOnNonScopableKinds pins the PC-3 rule:
+// TestRouteIgnoresUntypedProjectOnNonScopableKinds asserts the PC-3 rule:
 // when no --project flag is typed, non-scopable kinds must not produce a
 // "--project does not apply" rejection. The typed-flag rejections stay
-// pinned in TestRoutePolicyMatrix above.
+// asserted in TestRoutePolicyMatrix above.
 func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -683,7 +683,7 @@ func TestGetNamedRendersRealObjectThroughOutputRender(t *testing.T) {
 	}
 }
 
-// TestPlural pins kinds.Plural against every ending the kind table can
+// TestPlural asserts kinds.Plural against every ending the kind table can
 // produce, including the sibilant and hyphenated cases the naive name+"s"
 // got wrong ("ingresss"). The function moved from resources to kinds so this
 // test now calls the canonical copy there.
@@ -900,7 +900,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 	})
 }
 
-// TestGetEnrichersAttachWarnings pins NewGet's variadic GetEnricher hook: it
+// TestGetEnrichersAttachWarnings asserts NewGet's variadic GetEnricher hook: it
 // runs against the named object on a named get, and against every item on a
 // list get — never against items an enricher does not match.
 func TestGetEnrichersAttachWarnings(t *testing.T) {
@@ -938,7 +938,7 @@ func TestGetEnrichersAttachWarnings(t *testing.T) {
 	})
 }
 
-// TestWaitElapsed pins the boundary behaviour of waitElapsed: the
+// TestWaitElapsed asserts the boundary behaviour of waitElapsed: the
 // millisecond floor for sub-second waits and the cutover to the
 // apimachinery short form at exactly one second.
 func TestWaitElapsed(t *testing.T) {
@@ -961,7 +961,7 @@ func TestWaitElapsed(t *testing.T) {
 		{95 * time.Second, "1m35s", "95s → second-rounded 1m35s (the live case)"},
 		{5 * time.Minute, "5m0s", "5m → second-rounded 5m0s"},
 		// Hour-scale: full precision is deliberate (not the coarser AGE-column form).
-		{2*time.Hour + 15*time.Minute + 30*time.Second, "2h15m30s", "2h15m30s pinned at hour scale"},
+		{2*time.Hour + 15*time.Minute + 30*time.Second, "2h15m30s", "2h15m30s stays at hour scale"},
 		{1*time.Hour + 0*time.Minute + 1*time.Second, "1h0m1s", "1h0m1s — zero-minute field retained"},
 	}
 	for _, tt := range tests {
@@ -993,9 +993,9 @@ func userObjNonArrayPrincipals(name string, val any) unstructured.Unstructured {
 	}}
 }
 
-// TestIsSystemManagedBoundaryFixtures pins the per-element predicate exactly
+// TestIsSystemManagedBoundaryFixtures asserts the per-element predicate exactly
 // against Rancher's user-store prefix "system://" — the full boundary
-// set: near-miss prefixes, non-string elements, mixed arrays (pinning the
+// set: near-miss prefixes, non-string elements, mixed arrays (asserting the
 // per-element fail-open cast), non-array fields, and an absent field.
 func TestIsSystemManagedBoundaryFixtures(t *testing.T) {
 	t.Parallel()
@@ -1082,7 +1082,7 @@ func TestGetUsersNoWarningWhenNothingHidden(t *testing.T) {
 	assert.Empty(t, res.Warnings)
 }
 
-// TestGetUserNamedSystemAccountSucceeds pins the deliberate divergence from
+// TestGetUserNamedSystemAccountSucceeds asserts the deliberate divergence from
 // Norman: naming a system account is intent, so a named get returns it with
 // no flag at all.
 func TestGetUserNamedSystemAccountSucceeds(t *testing.T) {
@@ -1096,7 +1096,7 @@ func TestGetUserNamedSystemAccountSucceeds(t *testing.T) {
 	assert.Equal(t, "u-sys", tbl.items[0].GetName())
 }
 
-// TestGetUserNamedIncludeSystemRejected pins the typed no-op rejection: a
+// TestGetUserNamedIncludeSystemRejected asserts the typed no-op rejection: a
 // named get with --include-system is a VALIDATION error naming the reason in
 // its message, matching the repo's --project/--for typed no-op precedent.
 func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
@@ -1116,7 +1116,7 @@ func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
 	assert.Empty(t, ce.Hint)
 }
 
-// TestGetUserNamedIncludeSystemFalseRejected pins the IsSet seam: an
+// TestGetUserNamedIncludeSystemFalseRejected asserts the IsSet seam: an
 // explicit --include-system=false on a named get is still a typed no-op and
 // must be rejected the same as --include-system=true (MC-5a tri-state).
 func TestGetUserNamedIncludeSystemFalseRejected(t *testing.T) {
@@ -1134,7 +1134,7 @@ func TestGetUserNamedIncludeSystemFalseRejected(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter pins the
+// TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter asserts the
 // no-silent-no-op rule: --include-system is not generated at all for a kind
 // without SystemFilter, so a get pods Descriptor must not carry the flag.
 func TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter(t *testing.T) {
@@ -1146,7 +1146,7 @@ func TestGetIncludeSystemAbsentOnKindsWithoutSystemFilter(t *testing.T) {
 	}
 }
 
-// TestGetUsersDescribeCarriesIncludeSystemFlag pins the generation site: a
+// TestGetUsersDescribeCarriesIncludeSystemFlag asserts the generation site: a
 // SystemFilter kind's Describe carries --include-system and a synthesized
 // Desc documenting default hiding, the flag, and the named-get divergence.
 func TestGetUsersDescribeCarriesIncludeSystemFlag(t *testing.T) {

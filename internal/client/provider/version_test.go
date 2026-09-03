@@ -68,7 +68,7 @@ func TestRancherVersionDevBuildReturnsUnparseable(t *testing.T) {
 	assert.Equal(t, "v2.15.0-dev", got)
 }
 
-// TestRancherVersionGarbageBodyReturnsError pins the 200-but-unrecognized-body
+// TestRancherVersionGarbageBodyReturnsError asserts the 200-but-unrecognized-body
 // case: a non-Rancher server (or a proxy) that returns 200 with an unexpected
 // payload must be treated as a read failure so the caller can degrade to
 // UnknownServerVersionWarning.
@@ -98,7 +98,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 	})
 }
 
-// TestRancherVersionNon200ReturnsError pins the non-200 path: any status other
+// TestRancherVersionNon200ReturnsError asserts the non-200 path: any status other
 // than 200 (e.g. 404 from a non-Rancher server, 503 during startup) is a read
 // failure — never silently treated as an unknown version.
 func TestRancherVersionNon200ReturnsError(t *testing.T) {
@@ -112,7 +112,7 @@ func TestRancherVersionNon200ReturnsError(t *testing.T) {
 	assert.ErrorContains(t, err, "503")
 }
 
-// TestRancherVersionUnreachableReturnsError pins the connectivity-failure path:
+// TestRancherVersionUnreachableReturnsError asserts the connectivity-failure path:
 // when the server is unreachable (connection refused after close), the error
 // propagates so checkMinRancherVersion can degrade to UnknownServerVersionWarning.
 func TestRancherVersionUnreachableReturnsError(t *testing.T) {
@@ -153,7 +153,7 @@ func TestRancherVersionTimesOutOnUnresponsiveServer(t *testing.T) {
 	assert.Less(t, elapsed, 5*time.Second, "the request must be bounded by requestTimeout, not hang on the unresponsive handler")
 }
 
-// TestRancherVersionPathValuedCA pins that a file-path CA (the common case
+// TestRancherVersionPathValuedCA asserts that a file-path CA (the common case
 // after `rancher auth login --cacert /path/to/ca.pem`) is resolved through
 // config.ResolveCA before being passed to httpx.New, so the TLS handshake
 // succeeds rather than failing to parse a filesystem path as raw PEM.
@@ -177,7 +177,7 @@ func TestRancherVersionPathValuedCA(t *testing.T) {
 	assert.Equal(t, "v2.15.0", got)
 }
 
-// TestGetServerInfoDecodesEdition pins RancherPrime's string-wire decode
+// TestGetServerInfoDecodesEdition asserts RancherPrime's string-wire decode
 // (not a JSON boolean): "true"/"false" (any case/whitespace) decode to their
 // Edition; absent or garbage decode to EditionUnknown — never treated as
 // community.
@@ -209,7 +209,7 @@ func TestGetServerInfoDecodesEdition(t *testing.T) {
 	}
 }
 
-// TestGetServerInfoPropagatesReadErrors pins that GetServerInfo shares
+// TestGetServerInfoPropagatesReadErrors asserts that GetServerInfo shares
 // RancherVersion's classified-failure behavior (malformed body, non-200,
 // unreachable) rather than swallowing it into EditionUnknown — the
 // capability detector's caller decides how to fold a probe error.
@@ -222,7 +222,7 @@ func TestGetServerInfoPropagatesReadErrors(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestRancherVersionTrailingSlashURL pins that a trailing slash in eff.URL
+// TestRancherVersionTrailingSlashURL asserts that a trailing slash in eff.URL
 // (set via RANCHER_CLI_URL env, which bypasses canonicalization) is trimmed
 // before appending "/rancherversion", so the probe does not send a double-
 // slash request that some server routers reject with 404.

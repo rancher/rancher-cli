@@ -152,7 +152,7 @@ func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestCreateSecretDryRunEffectNeverLeaksLiteralValue pins DR-001 discipline:
+// TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts DR-001 discipline:
 // engine.PlanCreate builds Target-only Effects (no diff, no object payload),
 // so a dry-run of a create secret leaks nothing — this test proves it by
 // rendering the Effect to JSON and checking the literal never appears.
@@ -173,7 +173,7 @@ func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	assert.NotContains(t, string(rendered), literal)
 }
 
-// TestCreateSecretIsDestructive pins the confirmation gate for both routing
+// TestCreateSecretIsDestructive asserts the confirmation gate for both routing
 // modes: secret is a Sensitive kind, so create secret must need --yes
 // exactly like the generic create path (resources/create.go).
 func TestCreateSecretIsDestructive(t *testing.T) {

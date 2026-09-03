@@ -49,7 +49,7 @@ func TestParseTTLRejections(t *testing.T) {
 	}
 }
 
-// TestParseTTLDaysOverflow pins the fix for the day-count overflow: a day
+// TestParseTTLDaysOverflow asserts the fix for the day-count overflow: a day
 // count whose *24h product would overflow int64 nanoseconds must be
 // VALIDATION, never a silently wrapped small positive duration.
 func TestParseTTLDaysOverflow(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestStylesForEligibility pins the eligibility rule ahead of activation:
+// TestStylesForEligibility asserts the eligibility rule ahead of activation:
 // only ""/"table"/"wide" ever produce an Enabled Style, regardless of
 // --color, TTY-ness, or the environment — json, yaml, name, and template
 // always get the disabled zero value.
@@ -32,7 +32,7 @@ func TestStylesForEligibility(t *testing.T) {
 	}
 }
 
-// TestBoldShownOnceLine pins boldShownOnceLine's scope: only the line ending
+// TestBoldShownOnceLine asserts boldShownOnceLine's scope: only the line ending
 // in ShownOnceSuffix is wrapped; every other line, and all whitespace, is
 // untouched.
 func TestBoldShownOnceLine(t *testing.T) {
@@ -76,7 +76,7 @@ func splitKeepNewline(s string) []string {
 	return lines
 }
 
-// TestRenderErrStyledStripInvariant pins the content-invariant across the
+// TestRenderErrStyledStripInvariant asserts the content-invariant across the
 // error render path: strip(styled) == plain byte-for-byte, and the styled
 // form actually differs (proving the wrap ran, not that it was a no-op).
 func TestRenderErrStyledStripInvariant(t *testing.T) {
@@ -112,7 +112,7 @@ func TestRenderErrNeverStylesIneligibleFormats(t *testing.T) {
 	}
 }
 
-// TestRenderResultTableHeaderStyledStripInvariant pins the table-render
+// TestRenderResultTableHeaderStyledStripInvariant asserts the table-render
 // content-invariant through the real renderResult path (not just
 // output.RenderStyled directly): the header row is bold, every row is
 // plain, and stripping restores the unstyled render exactly.
@@ -135,7 +135,7 @@ func TestRenderResultTableHeaderStyledStripInvariant(t *testing.T) {
 	assert.NotContains(t, lines[1], "\x1b[", "data rows must never carry an escape code")
 }
 
-// TestRenderResultShownOnceLineBoldStripInvariant pins the once-only text
+// TestRenderResultShownOnceLineBoldStripInvariant asserts the once-only text
 // scope: the shown-once line is bold, the headline and warnings mirror are
 // untouched, and stripping restores the plain render exactly.
 func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
@@ -166,7 +166,7 @@ func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	assert.Contains(t, lines[1], "\x1b[1m", "the shown-once line must be bold")
 }
 
-// TestRenderResultOrdinaryTextNeverBoldedByShownOnceSuffixCoincidence pins
+// TestRenderResultOrdinaryTextNeverBoldedByShownOnceSuffixCoincidence asserts
 // the gate: only a DeliveryOnceOnly command's Text is scanned for
 // ShownOnceSuffix, so an ordinary command's line ending in the identical
 // bytes is never bolded.
@@ -184,7 +184,7 @@ func TestRenderResultOrdinaryTextNeverBoldedByShownOnceSuffixCoincidence(t *test
 	assert.NotContains(t, out.String(), "\x1b[", "an ordinary command's Text is never scanned for the once-only marker")
 }
 
-// TestMirrorWarningsYellowPrefixStripInvariant pins the warning-mirror
+// TestMirrorWarningsYellowPrefixStripInvariant asserts the warning-mirror
 // styling scope: only the "# warning:" prefix carries the yellow wrap, the
 // message never does, and stripping restores the plain line exactly.
 func TestMirrorWarningsYellowPrefixStripInvariant(t *testing.T) {
@@ -198,7 +198,7 @@ func TestMirrorWarningsYellowPrefixStripInvariant(t *testing.T) {
 	assert.Contains(t, styledBuf.String(), "\x1b[33m# warning:\x1b[0m cert expires soon\n")
 }
 
-// TestRenderResultStyledTextCalledWithActiveStyle pins the Result.StyledText
+// TestRenderResultStyledTextCalledWithActiveStyle asserts the Result.StyledText
 // seam: when set, renderResult's Text branch calls it with the resolved
 // output Style and writes its return value instead of Text verbatim; when
 // styling is inactive, StyledText still runs but on this builder returns
@@ -228,7 +228,7 @@ func TestRenderResultStyledTextCalledWithActiveStyle(t *testing.T) {
 	assert.Contains(t, styledOut.String(), "\x1b[1m")
 }
 
-// TestRenderResultStyledTextKeepsShownOnceBold pins the composition rule:
+// TestRenderResultStyledTextKeepsShownOnceBold asserts the composition rule:
 // a DeliveryOnceOnly Result that also sets StyledText keeps the shown-once
 // line's bold — the two treatments compose instead of the builder silencing
 // the credential emphasis; a line the builder already styled is not wrapped
@@ -265,7 +265,7 @@ func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(lines[1], "\x1b[1m"), "the shown-once line is wrapped once, not twice")
 }
 
-// TestCheckResultShapeRejectsStyledTextWithoutText pins the pairing rule: a
+// TestCheckResultShapeRejectsStyledTextWithoutText asserts the pairing rule: a
 // non-nil StyledText with no Text is a command bug, regardless of shape.
 func TestCheckResultShapeRejectsStyledTextWithoutText(t *testing.T) {
 	t.Parallel()
@@ -276,7 +276,7 @@ func TestCheckResultShapeRejectsStyledTextWithoutText(t *testing.T) {
 	assert.Contains(t, ce.Error(), "returned StyledText but no Text")
 }
 
-// TestStyleSchemaTOCStripInvariant pins the bare TOC's bold spans: the
+// TestStyleSchemaTOCStripInvariant asserts the bare TOC's bold spans: the
 // banner line and every named group label are bold, command rows are not,
 // stripping restores the plain render exactly, and the disabled style
 // returns the plain render unchanged.
@@ -307,7 +307,7 @@ func TestStyleSchemaTOCStripInvariant(t *testing.T) {
 	assert.NotContains(t, styledLines[authIdx+1], "\x1b[", "a command row must not be styled")
 }
 
-// TestStyleSchemaFilteredTOCStripInvariant pins the filtered TOC's bold
+// TestStyleSchemaFilteredTOCStripInvariant asserts the filtered TOC's bold
 // header line, plus the strip invariant and the inactive-style identity.
 func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -325,7 +325,7 @@ func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 	assert.Contains(t, styledLines[0], "\x1b[1m", "the match-count header line must be bold")
 }
 
-// TestStyleSchemaGroupCardStripInvariant pins the group card's bold spans:
+// TestStyleSchemaGroupCardStripInvariant asserts the group card's bold spans:
 // the "group: <name>" header line and the "commands:" label, nothing else —
 // plus the strip invariant and the inactive-style identity.
 func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
@@ -357,7 +357,7 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 	assert.NotContains(t, styledLines[cmdIdx+1], "\x1b[", "a command row must not be styled")
 }
 
-// TestStyleSchemaCommandCardStripInvariant pins the command card's bold
+// TestStyleSchemaCommandCardStripInvariant asserts the command card's bold
 // spans — the title line, each section label token (not its values), and
 // every flag name (not its type/description/env) — plus the strip
 // invariant and the inactive-style identity.

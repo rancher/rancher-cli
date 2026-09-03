@@ -102,7 +102,7 @@ func TestLogoutAll(t *testing.T) {
 	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer — a credential-less entry is a valid state")
 }
 
-// TestLogoutAllOnEmptyConfigReturnsText pins that logging out of every
+// TestLogoutAllOnEmptyConfigReturnsText asserts that logging out of every
 // server when none are configured is still a reportable success: ShapeText
 // requires non-empty Text on every default-format success, and a config
 // with zero servers is the one path where deletedFrom's per-server loop
@@ -307,7 +307,7 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	assert.Empty(t, leftovers, "helper records must be fully deleted")
 }
 
-// TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded pins that a
+// TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded asserts that a
 // failure in the LAST of deleteAll's three steps must not discard the
 // first two: the per-server loop and exec-cache wipe both succeed before
 // the orphan sweep runs, so their results must survive a sweep failure,
@@ -381,7 +381,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	assert.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
 }
 
-// TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential pins a
+// TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential asserts a
 // safety property the server-registration restructure adds: registration
 // (config.yaml) commits BEFORE any authentication or credential write, in
 // its own lock cycle. A registration-time config-write failure must
@@ -424,7 +424,7 @@ func TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential(t *testing
 	assert.Empty(t, helperCreds(t, statePath), "no credential is ever stored when registration itself fails")
 }
 
-// TestLogoutAllNeverRepairsADanglingCurrentServer pins the retired repair
+// TestLogoutAllNeverRepairsADanglingCurrentServer asserts the retired repair
 // behavior: logout --all is a pure credential-store writer now — pointer
 // bootstrap/repair is registration's privilege alone, so a dangling pointer
 // survives --all exactly as it was.
@@ -448,7 +448,7 @@ func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 	assert.Equal(t, "ghost", cfgAfter.CurrentServer, "the dangling pointer is left exactly as it was")
 }
 
-// TestDeleteFailureCancellationPassesThrough pins the fourth-review P1: a
+// TestDeleteFailureCancellationPassesThrough asserts the fourth-review P1: a
 // delete interrupted by the caller's own cancellation must surface as
 // context.Canceled through logout's failure shaping — never rewrapped into
 // the generic "failed to log out" clierr, which severs the errors.Is chain
@@ -468,7 +468,7 @@ func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 	assert.Contains(t, details.TextDetails()[0], "already logged out")
 }
 
-// TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep pins that a
+// TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep asserts that a
 // notice recorded by a step that already succeeded (a keychain-unreachable
 // degrade during one server's delete, say) before a LATER step in the same
 // --all run fails rides the resulting error instead of being discarded with
@@ -482,7 +482,7 @@ func TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep(t *testing.T) {
 	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, ce.Warnings())
 }
 
-// TestLogoutAllPartialFailureTextDetailsBracketedLines pins the two
+// TestLogoutAllPartialFailureTextDetailsBracketedLines asserts the two
 // conditional lines: a deletedFrom entry prints one "credentials removed:"
 // line per server, sorted by name; "cached kubectl credentials removed"
 // prints only when non-empty.
@@ -514,7 +514,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 	})
 }
 
-// TestDeleteFailurePreservesLockTimeout pins the exercise-8/9-fixes review
+// TestDeleteFailurePreservesLockTimeout asserts the exercise-8/9-fixes review
 // finding: a LOCK_TIMEOUT surfacing from the token-cache or helper-records
 // lock inside the delete must keep its code and retryability through logout's
 // failure shaping — flattening it to GENERIC hides exit 8 and the retry
@@ -539,7 +539,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 // is no longer silent — the text names the server, its URL, the backends the
 // token was removed from, and that the current server was cleared — and the
 // envelope carries currentServerCleared for programs.
-// TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField pins the
+// TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField asserts the
 // envelope change: currentServerCleared is REMOVED from LogoutResult —
 // logout is a pure credential-store writer and the pointer is untouched
 // even for the current server.
@@ -577,7 +577,7 @@ func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	assert.Equal(t, "acme", cfg.CurrentServer, "current server untouched")
 }
 
-// TestStyleLogoutTextStripInvariant pins auth logout's bold spans: each
+// TestStyleLogoutTextStripInvariant asserts auth logout's bold spans: each
 // server's opener line is bold, whole line; its detail line stays plain;
 // the trailing exec-credential cache-count line stays plain too — plus the
 // strip invariant and the inactive-style identity.

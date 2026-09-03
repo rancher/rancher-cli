@@ -187,7 +187,7 @@ func TestCreateDescriptorDeclaresCapabilityAndOnceOnlySeam(t *testing.T) {
 	assert.Equal(t, "true", d.Destructive)
 }
 
-// TestCreatePlanSendsBothRequiredTTLsAndDefaults pins the CRD-required-TTL
+// TestCreatePlanSendsBothRequiredTTLsAndDefaults asserts the CRD-required-TTL
 // contract: the manifest always carries both TTL fields, CLI-defaulted
 // (3600/86400) when the flags are omitted — the server does not default
 // them.
@@ -213,7 +213,7 @@ func TestCreatePlanRequiresName(t *testing.T) {
 	assert.True(t, d.Args[0].Required)
 }
 
-// TestParseWaitTimeoutRejectsNonPositiveDurations pins that --timeout 0 or
+// TestParseWaitTimeoutRejectsNonPositiveDurations asserts that --timeout 0 or
 // a negative value never reaches context.WithTimeout as an already-expired
 // deadline: the mutation would still commit, but the command would
 // immediately misreport a flag-value mistake as a controller-health
@@ -297,7 +297,7 @@ func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 		"  issuer: https://rancher.example/oidc\n", res.Text)
 }
 
-// TestCreateExecDegradedDiscovery pins the four degrade cases: malformed
+// TestCreateExecDegradedDiscovery asserts the four degrade cases: malformed
 // JSON, incomplete (missing endpoint), issuer mismatch, and an HTTP-level
 // failure all take the SAME degraded path — endpoints omitted, issuer
 // derived from the effective base, one warning naming the failure — and
@@ -344,7 +344,7 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 	}
 }
 
-// TestCreateExecImpossibleShapesAreTerminalNotTimeout pins the two
+// TestCreateExecImpossibleShapesAreTerminalNotTimeout asserts the two
 // impossible-shape cases (clientID present with >1 secret; any secret key
 // with no clientID) as IMMEDIATE, non-retryable errors — proven not to
 // wait by using a long timeout the test would otherwise block on.
@@ -394,7 +394,7 @@ func TestCreateExecImpossibleShapesAreTerminalNotTimeout(t *testing.T) {
 	}
 }
 
-// TestCreateExecTimeoutIsNonRetryable pins create's timeout contract: a
+// TestCreateExecTimeoutIsNonRetryable asserts create's timeout contract: a
 // NEVER-satisfied predicate times out with a non-retryable error naming the
 // committed resource — retrying would create a second client.
 func TestCreateExecTimeoutIsNonRetryable(t *testing.T) {
@@ -463,7 +463,7 @@ func TestCreateFullPipelineFailingStdoutEmitsCommittedContext(t *testing.T) {
 	assert.Contains(t, errBuf.String(), `"Error"`)
 }
 
-// TestCreateOutputPolicyRejectsNameWithZeroRequests pins that
+// TestCreateOutputPolicyRejectsNameWithZeroRequests asserts that
 // `create oidc-client -o name` is rejected BEFORE Plan/capability
 // resolution — zero total requests, not merely zero mutation requests — so
 // a caller can never invalidate-and-discard a once-only client secret by
@@ -482,7 +482,7 @@ func TestCreateOutputPolicyRejectsNameWithZeroRequests(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-// TestCreateExecSecretReadFailureIsCommittedPartialSuccess pins the
+// TestCreateExecSecretReadFailureIsCommittedPartialSuccess asserts the
 // create-then-FORBIDDEN persona (the only verb that keeps this post-commit
 // path): the backing-Secret GET fails after a committed mutation, and the
 // resulting error preserves the original classification while adding
@@ -508,7 +508,7 @@ func TestCreateExecSecretReadFailureIsCommittedPartialSuccess(t *testing.T) {
 	assert.Equal(t, "client-secret-1", details.SecretName)
 }
 
-// TestCommittedPartialSuccessPreservesRetryable pins that
+// TestCommittedPartialSuccessPreservesRetryable asserts that
 // committedPartialSuccess must not drop the original error's Retryable
 // flag, which errmap.go sets true for transient/server errors: a caller
 // inspecting ce.Retryable to decide whether to retry must see the

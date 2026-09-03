@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMachineConfigFieldsCoverEveryMachineConfigKind pins the bijection:
+// TestMachineConfigFieldsCoverEveryMachineConfigKind asserts the bijection:
 // every MachineConfigGroup kind row has a field-metadata entry, and every
 // entry names a real machine-config kind row.
 func TestMachineConfigFieldsCoverEveryMachineConfigKind(t *testing.T) {
@@ -27,7 +27,7 @@ func TestMachineConfigFieldsCoverEveryMachineConfigKind(t *testing.T) {
 	}
 }
 
-// TestMachineConfigCredentialFieldsLiteral pins the credential-carried
+// TestMachineConfigCredentialFieldsLiteral asserts the credential-carried
 // field set per kind as LITERALS — deliberately not derived, so a partial
 // edit to the metadata cannot silently move expectation and result
 // together (independent-source doctrine). Source-confirmed against
@@ -48,7 +48,7 @@ func TestMachineConfigCredentialFieldsLiteral(t *testing.T) {
 	}
 }
 
-// TestMachineConfigFieldsDigitaloceanVocabulary pins the DO curated and
+// TestMachineConfigFieldsDigitaloceanVocabulary asserts the DO curated and
 // known sets as literals (rancher/machine digitalocean.go GetCreateFlags,
 // lower-camel per nodedriver's ToLowerCamelCase, sshKeyPath renamed to
 // sshKeyContents per FileToFieldAliases).

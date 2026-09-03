@@ -78,7 +78,7 @@ func project(id, displayName string) unstructured.Unstructured {
 }
 
 // TestMatchOneOrError exercises the shared List->match->switch assembly in
-// isolation from any particular caller's List/display shape, pinning the
+// isolation from any particular caller's List/display shape, asserting the
 // three outcomes (single match, NOT_FOUND, AMBIGUOUS_SELECTION) plus the
 // idFound-vs-displayMatchCount wording split each of ResolveProject and
 // provisioning.resolveCredentialObj relies on.
@@ -151,7 +151,7 @@ func TestMatchOneOrError(t *testing.T) {
 	t.Run("ambiguity narrows candidates to the colliders only", func(t *testing.T) {
 		t.Parallel()
 		// Three items, two colliding on the display name: the error's
-		// candidates must exclude the non-collider — pinned at the helper
+		// candidates must exclude the non-collider — asserted at the helper
 		// so every caller inherits the narrowing.
 		threeIDs := []string{"a-1", "a-2", "a-3"}
 		threeDisplay := map[string]string{"a-1": "Shared", "a-2": "Shared", "a-3": "Solo"}

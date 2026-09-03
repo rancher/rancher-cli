@@ -131,7 +131,7 @@ func TestLoginNoVerifyWithExplicitProviderFlagsIsValidation(t *testing.T) {
 	}
 }
 
-// TestLoginProviderFlowSkipsVerifyEvenWhenWired pins that a provider-issued
+// TestLoginProviderFlowSkipsVerifyEvenWhenWired asserts that a provider-issued
 // token never takes the round-trip, even when verify is wired: the flag
 // exclusivity check only catches the EXPLICIT --auth-provider/--auth-flow
 // spelling of --no-verify's incompatibility, but the provider flow must skip
@@ -157,7 +157,7 @@ func TestLoginProviderFlowSkipsVerifyEvenWhenWired(t *testing.T) {
 	assert.Equal(t, true, res.Data.(map[string]any)["verified"], "a provider-issued token is authenticated by construction")
 }
 
-// TestLoginDelegatedVerifiesTokenBeforeStoring pins that the verification
+// TestLoginDelegatedVerifiesTokenBeforeStoring asserts that the verification
 // round-trip also runs on the --url (delegated) path, immediately after this
 // login's own registration commits — not only for an already-registered
 // entry.
@@ -171,7 +171,7 @@ func TestLoginDelegatedVerifiesTokenBeforeStoring(t *testing.T) {
 	assert.True(t, strings.HasPrefix(res.Text, "logged in to prod ("+srv.URL+")"))
 }
 
-// TestLoginDelegatedVerifyFailureGetsUndoGuidanceNotNoVerifyHint pins that a
+// TestLoginDelegatedVerifyFailureGetsUndoGuidanceNotNoVerifyHint asserts that a
 // verify failure on the --url (delegated) path is decorated exactly like any
 // other delegated auth failure: the message keeps the undo-the-registration
 // guidance and the hint stays the retry command, not the --no-verify hint a

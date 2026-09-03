@@ -80,7 +80,7 @@ func TestSchemaManagementTokenCreateRefused(t *testing.T) {
 	assert.Equal(t, string(safety.Deprecated), create.Stability)
 }
 
-// TestSchemaKindsManifestFields pins the SE-8 kind rows: the refused verb
+// TestSchemaKindsManifestFields asserts the SE-8 kind rows: the refused verb
 // (CRT patch), the override-added verb (provisioning-cluster delete), a
 // reasoned absence (cluster delete), and the identity/routing fields.
 func TestSchemaKindsManifestFields(t *testing.T) {

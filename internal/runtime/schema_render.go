@@ -117,7 +117,7 @@ func contractLine(c SchemaCommand) string {
 }
 
 // gateLine is SE-3's total function of (commandType, destructive, stability);
-// the wordings are contract, pinned verbatim by TestSchemaGateLineMatrix.
+// the wordings are contract, asserted verbatim by TestSchemaGateLineMatrix.
 // A mutating destructive value other than "true"/"dependsOnInput" (including
 // unset) carries no destructive gate; a non-mutating commandType other than
 // Local reads as read-only, matching the pipeline (only Mutating is gated).

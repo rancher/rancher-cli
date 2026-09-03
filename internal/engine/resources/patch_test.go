@@ -194,7 +194,7 @@ func TestPatchSecretDiffIsRedacted(t *testing.T) {
 	assert.True(t, found, "diff must contain the password path, got %+v", eff.Diff)
 }
 
-// TestPatchRedactsUserPasswordFromResult pins the patch-response redaction
+// TestPatchRedactsUserPasswordFromResult asserts the patch-response redaction
 // seam: a User's password reaches the server in the patch (the fake client
 // echoes back exactly what was submitted, as a real server does), but the
 // committed Result never carries it — mirroring create's redaction of the
@@ -299,7 +299,7 @@ func TestPatchDiffFromObjectComparisonNotOps(t *testing.T) {
 	assert.True(t, sawAdd, "a move must show the destination added, got %+v", eff.Diff)
 }
 
-// TestPatchNotFoundCurated pins the curated NOT_FOUND shape for a named patch:
+// TestPatchNotFoundCurated asserts the curated NOT_FOUND shape for a named patch:
 // the dynamic client now produces "<kind> not found: <name>"; the fake
 // simulates that pre-curated shape.
 func TestPatchNotFoundCurated(t *testing.T) {
@@ -319,7 +319,7 @@ func TestPatchNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get deployments --cluster 'c-abc'", ce.Hint)
 }
 
-// TestPatchNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// TestPatchNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the
 // client (e.g. RBAC) reaches the caller unchanged without re-wrapping.
 func TestPatchNonNotFoundPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -477,7 +477,7 @@ func TestPatchInvalidOpsRejected(t *testing.T) {
 	requireValidation(t, err)
 }
 
-// TestPatchExecPhaseNotFoundCurated pins the post-confirmation TOCTOU path:
+// TestPatchExecPhaseNotFoundCurated asserts the post-confirmation TOCTOU path:
 // the object is deleted between the dry-run and the real update; the dynamic
 // client curates the NOT_FOUND (Fix 3 — client-level curation covers this,
 // dissolving the earlier patch.go exec-wrapper approach). The fake simulates
@@ -508,7 +508,7 @@ func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	assert.NotEmpty(t, ce.Hint, "curated exec-phase NOT_FOUND must carry a list hint")
 }
 
-// TestPatchDescribeInheritsCapability pins the requirement-inheritance rule:
+// TestPatchDescribeInheritsCapability asserts the requirement-inheritance rule:
 // a kind row's Capability flows unchanged into the generated patch command's
 // Descriptor.
 func TestPatchDescribeInheritsCapability(t *testing.T) {
@@ -519,7 +519,7 @@ func TestPatchDescribeInheritsCapability(t *testing.T) {
 	assert.Equal(t, req, d.Capability)
 }
 
-// TestPatchRefusesManagedFieldsOps pins that no RFC 6902 op may target the
+// TestPatchRefusesManagedFieldsOps asserts that no RFC 6902 op may target the
 // object's managed fields: field ownership is recorded by the server, and a
 // patch that rewrites it would forge that record. The check covers the
 // path of every op and the from of a move or copy, the exact path and
@@ -565,7 +565,7 @@ func TestPatchRefusesManagedFieldsOps(t *testing.T) {
 	}
 }
 
-// TestPatchRefusesServerOwnedMetadataOps pins the refusal of ops on the
+// TestPatchRefusesServerOwnedMetadataOps asserts the refusal of ops on the
 // fields the server owns and the diff already skips: managed fields and
 // the resource version, exact or under, and an add or replace of an
 // ancestor whose value smuggles managed fields in.
@@ -601,7 +601,7 @@ func TestPatchRefusesServerOwnedMetadataOps(t *testing.T) {
 	}
 }
 
-// TestPatchSendsTheFetchedManagedFieldsUnchanged pins that whatever a patch
+// TestPatchSendsTheFetchedManagedFieldsUnchanged asserts that whatever a patch
 // does to metadata, the object sent to the server carries the managed
 // fields exactly as fetched: a replace of /metadata that omits them would
 // otherwise reset field ownership on the server.
@@ -626,7 +626,7 @@ func TestPatchSendsTheFetchedManagedFieldsUnchanged(t *testing.T) {
 	assert.Equal(t, map[string]string{"a": "c"}, labels, "the rest of the metadata change still applies")
 }
 
-// TestPatchMoveIntoMetadataCannotForgeManagedFields pins that a move or
+// TestPatchMoveIntoMetadataCannotForgeManagedFields asserts that a move or
 // copy whose destination is /metadata, carrying a managedFields value from
 // elsewhere in the object, is not caught by the path check (nothing static
 // says what the moved value holds) but cannot reach the server: the fetched

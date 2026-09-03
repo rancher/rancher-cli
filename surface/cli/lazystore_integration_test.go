@@ -27,7 +27,7 @@ func seedDeleteConfig(t *testing.T) string {
 	return dir
 }
 
-// TestConfigDeleteServerThroughRootWritesNoPin pins the actual FAIL-2
+// TestConfigDeleteServerThroughRootWritesNoPin asserts the actual FAIL-2
 // regression at the resolveDeps level: running the real CLI's
 // delete-server on a fresh auto profile must delete the token WITHOUT
 // probing or writing a credstore pin. RED before the lazy-store swap

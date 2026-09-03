@@ -142,7 +142,7 @@ func TestLogsPodCandidatesUnknownOrIncompleteTargetYieldsNil(t *testing.T) {
 	assert.Nil(t, got)
 }
 
-// TestLogsTargetCompletionYieldsExactlyTheTargetTable pins `logs <TAB>`
+// TestLogsTargetCompletionYieldsExactlyTheTargetTable asserts `logs <TAB>`
 // against the curated target table: the positional's Enum (sourced from
 // observe.Names(), never a hand-copied list) must offer exactly those five
 // names, sorted, and nothing else.

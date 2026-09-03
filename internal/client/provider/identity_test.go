@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIdentityCreateNamesTheFieldManager pins that the auth status identity
+// TestIdentityCreateNamesTheFieldManager asserts that the auth status identity
 // probe, which writes through its own dynamic client rather than the
 // cluster client, names the CLI as the field manager like every other
 // create.

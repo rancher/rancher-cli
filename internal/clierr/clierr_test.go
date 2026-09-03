@@ -54,9 +54,9 @@ func TestAllCodesNonEmpty(t *testing.T) {
 	assert.Contains(t, AllCodes(), CodeDryRunNotApplicable)
 }
 
-// TestAllCodesDropsNotImplemented pins DR-013: NOT_IMPLEMENTED is a
+// TestAllCodesDropsNotImplemented asserts DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
-// been removed. The count pins the full enum: 10 originals plus
+// been removed. The count asserts the full enum: 10 originals plus
 // LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, and CAPABILITY_UNSUPPORTED.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
@@ -68,7 +68,7 @@ func TestAllCodesDropsNotImplemented(t *testing.T) {
 	assert.Contains(t, codes, CodeCapabilityUnsupported)
 }
 
-// TestPrimeRequiredDisjointFromSuccessExits pins exit 9's explicit
+// TestPrimeRequiredDisjointFromSuccessExits asserts exit 9's explicit
 // assignment: 7 is a successful `skill status` result and 8 is
 // LOCK_TIMEOUT, so PRIME_REQUIRED ("next free slot") must be 9, and must
 // never collide with a successful status (0 or 7).
@@ -78,7 +78,7 @@ func TestPrimeRequiredDisjointFromSuccessExits(t *testing.T) {
 	assert.NotContains(t, []int{0, 7}, exit)
 }
 
-// TestExitCodeTableUnaffectedByTextRendering pins the full code→exit
+// TestExitCodeTableUnaffectedByTextRendering asserts the full code→exit
 // mapping: how an error's text is written on stderr never changes its
 // process exit status.
 func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
@@ -128,7 +128,7 @@ func TestErrorDetailsSerialization(t *testing.T) {
 	assert.NotContains(t, string(b2), "details")
 }
 
-// TestWithWarningsNotSerializedDirectly pins that the warning ride never
+// TestWithWarningsNotSerializedDirectly asserts that the warning ride never
 // appears through a direct json.Marshal of *Error — only a renderer reading
 // Warnings() places it, at the envelope's top level, never under data.error.
 func TestWithWarningsNotSerializedDirectly(t *testing.T) {
@@ -140,13 +140,13 @@ func TestWithWarningsNotSerializedDirectly(t *testing.T) {
 	assert.NotContains(t, string(b), "warnings")
 }
 
-// TestWithWarningsAccumulates pins that repeated calls append, in order.
+// TestWithWarningsAccumulates asserts that repeated calls append, in order.
 func TestWithWarningsAccumulates(t *testing.T) {
 	e := New(CodeGeneric, "boom").WithWarnings("a", "b").WithWarnings("c")
 	assert.Equal(t, []string{"a", "b", "c"}, e.Warnings())
 }
 
-// TestWithWarningsPreservedByWithMessageAndWrap pins that re-messaging an
+// TestWithWarningsPreservedByWithMessageAndWrap asserts that re-messaging an
 // error (WithMessage, or Wrap's re-classification) never drops warnings
 // already attached to it.
 func TestWithWarningsPreservedByWithMessageAndWrap(t *testing.T) {
@@ -163,7 +163,7 @@ func TestWithWarningsPreservedByWithMessageAndWrap(t *testing.T) {
 	})
 }
 
-// TestWrapPreservesClassification pins the exercise-8/9-fixes review fix:
+// TestWrapPreservesClassification asserts the exercise-8/9-fixes review fix:
 // command wrappers adding context must not flatten a classified error (a
 // LOCK_TIMEOUT from a store lock) into the GENERIC catch-all.
 func TestWrapPreservesClassification(t *testing.T) {

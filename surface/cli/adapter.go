@@ -392,7 +392,7 @@ func isAllNamespacesFlag(err error) bool {
 }
 
 // allNamespacesEntry is the kubectl-reflex -A/--all-namespaces entry —
-// addressable by name so tests pin THIS entry, not a table position.
+// addressable by name so tests assert on THIS entry, not a table position.
 //
 // c.Path() returns the root-to-leaf segment slice (urfave v3 Path()),
 // so a `get pod` leaf reports ["rancher","get","pod"]; the `get` group

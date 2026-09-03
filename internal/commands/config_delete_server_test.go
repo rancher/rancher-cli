@@ -147,7 +147,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 // the delete's own store-independence (spec R2-1): it bypasses resolveDeps
 // by construction, so it passes before AND after the adapter swap — the
 // real resolveDeps regression lives in surface/cli's through-the-root
-// tests (Task 3 Step 0). This one pins that the command itself never
+// tests (Task 3 Step 0). This one asserts that the command itself never
 // resolves the injected store.
 func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "")
@@ -187,7 +187,7 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 }
 
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
-// wiring: sort order is a ConfigView-level fact, pinned once at
+// wiring: sort order is a ConfigView-level fact, asserted once at
 // newConfigView in surface/cli.
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
@@ -196,7 +196,7 @@ func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	assert.Equal(t, []string{"acme"}, got)
 }
 
-// TestDeleteServerCancellationPassesThrough pins the fourth-review P1 for
+// TestDeleteServerCancellationPassesThrough asserts the fourth-review P1 for
 // config delete-server: a cancellation surfacing from the delete must pass
 // through unchanged, not be rewrapped as a generic delete failure.
 func TestDeleteServerCancellationPassesThrough(t *testing.T) {
@@ -219,7 +219,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	assert.True(t, ok, "the server entry must be untouched after a cancelled delete")
 }
 
-// TestConfigDeleteServerDeleteLockTimeoutSurvives pins the exercise-8/9-fixes
+// TestConfigDeleteServerDeleteLockTimeoutSurvives asserts the exercise-8/9-fixes
 // review finding for this command: a classified LOCK_TIMEOUT from the delete
 // keeps its code, retryability, and exit status through the
 // "server config left untouched" wrap.
@@ -241,7 +241,7 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	assert.Contains(t, ce.Message, "server config left untouched")
 }
 
-// TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure pins the
+// TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure asserts the
 // merge-order-under-failure scenario: a notice recorded by an earlier,
 // successful step (a keychain-unreachable degrade during the token delete)
 // rides the error produced when a LATER step (the exec-credential cache

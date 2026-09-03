@@ -58,7 +58,7 @@ func TestResolveCapabilityNoCreateViaManifestReturnsZero(t *testing.T) {
 	assert.Equal(t, runtime.CapabilityRequirement{}, req)
 }
 
-// TestResolveCapabilityNoRequirementTouchesNoNetwork pins the acceptance
+// TestResolveCapabilityNoRequirementTouchesNoNetwork asserts the acceptance
 // bullet directly: a manifest naming a kind without a requirement produces
 // zero capability traffic. ResolveCapability's only I/O is the memoized
 // manifest read; it must never touch the cluster client factory.
@@ -72,7 +72,7 @@ func TestResolveCapabilityNoRequirementTouchesNoNetwork(t *testing.T) {
 	assert.Empty(t, fac.clusterCalls, "resolving a non-Capability kind must touch no network")
 }
 
-// TestResolveCapabilityErrorParity pins that every manifest-shape error
+// TestResolveCapabilityErrorParity asserts that every manifest-shape error
 // ResolveCapability can surface is exactly the VALIDATION error Plan has
 // always produced — same shared parse, same envelope, one stage earlier.
 func TestResolveCapabilityErrorParity(t *testing.T) {
@@ -152,7 +152,7 @@ func TestParseManifestSingleReadStdin(t *testing.T) {
 	assert.Equal(t, 1, src.reads, "stdin must be read exactly once across ResolveCapability and Plan")
 }
 
-// TestParseManifestPathMismatchIsCommandBug pins the memo's defensive
+// TestParseManifestPathMismatchIsCommandBug asserts the memo's defensive
 // assertion: both callers must read the same Input's filename in the same
 // invocation, so a differing path is a command bug, never a re-read.
 func TestParseManifestPathMismatchIsCommandBug(t *testing.T) {

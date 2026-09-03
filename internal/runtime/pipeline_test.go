@@ -243,7 +243,7 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 		"note-a must appear exactly once across stdout+stderr")
 }
 
-// TestRenderEffectTableRendersDryRunTextWarningsToStderr pins the pipeline-
+// TestRenderEffectTableRendersDryRunTextWarningsToStderr asserts the pipeline-
 // owned dry-run text renderer: table/default format renders the
 // action/kind/name/gate text body on stdout, and Effect.Warnings reach the
 // operator via the stderr "# warning:" channel — never duplicated into the
@@ -270,7 +270,7 @@ func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	assert.Equal(t, "# warning: note-a\n", errBuf.String())
 }
 
-// TestRenderEffectWideMatchesTable pins that -o wide renders the dry-run
+// TestRenderEffectWideMatchesTable asserts that -o wide renders the dry-run
 // preview byte-identical to table/default — there is no separate wide body
 // for an Effect preview.
 func TestRenderEffectWideMatchesTable(t *testing.T) {
@@ -293,7 +293,7 @@ func TestRenderEffectWideMatchesTable(t *testing.T) {
 	assert.Contains(t, tableOut.String(), "dry run — re-run with --apply --yes to execute")
 }
 
-// TestDryRunTextDiffLines pins the change-summary content: each Effect.Diff
+// TestDryRunTextDiffLines asserts the change-summary content: each Effect.Diff
 // entry becomes one line, in order.
 func TestDryRunTextDiffLines(t *testing.T) {
 	t.Parallel()
@@ -621,7 +621,7 @@ func TestRunRejectsResultWithBothRawFields(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 }
 
-// TestQuietErrorStillRendersText pins that a quiet stdout format (-o name,
+// TestQuietErrorStillRendersText asserts that a quiet stdout format (-o name,
 // whose stdout is bare identifiers) still surfaces an error on stderr — as
 // text, since name is not json/yaml.
 func TestQuietErrorStillRendersText(t *testing.T) {
@@ -772,7 +772,7 @@ func TestRenderResultRejectsSummaryAndRaw(t *testing.T) {
 	assert.Contains(t, ce.Message, "command bug")
 }
 
-// TestRenderResultShapeMismatchIsCommandBug pins the runtime enforcement of a
+// TestRenderResultShapeMismatchIsCommandBug asserts the runtime enforcement of a
 // Descriptor's declared OutputShape: a command whose Result does not carry
 // the payload its own Shape promises is a command bug, not a silent
 // fallback.
@@ -824,7 +824,7 @@ func TestRenderResultShapeMismatchIsCommandBug(t *testing.T) {
 	}
 }
 
-// TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit pins a
+// TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit asserts a
 // pipeline-wide guarantee: a mutating command whose executor already
 // committed state, but whose returned Result fails shape validation, must
 // still exit non-zero with a rendered diagnostic on stderr — never a silent
@@ -865,7 +865,7 @@ func TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit(t *testing.T) {
 	}
 }
 
-// TestRenderResultShapeTextUntouchedUnderJSONAndYAML pins the coexistence
+// TestRenderResultShapeTextUntouchedUnderJSONAndYAML asserts the coexistence
 // rule: a ShapeText command whose Text is not yet populated must still
 // render its Data envelope unchanged under -o json/-o yaml (and under -o
 // name/-o template, which read Data the same way) — only the table-family
@@ -906,7 +906,7 @@ func TestRenderResultShapeMatchSucceeds(t *testing.T) {
 	assert.Empty(t, errBuf.String())
 }
 
-// TestRenderResultShapeTextRendersUnderWide pins the wide-is-table-family
+// TestRenderResultShapeTextRendersUnderWide asserts the wide-is-table-family
 // rule for ShapeText: -o wide renders exactly the Text, with no separate
 // wide body and no envelope fallback. Without this, a ShapeText command's
 // once-only secret would commit the mutation and then fail to render under
@@ -1025,7 +1025,7 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
 }
 
-// TestRenderResultRawFormatsWarningsToStderr pins the round-3 High-1 fix:
+// TestRenderResultRawFormatsWarningsToStderr asserts the round-3 High-1 fix:
 // raw-output formats (-o name, -o template=...) carry only the named field on
 // stdout — the envelope's warnings key is never emitted. renderResult must
 // mirror each warning to stderr as "# warning: <w>" so they are not silently
@@ -1055,7 +1055,7 @@ func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 	}
 }
 
-// TestRunValidatesOutputFormat pins the -o contract: the closed set of
+// TestRunValidatesOutputFormat asserts the -o contract: the closed set of
 // literals plus template=<go-template>, validated BEFORE the command runs.
 // Anything else is a structured VALIDATION error — never Go template source.
 func TestRunValidatesOutputFormat(t *testing.T) {
@@ -1125,7 +1125,7 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 	}
 }
 
-// TestRunValidatesColor pins the --color contract: "" (omitted), "auto",
+// TestRunValidatesColor asserts the --color contract: "" (omitted), "auto",
 // "always", and "never" are accepted; anything else is a structured
 // VALIDATION error, never a silent fall-through to auto.
 func TestRunValidatesColor(t *testing.T) {
@@ -1174,7 +1174,7 @@ func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
 	assert.Contains(t, ce.Message, `--output="csv"`)
 }
 
-// TestRenderErrFormatAware pins renderErr's format switch: default, table,
+// TestRenderErrFormatAware asserts renderErr's format switch: default, table,
 // wide, name, and template all render the short operator-facing text block
 // to stderr; json and yaml render the structured envelope, each in its own
 // encoding (yaml as YAML, not JSON dressed up as one).
@@ -1218,7 +1218,7 @@ func TestRenderErrFormatAware(t *testing.T) {
 	}
 }
 
-// TestRenderErrRetryableHeader pins the header's retryable marker: a
+// TestRenderErrRetryableHeader asserts the header's retryable marker: a
 // retryable error's header carries ", retryable" after the code; a
 // non-retryable error's does not.
 func TestRenderErrRetryableHeader(t *testing.T) {
@@ -1238,7 +1238,7 @@ type stubTextDetails struct{ lines []string }
 
 func (s stubTextDetails) TextDetails() []string { return s.lines }
 
-// TestRenderErrDetailsBlock pins that a details payload implementing
+// TestRenderErrDetailsBlock asserts that a details payload implementing
 // clierr.TextDetails renders its projected lines after hint/candidates, and
 // that no details payload at all adds no lines.
 func TestRenderErrDetailsBlock(t *testing.T) {
@@ -1258,7 +1258,7 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 	assert.Equal(t, "error (CONFLICT): boom\n", errBuf.String())
 }
 
-// TestRenderErrFallsBackForUnprojectedDetails pins the command-bug defense:
+// TestRenderErrFallsBackForUnprojectedDetails asserts the command-bug defense:
 // a Details value that reached the error through some path other than
 // WithDetails (an Error literal setting the field directly, bypassing the
 // typed setter) renders the neutral fallback line instead of nothing, or a
@@ -1271,7 +1271,7 @@ func TestRenderErrFallsBackForUnprojectedDetails(t *testing.T) {
 	assert.Equal(t, "error (GENERIC): boom\n  "+detailsFallbackLine+"\n", errBuf.String())
 }
 
-// TestRenderErrWarningsDefaultFormat pins the default-format merge: the
+// TestRenderErrWarningsDefaultFormat asserts the default-format merge: the
 // error's warning ride prints as "# warning:" lines ahead of the error text,
 // in the order they were added, never inside the error block itself.
 func TestRenderErrWarningsDefaultFormat(t *testing.T) {
@@ -1282,7 +1282,7 @@ func TestRenderErrWarningsDefaultFormat(t *testing.T) {
 	assert.Equal(t, "# warning: first\n# warning: second\nerror (GENERIC): boom\n", errBuf.String())
 }
 
-// TestRenderErrWarningsEnvelope pins the json/yaml merge: the warning ride
+// TestRenderErrWarningsEnvelope asserts the json/yaml merge: the warning ride
 // lands at the envelope's top-level "warnings" field, never under
 // data.error, so a scripted caller sees it exactly where a success result's
 // Warnings would be.
@@ -1302,7 +1302,7 @@ func TestRenderErrWarningsEnvelope(t *testing.T) {
 	assert.NotContains(t, env.Data.Error, "warnings")
 }
 
-// TestRenderErrNoWarningsAddsNoLines pins the zero-warnings case: no
+// TestRenderErrNoWarningsAddsNoLines asserts the zero-warnings case: no
 // warning ride means no "# warning:" lines and no envelope "warnings" key.
 func TestRenderErrNoWarningsAddsNoLines(t *testing.T) {
 	t.Parallel()
@@ -1330,7 +1330,7 @@ func (s *stubNoticeSource) DrainNotices() []string {
 	return out
 }
 
-// TestRenderErrMergesNoticeSourceAheadOfWarnings pins the merge order: a
+// TestRenderErrMergesNoticeSourceAheadOfWarnings asserts the merge order: a
 // drained NoticeSource notice (recorded earliest) leads the error's own
 // WithWarnings ride, each in its own record order — under both the default
 // text form and the json/yaml envelope.
@@ -1377,7 +1377,7 @@ func TestRenderErrDrainsNoticeSourceWithNoErrorWarnings(t *testing.T) {
 	assert.Empty(t, notices.notices, "drain must be destructive — nothing left to drain a second time")
 }
 
-// TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess pins the success-path
+// TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess asserts the success-path
 // drain for a plain (non-once-only) command: a notice recorded on the
 // invocation's NoticeSource leads Result.Warnings — under the default
 // format it mirrors to stderr ahead of any Result.Warnings entry, and under
@@ -1417,7 +1417,7 @@ func TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess(t *testing.T) {
 	})
 }
 
-// TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat pins the
+// TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat asserts the
 // warning-delivery fix for the raw-output shapes: ShapeBytes (RawBytes) and
 // ShapeExecJSON (Raw) results never had an envelope to carry Warnings, and
 // the RawBytes/Raw branches used to return before the stderr mirror loop
@@ -1453,7 +1453,7 @@ func TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat(t *testing.T) {
 	}
 }
 
-// TestValidateInputStringSlicePerEntry pins MC-6a's validateInput
+// TestValidateInputStringSlicePerEntry asserts MC-6a's validateInput
 // semantics: Required means at least one occurrence; Enum membership is
 // checked on every entry.
 func TestValidateInputStringSlicePerEntry(t *testing.T) {
@@ -1503,7 +1503,7 @@ func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
 	assert.Equal(t, summary, env["summary"])
 }
 
-// TestResultSummaryRequiresTabularData pins the runtime rule that Summary
+// TestResultSummaryRequiresTabularData asserts the runtime rule that Summary
 // rides only over Tabular Data — the JSON-fallback-era pattern of a Summary
 // line papering over non-Tabular Data is a command bug now that the
 // fallback itself is gone.
@@ -1520,7 +1520,7 @@ func TestResultSummaryRequiresTabularData(t *testing.T) {
 	assert.Contains(t, ce.Message, "Summary requires Tabular Data")
 }
 
-// TestResultSummaryPrintsUnderWideToo pins that the Summary annotation line
+// TestResultSummaryPrintsUnderWideToo asserts that the Summary annotation line
 // prints over the table under both table/default AND wide, not table only.
 func TestResultSummaryPrintsUnderWideToo(t *testing.T) {
 	t.Parallel()

@@ -232,7 +232,7 @@ func TestLegacyTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	assert.Equal(t, "cached-tok", cred.Status.Token)
 }
 
-// TestLegacyTokenCacheHitSurfacesLoosePermissionNotice pins that
+// TestLegacyTokenCacheHitSurfacesLoosePermissionNotice asserts that
 // ReadOnlyCachedCred's notice return value (no store receiver exists on the
 // shim's fast path to buffer it on instead) reaches the operator via
 // Result.Warnings on a warm cache hit, exactly like any other warning on an
@@ -544,7 +544,7 @@ func (s *noticeRecordingStore) DrainNotices() []string {
 // when the auto policy falls back to the plaintext file store.
 const keychainUnavailableNotice = "keychain unavailable; credentials will be stored in plaintext"
 
-// TestLegacyTokenStoreNoticeReachesStderr pins the shim's notice delivery on
+// TestLegacyTokenStoreNoticeReachesStderr asserts the shim's notice delivery on
 // success: the bare `token` command has no NoticeSource wired onto
 // IO.Notices, so the shim drains its own store and the first-run
 // keychain-unavailable notice reaches stderr as a "# warning:" line while
@@ -576,7 +576,7 @@ func TestLegacyTokenStoreNoticeReachesStderr(t *testing.T) {
 	assert.Contains(t, errBuf.String(), "# warning: "+keychainUnavailableNotice)
 }
 
-// TestLegacyTokenStoreNoticeRidesFailure pins the failure-path counterpart:
+// TestLegacyTokenStoreNoticeRidesFailure asserts the failure-path counterpart:
 // when the credential work fails after the store recorded a notice, the
 // drained notice rides the error and still reaches stderr as a "# warning:"
 // line ahead of the error text.
@@ -608,7 +608,7 @@ func TestLegacyTokenStoreNoticeRidesFailure(t *testing.T) {
 	assert.Empty(t, out.String(), "a failed credential run must write nothing to stdout")
 }
 
-// TestLegacyTokenProbeWarnRidesLoadFailure pins the probe's loose-permission
+// TestLegacyTokenProbeWarnRidesLoadFailure asserts the probe's loose-permission
 // finding surviving a slow-path failure: the probe's global dedup marks the
 // cache path seen on first check, so the warning has no second chance — a
 // cache miss followed by a broken config.yaml must still carry it on the

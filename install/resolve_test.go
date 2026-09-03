@@ -162,7 +162,7 @@ func TestDryRunWritesNothingOnExistingInstall(t *testing.T) {
 	writeRelease(s, "v1.3.0", false)
 	s.setLatest("v1.3.0")
 	// A TMPDIR of its own, digested with HOME: the real install above cleans up
-	// its own work dir, and pinning a fresh one keeps the dry-run comparison
+	// its own work dir, and using a fresh one keeps the dry-run comparison
 	// about the dry run alone.
 	tmp := t.TempDir()
 	before := digestTree(t, home) + digestTree(t, tmp)
@@ -636,7 +636,7 @@ func TestGhTokenFallback(t *testing.T) {
 }
 
 // The grammar has two executable homes (scripts/check-release-tag and the
-// standalone install.sh); this pins them byte-identical and runs the
+// standalone install.sh); this asserts them byte-identical and runs the
 // conformance table through the guard script too.
 func TestTagGrammarSharedSource(t *testing.T) {
 	t.Parallel()

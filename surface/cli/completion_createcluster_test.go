@@ -63,7 +63,7 @@ func cloudCredServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestMachineConfigPrefixCandidatesStatic pins the compiled-in `<kind>/`
+// TestMachineConfigPrefixCandidatesStatic asserts the compiled-in `<kind>/`
 // prefix layer: served for create cluster's --machine-config when the typed
 // value has no "/" yet, in both space and equals form, and only there.
 func TestMachineConfigPrefixCandidatesStatic(t *testing.T) {
@@ -107,7 +107,7 @@ func TestMachineConfigPrefixCandidatesStatic(t *testing.T) {
 	})
 }
 
-// TestMachineConfigPrefixesServedWithoutNetwork pins the static layer's
+// TestMachineConfigPrefixesServedWithoutNetwork asserts the static layer's
 // position BEFORE the network gate: the prefixes are compiled-in kind-table
 // literals (not server data), so they are served with completion.network
 // off and zero HTTP requests — same doctrine as static enums.
@@ -138,7 +138,7 @@ func TestMachineConfigPrefixesServedWithoutNetwork(t *testing.T) {
 	assert.Zero(t, hits.Load(), "compiled-in prefixes must cost zero requests")
 }
 
-// TestLiveFlagValueMachineConfigNameComposition pins the live `<kind>/partial`
+// TestLiveFlagValueMachineConfigNameComposition asserts the live `<kind>/partial`
 // site: the kind's CRs are listed in fleet-default, server NAME segments are
 // sanitized with the AC-21 charset, and the trusted "kind/" prefix is
 // composed on afterwards.
@@ -202,7 +202,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 	})
 }
 
-// TestLiveFlagValueCloudCredentialCandidates pins the --cloud-credential
+// TestLiveFlagValueCloudCredentialCandidates asserts the --cloud-credential
 // site: ids (secret names) always; display names only when they resolve
 // unambiguously (ResolveCloudCredential's doctrine — a suggestion must never
 // fail with AMBIGUOUS_SELECTION at execution time); non-credential secrets
@@ -299,7 +299,7 @@ func TestLiveCandidatesNodeDriverFlagSitesBypassClusterPreflight(t *testing.T) {
 
 // TestCreateClusterFlagSitesFullCallback drives the real adaptEntry callback
 // through BuildRoot/root.Run under the v2 protocol, mirroring
-// TestRoleValueSiteFullCallback. The network-gate-off sub-tests pin the
+// TestRoleValueSiteFullCallback. The network-gate-off sub-tests assert the
 // split: live sites go empty, while the compiled-in kind prefixes survive.
 // NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
 func TestCreateClusterFlagSitesFullCallback(t *testing.T) {

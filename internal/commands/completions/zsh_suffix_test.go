@@ -73,7 +73,7 @@ _rancher
 	return splitLines(strings.TrimRight(string(out), "\n"))
 }
 
-// TestZshContinuationCandidatesGetEmptySuffix pins the zsh side of the
+// TestZshContinuationCandidatesGetEmptySuffix asserts the zsh side of the
 // nospace handling: candidates whose token ends in "/" (the machine-config
 // `<kind>/` prefix stage) or "=" (the template= output form) must be added
 // with an empty compadd suffix (-S with an empty string) so acceptance does

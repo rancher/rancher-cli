@@ -393,7 +393,7 @@ func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout
 	return out.Bytes(), errOut.Bytes(), runErr
 }
 
-// TestGrantRevokeEnvelope pins the grant/revoke serialization contract from
+// TestGrantRevokeEnvelope asserts the grant/revoke serialization contract from
 // build-root through the runtime pipeline to the rendered JSON envelope for
 // every command/scope combination in the design matrix.
 func TestGrantRevokeEnvelope(t *testing.T) {
@@ -704,7 +704,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 	t.Run("revoke partial failure", func(t *testing.T) {
 		// Three bindings; the second real delete (sorted: prtb-1 < prtb-2 <
 		// prtb-3) is forced to 409. This ensures details.unattempted is
-		// non-empty, pinning the full deleted/failed/unattempted split.
+		// non-empty, asserting the full deleted/failed/unattempted split.
 		opts := &serverOpts{
 			prtbItems: []map[string]any{
 				grBindingItem("p-x", "prtb-1", "rv1", "roleTemplateName", "project-member", "userName", "u-abc"),

@@ -46,7 +46,7 @@ func TestSchemaMergesResolverContract(t *testing.T) {
 	assert.True(t, byName["widgets set"].Flags[0].Required)
 }
 
-// TestSchemaManifestExitCodes pins SE-16: the manifest's NEW exitCodes map
+// TestSchemaManifestExitCodes asserts SE-16: the manifest's NEW exitCodes map
 // carries an exit status for every code in ErrorCodes, matching what clierr
 // itself reports — ErrorCodes stays untouched (additive rule).
 func TestSchemaManifestExitCodes(t *testing.T) {
@@ -167,7 +167,7 @@ func TestValidatePassesWellFormedExtDiscoveryCapability(t *testing.T) {
 	assert.NoError(t, reg.Validate())
 }
 
-// TestValidateRejectsFeatureWithoutTier pins the full-shape validator at the
+// TestValidateRejectsFeatureWithoutTier asserts the full-shape validator at the
 // registry boundary: a half-set value ({Feature set, Tier ""}) reads as
 // absent under IsSet and would otherwise vanish from every gate — it must
 // be a startup rejection instead.
@@ -181,7 +181,7 @@ func TestValidateRejectsFeatureWithoutTier(t *testing.T) {
 	assert.ErrorContains(t, err, "no Tier")
 }
 
-// TestValidateRejectsUnknownOutputPolicyFormat pins the startup rejection for
+// TestValidateRejectsUnknownOutputPolicyFormat asserts the startup rejection for
 // a malformed OutputPolicy declaration: an AllowedFormats entry outside
 // OutputFormats/"template" is a command bug caught at Validate, never a
 // runtime surprise.
@@ -195,7 +195,7 @@ func TestValidateRejectsUnknownOutputPolicyFormat(t *testing.T) {
 	assert.ErrorContains(t, err, `"xml"`)
 }
 
-// TestValidatePassesWellFormedOutputPolicy pins the accepted shape: every
+// TestValidatePassesWellFormedOutputPolicy asserts the accepted shape: every
 // OutputFormats literal plus the "template" stand-in.
 func TestValidatePassesWellFormedOutputPolicy(t *testing.T) {
 	t.Parallel()
@@ -205,7 +205,7 @@ func TestValidatePassesWellFormedOutputPolicy(t *testing.T) {
 	assert.NoError(t, reg.Validate())
 }
 
-// TestOnceOnlyOutputPolicyExcludesName pins the once-only contract every
+// TestOnceOnlyOutputPolicyExcludesName asserts the once-only contract every
 // caller shares via this one constructor: every OutputFormats literal is
 // allowed except "name", which would silently discard a once-only value
 // under -o name's NAME-column-only projection.
@@ -218,7 +218,7 @@ func TestOnceOnlyOutputPolicyExcludesName(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsUnspecifiedShape pins the closed-world OutputShape
+// TestValidateRejectsUnspecifiedShape asserts the closed-world OutputShape
 // contract: the zero value (ShapeUnspecified) is never valid on a registered
 // descriptor — an omitted Shape field must fail at startup, never silently
 // default to Tabular.
@@ -231,7 +231,7 @@ func TestValidateRejectsUnspecifiedShape(t *testing.T) {
 	assert.ErrorContains(t, err, "output shape must be declared")
 }
 
-// TestValidateRejectsDeliveryOnceOnlyOnReadOnly pins Delivery's Mutating-only
+// TestValidateRejectsDeliveryOnceOnlyOnReadOnly asserts Delivery's Mutating-only
 // restriction: a read command promising once-only delivery makes no sense
 // (there is no mutation to have committed) and must fail at startup.
 func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
@@ -243,7 +243,7 @@ func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
 	assert.ErrorContains(t, err, "Mutating")
 }
 
-// TestValidateRejectsUnknownDeliveryValue pins the closed Delivery enum: any
+// TestValidateRejectsUnknownDeliveryValue asserts the closed Delivery enum: any
 // value other than DeliveryOnceOnly (or the zero value) is a startup
 // rejection, matching the CapabilityTier precedent.
 func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
@@ -255,7 +255,7 @@ func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown delivery classification")
 }
 
-// TestValidatePassesDeliveryOnceOnlyOnMutating pins the accepted shape.
+// TestValidatePassesDeliveryOnceOnlyOnMutating asserts the accepted shape.
 func TestValidatePassesDeliveryOnceOnlyOnMutating(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{"create widget": {}})
@@ -264,14 +264,14 @@ func TestValidatePassesDeliveryOnceOnlyOnMutating(t *testing.T) {
 }
 
 // fakeReadWithResolver is a ReadCommand that also implements
-// CapabilityResolver — used to pin the registry's mutual-exclusion rule.
+// CapabilityResolver — used to assert the registry's mutual-exclusion rule.
 type fakeReadWithResolver struct{ fakeRead }
 
 func (f fakeReadWithResolver) ResolveCapability(context.Context, Input) (CapabilityRequirement, error) {
 	return CapabilityRequirement{}, nil
 }
 
-// TestValidateRejectsStaticCapabilityAndResolverTogether pins the
+// TestValidateRejectsStaticCapabilityAndResolverTogether asserts the
 // mutual-exclusion rule: a static requirement and CapabilityResolver on the
 // same command are two sources for one value — the resolver would be dead
 // code that silently loses to static-wins, so it is a startup rejection.
@@ -285,9 +285,9 @@ func TestValidateRejectsStaticCapabilityAndResolverTogether(t *testing.T) {
 	assert.ErrorContains(t, err, "mutually exclusive")
 }
 
-// TestSchemaPrimeCommandProjection is the marker-wording fixture pin: with
+// TestSchemaPrimeCommandProjection asserts the marker wording on a fixture: with
 // no production command carrying a requirement yet, a test-registered prime
-// command pins the manifest fields (prime + learnMore ride together,
+// command asserts the manifest fields (prime + learnMore ride together,
 // projected from the one product-owned URL constant) and the EXACT
 // classification sentence — the static surfaces state a product-tier
 // classification, never a per-server "requires" claim, so an accidental
@@ -353,7 +353,7 @@ func (ssCmd) Execute(context.Context, Input, Prompter) (Result, error) {
 	return Result{}, nil
 }
 
-// TestSchemaPublishesStringSliceFlagType pins MC-6a's manifest contract:
+// TestSchemaPublishesStringSliceFlagType asserts MC-6a's manifest contract:
 // the stringSlice flag type is published verbatim in the schema manifest.
 func TestSchemaPublishesStringSliceFlagType(t *testing.T) {
 	t.Parallel()
@@ -388,7 +388,7 @@ func (c exitDeclCmd) Execute(_ context.Context, _ Input, _ Prompter) (Result, er
 	return Result{Kind: "probe", Data: probeTabularData{Probe: "ok"}}, nil
 }
 
-// TestValidateSuccessExitCodes pins the declaration invariant: zero exactly
+// TestValidateSuccessExitCodes asserts the declaration invariant: zero exactly
 // once; additional values positive, unique, and disjoint from error exits.
 func TestValidateSuccessExitCodes(t *testing.T) {
 	t.Parallel()
@@ -420,7 +420,7 @@ func TestValidateSuccessExitCodes(t *testing.T) {
 	}
 }
 
-// TestSchemaCommandGates pins the per-command gates field (Linux acceptance
+// TestSchemaCommandGates asserts the per-command gates field (Linux acceptance
 // F6): the manifest states each command's unconditional gate flags instead
 // of leaving them inferable from commandType/destructive convention.
 func TestSchemaCommandGates(t *testing.T) {

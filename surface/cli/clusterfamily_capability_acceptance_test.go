@@ -20,7 +20,7 @@ import (
 // gate on a STATIC Capability requirement authored directly on a bespoke
 // command's Descriptor, with no backing kind row underneath — the case the
 // axis was built for but the oidcclient acceptance coverage (a kind-row
-// Capability) never exercises. It pins the same four detector outcomes live
+// Capability) never exercises. It asserts the same four detector outcomes live
 // through the pipeline on `cluster set-autoscaling`.
 
 // clusterFamilyAcceptanceServer serves /rancherversion, the
@@ -69,12 +69,12 @@ func clusterAutoscalingFeatureObj(prime, defaultVal bool) string {
 		"status":{"prime":%t,"default":%t}}`, prime, defaultVal)
 }
 
-// TestClusterFamilyCapabilityFourOutcomesLive pins the four detector
+// TestClusterFamilyCapabilityFourOutcomesLive asserts the four detector
 // outcomes live through runtime.Run on a bespoke command carrying a static
 // Capability literal (cluster set-autoscaling): proceed and unknown both
 // reach the target GET, disabled and PRIME_REQUIRED both refuse before any
 // target request — the same shape TestOIDCClientCapabilityFourOutcomesLive
-// pins for a kind-row Capability.
+// asserts for a kind-row Capability.
 func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	root, err := BuildRoot("v-test")
@@ -151,7 +151,7 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	})
 }
 
-// TestClusterScaleCarriesNoCapability pins the family's proof-of-both-cases
+// TestClusterScaleCarriesNoCapability asserts the family's proof-of-both-cases
 // requirement: `cluster scale` — the community verb sitting beside the four
 // Prime-gated ones in the SAME group — carries no Capability requirement at
 // all, so it never consults the detector regardless of server edition.

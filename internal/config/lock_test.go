@@ -178,7 +178,7 @@ func TestSetLockHookForTestFiresWhileHeld(t *testing.T) {
 	assert.True(t, fired)
 }
 
-// TestWithLockCancellationUnblocksWaits pins the review finding: Ctrl-C
+// TestWithLockCancellationUnblocksWaits asserts the review finding: Ctrl-C
 // (context cancellation) must abort BOTH waits promptly — the in-process
 // semaphore wait and the cross-process flock wait — and surface as the
 // caller's own cancellation, not as a lock timeout.
@@ -252,7 +252,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 	})
 }
 
-// TestWithLockPreCanceledContextNeverRunsFn pins the re-review P1: when the
+// TestWithLockPreCanceledContextNeverRunsFn asserts the re-review P1: when the
 // caller's context is already canceled, both acquisition select arms are
 // ready and Go may pick the semaphore send — fn must still never run, with
 // or without the flock (the env opt-out path has no later context check),

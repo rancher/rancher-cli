@@ -37,7 +37,7 @@ func TestCreateResourceEntryIsNonBareAndImplementsCapabilityResolver(t *testing.
 	t.Fatal("'create resource' entry not found in buildEntries")
 }
 
-// TestTokenEntryIsMarkedBare pins that the top-level "token" entry has
+// TestTokenEntryIsMarkedBare asserts that the top-level "token" entry has
 // bare: true, so adaptEntry never calls resolveDeps before legacyTokenCmd.Execute
 // and a broken config.yaml cannot block a warm exec-credential cache hit.
 func TestTokenEntryIsMarkedBare(t *testing.T) {
@@ -52,7 +52,7 @@ func TestTokenEntryIsMarkedBare(t *testing.T) {
 	t.Fatal("'token' entry not found in buildEntries")
 }
 
-// TestSkillEntriesAreMarkedBare pins that every entry in the "skill" group has
+// TestSkillEntriesAreMarkedBare asserts that every entry in the "skill" group has
 // bare: true, so adaptEntry never calls resolveDeps on their action path.
 func TestSkillEntriesAreMarkedBare(t *testing.T) {
 	t.Parallel()

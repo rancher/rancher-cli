@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestLivePositionalDeleteUserCandidates pins the management branch case for
+// TestLivePositionalDeleteUserCandidates asserts the management branch case for
 // the user kind: `delete user <TAB>` lists management.cattle.io/v3 Users from
 // the local cluster, excluding system accounts, matching the grant/revoke
 // subject candidate source.
@@ -30,7 +30,7 @@ func TestLivePositionalDeleteUserCandidates(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
 
-// TestLivePositionalDeleteUserTokenBoundary pins the management-token
+// TestLivePositionalDeleteUserTokenBoundary asserts the management-token
 // boundary: missing token or exec-cred-only (IDOnly) capability cannot
 // authorize the management user list — nil, with ZERO requests.
 func TestLivePositionalDeleteUserTokenBoundary(t *testing.T) {
@@ -85,7 +85,7 @@ func TestLivePositionalPatchUserCandidates(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
 
-// TestLivePositionalInspectUserCandidates pins the third inspect positional
+// TestLivePositionalInspectUserCandidates asserts the third inspect positional
 // exception: `inspect user <TAB>` routes through the same "user" kind
 // branch get/patch/delete already use — ids only, system accounts excluded.
 func TestLivePositionalInspectUserCandidates(t *testing.T) {

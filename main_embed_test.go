@@ -25,7 +25,7 @@ func treeMap(t *testing.T, fsys fs.FS) map[string]string {
 	return m
 }
 
-// TestEmbeddedSkillMatchesDisk pins embed == skills/rancher/: complete
+// TestEmbeddedSkillMatchesDisk asserts embed == skills/rancher/: complete
 // relative-path and byte equality, both directions.
 func TestEmbeddedSkillMatchesDisk(t *testing.T) {
 	sub, err := fs.Sub(skillFS, "skills/rancher")

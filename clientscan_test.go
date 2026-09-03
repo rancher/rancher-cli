@@ -189,7 +189,7 @@ func scanSnippet(t *testing.T, path, src string) []string {
 	return scanClientConstruction(fset, path, f)
 }
 
-// TestClientScanFixtures pins the scanner's shape rules from source
+// TestClientScanFixtures asserts the scanner's shape rules from source
 // snippets, so the whole-tree test below and this table cannot drift.
 func TestClientScanFixtures(t *testing.T) {
 	t.Parallel()
@@ -242,7 +242,7 @@ func TestClientScanFixtures(t *testing.T) {
 	}
 }
 
-// TestClientScanAllowlistIsExact pins that the allowlisted files may build
+// TestClientScanAllowlistIsExact asserts that the allowlisted files may build
 // clients and nothing else in their packages may.
 func TestClientScanAllowlistIsExact(t *testing.T) {
 	t.Parallel()
@@ -270,7 +270,7 @@ func TestNoClientConstructionOutsideHTTPXAndKube(t *testing.T) {
 	}
 }
 
-// TestClientScanReportsOneViolationPerSite pins that a single offending
+// TestClientScanReportsOneViolationPerSite asserts that a single offending
 // site is reported once even though more than one rule can reach it.
 func TestClientScanReportsOneViolationPerSite(t *testing.T) {
 	t.Parallel()

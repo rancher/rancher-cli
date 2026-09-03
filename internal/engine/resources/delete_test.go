@@ -149,7 +149,7 @@ func TestDeleteNotFoundSurfacesCleanly(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
-// TestDeleteNotFoundCurated pins the curated NOT_FOUND shape: the dynamic client
+// TestDeleteNotFoundCurated asserts the curated NOT_FOUND shape: the dynamic client
 // now produces "<kind> not found: <name>"; the fake simulates that.
 func TestDeleteNotFoundCurated(t *testing.T) {
 	t.Parallel()
@@ -165,7 +165,7 @@ func TestDeleteNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
-// TestDeleteNonNotFoundPassesThrough pins that a non-NOT_FOUND error from the
+// TestDeleteNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the
 // client (e.g. RBAC) reaches the caller unchanged without re-wrapping.
 func TestDeleteNonNotFoundPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -179,7 +179,7 @@ func TestDeleteNonNotFoundPassesThrough(t *testing.T) {
 	assert.Equal(t, "forbidden", ce.Message)
 }
 
-// TestDeleteDryRunNotFoundCurated pins the TOCTOU path: when Get succeeds but
+// TestDeleteDryRunNotFoundCurated asserts the TOCTOU path: when Get succeeds but
 // the dry-run delete returns a NOT_FOUND (deleted between Get and dry-run),
 // the dynamic client curates it; the fake simulates that pre-curated shape.
 func TestDeleteDryRunNotFoundCurated(t *testing.T) {
@@ -199,7 +199,7 @@ func TestDeleteDryRunNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
-// TestDeleteDryRunNotFoundWithHintPassesThrough pins that an already-curated
+// TestDeleteDryRunNotFoundWithHintPassesThrough asserts that an already-curated
 // dry-run NOT_FOUND (one that already carries a hint) passes through verbatim.
 func TestDeleteDryRunNotFoundWithHintPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -273,7 +273,7 @@ func TestDeleteManagementNamespacedRequiresCluster(t *testing.T) {
 	assert.Equal(t, "c-abc", okClient.deletes[0].ns, "dry-run delete uses the resolved namespace")
 }
 
-// TestDeleteExecPhaseNotFoundCurated pins the post-confirmation TOCTOU path:
+// TestDeleteExecPhaseNotFoundCurated asserts the post-confirmation TOCTOU path:
 // the object is deleted between the user's confirmation and the real execute
 // call; the dynamic client curates the NOT_FOUND; the fake simulates that.
 func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
@@ -298,7 +298,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get pods --cluster 'c-abc'", ce.Hint)
 }
 
-// TestDeleteExecPhaseNotFoundWithHintPassesThrough pins that an already-curated
+// TestDeleteExecPhaseNotFoundWithHintPassesThrough asserts that an already-curated
 // exec-phase NOT_FOUND (one that already carries a hint) passes through unchanged.
 func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -323,7 +323,7 @@ func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
 }
 
-// TestDeleteCarriesRowCascadeWarning pins the S-10 exercise fix, table-row
+// TestDeleteCarriesRowCascadeWarning asserts the S-10 exercise fix, table-row
 // form: a kind whose row declares DeleteCascadeWarning gets that advisory in
 // its generic delete Effect (gitrepo is the first user), and rows without
 // one stay warning-free.
@@ -348,7 +348,7 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	assert.Empty(t, eff2.Warnings, "a row without DeleteCascadeWarning must not grow one")
 }
 
-// TestWaitStalledScopedToOptInKinds pins the round-3 review fix: the
+// TestWaitStalledScopedToOptInKinds asserts the round-3 review fix: the
 // Stalled=True fast-fail fires only for rows with WaitFailsOnStalled
 // (fleet's kstatus kinds), never for kinds whose controllers may use
 // Stalled transiently.
@@ -376,7 +376,7 @@ func TestWaitStalledScopedToOptInKinds(t *testing.T) {
 	})
 }
 
-// TestWaitFlagWiredFromKindRow pins the row->waitFor plumbing: gitrepo,
+// TestWaitFlagWiredFromKindRow asserts the row->waitFor plumbing: gitrepo,
 // bundle, and fleet-cluster opt in; the common Ready-waiting kinds do not.
 func TestWaitFlagWiredFromKindRow(t *testing.T) {
 	t.Parallel()
@@ -388,7 +388,7 @@ func TestWaitFlagWiredFromKindRow(t *testing.T) {
 	}
 }
 
-// TestDeleteDescribeInheritsCapability pins the requirement-inheritance
+// TestDeleteDescribeInheritsCapability asserts the requirement-inheritance
 // rule: a kind row's Capability flows unchanged into the generated delete
 // command's Descriptor.
 func TestDeleteDescribeInheritsCapability(t *testing.T) {

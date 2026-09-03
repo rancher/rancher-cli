@@ -1,6 +1,6 @@
 # Hermetic and network-free by construction: shell completion never touches
 # the server. Script emission is a unit-level golden concern (byte-exact) —
-# this only pins the substrings a real .bashrc source relies on.
+# this only asserts the substrings a real .bashrc source relies on.
 exec rancher completion bash
 stdout 'generate-shell-completion'
 stdout 'urfave/cli'
@@ -12,7 +12,7 @@ stderr 'error \(VALIDATION\):'
 # looks only at the final argument). Default urfave suggestions and our
 # alias-aware override both arrive as "name:usage" lines — anchor on the name
 # prefix, never a whole line (urfave-owned ordering/usage text is not ours to
-# pin exactly).
+# assert exactly).
 exec rancher get --generate-shell-completion
 stdout '(?m)^pod:'
 stdout '(?m)^po:'

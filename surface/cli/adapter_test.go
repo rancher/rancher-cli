@@ -51,7 +51,7 @@ func (primePingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (r
 	return runtime.Result{Kind: "Pong"}, nil
 }
 
-// TestPrimeDescriptionMarksHelpWithoutTouchingUsage pins the normal --help
+// TestPrimeDescriptionMarksHelpWithoutTouchingUsage asserts the normal --help
 // seam: a Prime requirement sets urfave's Description field (rendered in the
 // DESCRIPTION: block by urfave's own default help template) and leaves Usage
 // (which feeds the TOC, the manifest, and the command card's usage line)
@@ -106,7 +106,7 @@ func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 	assert.NotContains(t, out.String(), `"Pong"`, "execution must never reach the command")
 }
 
-// TestArgsUsageRendersRequiredAndOptionalArgs pins PS-9's helper: required
+// TestArgsUsageRendersRequiredAndOptionalArgs asserts PS-9's helper: required
 // Args render "<name>", optional Args render "[name]", space-joined in
 // declared order — the SAME Descriptor.Args the manifest publishes, so help
 // text cannot drift from schema. Args with a non-empty Enum render the
@@ -130,7 +130,7 @@ func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
 	}))
 }
 
-// TestAdaptSetsArgsUsageFromDescriptorArgs pins the Adapt wiring: the urfave
+// TestAdaptSetsArgsUsageFromDescriptorArgs asserts the Adapt wiring: the urfave
 // ArgsUsage field is derived from the same Descriptor.Args the manifest
 // already publishes.
 func TestAdaptSetsArgsUsageFromDescriptorArgs(t *testing.T) {
@@ -264,7 +264,7 @@ func (c *sliceEchoCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 	return runtime.Result{Kind: "Echo", Data: emptyTabularData{}}, nil
 }
 
-// TestAdaptedStringSliceFlagRoundTrip pins MC-6a/MC-5a through the real
+// TestAdaptedStringSliceFlagRoundTrip asserts MC-6a/MC-5a through the real
 // urfave adapter: a stringSlice descriptor becomes a StringSliceFlag whose
 // occurrences arrive ordered and NEVER comma-split, and IsSet reports flag
 // presence for tri-state booleans.

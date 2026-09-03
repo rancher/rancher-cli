@@ -358,7 +358,7 @@ func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 // still fail loud with the typed CodeGeneric error — the list-degrade
 // behavior above applies only to the no-name-arg list path.
 // TestNewGetCRTPlaceholderGuardTable already exercises this exhaustively
-// over all seven guarded fields; this test pins the same contract narrowly
+// over all seven guarded fields; this test asserts the same contract narrowly
 // so a future change to the list path can't accidentally soften the
 // named-get path without a dedicated test catching it.
 func TestNewGetCRTNamedGetOnBadRowStaysStrict(t *testing.T) {
@@ -402,7 +402,7 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 	assert.Equal(t, "", eff.Target)
 }
 
-// TestNewGetCRTDescribeMirrorsGenericGet pins the schema-parity contract
+// TestNewGetCRTDescribeMirrorsGenericGet asserts the schema-parity contract
 // (finding 6): the override's Descriptor must be STRUCT-EQUAL to what the
 // LIVE resources.NewGet(k, ...) generates for this row — not to a
 // hand-duplicated literal that can silently drift out of sync with the

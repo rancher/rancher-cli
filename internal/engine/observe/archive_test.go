@@ -119,7 +119,7 @@ type failingWriter struct{ err error }
 
 func (fw failingWriter) Write([]byte) (int, error) { return 0, fw.err }
 
-// TestArchiveWriterRemovesFileOnWriteFailure pins the O_EXCL cleanup: a
+// TestArchiveWriterRemovesFileOnWriteFailure asserts the O_EXCL cleanup: a
 // failure anywhere on the write path (gzip buffers small writes, so the
 // injected failure may surface from Add or only once Close flushes) must
 // not leave a truncated file behind, since that would block every retry at

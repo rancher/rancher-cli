@@ -198,7 +198,7 @@ func TestUsageProjectUnknownProjectErrors(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
-// TestUsageProjectEmptyMembersReturnsEmptyAggregate pins the empty-project
+// TestUsageProjectEmptyMembersReturnsEmptyAggregate asserts the empty-project
 // consistency decision (get's behavior wins): an empty member set is a valid
 // empty result, not an error — a typo'd project name already fails loudly at
 // ResolveProject with NOT_FOUND, so an existing-but-empty project legitimately

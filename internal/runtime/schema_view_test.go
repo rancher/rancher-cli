@@ -38,7 +38,7 @@ func readOnlyTOCManifest() Manifest {
 	}
 }
 
-// TestTOCViewBareMirrorsTheTOC pins the spec'd bare TOC JSON shape:
+// TestTOCViewBareMirrorsTheTOC asserts the spec'd bare TOC JSON shape:
 // header facts, groups with name+usage entries, kind NAMES only, the
 // global exit map — and none of the full-manifest sections.
 func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
@@ -86,7 +86,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	}
 }
 
-// TestTOCViewFilteredOmitsBareOnlyFields pins the spec'd conditionality: a filtered
+// TestTOCViewFilteredOmitsBareOnlyFields asserts the spec'd conditionality: a filtered
 // selection has no kinds, no kindCount, no globalExitCodes — its text
 // header renders a match count and no exit strip.
 func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
@@ -110,7 +110,7 @@ func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
 	assert.Equal(t, true, got["readOnly"])
 }
 
-// TestTOCViewNameRows pins -o name: unchanged command-name rows.
+// TestTOCViewNameRows asserts -o name: unchanged command-name rows.
 func TestTOCViewNameRows(t *testing.T) {
 	t.Parallel()
 	v := newTOCView(readOnlyTOCManifest(), true)
@@ -119,7 +119,7 @@ func TestTOCViewNameRows(t *testing.T) {
 		"-o name is unchanged: EVERY selection command, generated included")
 }
 
-// TestCardViewFlattensTheCommand pins the spec'd card shape: data IS the command —
+// TestCardViewFlattensTheCommand asserts the spec'd card shape: data IS the command —
 // fields at top level, no commands array — plus globalExitCodes and the
 // kindViewHint mirror of the text card's collision pointer.
 func TestCardViewFlattensTheCommand(t *testing.T) {
@@ -143,7 +143,7 @@ func TestCardViewFlattensTheCommand(t *testing.T) {
 	assert.Equal(t, []any{"RANCHER_CLI_READONLY"}, got["readOnlySources"])
 }
 
-// TestCardViewReadOnlyFalseIsPresent pins that readOnly: false is present in
+// TestCardViewReadOnlyFalseIsPresent asserts that readOnly: false is present in
 // the card JSON even when inactive (unconditional bool, mirrors tocJSON).
 func TestCardViewReadOnlyFalseIsPresent(t *testing.T) {
 	t.Parallel()
@@ -158,7 +158,7 @@ func TestCardViewReadOnlyFalseIsPresent(t *testing.T) {
 	assert.NotContains(t, got, "readOnlySources")
 }
 
-// TestCardViewOmitsEmptyKindHint pins that a non-colliding selector adds
+// TestCardViewOmitsEmptyKindHint asserts that a non-colliding selector adds
 // no kindViewHint key at all.
 func TestCardViewOmitsEmptyKindHint(t *testing.T) {
 	t.Parallel()
@@ -170,7 +170,7 @@ func TestCardViewOmitsEmptyKindHint(t *testing.T) {
 	assert.NotContains(t, got, "kindViewHint")
 }
 
-// TestCardViewNameRows pins -o name for a command selection: one row, the
+// TestCardViewNameRows asserts -o name for a command selection: one row, the
 // command's name.
 func TestCardViewNameRows(t *testing.T) {
 	t.Parallel()
@@ -179,7 +179,7 @@ func TestCardViewNameRows(t *testing.T) {
 	assert.Equal(t, [][]string{{"get pod"}}, v.Rows())
 }
 
-// TestKindViewMarshalsTheRowOnly pins the spec'd kind view: a kind selection's data
+// TestKindViewMarshalsTheRowOnly asserts the spec'd kind view: a kind selection's data
 // is the kind row — verb STATE included, per-verb flags deliberately not
 // (the two-step: schema <kind> then schema <verb> <kind>).
 func TestKindViewMarshalsTheRowOnly(t *testing.T) {
@@ -195,7 +195,7 @@ func TestKindViewMarshalsTheRowOnly(t *testing.T) {
 	assert.Equal(t, [][]string{{"pod"}}, newKindView(Manifest{}, k).Rows())
 }
 
-// TestKindViewReadOnlyPropagates pins readOnly propagation from the manifest
+// TestKindViewReadOnlyPropagates asserts readOnly propagation from the manifest
 // into the kind JSON: true propagates with sources; false is unconditional.
 func TestKindViewReadOnlyPropagates(t *testing.T) {
 	t.Parallel()
@@ -219,7 +219,7 @@ func TestKindViewReadOnlyPropagates(t *testing.T) {
 	assert.NotContains(t, got2, "readOnlySources")
 }
 
-// TestTOCGeneratedCountMatchesTheText pins the mirror as an assertion,
+// TestTOCGeneratedCountMatchesTheText asserts the mirror as an assertion,
 // not a golden eyeball (plan-review round 4): the JSON's
 // generatedCommandCount equals the N the bare text TOC actually prints
 // in its collapsed line, on the same manifest.

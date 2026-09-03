@@ -120,7 +120,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	// machine lookup, and the member list. Each leg writes only its own
 	// variables; a non-nil leg error is the caller's cancellation, which
 	// aborts the group. The registration fetch stays AFTER the join: it
-	// needs the provisioning leg's imported verdict, and — pinned by the
+	// needs the provisioning leg's imported verdict, and — asserted by the
 	// cancellation tests — a join-token fetch must never be issued once the
 	// caller has gone away. Warnings are appended in a fixed order after
 	// the join so output stays deterministic.
@@ -665,7 +665,7 @@ type registration struct {
 	// apply to this cluster's creation mode: an imported cluster
 	// (provisioning spec.rkeConfig absent) has no node-join workflow, so
 	// nodeCommand/insecureNodeCommand are annotated rather than dropped —
-	// the JSON contract is additive and consumers may pin field presence.
+	// the JSON contract is additive and consumers may rely on field presence.
 	// Never names a field the payload does not carry.
 	NotApplicable []string `json:"notApplicable,omitempty"`
 	// Withheld is true when --registration was absent. Message explains why

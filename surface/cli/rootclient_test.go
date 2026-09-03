@@ -146,7 +146,7 @@ func (i argsInput) Args() []string          { return i.args }
 // rootClient for the registration fetch — against one httptest server. Both
 // production adapters rebuild their errors from strings (provider.mapErr;
 // rootClient.GetJSON's clierr formatting), so the context sentinel never
-// survives the chain: this pins that a canceled optional lookup still
+// survives the chain: this asserts that a canceled optional lookup still
 // propagates as the command's error, degrades nothing to a warning, and
 // issues no follow-on request (counted server-side).
 func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
@@ -225,7 +225,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 	})
 }
 
-// TestInspectClusterRootTimeoutDegradesRegistration pins the OTHER side of
+// TestInspectClusterRootTimeoutDegradesRegistration asserts the OTHER side of
 // the cancellation boundary through the production root client: the root
 // http.Client's own request timeout (rootTimeout) expiring while the CALLER's
 // context is still active is an ordinary availability failure, not a

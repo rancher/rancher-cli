@@ -97,7 +97,7 @@ func TestFlagNameCompletionSingleDash(t *testing.T) {
 	assert.Contains(t, tokens, "--help")
 }
 
-// TestFlagNameCompletionAliasPairing pins that -h and --help are correctly
+// TestFlagNameCompletionAliasPairing asserts that -h and --help are correctly
 // paired: -h present under `-<TAB>`, --help present under `--<TAB>`.
 func TestFlagNameCompletionAliasPairing(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -178,7 +178,7 @@ func TestSubcommandCompletionConfigGroup(t *testing.T) {
 	assert.Contains(t, got, "set-completion")
 }
 
-// TestFlagNameCompletionFormatColonSeparated pins the "name:usage" line format:
+// TestFlagNameCompletionFormatColonSeparated asserts the "name:usage" line format:
 // a flag with non-empty usage must be emitted as "token:usage" (colon-separated),
 // and a subcommand with non-empty usage must be emitted as "name:usage".
 // This guards against format drift that would silently break shell-script parsing.
@@ -421,7 +421,7 @@ func TestImagesByFlagValueCompletion(t *testing.T) {
 	assert.Empty(t, extractTokens(got), "images --match <TAB> is free text, no suggestions (IM-23)")
 }
 
-// TestFlagNameCompletionIncludeSystem pins the no-silent-no-op generation
+// TestFlagNameCompletionIncludeSystem asserts the no-silent-no-op generation
 // site: --include-system is offered on `get users` (SystemFilter kind), but
 // absent on `get pods` (no SystemFilter) and on `delete user` (the shared
 // getFlags core, reused by delete/patch, must never carry it).

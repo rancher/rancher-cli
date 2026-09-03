@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestConfigEditMissingEditorIsValidationNamingBothVars pins the
+// TestConfigEditMissingEditorIsValidationNamingBothVars asserts the
 // non-Windows validation-error path: with neither $VISUAL nor $EDITOR
 // set, config edit must fail naming both vars. Build-tagged !windows
 // because defaultEditor() always returns "notepad" on Windows
@@ -33,7 +33,7 @@ func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 	assert.Contains(t, ce.Message, config.FilePath(dir))
 }
 
-// TestDefaultEditorEmptyOffWindows pins the non-Windows contract: no
+// TestDefaultEditorEmptyOffWindows asserts the non-Windows contract: no
 // baked-in editor default, so resolveEditor's VISUAL/EDITOR validation
 // path (tested above) stays reachable. The "notepad" value is the
 // Windows build's concern (editor_windows.go), exercised by the Windows

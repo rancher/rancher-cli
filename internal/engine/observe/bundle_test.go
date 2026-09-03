@@ -76,7 +76,7 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 	assert.Contains(t, res.Text, fmt.Sprintf("skipped: %d, errors: %d", data.Skipped, data.Errors))
 }
 
-// TestFormatIECBytes pins the IEC byte formatter's exact output at each unit
+// TestFormatIECBytes asserts the IEC byte formatter's exact output at each unit
 // boundary — the raw byte count stays in Data for -o json; this is only the
 // operator-facing text rendering.
 func TestFormatIECBytes(t *testing.T) {
@@ -102,7 +102,7 @@ func TestFormatIECBytes(t *testing.T) {
 	}
 }
 
-// TestRenderBundleText pins support-bundle's exact default-format text,
+// TestRenderBundleText asserts support-bundle's exact default-format text,
 // base case and the skipped/errors conditional line.
 func TestRenderBundleText(t *testing.T) {
 	t.Parallel()

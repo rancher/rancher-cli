@@ -19,7 +19,7 @@ import (
 
 // This file is the real-kind-table acceptance coverage for the capability
 // gate, exercised through its first Capability-bearing kind row: oidcclient
-// (feature "oidc-provider"). It pins the four
+// (feature "oidc-provider"). It asserts the four
 // detector outcomes live through the pipeline on a GENERATED verb (get
 // oidcclient), and PRIME_REQUIRED before Plan on `create resource -f` with an
 // oidcclient manifest — the coverage rule's gating half going non-vacuous.
@@ -75,7 +75,7 @@ func oidcErrEnvelope(t *testing.T, stdout, stderr []byte) grErrEnvelope {
 	return env
 }
 
-// TestOIDCClientCapabilityFourOutcomesLive pins the four detector outcomes
+// TestOIDCClientCapabilityFourOutcomesLive asserts the four detector outcomes
 // live through runtime.Run on a generated verb (get oidcclient): proceed
 // (target request runs), unknown (target request still runs — the
 // unknown-never-blocks rule), disabled (VALIDATION, zero target requests),
@@ -179,7 +179,7 @@ func oidcClientManifest(t *testing.T) string {
 	return path
 }
 
-// TestCreateResourceOIDCClientManifestPrimeRequired pins the create-gating
+// TestCreateResourceOIDCClientManifestPrimeRequired asserts the create-gating
 // seam's real-table acceptance: `create resource -f` with an oidcclient
 // manifest resolves the row's Capability requirement via
 // createCmd.ResolveCapability and answers PRIME_REQUIRED BEFORE Plan runs —
@@ -208,7 +208,7 @@ func TestCreateResourceOIDCClientManifestPrimeRequired(t *testing.T) {
 	assert.Zero(t, hits.Load(), "create resource -f must make zero target requests before a PRIME_REQUIRED refusal")
 }
 
-// TestCreateResourceOIDCClientManifestDisabledAfterEnabled pins the
+// TestCreateResourceOIDCClientManifestDisabledAfterEnabled asserts the
 // disabled-after-enabled orphan case: a feature that was on and is now
 // explicitly off (spec.value=false) still serves its CRD — a create would
 // otherwise commit against a controller that stopped reconciling. The

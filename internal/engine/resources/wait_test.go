@@ -299,7 +299,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 	})
 }
 
-// TestGetClusterBareWaitAppliesRowDefault is IC-11's command-boundary pin:
+// TestGetClusterBareWaitAppliesRowDefault asserts IC-11 at the command boundary:
 // a bare `get cluster <name> --wait` (no --for) applies the row's
 // WaitDefault end to end — the command resolves the expression from the
 // kind row, parses it, and polls until the Ready condition flips. The
@@ -426,7 +426,7 @@ func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
 	})
 }
 
-// TestWaitTimeoutConditionMessageSanitized pins defense-in-depth: a condition
+// TestWaitTimeoutConditionMessageSanitized asserts defense-in-depth: a condition
 // message bearing control characters (e.g. an ANSI escape or a Unicode bidi
 // override) is stripped before it enters the timeout error. The sink is the
 // JSON error envelope (which escapes control chars anyway), so this is
@@ -492,7 +492,7 @@ func multiConditionObj(conds ...[3]string) *unstructured.Unstructured {
 	}}
 }
 
-// TestWaitForFailsFastOnStalled pins the Fleet GitRepo shape from live
+// TestWaitForFailsFastOnStalled asserts the Fleet GitRepo shape from live
 // exercise 8: a failed clone leaves Ready=True AND Stalled=True, and the
 // wait must fail with the Stalled message instead of declaring the Ready
 // condition satisfied.
@@ -560,7 +560,7 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 	})
 }
 
-// TestWaitForSkipsUnsettledGenerations pins the exercise-11 settle gate: an
+// TestWaitForSkipsUnsettledGenerations asserts the exercise-11 settle gate: an
 // object whose status.observedGeneration lags metadata.generation carries
 // conditions from an older spec — the wait must keep polling instead of
 // trusting a satisfied condition or a Stalled abort on it.
@@ -594,7 +594,7 @@ func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 	})
 }
 
-// TestWaitTimeoutWithUnsettledObservationShowsCaveat pins the round-2 High-1
+// TestWaitTimeoutWithUnsettledObservationShowsCaveat asserts the round-2 High-1
 // caveat: when a kstatus-opted (failOnStalled=true) wait times out and the
 // only observation had a lagging observedGeneration, the timeout message must
 // include the generation caveat so operators know the reported state is stale.
@@ -618,7 +618,7 @@ func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
 	})
 }
 
-// TestWaitForUnsettledUnstalledSucceedsImmediately pins that the generation
+// TestWaitForUnsettledUnstalledSucceedsImmediately asserts that the generation
 // staleness gate is scoped to failOnStalled=true kinds. A non-opted kind
 // (failOnStalled=false) must check waitSatisfied on every poll regardless of
 // observedGeneration lag — so a permanently-unsettled object whose condition
@@ -656,7 +656,7 @@ func TestSettledAbsentFieldIsSettled(t *testing.T) {
 	assert.True(t, settled(obj), "absent observedGeneration (omitempty zero) must be treated as settled")
 }
 
-// TestFreshSuccessWarningElapsedFormatting pins the round-2 Low-4 edge cases:
+// TestFreshSuccessWarningElapsedFormatting asserts the round-2 Low-4 edge cases:
 // a sub-second-old object and a future creationTimestamp (server/client clock
 // skew) both render "immediately after creation" instead of "0s after creation"
 // or a negative duration.
@@ -686,7 +686,7 @@ func TestFreshSuccessWarningElapsedFormatting(t *testing.T) {
 	})
 }
 
-// TestFreshSuccessWarning pins the advisory covering the window generation
+// TestFreshSuccessWarning asserts the advisory covering the window generation
 // tracking cannot close (exercise-11 S-09.3): a kstatus controller may
 // flip Stalled only after retry backoff, so a success on a seconds-old
 // object warns; an aged object does not.

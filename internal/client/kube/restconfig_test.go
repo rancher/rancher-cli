@@ -113,7 +113,7 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 	})
 }
 
-// TestHTTPClientDoesNotMutateDefaultClient pins that the process-global
+// TestHTTPClientDoesNotMutateDefaultClient asserts that the process-global
 // default client never receives this policy, whatever client-go hands
 // back for a bare config: the returned client is a distinct object with
 // the policy, and the global's field is untouched. Not parallel: it reads
@@ -129,7 +129,7 @@ func TestHTTPClientDoesNotMutateDefaultClient(t *testing.T) {
 	assert.Nil(t, http.DefaultClient.CheckRedirect, "the shared default client must be untouched")
 }
 
-// TestHTTPClientCarriesPolicyWithCustomTransport pins that a config with a
+// TestHTTPClientCarriesPolicyWithCustomTransport asserts that a config with a
 // CA and timeout gets a dedicated client that still carries the policy and
 // the timeout.
 func TestHTTPClientCarriesPolicyWithCustomTransport(t *testing.T) {
@@ -142,7 +142,7 @@ func TestHTTPClientCarriesPolicyWithCustomTransport(t *testing.T) {
 	assert.Equal(t, 3*time.Second, hc.Timeout)
 }
 
-// TestHTTPClientSendsKubernetesUserAgent pins that requests through a
+// TestHTTPClientSendsKubernetesUserAgent asserts that requests through a
 // kube-built client identify themselves: client-go installs its User-Agent
 // only inside HTTPClientFor and only when the config names one, so the
 // default must be applied before the client is built.

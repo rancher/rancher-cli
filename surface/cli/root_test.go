@@ -84,7 +84,7 @@ func schemaCommandBinding(t *testing.T, op string) (contract, stability string, 
 	return "", "", false
 }
 
-// TestLegacyTokenShimBindingIsInternalDeprecated pins the shim's position in
+// TestLegacyTokenShimBindingIsInternalDeprecated asserts the shim's position in
 // the public-API contract: the top-level "token" command is internal
 // (auth machinery, no backing kind row) and deprecated by design (it exists
 // only for Rancher-generated kubeconfigs during migration).
@@ -95,7 +95,7 @@ func TestLegacyTokenShimBindingIsInternalDeprecated(t *testing.T) {
 	assert.Equal(t, "deprecated", stability)
 }
 
-// TestDeleteProvisioningClusterBindingTracksKindRow pins Finding 5's fix:
+// TestDeleteProvisioningClusterBindingTracksKindRow asserts Finding 5's fix:
 // "delete provisioning-cluster" has no generic binding (kinds.Bindings()
 // skips it — the row is Deletable: false), so BuildRoot must compose an
 // EXTRA resolver entry for it derived from the provisioningcluster row's own
@@ -118,7 +118,7 @@ func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 	assert.Equal(t, string(pcRow.Binding.Stability), stability)
 }
 
-// TestSchemaVerbEnumMatchesCommandVerbs pins the --verb enum in schema's
+// TestSchemaVerbEnumMatchesCommandVerbs asserts the --verb enum in schema's
 // descriptor to the surface it filters: the enum is a static literal in
 // schemaCmd.Describe(), so a new top-level verb (a new distinct first token of
 // a command name) must fail here until the literal is updated. Runs against
@@ -148,7 +148,7 @@ func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
 		"schema --verb enum drifted from the registry's verbs; update the Enum literal in schemaCmd.Describe()")
 }
 
-// TestSchemaContractEnumMatchesCommandContracts pins the --contract enum to the
+// TestSchemaContractEnumMatchesCommandContracts asserts the --contract enum to the
 // contracts actually PRESENT in the manifest's commands, not every declared
 // safety.Contract: an enum value with zero possible matches would make
 // completion suggest an impossible filter that validation then accepts.
@@ -176,7 +176,7 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 		"schema --contract enum drifted from the contracts present in the manifest; update the Enum literal in schemaCmd.Describe()")
 }
 
-// TestSchemaDisclosureSizes pins the point of progressive disclosure:
+// TestSchemaDisclosureSizes asserts the point of progressive disclosure:
 // the bare TOC and a narrowed card stay small (spec acceptance: TOC
 // < 20KB, card < 3KB). A regression here means a view regrew a
 // full-manifest section.
@@ -304,7 +304,7 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	}
 }
 
-// TestSchemaTOCGolden pins the bare `schema -o json` TOC shape — the
+// TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape — the
 // progressive-disclosure contract (spec 2026-08-06): orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.
 func TestSchemaTOCGolden(t *testing.T) {
@@ -347,7 +347,7 @@ func TestBuildRootWiresGeneratedCommands(t *testing.T) {
 	assert.NotContains(t, names, "delete cluster", "clusters are not deletable")
 }
 
-// TestKindOverridesReplaceExactlyTheirVerb pins the override mechanism: an
+// TestKindOverridesReplaceExactlyTheirVerb asserts the override mechanism: an
 // overridden verb+kind resolves to the override's command, every other verb
 // of that kind and every other kind stays generic, and no command name is
 // registered twice. With the empty kindOverrideTable this task ships, this
@@ -432,7 +432,7 @@ func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
 	assert.Equal(t, genericBundleGet.Usage, bundleGet.Usage, "get bundle (an untouched kind) must be byte-identical to the generic")
 }
 
-// TestSchemaManifestExposesProjectScope pins PS-6: a generated get command
+// TestSchemaManifestExposesProjectScope asserts PS-6: a generated get command
 // for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
 // projectScope: true, while a fixed command (schema itself) does not.
 func TestSchemaManifestExposesProjectScope(t *testing.T) {
@@ -472,7 +472,7 @@ func TestBuildRootWiresAliases(t *testing.T) {
 	assert.Contains(t, project.Aliases, "projects")
 }
 
-// TestAdaptEntrySetsArgsUsageFromDescriptorArgs pins PS-9's second adapter
+// TestAdaptEntrySetsArgsUsageFromDescriptorArgs asserts PS-9's second adapter
 // site: adaptEntry (every generated get/patch/delete leaf) sets ArgsUsage
 // from the same Descriptor.Args the manifest publishes, exactly like Adapt.
 func TestAdaptEntrySetsArgsUsageFromDescriptorArgs(t *testing.T) {
@@ -516,7 +516,7 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	assert.ErrorContains(t, werr, "token")
 }
 
-// TestBuildRootWiresProvisioningClusterDelete pins the D-6/R1-1 gotcha for
+// TestBuildRootWiresProvisioningClusterDelete asserts the D-6/R1-1 gotcha for
 // real: provisioningcluster's row stays Deletable: false, so
 // kinds.Bindings() never emits "delete provisioning-cluster" — the ONLY
 // reason BuildRoot succeeds with the del override registered is the extra
@@ -558,7 +558,7 @@ func (m markerDelCmd) Plan(context.Context, runtime.Input) (safety.Effect, runti
 	return safety.Effect{}, nil, nil
 }
 
-// TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster pins Finding
+// TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster asserts Finding
 // 5 (round 2)'s fix: BuildRoot's extra delete-binding resolver is derived by
 // looping kindOverrideTable for every del override on a Deletable: false
 // row, not by naming "provisioningcluster" and its op literally. "node"
@@ -601,7 +601,7 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	require.NotNil(t, pcDelete, "delete provisioning-cluster must still be wired alongside the new override")
 }
 
-// TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision pins Finding 3
+// TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision asserts Finding 3
 // (fix-round 3): the delOverrides loop's "if row.Deletable { continue }"
 // branch had no test ever exercising it — every del override in production,
 // and TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster's own
@@ -751,7 +751,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
 }
 
-// TestUnknownCommandRendersTextWithoutOutputFlag pins the pre-pipeline
+// TestUnknownCommandRendersTextWithoutOutputFlag asserts the pre-pipeline
 // formatter's default: with no -o/--output anywhere on the raw command
 // line, an unmatched command name renders the short text form, not a JSON
 // envelope — the deterministic "scan miss falls back to text" rule.
@@ -775,7 +775,7 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	assert.NotContains(t, errOut.String(), "apiVersion")
 }
 
-// TestCommandNotFoundStyledWithColorAlways pins that the errors the adapter
+// TestCommandNotFoundStyledWithColorAlways asserts that the errors the adapter
 // renders itself — raised before any command dispatches, so never passing
 // through the pipeline's own style resolution — still honor --color: the
 // unknown-command error's prefix is ANSI-styled under --color=always (read
@@ -810,7 +810,7 @@ func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
 	assert.Contains(t, errOut.String(), "apiVersion")
 }
 
-// TestUsageErrorStyledWithColorAlways pins the same --color honoring on the
+// TestUsageErrorStyledWithColorAlways asserts the same --color honoring on the
 // flag-parse-failure path, the other pre-parse renderer.
 func TestUsageErrorStyledWithColorAlways(t *testing.T) {
 	orig := rawArgv
@@ -853,7 +853,7 @@ func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
 	assert.NotContains(t, errOut.String(), "apiVersion")
 }
 
-// TestUnknownCommandRendersYAMLEnvelope pins the -o yaml row: the raw-argv
+// TestUnknownCommandRendersYAMLEnvelope asserts the -o yaml row: the raw-argv
 // scan recognizing "yaml" renders the same structured envelope as json,
 // serialized as YAML.
 func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
@@ -983,7 +983,7 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "bogus-flag")
 }
 
-// TestAllNamespacesHintTargeted pins the -A/--all-namespaces friction point:
+// TestAllNamespacesHintTargeted asserts the -A/--all-namespaces friction point:
 // both flags are unknown on every get command (list operations already span
 // all namespaces), so the hint must say so directly instead of pointing at
 // rancher schema. A genuinely unknown flag must still get the generic hint.
@@ -1109,7 +1109,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 			"a genuinely unknown flag on a non-get verb must get the generic hint")
 	})
 
-	t.Run("bare get group -A pins path-length-2 boundary", func(t *testing.T) {
+	t.Run("bare get group -A asserts path-length-2 boundary", func(t *testing.T) {
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)
 		var out, errOut bytes.Buffer
@@ -1124,12 +1124,12 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one",
-			"bare get group -A (path length 2) must yield the get-scoped wording, pinning the >= 2 boundary")
+			"bare get group -A (path length 2) must yield the get-scoped wording, asserting the >= 2 boundary")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 }
 
-// TestAllNamespacesHintsBothShareOpeningClause pins F5: both rendered
+// TestAllNamespacesHintsBothShareOpeningClause asserts F5: both rendered
 // wordings of the -A/--all-namespaces message detail open with
 // noAllNamespacesFlag. Calling allNamespacesEntry.detail directly for a
 // get-context command and a non-get-context command verifies the shared
@@ -1183,13 +1183,13 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	assert.Equal(t, "NOT_LOGGED_IN", errObj["code"])
 }
 
-// TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback pins the SC-1 hard
+// TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback asserts the SC-1 hard
 // requirement: resolveReadOnly already degrades to not-read-only on a config
 // load error (adapter.go:129-143) rather than failing the command, on BOTH a
 // before-only path (schema, Adapt-wired, no resolveDeps) and the completion
 // callback (Before runs, then completion returns before Action). This must
 // hold with no code change to resolveReadOnly/resolveDeps — the test only
-// pins existing behavior against regression.
+// asserts existing behavior against regression.
 func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -1216,7 +1216,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
 }
 
-// TestGenerateShellCompletionListsTopLevelCommandNames pins that
+// TestGenerateShellCompletionListsTopLevelCommandNames asserts that
 // EnableShellCompletion activates default command-name completion for the
 // existing tree with no assembleCommands/wireEntry changes. Membership only —
 // urfave-owned ordering/format is not ours to golden-test.
@@ -1242,10 +1242,10 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	assert.Contains(t, out.String(), "auth")
 }
 
-// TestHiddenCompletionCommandEmitsNoScriptMarkers pins that the renamed
+// TestHiddenCompletionCommandEmitsNoScriptMarkers asserts that the renamed
 // built-in (__completion) remains invocable as machinery only: its
 // subcommands are stripped, so `rancher __completion bash` cannot emit
-// urfave's own divergent script. This pins the INTENT, not urfave's own
+// urfave's own divergent script. This asserts the INTENT, not urfave's own
 // help-topic mechanism: post-strip, "bash" is an unmatched subcommand name on
 // __completion, which now routes through the repo's standard CommandNotFound
 // seam — a structured JSON VALIDATION envelope on stderr at a non-zero exit,
@@ -1284,15 +1284,15 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 		"the hidden built-in must never emit urfave's own completion script")
 }
 
-// TestPublicContractOpsArePinned closes the op-level half of the public-API
+// TestPublicContractOpsAreListed closes the op-level half of the public-API
 // conformance guarantee (the kind-table half lives in
 // internal/engine/kinds/publicapi_test.go): every operation the composed
 // resolver marks ContractPublic must either belong to a kind whose row is
 // itself ContractPublic (generated verbs and the derived create ops inherit
-// the row's binding) or appear in the pinned bespoke list below. Adding a
+// the row's binding) or appear in the bespoke list below. Adding a
 // new public op compiles fine — this test is what turns the widened public
 // surface into a reviewed diff instead of silent drift.
-func TestPublicContractOpsArePinned(t *testing.T) {
+func TestPublicContractOpsAreListed(t *testing.T) {
 	t.Parallel()
 	publicKindByName := map[string]bool{}
 	for _, k := range kinds.All() {
@@ -1302,14 +1302,14 @@ func TestPublicContractOpsArePinned(t *testing.T) {
 	}
 	resolver, err := composeBindings()
 	require.NoError(t, err)
-	// Both directions: every pinned bespoke op must actually resolve public…
+	// Both directions: every listed bespoke op must actually resolve public…
 	for op := range bespokePublicOps {
 		b, ok := resolver.Resolve(op)
 		require.True(t, ok, op)
 		assert.Equal(t, safety.ContractPublic, b.Contract,
 			"op %q is in bespokePublicOps but does not resolve ContractPublic", op)
 	}
-	// …and every public op must back a public kind row or be pinned.
+	// …and every public op must back a public kind row or be listed.
 	for op, b := range resolver.All() {
 		if b.Contract != safety.ContractPublic || bespokePublicOps[op] {
 			continue
@@ -1330,7 +1330,7 @@ func TestPublicContractOpsArePinned(t *testing.T) {
 	}
 }
 
-// TestCreateOpBindingsTrackKindRows pins the derivation rule: every op in
+// TestCreateOpBindingsTrackKindRows asserts the derivation rule: every op in
 // derivedOpKinds must resolve to its kind row's Binding exactly, because
 // composeBindings derives them via the row rather than a hand-copied
 // literal in provider.NewResolver — the same drift-closure as
@@ -1419,7 +1419,7 @@ func primeFeatureObj(name string, prime, enabled bool) *unstructured.Unstructure
 	}}
 }
 
-// TestPrimeFeatureCommunityWarning pins the advisory's trigger: a feature confirmed
+// TestPrimeFeatureCommunityWarning asserts the advisory's trigger: a feature confirmed
 // prime-classified AND confirmed enabled warns only when the server is
 // confirmed community — never on Prime, never on an unreadable/unknown
 // edition, never for a non-prime feature, never for a disabled one.

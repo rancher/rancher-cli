@@ -15,7 +15,7 @@ import (
 )
 
 // cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
-// the pinned vocabulary snapshot (mcp-kinds-050e375.json): the tranche-D
+// the recorded vocabulary snapshot (mcp-kinds-050e375.json): the tranche-D
 // provisioning surface predates MCP provisioning tools. Revisit when the
 // MCP vocabulary grows provisioning kinds — a key appearing in BOTH this
 // set and a future fixture must fail, so stale exemptions cannot linger.
@@ -116,7 +116,7 @@ func TestValidateRejectsConditionMixedWithPathFields(t *testing.T) {
 	}
 }
 
-// TestValidateFirstDefectWinsPerKindTableOrder pins the merged-loop's
+// TestValidateFirstDefectWinsPerKindTableOrder asserts the merged-loop's
 // first-defect-wins ordering: a column-condition conflict on kind 1 is
 // reported before an identifier collision on kind 2, because the loop
 // visits each kind fully (identifier checks then column checks) in table
@@ -226,8 +226,8 @@ func TestProjectScopable(t *testing.T) {
 	}
 }
 
-// TestClusterRowsCarryWaitDefaultConditionReady is IC-10/IC-11's row-level
-// pin: BOTH cluster rows' bare---wait default is the LITERAL
+// TestClusterRowsCarryWaitDefaultConditionReady asserts IC-10/IC-11 at the
+// row level: BOTH cluster rows' bare---wait default is the LITERAL
 // "condition=Ready". A literal expectation on purpose — a silent row edit
 // must fail here, not round-trip.
 func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
@@ -241,7 +241,7 @@ func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
 	assert.Equal(t, "condition=Ready", prov.WaitDefault)
 }
 
-// TestBindingRowsCarryMemberColumns pins the crtb/prtb table projection:
+// TestBindingRowsCarryMemberColumns asserts the crtb/prtb table projection:
 // one MEMBER column with the userName → groupPrincipalName →
 // userPrincipalName fallback, ROLE, and the row's scope column.
 func TestBindingRowsCarryMemberColumns(t *testing.T) {
@@ -271,7 +271,7 @@ func TestValidateKindsRejectsEmptyK8sKind(t *testing.T) {
 	assert.ErrorContains(t, err, "K8sKind")
 }
 
-// TestValidateKindsRejectsEmptyName pins the generic-family half of the
+// TestValidateKindsRejectsEmptyName asserts the generic-family half of the
 // dry-run display-identity conformance guarantee: every kind's Name feeds
 // straight through to its generated create/patch/delete Effect's
 // DisplayKind, so a row with an empty Name must fail closed-world
@@ -303,7 +303,7 @@ func TestAllKindsHaveNonEmptyName(t *testing.T) {
 	}
 }
 
-// TestUserRowDeletableAndCompletable pins the user kind row's flags: the row
+// TestUserRowDeletableAndCompletable asserts the user kind row's flags: the row
 // must be Deletable and Completable after the grant-cleanup slice, and must
 // carry no NoDeleteReason (that field belongs to non-deletable kinds only).
 func TestUserRowDeletableAndCompletable(t *testing.T) {
@@ -315,7 +315,7 @@ func TestUserRowDeletableAndCompletable(t *testing.T) {
 	assert.Empty(t, k.NoDeleteReason, "Deletable row must not carry a NoDeleteReason")
 }
 
-// TestValidateRejectsBadFirstAlias pins the plural-first alias invariant: a row
+// TestValidateRejectsBadFirstAlias asserts the plural-first alias invariant: a row
 // whose Aliases[0] is not plural(hyphen-stripped Name) must fail validateKinds,
 // and a row with no aliases at all also fails — every row must register its plural.
 func TestValidateRejectsBadFirstAlias(t *testing.T) {
@@ -357,7 +357,7 @@ func TestHintTokenResolvesForAllKinds(t *testing.T) {
 	}
 }
 
-// TestNotFoundCuratedShape pins the curated NOT_FOUND output shape:
+// TestNotFoundCuratedShape asserts the curated NOT_FOUND output shape:
 // "<kind> not found: <name>" with a hint naming the list command.
 func TestNotFoundCuratedShape(t *testing.T) {
 	t.Parallel()
@@ -371,7 +371,7 @@ func TestNotFoundCuratedShape(t *testing.T) {
 	assert.Equal(t, "list with: rancher get users", ce.Hint)
 }
 
-// TestNotFoundCuratedHyphenatedKind pins the hyphenated-kind case: the hint
+// TestNotFoundCuratedHyphenatedKind asserts the hyphenated-kind case: the hint
 // token is the unhyphenated first alias, not plural(k.Name).
 func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
 	t.Parallel()
@@ -384,7 +384,7 @@ func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
 	assert.Equal(t, "list with: rancher get fleetclusters", ce.Hint)
 }
 
-// TestNotFoundCuratedDownstreamCarriesCluster pins that a Downstream-scoped
+// TestNotFoundCuratedDownstreamCarriesCluster asserts that a Downstream-scoped
 // kind's list hint carries the invocation's own --cluster value, shell-quoted
 // — the list command a Downstream kind's hint names is never valid without it.
 func TestNotFoundCuratedDownstreamCarriesCluster(t *testing.T) {
@@ -425,7 +425,7 @@ func TestLookupGVK(t *testing.T) {
 	}
 }
 
-// TestByGVR pins ByGVR's Group+Resource matching, including the empty-Version
+// TestByGVR asserts ByGVR's Group+Resource matching, including the empty-Version
 // CAPI case (any versioned incoming GVR matches the empty-Version row), exact
 // version rows (version must match), and the miss cases (unknown group/resource,
 // wrong version on a fixed-version row).
@@ -501,7 +501,7 @@ func TestByGVR(t *testing.T) {
 	}
 }
 
-// TestValidateGroupResourceUniqueness pins that the table validates correctly
+// TestValidateGroupResourceUniqueness asserts that the table validates correctly
 // when two rows share a Group+Resource (which would make ByGVR ambiguous).
 func TestValidateGroupResourceUniqueness(t *testing.T) {
 	t.Parallel()
@@ -543,7 +543,7 @@ func TestValidateRejectsJoinMisuse(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsMalformedCapability pins the shared full-shape
+// TestValidateRejectsMalformedCapability asserts the shared full-shape
 // validator at the kind-table boundary — the counterpart of
 // runtime's Registry.Validate tests — for all three malformations: set but
 // unknown tier, a known tier with an empty Feature, and Feature set with no
@@ -570,7 +570,7 @@ func TestValidateRejectsMalformedCapability(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsCountMisuse pins Count's exclusivity: it is mutually
+// TestValidateRejectsCountMisuse asserts Count's exclusivity: it is mutually
 // exclusive with every other projection axis (Path, AltPaths, Bool,
 // Default, Join, Condition).
 func TestValidateRejectsCountMisuse(t *testing.T) {
@@ -597,7 +597,7 @@ func TestValidateRejectsCountMisuse(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsSystemFilterMisuse pins SystemFilter's three required
+// TestValidateRejectsSystemFilterMisuse asserts SystemFilter's three required
 // fields: a non-empty Path with no empty segment, a non-empty Prefix, and a
 // non-empty Label — independent of the Columns axes.
 func TestValidateRejectsSystemFilterMisuse(t *testing.T) {

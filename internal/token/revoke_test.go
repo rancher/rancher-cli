@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRevokeTokenChoosesPathByKind pins the two delete paths and the 404
+// TestRevokeTokenChoosesPathByKind asserts the two delete paths and the 404
 // reading: ext names go to the ext store, v3 names to the v3 path, and a
 // missing token is alreadyGone, not a failure.
 func TestRevokeTokenChoosesPathByKind(t *testing.T) {
@@ -37,7 +37,7 @@ func TestRevokeTokenChoosesPathByKind(t *testing.T) {
 	assert.Equal(t, "ext", f.DeleteRequests()[1].Kind)
 }
 
-// TestRevokeTokenFailedCarriesStatus pins the failed shape.
+// TestRevokeTokenFailedCarriesStatus asserts the failed shape.
 func TestRevokeTokenFailedCarriesStatus(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
@@ -47,7 +47,7 @@ func TestRevokeTokenFailedCarriesStatus(t *testing.T) {
 	assert.Contains(t, out.Error, "500")
 }
 
-// TestCleanupContextIsDetachedAndBounded pins the two properties every
+// TestCleanupContextIsDetachedAndBounded asserts the two properties every
 // revoke relies on: a cancelled operation context does not cancel it, and
 // it ends within the bound.
 func TestCleanupContextIsDetachedAndBounded(t *testing.T) {
@@ -63,7 +63,7 @@ func TestCleanupContextIsDetachedAndBounded(t *testing.T) {
 	})
 }
 
-// TestUserSuppliedRevokeIsNotApplicable pins that a pasted token is never
+// TestUserSuppliedRevokeIsNotApplicable asserts that a pasted token is never
 // revoked and no request is sent.
 func TestUserSuppliedRevokeIsNotApplicable(t *testing.T) {
 	t.Parallel()
@@ -72,7 +72,7 @@ func TestUserSuppliedRevokeIsNotApplicable(t *testing.T) {
 	assert.Equal(t, ResultNotApplicable, c.Revoke().Result)
 }
 
-// TestRevokeHasNoContextParameter pins the API shape: the exported revoke
+// TestRevokeHasNoContextParameter asserts the API shape: the exported revoke
 // cannot receive the cancelled operation context, and it is the only
 // exported method on the credential.
 func TestRevokeHasNoContextParameter(t *testing.T) {
@@ -84,7 +84,7 @@ func TestRevokeHasNoContextParameter(t *testing.T) {
 	assert.Equal(t, 1, typ.NumMethod(), "Revoke is the only exported method")
 }
 
-// TestNoExportedRevokeFunctionBesidesTheMethod pins that the package
+// TestNoExportedRevokeFunctionBesidesTheMethod asserts that the package
 // exports no free function whose name contains Revoke: the safe, bounded,
 // detached cleanup call is the method alone.
 func TestNoExportedRevokeFunctionBesidesTheMethod(t *testing.T) {

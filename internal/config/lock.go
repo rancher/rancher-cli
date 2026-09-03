@@ -59,7 +59,7 @@ func SetLockWaitTimeoutForTest(d time.Duration) (restore func()) {
 
 // SetLockHookForTest sets the config-lock hook for the current test run;
 // call the returned restore in cleanup. Exported from non-test code so
-// other packages' tests (internal/commands) can pin lock/load orderings.
+// other packages' tests (internal/commands) can force lock/load orderings.
 //
 // The calling test must not use t.Parallel(): the hook is a package-level
 // seam shared by every WithLock call.

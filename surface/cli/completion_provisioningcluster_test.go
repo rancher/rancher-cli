@@ -46,7 +46,7 @@ func provisioningClusterServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalDeleteProvisioningClusterCandidates pins the management
+// TestLivePositionalDeleteProvisioningClusterCandidates asserts the management
 // branch case for provisioning-cluster: `delete provisioning-cluster <TAB>`
 // lists provisioning.cattle.io/v1 Clusters from the fleet-default namespace
 // on the local management cluster.
@@ -117,7 +117,7 @@ func TestLivePositionalProvisioningClusterNamespacePathInjection(t *testing.T) {
 	assert.Zero(t, hits.Load(), "path injection attempt must issue zero requests")
 }
 
-// TestLivePositionalProvisioningClusterIDOnlyBoundary pins the token boundary:
+// TestLivePositionalProvisioningClusterIDOnlyBoundary asserts the token boundary:
 // a missing token is caught by fetchK8sResources' cap.Token=="" guard (zero
 // requests); an exec-cred-only (IDOnly) capability is caught earlier by the
 // IDOnly branch before any fetch is attempted.  Both must return nil with ZERO

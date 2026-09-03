@@ -56,7 +56,7 @@ func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
 	return c
 }
 
-// TestStyleConfigInfoTextStripInvariant pins config status's bold span: the
+// TestStyleConfigInfoTextStripInvariant asserts config status's bold span: the
 // "completion:" section label is bold, whole line; every flat "key: value"
 // line stays plain — plus the strip invariant and the inactive-style
 // identity.
@@ -74,7 +74,7 @@ func TestStyleConfigInfoTextStripInvariant(t *testing.T) {
 	assert.NotContains(t, styled, "\x1b[1mpath:", "a flat key: value line must not be styled")
 }
 
-// TestConfigInfoCompletionBlock pins the completion section as a nested object
+// TestConfigInfoCompletionBlock asserts the completion section as a nested object
 // in JSON data and an indented block in text. Both views are asserted for every
 // scenario (auth-check precedent: parity is guaranteed by tests, not a shared
 // loop). No t.Parallel(): t.Setenv.
@@ -176,7 +176,7 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 	})
 }
 
-// TestConfigInfoEffectiveStoreSources pins the env > config > default
+// TestConfigInfoEffectiveStoreSources asserts the env > config > default
 // resolution the command exists to make visible (vault-helper exercise
 // S-05: an env-supplied store is invisible in config.yaml and list-servers).
 // No t.Parallel(): t.Setenv.

@@ -368,7 +368,7 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   pod/container into one `[pod/container]`-prefixed body; `--tail` defaults
   to 200 lines, `--since` takes a duration (`30m`, `2h`), `--previous` reads
   the last-terminated container instance, and `--container` narrows a
-  multi-container pod, and `--pod` pins ONE pod of a multi-pod target
+  multi-container pod, and `--pod` selects ONE pod of a multi-pod target
   (per-replica log attribution — e.g. reading a single Rancher
   server replica during HA triage; an unknown pod name is NOT_FOUND
   listing the real ones). A missing target degrades to an honest `NOT_FOUND`

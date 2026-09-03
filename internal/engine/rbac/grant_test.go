@@ -225,7 +225,7 @@ func (g *generateNameFakeClient) Create(ctx context.Context, gvr schema.GroupVer
 	return g.fakeClient.Create(ctx, gvr, ns, committed, dryRun)
 }
 
-// TestGrantCommittedIdentityNeverCarriesPreviewWildcard pins the
+// TestGrantCommittedIdentityNeverCarriesPreviewWildcard asserts the
 // generateName rule end to end: the dry-run preview identity carries the
 // "grb-*" wildcard (never a real name), but the COMMITTED success text
 // derives from the real create's returned object and never carries "*".

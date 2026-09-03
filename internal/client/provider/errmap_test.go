@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// TestMapErrPassesThroughStructuredError pins that an error already carrying
+// TestMapErrPassesThroughStructuredError asserts that an error already carrying
 // a *clierr.Error (a refused cross-origin redirect arrives wrapped in a
 // *url.Error) keeps its code, message, and retryability instead of being
 // rebuilt as GENERIC from its text.

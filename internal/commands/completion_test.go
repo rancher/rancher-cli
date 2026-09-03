@@ -26,7 +26,7 @@ func (f fakeInput) Strings(string) []string { return nil }
 func (f fakeInput) IsSet(string) bool       { return false }
 func (f fakeInput) Args() []string          { return f.args }
 
-// TestCompletionEmitsGoldenScriptPerShell pins each script byte-exact: these
+// TestCompletionEmitsGoldenScriptPerShell asserts each script byte-exact: these
 // are install artifacts (sourced directly into a shell), so any drift —
 // intended or not — must be a deliberate, reviewed diff against the golden,
 // not silently absorbed by a substring assertion.
@@ -49,7 +49,7 @@ func TestCompletionEmitsGoldenScriptPerShell(t *testing.T) {
 	}
 }
 
-// TestCompletionUnknownShellIsValidation pins the generic Enum-validation
+// TestCompletionUnknownShellIsValidation asserts the generic Enum-validation
 // path (external review finding 6): completion.go no longer hand-rolls this
 // check, so the assertion must drive the full pipeline (runtime.Run) — its
 // own Execute no longer validates the shell argument at all.

@@ -307,7 +307,7 @@ func TestRevokePartialFailure(t *testing.T) {
 	assert.True(t, ce.Retryable, "partialFailure must hoist Retryable from the underlying error")
 	assert.Contains(t, ce.Message, "re-run")
 
-	// Type assertion pins the Details shape.
+	// Type assertion asserts the Details shape.
 	pf, ok := ce.Details.(RevokePartialFailure)
 	require.True(t, ok, "Details must be RevokePartialFailure")
 	assert.Equal(t, []string{"crtb-alpha"}, pf.Deleted)
@@ -315,7 +315,7 @@ func TestRevokePartialFailure(t *testing.T) {
 	assert.Equal(t, clierr.CodeConflict, pf.Failed.Code)
 	assert.Equal(t, []string{"crtb-gamma"}, pf.Unattempted)
 
-	// JSON decode pins the wire field names.
+	// JSON decode asserts the wire field names.
 	data, marshalErr := json.Marshal(pf)
 	require.NoError(t, marshalErr)
 	var raw map[string]any
@@ -332,7 +332,7 @@ func TestRevokePartialFailure(t *testing.T) {
 	}, pf.TextDetails())
 }
 
-// TestRevokePartialFailureTextDetailsOmitsEmptyLines pins the two
+// TestRevokePartialFailureTextDetailsOmitsEmptyLines asserts the two
 // conditional lines: "deleted" and "not attempted" print only when their
 // slice is non-empty — the first delete in a batch has nothing deleted yet,
 // and the last has nothing left unattempted.

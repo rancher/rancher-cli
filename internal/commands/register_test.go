@@ -56,7 +56,7 @@ func TestCanonicalizeServerURLInvalidURL(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestPrepareRegistrationRejectsUnsupportedScheme pins that a scheme
+// TestPrepareRegistrationRejectsUnsupportedScheme asserts that a scheme
 // CanonicalServerURL accepts but config.Effective's credential-read path
 // would later refuse (anything but http/https) must never reach a
 // committed entry or token — it would otherwise commit successfully and
@@ -223,7 +223,7 @@ func TestCommitCreateExistingDifferentURLConflictsWithUpdateHint(t *testing.T) {
 	assert.Equal(t, config.Server{URL: "https://old.example.com"}, cfg.Servers["qa1"], "never a silent upsert")
 }
 
-// TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint pins
+// TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint asserts
 // that a same-URL/different-CA conflict must hint --cacert, never --url —
 // the URL didn't change, so an --url hint would execute as a no-op and
 // silently discard the trust change the caller asked for.
@@ -241,7 +241,7 @@ func TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint(t *testin
 	assert.Equal(t, config.Server{URL: "https://qa1.example.com", CA: testCAPem1}, cfg.Servers["qa1"], "never a silent upsert")
 }
 
-// TestCommitCreateExistingSameURLClearedCAConflictsWithClearCacertHint pins
+// TestCommitCreateExistingSameURLClearedCAConflictsWithClearCacertHint asserts
 // the system-roots case of the same fix: update-server has no --cacert ""
 // spelling, so the hint must be --clear-cacert, not an empty --cacert value.
 func TestCommitCreateExistingSameURLClearedCAConflictsWithClearCacertHint(t *testing.T) {

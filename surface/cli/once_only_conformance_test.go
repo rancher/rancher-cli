@@ -48,7 +48,7 @@ func onceOnlyOutputPolicyOK(name string, p runtime.OutputPolicy) bool {
 	return ok && reflect.DeepEqual(p, want)
 }
 
-// TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException pins
+// TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException asserts
 // the fix's core claim: a zero-value OutputPolicy is never accepted, and a
 // non-canonical policy is accepted ONLY for the named exception's exact
 // value — a future once-only command that forgets
@@ -66,7 +66,7 @@ func TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException(t *testi
 		"a zero-value OutputPolicy must be rejected for a command outside the named exception")
 }
 
-// TestDeliveryOnceOnlyClosedWorldConformance pins the once-only marker
+// TestDeliveryOnceOnlyClosedWorldConformance asserts the once-only marker
 // bidirectionally over the real, registered command set: every registered
 // inventory entry must declare Delivery: DeliveryOnceOnly, and every
 // registered command that declares it must be a reviewed inventory entry —

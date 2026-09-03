@@ -9,7 +9,7 @@ import (
 )
 
 // outputFormatCandidates is the closed -o <TAB> candidate set the root-level
-// tests pin: the five literal formats plus the two template forms.
+// tests assert: the five literal formats plus the two template forms.
 var outputFormatCandidates = []string{"table", "wide", "json", "yaml", "name", "template=", "template={{.}}"}
 
 // TestRootSpaceFormOutputCompletion: `rancher -o <TAB>` (space form, empty
@@ -77,7 +77,7 @@ func TestRootEqualsFormShortOutputCompletion(t *testing.T) {
 	assert.Contains(t, tokens, "-o=template={{.}}", "rancher -o=<TAB> must include -o=template={{.}}")
 }
 
-// TestRootBareWordStillListsCommands pins the regression boundary: a bare
+// TestRootBareWordStillListsCommands asserts the regression boundary: a bare
 // word at root (`rancher <TAB>`) must keep listing top-level commands after
 // the flag-value routing fix.
 func TestRootBareWordStillListsCommands(t *testing.T) {
@@ -94,7 +94,7 @@ func TestRootBareWordStillListsCommands(t *testing.T) {
 	assert.Contains(t, tokens, "auth", "rancher <TAB> must still list auth")
 }
 
-// TestRootPartialFlagNameStillCompletes pins the other regression boundary:
+// TestRootPartialFlagNameStillCompletes asserts the other regression boundary:
 // a partial flag name at root (`rancher --out<TAB>`) must keep suggesting
 // --output.
 func TestRootPartialFlagNameStillCompletes(t *testing.T) {

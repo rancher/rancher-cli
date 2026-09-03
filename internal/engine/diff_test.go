@@ -65,7 +65,7 @@ func TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields(t *testing.T) {
 // every wholesale-emitted value (either side, any branch) and recurse into
 // nested maps, not just direct children of the mismatch prefix. The review's
 // third repro, "not-a-map"-vs-object, drives the identical default-branch
-// scrub the nil-vs-object case pins (nil and a string both fall through the
+// scrub the nil-vs-object case assertions (nil and a string both fall through the
 // type switch), so it is not duplicated here.
 func TestDiffObjectsScrubsAllWholesaleEmissions(t *testing.T) {
 	t.Parallel()

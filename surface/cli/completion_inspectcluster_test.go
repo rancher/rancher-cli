@@ -52,7 +52,7 @@ func TestInspectClusterPositionalCompletesLive(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "exactly one cluster-list request")
 }
 
-// TestInspectClusterPositionalIDOnlyBoundary pins the IDOnly boundary as
+// TestInspectClusterPositionalIDOnlyBoundary asserts the IDOnly boundary as
 // it applies to the cluster fetch (IC-16): an exec-cred-only capability
 // cannot authorize the management cluster list — nil, zero requests.
 func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
@@ -69,7 +69,7 @@ func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
 	assert.Zero(t, hits.Load(), "IDOnly: zero requests")
 }
 
-// TestOtherInspectLeavesRetainPositionalDeny pins the retained deny:
+// TestOtherInspectLeavesRetainPositionalDeny asserts the retained deny:
 // the exceptions are exactly `inspect cluster`, `inspect project`, and
 // `inspect user` — pod and deployment stay excluded with zero requests.
 func TestOtherInspectLeavesRetainPositionalDeny(t *testing.T) {
@@ -87,7 +87,7 @@ func TestOtherInspectLeavesRetainPositionalDeny(t *testing.T) {
 	assert.Zero(t, hits.Load(), "the denied leaves must issue zero requests")
 }
 
-// TestInspectProjectPositionalCompletes pins the second exception: the
+// TestInspectProjectPositionalCompletes asserts the second exception: the
 // `inspect project` name positional completes from the management project
 // list of the resolved cluster (members-ergonomics slice 4).
 func TestInspectProjectPositionalCompletes(t *testing.T) {

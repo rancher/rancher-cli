@@ -602,7 +602,7 @@ var derivedOpKinds = map[string]string{
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
 // no single backing kind row (they span several listed Public API kinds).
-// TestPublicContractOpsArePinned consumes it both ways: an op here must
+// TestPublicContractOpsAreListed consumes it both ways: an op here must
 // resolve public, and a public op must be here or back a public kind row —
 // so widening the public surface is always a reviewed edit to this file or
 // the kind table, never silent.

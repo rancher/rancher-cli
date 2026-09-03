@@ -98,7 +98,7 @@ func waitExit(t *testing.T, waitCh <-chan error, who string, timeout time.Durati
 	}
 }
 
-// TestConfigWriteNoLockLosesUpdate is the red test that pins the lost-update
+// TestConfigWriteNoLockLosesUpdate is the red test that asserts the lost-update
 // bug class: two processes that load config.yaml before either writes will
 // clobber each other's entry. The test PASSES by asserting the deterministic
 // loss — exactly one of two server entries survives. This is the bug class
@@ -145,7 +145,7 @@ func TestConfigWriteNoLockLosesUpdate(t *testing.T) {
 	assert.Len(t, cfg.Servers, 1, "without the lock, one of the two concurrent writes overwrites the other; exactly one entry survives")
 }
 
-// TestConfigWriteWithLockPreservesUpdate is the green test that pins the fix:
+// TestConfigWriteWithLockPreservesUpdate is the green test that asserts the fix:
 // two processes each wrapped in WithLock serialize through the flock so the
 // second's load happens after the first's write, and both entries survive.
 //

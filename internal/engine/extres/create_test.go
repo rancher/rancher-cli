@@ -151,7 +151,7 @@ func TestCreateTokenIsDestructive(t *testing.T) {
 	assert.True(t, eff.Destructive, "the token kind is Sensitive — create must gate on --yes")
 }
 
-// TestCreateTokenDryRunEffectDoesNotLeak pins the shown-once discipline at
+// TestCreateTokenDryRunEffectDoesNotLeak asserts the shown-once discipline at
 // the Plan level: safety.Effect has no field that could carry spec/status
 // payload, so the dry-run preview structurally cannot surface a bearer
 // token even though PlanCreate's internal dry-run Create call round-trips
@@ -206,7 +206,7 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	assert.Contains(t, res.CommittedContext.Recovery, "delete token token-xyz")
 }
 
-// TestCreateTokenDescriptorDeclaresOnceOnlySeam pins that create token
+// TestCreateTokenDescriptorDeclaresOnceOnlySeam asserts that create token
 // declares the same OutputPolicy/Delivery classification as the oidc-client
 // create and add-secret verbs, excluding "name" and requiring committed context.
 func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
@@ -219,7 +219,7 @@ func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 	}
 }
 
-// TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess pins 3e's
+// TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess asserts 3e's
 // missing-value contract: an empty status.bearerToken after a committed
 // Create is a non-retryable error naming the token and the delete-then-
 // recreate recovery — never a bare generic failure that could read as

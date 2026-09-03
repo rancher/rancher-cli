@@ -29,7 +29,7 @@ func TestAddSecretDescriptorDeclaresCapabilityAndOnceOnlySeam(t *testing.T) {
 	assert.Equal(t, "true", d.Destructive)
 }
 
-// TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite pins the
+// TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite asserts the
 // never-provisioned VALIDATION branch: a client created while the
 // controller was off has no status.clientID, and add-secret must refuse
 // BEFORE the backing-Secret GET or any dry-run/update — zero secret reads,
@@ -49,7 +49,7 @@ func TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite(t *testing.T) {
 	assert.Zero(t, client.createCalls, "no dry-run/update may fire before the never-provisioned check")
 }
 
-// TestAddSecretPlanPreflightRBACIsOrdinaryPreMutationRefusal pins the
+// TestAddSecretPlanPreflightRBACIsOrdinaryPreMutationRefusal asserts the
 // manage-oidc-clients-only persona: the backing-Secret preflight failing
 // with RBAC/NOT_FOUND is an ORDINARY pre-mutation error — no committed
 // details (nothing mutated), and zero annotation writes.
@@ -141,7 +141,7 @@ func TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *te
 	assert.Contains(t, out.String(), "client secret: new-secret-value   (shown once — store it now)")
 }
 
-// TestAddSecretExecAmbiguousTransitionsAreTerminal pins the two ambiguous
+// TestAddSecretExecAmbiguousTransitionsAreTerminal asserts the two ambiguous
 // key-set transitions: a concurrent REMOVE (baseline
 // {1} -> observed {2} has exactly one new key, which a bare "one new key"
 // check would wrongly bless) and a concurrent TWO-ADD (two new keys) — both

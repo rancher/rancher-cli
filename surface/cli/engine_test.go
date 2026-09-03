@@ -77,7 +77,7 @@ func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 	}
 }
 
-// TestFactoryServerInfoFetchesOnce pins the shared invocation-scoped probe:
+// TestFactoryServerInfoFetchesOnce asserts the shared invocation-scoped probe:
 // ServerInfo hits /rancherversion at most once per clientFactory (per
 // invocation) no matter how many times it is called, and a second,
 // independent clientFactory (a second invocation) fetches again — no
@@ -230,7 +230,7 @@ func TestResolveClusterUnknownIsNotFound(t *testing.T) {
 
 func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 	t.Parallel()
-	// The non-colliding third cluster pins the shared match helper's
+	// The non-colliding third cluster exercises the shared match helper's
 	// candidate narrowing THROUGH this call site: the error's candidates
 	// must list only the two colliders.
 	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
@@ -276,7 +276,7 @@ func TestResolveClusterMemoizes(t *testing.T) {
 	assert.Equal(t, 1, client.listCalls, "second resolve served from the memo")
 }
 
-// TestResolveClusterDistinctNamesShareOneList pins the fan-out fix: the
+// TestResolveClusterDistinctNamesShareOneList asserts the fan-out fix: the
 // name→id memo only helps a REPEATED name (TestResolveClusterMemoizes above);
 // resolving several DISTINCT names used to List once per name. They now share
 // one cached list for the whole invocation.

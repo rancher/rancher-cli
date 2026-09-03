@@ -31,7 +31,7 @@ func acquireAgainst(t *testing.T, opts testrancher.Options) (*testrancher.Facade
 	return f, srv, cred, err
 }
 
-// TestAcquireDerivedSuccess pins the happy path: S is created as a json
+// TestAcquireDerivedSuccess asserts the happy path: S is created as a json
 // login carrying the marker, D is created carrying the same marker, S is
 // revoked with D as the bearer, and the credential is derived with D's
 // resource name and S's cleanup outcome.
@@ -58,7 +58,7 @@ func TestAcquireDerivedSuccess(t *testing.T) {
 	assert.LessOrEqual(t, cred.SessionCreatedAt, cred.DerivedCreatedAt)
 }
 
-// TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn pins that S is revoked
+// TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn asserts that S is revoked
 // and its exact outcome is on the returned error for every create failure
 // class, including when the S delete itself answers 404 or 500, and that
 // D's cleanup is notAttempted whenever D cannot be addressed and a real
@@ -110,7 +110,7 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 	}
 }
 
-// TestAcquireCancellationDuringDerivedCreateStillRevokesSession pins that cleanup
+// TestAcquireCancellationDuringDerivedCreateStillRevokesSession asserts that cleanup
 // runs on a detached context: the façade sees S's DELETE after the
 // operation context is cancelled.
 func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T) {
@@ -129,7 +129,7 @@ func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T)
 	require.Len(t, f.DeleteRequests(), 1)
 }
 
-// TestAcquireSessionCreateIndeterminate pins the S create classes: a lost
+// TestAcquireSessionCreateIndeterminate asserts the S create classes: a lost
 // response and a body that establishes no shape are unknown of unknown
 // kind; a recognized body with neither name nor usable bearer is
 // unidentified; a name-only body and a body whose bearer fails validation
@@ -168,7 +168,7 @@ func TestAcquireSessionCreateIndeterminate(t *testing.T) {
 	}
 }
 
-// TestAcquireLegacyFallbackTransfersSession pins the ext-absent server:
+// TestAcquireLegacyFallbackTransfersSession asserts the ext-absent server:
 // S itself is the credential, provenance legacySession, no S cleanup.
 func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 	t.Parallel()
@@ -182,7 +182,7 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 	assert.Empty(t, cred.DerivedCreatedAt)
 }
 
-// TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups pins the no-create path
+// TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups asserts the no-create path
 // of the full acquisition: a SAML sign-in the browser never completes is an
 // unknown, unmarked S with the handoff, D not attempted, both cleanups
 // explicitly notAttempted, and no operation marker (no marked create was
@@ -205,7 +205,7 @@ func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
 	assertAuthTokensOnly(t, f)
 }
 
-// TestAcquireErrorWithPrimaryKeepsEvidence pins the composition rule: the
+// TestAcquireErrorWithPrimaryKeepsEvidence asserts the composition rule: the
 // primary is replaced, every fate field survives.
 func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 	t.Parallel()
@@ -224,7 +224,7 @@ func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 	assert.Equal(t, 13, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
 }
 
-// TestAcquireSessionCreateKindKnowledge pins what the acquisition knows
+// TestAcquireSessionCreateKindKnowledge asserts what the acquisition knows
 // about S's kind without a name: a lost or unrecognizable synchronous
 // response leaves it unknown, a name-only Norman body is v3, and the
 // façade's shape option shows that a json request answered with an ext
@@ -256,7 +256,7 @@ func TestAcquireSessionCreateKindKnowledge(t *testing.T) {
 	}
 }
 
-// TestAcquireExtShapedSessionThroughLogin pins the ownership state machine
+// TestAcquireExtShapedSessionThroughLogin asserts the ownership state machine
 // over an ext-shaped S (a json request Rancher answers with an ext Token
 // object): S is revoked on the ext route with D as the bearer, a derived token create
 // failure cleans the ext S, and the legacy fallback transfers an ext ref.
@@ -341,7 +341,7 @@ func samlInput(server string) *loginInput {
 	return &loginInput{server: server, authProvider: "oktaProvider", responseType: "json"}
 }
 
-// assertAuthTokensOnly pins the SAML wire protocol: the CLI never posts a login
+// assertAuthTokensOnly asserts the SAML wire protocol: the CLI never posts a login
 // body; it publishes a URL and polls the authtokens collection.
 func assertAuthTokensOnly(t *testing.T, f *testrancher.Facade) {
 	t.Helper()
@@ -351,7 +351,7 @@ func assertAuthTokensOnly(t *testing.T, f *testrancher.Facade) {
 	}
 }
 
-// TestSAMLPostHandoffFailuresAreUnknownWithHandoff pins the asynchronous
+// TestSAMLPostHandoffFailuresAreUnknownWithHandoff asserts the asynchronous
 // state machine: after the browser URL is published, cancellation and
 // timeout are unknown S creates carrying the handoff; a deposited auth
 // token with a valid bearer is known; a payload that cannot be decoded is
@@ -428,7 +428,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	})
 }
 
-// TestAcquireRevokesSessionCreatedUnderAnUnexpectedStatus pins that
+// TestAcquireRevokesSessionCreatedUnderAnUnexpectedStatus asserts that
 // ownership begins the moment a usable session token exists, whatever
 // status carried it: a 200 with a full token body is a create the CLI
 // refuses (a create answers 201), and the token it created is revoked

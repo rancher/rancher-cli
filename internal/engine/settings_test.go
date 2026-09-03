@@ -21,7 +21,7 @@ func settingObj(value, def string, hasValue, hasDefault bool) *unstructured.Unst
 	return &unstructured.Unstructured{Object: obj}
 }
 
-// TestSettingValue pins SettingValue's value-or-default fallback contract
+// TestSettingValue asserts SettingValue's value-or-default fallback contract
 // (review finding 4): both provisioning's kubernetes-versions merge and
 // support-bundle's settings snapshot depend on this behavior being
 // consistent between them.

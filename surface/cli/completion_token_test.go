@@ -223,7 +223,7 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	assert.Empty(t, cap.Token, "round-2 finding 3: cross-server URL override must not send server A token to server B")
 }
 
-// TestResolveCompletionTokenFileStoreSameURLServers pins the file-store
+// TestResolveCompletionTokenFileStoreSameURLServers asserts the file-store
 // lookup when several stored servers share one URL. The current server is
 // the operator's own selection, so its token must be used whenever its URL
 // is the effective URL; the URL scan with its ambiguity guard applies only

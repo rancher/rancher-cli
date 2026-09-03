@@ -65,7 +65,7 @@ func TestAuthCheckUsesInjectedPreflight(t *testing.T) {
 }
 
 func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // pin the effective policy to config/auto
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "") // force the effective policy to config/auto
 	dir := seedAuthedDir(t)
 	require.NoError(t, config.WritePin(dir, "file"))
 	cmd := &authCheckCmd{
@@ -84,7 +84,7 @@ func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
 	assert.Equal(t, "file", cs["pinned"])
 }
 
-// TestAuthCheckRancherVersionSupportPayload pins PS-8's additive auth-check
+// TestAuthCheckRancherVersionSupportPayload asserts PS-8's additive auth-check
 // payload fields: rancherVersion and supported, alongside (never replacing)
 // the existing serverVersion k8s-discovery key.
 func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
@@ -221,7 +221,7 @@ func writeAuthCheckConfig(t *testing.T, dir string) {
 	require.NoError(t, cfg.Write())
 }
 
-// TestAuthCheckIdentityAndTokenHappyPath pins PS-2's additive payload: both
+// TestAuthCheckIdentityAndTokenHappyPath asserts PS-2's additive payload: both
 // probes returning full metadata decode into the AuthCheck envelope
 // alongside (never replacing) PS-8's rancherVersion/supported keys.
 func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
@@ -263,7 +263,7 @@ func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 	assert.Equal(t, true, token["current"])
 }
 
-// TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived pins the
+// TestAuthCheckTokenKindLabelsAnythingButSessionAsDerived asserts the
 // spec.kind display-label rule: "session" (Rancher's own login flow) is the
 // only raw value shown verbatim; every other value (including the empty
 // string createTokenCmd leaves for CLI-derived tokens) is labeled "derived".
@@ -315,7 +315,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 	assert.Equal(t, "env-1", token["name"])
 }
 
-// TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe pins PS-2's v3 fallback: a
+// TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe asserts PS-2's v3 fallback: a
 // non-ext (management.cattle.io/v3) effective token routes to the v3token probe
 // and never touches the ext probe. Here the v3 probe returns RBAC denial, so
 // token degrades to null with the RBAC warning — the same posture the ext probe
@@ -345,7 +345,7 @@ func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: denied by RBAC")
 }
 
-// TestAuthCheckNoTokenAtAllIsNotLegacy pins checkToken's distinct empty-token
+// TestAuthCheckNoTokenAtAllIsNotLegacy asserts checkToken's distinct empty-token
 // case: with no effective token at all (unreachable via a real preflight,
 // which would already have failed, but reachable when a test — like this
 // one — stubs preflight to bypass that), the token field stays null with NO
@@ -473,7 +473,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 	}
 }
 
-// TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent pins finding 1's first
+// TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent asserts finding 1's first
 // branch: a token-probe 404 when the version probe could NOT confirm the
 // server is at or above the ext.cattle.io floor (2.14) keeps the existing
 // group-absent wording — the two probes disagreeing here (one says
@@ -500,7 +500,7 @@ func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)")
 }
 
-// TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken pins finding 1's fix: once
+// TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken asserts finding 1's fix: once
 // the version probe has confirmed the server IS at or above the floor, the
 // same token-probe 404 can only mean the named token object itself was
 // deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store id)
@@ -527,7 +527,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
 }
 
-// TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes pins finding
+// TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes asserts finding
 // 4's ordering contract: the version/identity/token probes now run
 // concurrently (errgroup), but the warnings list must always assemble in
 // this fixed order regardless of which goroutine happens to finish first.
@@ -559,7 +559,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 	}
 }
 
-// TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken pins the PS-5
+// TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken asserts the PS-5
 // read-only-recipe note explicitly (not just as one row of the degradation
 // table above): SelfUser identity is a create-verb request, so a genuinely
 // read-only RBAC token degrades identity to null with the RBAC warning —
@@ -586,7 +586,7 @@ func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 	assert.Contains(t, res.Warnings, "identity metadata unavailable: denied by RBAC")
 }
 
-// TestAuthCheckV3TokenFoundReturnsMetadata pins the v3 fallback happy path: a
+// TestAuthCheckV3TokenFoundReturnsMetadata asserts the v3 fallback happy path: a
 // non-ext effective token whose management.cattle.io/v3 Token object is present
 // returns the same five-field shape as the ext probe — name, kind, provider,
 // expiresAt, current — mapped 1:1 from the root-level v3 fields.
@@ -622,7 +622,7 @@ func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
 	assert.Equal(t, true, token["current"])
 }
 
-// TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning pins the v3 fallback
+// TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning asserts the v3 fallback
 // 404 path: when the management.cattle.io/v3 Token object is absent (revoked
 // or rotated) the token field degrades to null with the "re-authenticate"
 // advisory. Unlike the ext 404 disambiguation this warning is unconditional —
@@ -646,7 +646,7 @@ func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login")
 }
 
-// TestAuthCheckExtTokenProbeUnchanged pins that an ext/ effective token still
+// TestAuthCheckExtTokenProbeUnchanged asserts that an ext/ effective token still
 // routes to the ext probe only, and the v3token probe is never called — FIX 2
 // must not disturb the pre-existing ext path.
 func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
@@ -678,7 +678,7 @@ func TestAuthCheckExtTokenProbeUnchanged(t *testing.T) {
 	assert.Equal(t, "derived-1", token["name"])
 }
 
-// TestAuthCheckTextViewHappyPath pins the TTY text view sections and key fields
+// TestAuthCheckTextViewHappyPath asserts the TTY text view sections and key fields
 // for a full-data result: AUTH STATUS, VERSIONS, IDENTITY, TOKEN, CREDENTIAL STORE.
 func TestAuthCheckTextViewHappyPath(t *testing.T) {
 	t.Parallel()
@@ -706,7 +706,7 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 	assert.Contains(t, text, "pinned: file")
 }
 
-// TestAuthCheckTextViewNullFields pins the honest-null convention: nil pointer
+// TestAuthCheckTextViewNullFields asserts the honest-null convention: nil pointer
 // fields render as "-", nil sub-objects render as "<field>: unavailable", and
 // plain empty strings (cluster, pinned) also render as "-" — all three
 // "nothing here" states use the same marker within this view.
@@ -725,7 +725,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 	assert.Contains(t, text, "pinned: -", "empty pinned renders as dash, not blank")
 }
 
-// TestStyleAuthCheckTextStripInvariant pins auth status's bold spans: every
+// TestStyleAuthCheckTextStripInvariant asserts auth status's bold spans: every
 // section header is bold, whole line, and a healthy "ok: true" row stays
 // plain — plus the strip invariant and the inactive-style identity.
 func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
@@ -745,7 +745,7 @@ func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 	assert.NotContains(t, styled, "\x1b[1m  ok: true", "ok: true is not bold either")
 }
 
-// TestStyleAuthCheckTextAccentsFalseOK pins the yellow accent: only the
+// TestStyleAuthCheckTextAccentsFalseOK asserts the yellow accent: only the
 // unhealthy "ok: false" row turns yellow, never "ok: true".
 func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 	t.Parallel()
@@ -758,7 +758,7 @@ func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 }
 
 // TestAuthCheckTextViewWarningsReachStderr drives the real pipeline (runtime.Run's
-// Text branch) and pins that warnings still reach stderr as "# warning: ..."
+// Text branch) and asserts that warnings still reach stderr as "# warning: ..."
 // lines — not stdout — when the text view is active. A non-ext token whose
 // v3 lookup 404s (revoked or rotated) is the real-world case: the Text view
 // renders on stdout while the re-authenticate advisory arrives only on stderr.
@@ -786,7 +786,7 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	assert.NotContains(t, stderr, "AUTH STATUS", "text view must never appear on stderr")
 }
 
-// TestAuthCheckDataPayloadUnchanged pins that adding Result.Text does not alter
+// TestAuthCheckDataPayloadUnchanged asserts that adding Result.Text does not alter
 // the Result.Data map — every JSON key and type must survive byte-identical,
 // matching TestContextCurrentTextView's parallel assertion for current-context.
 func TestAuthCheckDataPayloadUnchanged(t *testing.T) {

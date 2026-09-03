@@ -34,7 +34,7 @@ func TestAddServerCreatesEntryAndBootstrapsPointer(t *testing.T) {
 	assert.Equal(t, "https://qa1.example.com", cfg.Servers["qa1"].URL)
 }
 
-// TestAddServerTextCAPinnedNoPointerLine pins the two conditional text lines
+// TestAddServerTextCAPinnedNoPointerLine asserts the two conditional text lines
 // independently: a CA-pinned add gets "ca: pinned", and an add that finds
 // the pointer already valid (a prior entry already current) omits the
 // "current server set to" line entirely.

@@ -31,7 +31,7 @@ func oidcClientServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalOIDCClientCandidates pins the generic Completable NSNone
+// TestLivePositionalOIDCClientCandidates asserts the generic Completable NSNone
 // management-kind fallback branch: `get
 // oidcclient <TAB>` lists v3 OIDCClients from the local (management) cluster
 // through the same generic path nodedriver uses — no per-kind case needed —
@@ -49,7 +49,7 @@ func TestLivePositionalOIDCClientCandidates(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
 
-// TestLivePositionalOIDCClientTokenBoundary pins the management-token
+// TestLivePositionalOIDCClientTokenBoundary asserts the management-token
 // boundary: a missing token or an exec-cred-only (IDOnly) capability cannot
 // authorize the management cluster list — nil, with ZERO requests.
 func TestLivePositionalOIDCClientTokenBoundary(t *testing.T) {
@@ -86,7 +86,7 @@ func oidcClientSecretsServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalBespokeOIDCClientOpClientName pins the data-driven
+// TestLivePositionalBespokeOIDCClientOpClientName asserts the data-driven
 // bespoke-op completion seam: the client positional on
 // all three lifecycle verbs reuses the SAME generic listing path get/patch/
 // delete oidcclient use, keyed off the op name rather than
@@ -109,7 +109,7 @@ func TestLivePositionalBespokeOIDCClientOpClientName(t *testing.T) {
 	}
 }
 
-// TestLivePositionalBespokeOIDCClientSecretName pins the DEPENDENT
+// TestLivePositionalBespokeOIDCClientSecretName asserts the DEPENDENT
 // secret-name positional (index 1) on rotate-secret/remove-secret: a
 // client-scoped GET of the already-typed first positional's
 // status.clientSecrets keys, hostile names sanitized.
@@ -131,7 +131,7 @@ func TestLivePositionalBespokeOIDCClientSecretName(t *testing.T) {
 	}
 }
 
-// TestLivePositionalBespokeOIDCClientSecretNameNoFirstPositional pins the
+// TestLivePositionalBespokeOIDCClientSecretNameNoFirstPositional asserts the
 // dependent-positional gate: a missing or unresolvable first positional
 // completes to nothing — never an error into the TAB stream, zero requests.
 func TestLivePositionalBespokeOIDCClientSecretNameNoFirstPositional(t *testing.T) {

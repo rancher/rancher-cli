@@ -101,7 +101,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// behaviour: transitioning=error and waitSatisfied are checked
 			// on every poll regardless of generation bookkeeping.
 			// TestWaitForSkipsUnsettledGenerations and
-			// TestWaitForUnsettledUnstalledSucceedsImmediately pin the two
+			// TestWaitForUnsettledUnstalledSucceedsImmediately assert the two
 			// sides of this invariant.
 			if !failOnStalled || settled(obj) {
 				if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {

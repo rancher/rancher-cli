@@ -68,7 +68,7 @@ func buildMachineConfig(t *testing.T, in runtime.Input) (*unstructured.Unstructu
 	return obj, err
 }
 
-// TestCreateMachineConfigDescribe pins the MC-1/MC-2/MC-9 surface shape.
+// TestCreateMachineConfigDescribe asserts the MC-1/MC-2/MC-9 surface shape.
 func TestCreateMachineConfigDescribe(t *testing.T) {
 	t.Parallel()
 	d := NewCreateMachineConfig(fakeFactory{}).Describe()
@@ -104,7 +104,7 @@ func TestCreateMachineConfigDescribe(t *testing.T) {
 	assert.Contains(t, d.Desc, "--set")
 }
 
-// TestCreateMachineConfigBuildRootLevelFields pins MC-6/MC-10: driver
+// TestCreateMachineConfigBuildRootLevelFields asserts MC-6/MC-10: driver
 // fields sit at the CR ROOT alongside apiVersion/kind/metadata — no spec
 // wrapper — in fleet-default, with the kind row's K8sKind casing.
 func TestCreateMachineConfigBuildRootLevelFields(t *testing.T) {
@@ -126,7 +126,7 @@ func TestCreateMachineConfigBuildRootLevelFields(t *testing.T) {
 	assert.False(t, hasSpec, "machine-config CRs have NO spec wrapper")
 }
 
-// TestCreateMachineConfigBoolTriState pins MC-5a for every curated bool:
+// TestCreateMachineConfigBoolTriState asserts MC-5a for every curated bool:
 // omitted → field absent; explicit true → true; explicit false → false.
 func TestCreateMachineConfigBoolTriState(t *testing.T) {
 	t.Parallel()
@@ -166,7 +166,7 @@ func TestCreateMachineConfigBoolTriState(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigSetValueParsing pins MC-6's value grammar
+// TestCreateMachineConfigSetValueParsing asserts MC-6's value grammar
 // against Rancher's node-driver schema (FlagToField in rancher's
 // pkg/controllers/management/drivers/nodedriver/utils.go): booleans stay
 // JSON booleans (BoolFlag → "boolean"), arrays stay JSON arrays
@@ -199,7 +199,7 @@ func TestCreateMachineConfigSetValueParsing(t *testing.T) {
 	assert.Equal(t, "a=b", obj.Object["userdata"], "cut at the FIRST =")
 }
 
-// TestCreateMachineConfigSetMalformed pins MC-6's shape errors — and that
+// TestCreateMachineConfigSetMalformed asserts MC-6's shape errors — and that
 // they NEVER reflect the entry's content: a bare pasted secret (no '=') or
 // an empty-key assignment ('=secret') would otherwise echo the secret to
 // stderr and into shell history/CI logs. The error names the offending
@@ -230,7 +230,7 @@ func TestCreateMachineConfigSetMalformed(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigSetEnvelopeKeysRejected pins MC-6's envelope
+// TestCreateMachineConfigSetEnvelopeKeysRejected asserts MC-6's envelope
 // guard: apiVersion, kind, metadata, and status via --set are VALIDATION
 // before any overlay — they are object identity (or server-owned status),
 // never driver fields, and must not overwrite what build assembles.
@@ -248,7 +248,7 @@ func TestCreateMachineConfigSetEnvelopeKeysRejected(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigSetDuplicateKey pins MC-6: duplicate keys across
+// TestCreateMachineConfigSetDuplicateKey asserts MC-6: duplicate keys across
 // occurrences are VALIDATION, naming the key.
 func TestCreateMachineConfigSetDuplicateKey(t *testing.T) {
 	t.Parallel()
@@ -259,7 +259,7 @@ func TestCreateMachineConfigSetDuplicateKey(t *testing.T) {
 	assert.Contains(t, ce.Message, "rootSize")
 }
 
-// TestCreateMachineConfigSetCuratedCollision pins MC-7: on the curated
+// TestCreateMachineConfigSetCuratedCollision asserts MC-7: on the curated
 // kind, a --set key naming a curated flag's field is VALIDATION with both
 // spellings named — never silent precedence.
 func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
@@ -272,7 +272,7 @@ func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
 	assert.Contains(t, ce.Message, "--region")
 }
 
-// TestCreateMachineConfigCuratedFlagForeignKind pins MC-7a for one flag of
+// TestCreateMachineConfigCuratedFlagForeignKind asserts MC-7a for one flag of
 // each class — string, bool (incl. explicit-false presence), list: a DO
 // curated flag on a non-DO kind is VALIDATION naming flag and kind, with
 // the --set alternative named too, and the field is never written.
@@ -309,11 +309,11 @@ func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigCredentialRejectedPerKind pins MC-8: at least one
+// TestCreateMachineConfigCredentialRejectedPerKind asserts MC-8: at least one
 // credential-carried key per kind, passed as a WELL-FORMED key=value
 // assignment (so the credential check, not the shape check, is what
 // fires), is VALIDATION naming the key with the cloud-credential guidance —
-// here in the canonical confirmed casing (case folding is pinned by
+// here in the canonical confirmed casing (case folding is asserted by
 // TestCreateMachineConfigCredentialRejectedCaseInsensitive).
 func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 	t.Parallel()
@@ -335,7 +335,7 @@ func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigCredentialRejectedCaseInsensitive pins MC-8's
+// TestCreateMachineConfigCredentialRejectedCaseInsensitive asserts MC-8's
 // case folding: a credential key in ANY casing (--set AccessKey=...,
 // --set ACCESSTOKEN=...) must not slip past the rejection and persist a
 // secret as a plaintext CR field. The VALIDATION message names the
@@ -398,7 +398,7 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 	assert.ElementsMatch(t, meta.Curated, flagFields)
 }
 
-// TestCreateMachineConfigPlanDiffLessEffect pins MC-11: one server-side
+// TestCreateMachineConfigPlanDiffLessEffect asserts MC-11: one server-side
 // dry-run, action=create, identity-only target, no diff, non-destructive,
 // cluster local. All curated VALUE fields are set so the fallthrough warning
 // does not fire; bool fields are not set (they can't go stale).
@@ -424,7 +424,7 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	assert.Equal(t, "fleet-default", client.createdNS)
 }
 
-// TestCreateMachineConfigPrunedKeyWarning pins MC-12: a top-level key the
+// TestCreateMachineConfigPrunedKeyWarning asserts MC-12: a top-level key the
 // dry-run response dropped (minus the k8s envelope) is warned about BY
 // NAME; envelope keys never trigger it. Uses amazonec2config (no curated
 // fields) so only the prune warning fires.
@@ -448,7 +448,7 @@ func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	assert.Equal(t, "field(s) pruned by the server: regoin — unknown field?", eff.Warnings[0])
 }
 
-// TestCreateMachineConfigNullValuePruned pins the --set field=null edge:
+// TestCreateMachineConfigNullValuePruned asserts the --set field=null edge:
 // the value parses to JSON null, so the SUBMITTED object carries the key
 // with a nil value — the key exists. When the server's dry-run response
 // drops that key, the pruned-key comparison (a presence check, not a
@@ -477,7 +477,7 @@ func TestCreateMachineConfigNullValuePruned(t *testing.T) {
 	assert.Equal(t, "field(s) pruned by the server: keypairName — unknown field?", eff.Warnings[0])
 }
 
-// TestCreateMachineConfigNullValueKept pins the other half of the null
+// TestCreateMachineConfigNullValueKept asserts the other half of the null
 // edge: when the server's dry-run response KEEPS the submitted-nil key,
 // no warning fires — presence, not value, decides.
 func TestCreateMachineConfigNullValueKept(t *testing.T) {
@@ -499,7 +499,7 @@ func TestCreateMachineConfigNullValueKept(t *testing.T) {
 	assert.Empty(t, eff.Warnings)
 }
 
-// TestCreateMachineConfigGateBehavior pins MC-1/MC-19 through the real
+// TestCreateMachineConfigGateBehavior asserts MC-1/MC-19 through the real
 // pipeline: bare → CONFIRMATION_REQUIRED (nothing executed), --dry-run
 // renders the Effect envelope (decoded, never string-matched) and stops,
 // --apply executes the real create. No --yes: the effect is
@@ -558,9 +558,9 @@ func TestCreateMachineConfigGateBehavior(t *testing.T) {
 	})
 }
 
-// TestCreateMachineConfigExecutePropagatesError pins MC-13's engine-side
+// TestCreateMachineConfigExecutePropagatesError asserts MC-13's engine-side
 // contract: the executor surfaces the client error unchanged (the provider
-// maps a name collision to the structured CONFLICT; the e2e scenario pins
+// maps a name collision to the structured CONFLICT; the e2e scenario asserts
 // the mapped code end to end).
 func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 	t.Parallel()
@@ -579,7 +579,7 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }
 
-// TestCreateMachineConfigFallthroughWarning pins the driver-default
+// TestCreateMachineConfigFallthroughWarning asserts the driver-default
 // fallthrough warning: Plan appends a warning when any curated VALUE field
 // is left unset, listing only those unset fields sorted. Bool fields
 // (monitoring, ipv6, privateNetworking) are excluded — they can't go stale
@@ -650,7 +650,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 	})
 }
 
-// TestCreateMachineConfigSetForeignKindHintArticle pins the article-aware
+// TestCreateMachineConfigSetForeignKindHintArticle asserts the article-aware
 // message text: "an" before a vowel-initial kind name (azureconfig,
 // amazonec2config), "a" before a consonant-initial kind name (harvesterconfig).
 func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {

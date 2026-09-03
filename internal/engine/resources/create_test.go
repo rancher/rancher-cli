@@ -252,7 +252,7 @@ func TestCreateResourceSensitiveKindIsDestructive(t *testing.T) {
 	assert.False(t, eff2.Destructive)
 }
 
-// TestCreateResourceRedactsUserPassword pins the create-response redaction
+// TestCreateResourceRedactsUserPassword asserts the create-response redaction
 // seam: a User manifest's password reaches the server (the create client
 // echoes back exactly what it submitted, as a real server does), but the
 // rendered Result never carries it.

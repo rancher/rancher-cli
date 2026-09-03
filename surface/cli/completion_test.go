@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCompletionCommandRegisteredWithShellCompletionField pins that
+// TestCompletionCommandRegisteredWithShellCompletionField asserts that
 // `completion` is registry-wired (reg.Register before reg.Validate, not
 // Adapt alone) and that the manifest's shellCompletion capability field is
 // always present.
@@ -59,7 +59,7 @@ func TestCompletionEmissionHasNoSideEffects(t *testing.T) {
 	assert.True(t, os.IsNotExist(pinErr), "credstore-pin must not be created by completion emission (would indicate a resolveDeps/OpenStore path)")
 }
 
-// TestCompletionArgsUsageRendersEnumValues pins that the completion command's
+// TestCompletionArgsUsageRendersEnumValues asserts that the completion command's
 // positional arg, which carries an Enum, renders as "<bash|zsh|fish|pwsh>"
 // rather than the bare "<shell>" name in the urfave ArgsUsage field.
 func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
@@ -71,7 +71,7 @@ func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
 	assert.Equal(t, "<bash|zsh|fish|pwsh>", cmd.ArgsUsage)
 }
 
-// TestCompletionSelfCompletesShellArgument pins spec SC-2's self-completion
+// TestCompletionSelfCompletesShellArgument asserts spec SC-2's self-completion
 // requirement: `completion`'s own --generate-shell-completion lists the same
 // shells the command accepts, via the same Adapt-level ShellCompleter wiring
 // Task 3 mirrors for adaptEntry.

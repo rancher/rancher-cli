@@ -18,7 +18,7 @@ func planRemoveSecret(t *testing.T, cmd runtime.Command, in runtime.Input) (safe
 	return mc.Plan(t.Context(), in)
 }
 
-// TestRemoveSecretDescriptorHasNoOnceOnlySeam pins the one bespoke command
+// TestRemoveSecretDescriptorHasNoOnceOnlySeam asserts the one bespoke command
 // that delivers no once-only value: remove-secret carries Capability but
 // NEITHER OutputPolicy NOR Delivery — it is not in the once-only inventory.
 func TestRemoveSecretDescriptorHasNoOnceOnlySeam(t *testing.T) {
@@ -75,7 +75,7 @@ func TestRemoveSecretExecSuccess(t *testing.T) {
 		"  secret client-secret-2 removed — anything using it stops working\n", res.Text)
 }
 
-// TestRemoveSecretExecTimeoutIsNonRetryable pins remove's contract: the
+// TestRemoveSecretExecTimeoutIsNonRetryable asserts remove's contract: the
 // timeout recovery is a read-first, never "re-run to confirm" (strict
 // Plan-time validation would fail a re-run whose first attempt landed
 // after the last poll).

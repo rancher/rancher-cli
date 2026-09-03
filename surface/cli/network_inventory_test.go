@@ -25,7 +25,7 @@ var networkedLocalCommandInventory = map[string]bool{
 	"kubeconfig":           true,
 }
 
-// TestNetworkedLocalCommandsConformance pins the Local command network
+// TestNetworkedLocalCommandsConformance asserts the Local command network
 // inventory bidirectionally: every reviewed entry must still declare
 // Network: true, and no other Local command may declare Network: true
 // without first being added to the reviewed inventory — so adding a live

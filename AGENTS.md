@@ -72,9 +72,9 @@ Two gotchas:
   code can't show — never its provenance. No references to design
   docs, reviews, rounds or findings, handoffs, recordings, tasks, or
   commit hashes; a reader with only the repo must get the full
-  meaning. In test doc-comments, "pins" is the term of art for
-  "asserts and freezes as contractual"; in files that carry the
-  credential/CA pin concept, tests say "asserts" instead.
+  meaning. Test doc-comments say "asserts", never "pins": "pin" is
+  reserved for the credential-store and CA pin features and for
+  dependency pins (images, tools, modules).
 - **Descriptions:** operator-facing help is terse and plain; the schema `desc`
   carries the fuller, precise wording. Keep internal jargon out of both:
   plain verbs (create/generate — never "mint", in identifiers and comments

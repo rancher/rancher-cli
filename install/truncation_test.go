@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTruncatedScriptMidFunctionExecutesNothing pins that a download cut
+// TestTruncatedScriptMidFunctionExecutesNothing asserts that a download cut
 // inside a function body cannot execute a partial install: the sh interpreter
 // rejects the malformed input and the home directory is unchanged.
 //

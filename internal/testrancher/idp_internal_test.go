@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIdPStubIssuesIDTokenForAuthorizationCodeGrant pins the stub's
+// TestIdPStubIssuesIDTokenForAuthorizationCodeGrant asserts the stub's
 // authorization-code grant: any non-empty code yields an id_token the
 // façade's login then accepts.
 func TestIdPStubIssuesIDTokenForAuthorizationCodeGrant(t *testing.T) {

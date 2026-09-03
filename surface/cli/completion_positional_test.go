@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestPositionalEnumCandidatesStatic pins MC-14/MC-15: a positional site
+// TestPositionalEnumCandidatesStatic asserts MC-14/MC-15: a positional site
 // whose ArgSpec carries an Enum is OWNED by the static layer — served
 // index-aware and partial-filtered, with an unmatched partial owned but
 // empty; an enum-less positional (the <name> site) and an out-of-range
@@ -79,7 +79,7 @@ func (r *recordingCompleter) CompleteArgs(context.Context, runtime.ConfigView) [
 	return []string{"from-completer"}
 }
 
-// TestPositionalEnumOwnershipStopsLowerLayers pins the ownership contract
+// TestPositionalEnumOwnershipStopsLowerLayers asserts the ownership contract
 // through dispatchSite: an unmatched partial on an enum-carrying positional
 // terminates with zero candidates and ZERO lower-layer activity — no
 // CompleteArgs delegation, no live fetch — while an enum-less positional
@@ -118,7 +118,7 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 	assert.Equal(t, int32(1), sc.calls.Load())
 }
 
-// TestCompletionShellPositionalParity pins MC-14's free rider: the
+// TestCompletionShellPositionalParity asserts MC-14's free rider: the
 // `completion <shell>` positional is served by the same static layer,
 // partial-filtered, through dispatchSite with the network gate OFF and
 // zero HTTP requests.

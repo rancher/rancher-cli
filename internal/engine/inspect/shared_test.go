@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// TestCompositesRejectProjectScope pins PC-3's composite-rejection rule: the
+// TestCompositesRejectProjectScope asserts PC-3's composite-rejection rule: the
 // non-project inspect composites bypass Route, so without an explicit check
 // the global --project flag would reach them and be silently ignored — the
 // exact no-op class DR-004 removed --project for.

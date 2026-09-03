@@ -55,7 +55,7 @@ func TestChecksumMismatchIsFatal(t *testing.T) {
 	assert.Contains(t, errOut, "checksum verification failed")
 }
 
-// TestChecksumEntryPerAssetCompleteness pins that each asset needs exactly
+// TestChecksumEntryPerAssetCompleteness asserts that each asset needs exactly
 // one SHA256SUMS entry: a missing helper entry, and a duplicated CLI entry
 // standing in for it, must both be fatal — a combined-count check would
 // accept the duplicate and leave the helper entirely unchecked.
@@ -250,7 +250,7 @@ func TestInternalRepoTokenModeInstalls(t *testing.T) {
 	assert.Equal(t, "versioned-dir", receipt["layout"])
 }
 
-// TestInternalRepoAnonymousFailsClearly pins the failure mode when no token is
+// TestInternalRepoAnonymousFailsClearly asserts the failure mode when no token is
 // available for a private/internal repo: the browser download URL returns 404
 // and the installer exits with an error message that names the asset. This
 // ensures the failure is clear rather than silent.
@@ -611,7 +611,7 @@ func TestEpilogueWarnsWhenAnotherBinaryShadowsInstall(t *testing.T) {
 		"the stale-command-hash remedy must be named")
 }
 
-// TestEpilogueQuietOnCleanPath pins the inverse: no shadow, no warning.
+// TestEpilogueQuietOnCleanPath asserts the inverse: no shadow, no warning.
 func TestEpilogueQuietOnCleanPath(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -624,7 +624,7 @@ func TestEpilogueQuietOnCleanPath(t *testing.T) {
 		"a clean PATH must not produce shadow warnings")
 }
 
-// TestVersionChangeIsNamedAtSwitch pins the version-change messaging: an
+// TestVersionChangeIsNamedAtSwitch asserts the version-change messaging: an
 // upgrade is a note, a downgrade a warning (rollback is documented but must
 // never be silent), and a same-version rerun says neither.
 func TestVersionChangeIsNamedAtSwitch(t *testing.T) {
@@ -663,7 +663,7 @@ func TestVersionChangeIsNamedAtSwitch(t *testing.T) {
 	assert.NotContains(t, out+errOut, "downgrading")
 }
 
-// TestShadowScanIgnoresConvenienceSymlink pins the false-positive fix: a
+// TestShadowScanIgnoresConvenienceSymlink asserts the false-positive fix: a
 // symlink elsewhere on PATH that points back at the installed binary runs
 // the identical code — the scan must stay silent for absolute, relative,
 // and chained (update-alternatives-style) links alike.

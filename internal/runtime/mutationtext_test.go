@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTextLinesStyledTextBoldsFirstLineOnly pins TextLines' StyledText
+// TestTextLinesStyledTextBoldsFirstLineOnly asserts TextLines' StyledText
 // builder: only the headline is bold, the strip invariant holds, and a
 // disabled Style returns Text unchanged.
 func TestTextLinesStyledTextBoldsFirstLineOnly(t *testing.T) {
@@ -29,7 +29,7 @@ func TestTextLinesStyledTextBoldsFirstLineOnly(t *testing.T) {
 	assert.NotContains(t, lines[2], "\x1b[", "a detail line must not be styled")
 }
 
-// TestMutationTextStyledTextBoldsFirstLineOnly pins the same rule through
+// TestMutationTextStyledTextBoldsFirstLineOnly asserts the same rule through
 // MutationText, the "<kind>/<name> <verb>" headline shape every generic
 // create/patch/delete command shares.
 func TestMutationTextStyledTextBoldsFirstLineOnly(t *testing.T) {
@@ -43,7 +43,7 @@ func TestMutationTextStyledTextBoldsFirstLineOnly(t *testing.T) {
 	assert.NotContains(t, lines[1], "\x1b[")
 }
 
-// TestAccentLineColorsDetailLineYellowKeepingHeadlineBold pins the common
+// TestAccentLineColorsDetailLineYellowKeepingHeadlineBold asserts the common
 // accent shape (config delete-server's "was current — pointer cleared"): the
 // accented detail line turns yellow, the headline keeps its own bold, and
 // every other line stays plain.
@@ -65,7 +65,7 @@ func TestAccentLineColorsDetailLineYellowKeepingHeadlineBold(t *testing.T) {
 	assert.NotContains(t, lines[2], "\x1b[", "an unrelated detail line stays plain")
 }
 
-// TestAccentLineOnHeadlineReplacesBoldWithYellow pins login --no-verify's
+// TestAccentLineOnHeadlineReplacesBoldWithYellow asserts login --no-verify's
 // shape: when the accented line IS the headline, yellow replaces bold rather
 // than compounding with it — one emphasis, the alarming one.
 func TestAccentLineOnHeadlineReplacesBoldWithYellow(t *testing.T) {

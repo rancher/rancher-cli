@@ -65,7 +65,7 @@ func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
 	}
 	// The second OpenStore call reads the pin written by the first and never
 	// re-probes — this is the pin's own once-per-dir contract. probes still
-	// pins the underlying keyringUsableOnce process-wide memoization: a
+	// asserts the underlying keyringUsableOnce process-wide memoization: a
 	// second unpinned dir in the SAME process would reuse this cached result
 	// rather than probing again (deliberate: one process, one probe).
 	if probes != 1 {
@@ -345,7 +345,7 @@ func TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice(t *testing.
 	assert.Contains(t, notices[0], "group/world-readable")
 }
 
-// TestDeleteAllExecCacheSurfacesLoosePermissionNotice pins the same fix for
+// TestDeleteAllExecCacheSurfacesLoosePermissionNotice asserts the same fix for
 // DeleteAllExecCache (logout --all's single-wipe path): its own throwaway
 // *fileStore's notice buffer must be drained and returned, not dropped.
 func TestDeleteAllExecCacheSurfacesLoosePermissionNotice(t *testing.T) {
@@ -734,7 +734,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	assert.NoError(t, errB, "key-b must survive after concurrent write")
 }
 
-// TestFileStoreCacheLockPreventsLostUpdateOnExpiry pins the reviewer's exact
+// TestFileStoreCacheLockPreventsLostUpdateOnExpiry asserts the reviewer's exact
 // interleaving: SetCachedCred (A, adding key-a) races GetCachedCred (B,
 // pruning an expired key-b). Without the fix, B reads the cache before A's
 // write, then prunes and writes a snapshot that does not include key-a — a
@@ -825,7 +825,7 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 	assert.NoError(t, errGet, "key-c must survive unaffected")
 }
 
-// TestFileStoreCacheGetServesConcurrentlyRefreshedKey pins the same-key
+// TestFileStoreCacheGetServesConcurrentlyRefreshedKey asserts the same-key
 // interleaving of the prune race: GetCachedCred finds the key expired in its
 // lock-free read; before it acquires the flock, a concurrent SetCachedCred
 // (a re-auth for the same server+cluster+user in another process) refreshes
@@ -860,7 +860,7 @@ func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
 	assert.Equal(t, "tok-fresh", tok)
 }
 
-// TestDeleteAllCachedCredsHonorsCacheLock pins the round-8 wipe race:
+// TestDeleteAllCachedCredsHonorsCacheLock asserts the round-8 wipe race:
 // DeleteAllCachedCreds must block on the flock while a concurrent
 // SetCachedCred's read-modify-write is in flight. Without the lock, the
 // Remove lands mid-write and the writer's write-back silently resurrects
@@ -927,7 +927,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoToken, "key-b (written before the wipe acquired the lock) must be wiped too")
 }
 
-// TestSetTokenLostUpdateWithoutConfigLock pins the stale-snapshot bug class
+// TestSetTokenLostUpdateWithoutConfigLock asserts the stale-snapshot bug class
 // for credentials.yaml: two fileStore instances (each with its own mu,
 // modelling two separate processes) both read the file, both update their
 // in-memory map, and both write — the second write overwrites the first.

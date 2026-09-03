@@ -86,7 +86,7 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 	}
 	require.Equal(t, expected, got)
 
-	// Position pins: the fixed top-level section leads; the ungrouped-entry
+	// Position assertions: the fixed top-level section leads; the ungrouped-entry
 	// section is a SECOND "" section at its own later position.
 	require.NotEmpty(t, m.Groups)
 	assert.Equal(t, "", m.Groups[0].Name)
@@ -103,7 +103,7 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 	assert.Contains(t, laterUngrouped.Commands, "grant")
 }
 
-// TestSchemaProjectShadowing pins the deliberate collision between the
+// TestSchemaProjectShadowing asserts the deliberate collision between the
 // "project" kind and the "project" group. Resolution order is command →
 // group → kind (revised 2026-08-20: a kind is reachable via --kind, a
 // shadowed group had no disambiguator), so rancher schema project returns
@@ -183,7 +183,7 @@ func TestSchemaGroupDescsComplete(t *testing.T) {
 	}
 }
 
-// TestSchemaCommandGroupField pins SE-18's informational per-command Group:
+// TestSchemaCommandGroupField asserts SE-18's informational per-command Group:
 // grouped commands carry their section name; the two positional-root
 // sections' commands carry "".
 func TestSchemaCommandGroupField(t *testing.T) {
@@ -212,7 +212,7 @@ func TestSchemaCommandGroupField(t *testing.T) {
 //     reachable only via --kind (groups win the collision tier).
 //
 // "project" and "cluster" are the known collisions (the GROUP wins each
-// time; TestSchemaProjectShadowing pins "project"'s behavior). Single-token
+// time; TestSchemaProjectShadowing asserts "project"'s behavior). Single-token
 // command × group: zero overlaps.
 func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	m, err := buildManifest("v-test")

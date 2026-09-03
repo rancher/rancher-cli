@@ -15,7 +15,7 @@ type probeTextDetails struct{}
 
 func (probeTextDetails) TextDetails() []string { return []string{"  probe line"} }
 
-// TestRecoveryCommandsByKind pins the one source of token recovery text:
+// TestRecoveryCommandsByKind asserts the one source of token recovery text:
 // an ext token is the `token` kind, a v3 token is the deprecated
 // `management-token` kind whose delete needs the deprecated gate.
 func TestRecoveryCommandsByKind(t *testing.T) {
@@ -28,7 +28,7 @@ func TestRecoveryCommandsByKind(t *testing.T) {
 	assert.Equal(t, "rancher delete management-token token-xyz --apply --yes --allow-deprecated", revoke)
 }
 
-// TestLoginFailureDetailsJSONShape pins the wire field names agents read.
+// TestLoginFailureDetailsJSONShape asserts the wire field names agents read.
 func TestLoginFailureDetailsJSONShape(t *testing.T) {
 	t.Parallel()
 	d := LoginFailureDetails{
@@ -56,7 +56,7 @@ func TestLoginFailureDetailsJSONShape(t *testing.T) {
 	assert.False(t, hasSession, "absent fates are omitted")
 }
 
-// TestCredentialRecoveryFieldSet pins the struct shape so prose, tests,
+// TestCredentialRecoveryFieldSet asserts the struct shape so prose, tests,
 // and implementation cannot drift.
 func TestCredentialRecoveryFieldSet(t *testing.T) {
 	t.Parallel()
@@ -68,7 +68,7 @@ func TestCredentialRecoveryFieldSet(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-// TestLoginFailureDetailsTextDetailsOrder pins the rendered order: primary
+// TestLoginFailureDetailsTextDetailsOrder asserts the rendered order: primary
 // first, then stage and states, then token fates, then recovery.
 func TestLoginFailureDetailsTextDetailsOrder(t *testing.T) {
 	t.Parallel()
@@ -94,7 +94,7 @@ func TestLoginFailureDetailsTextDetailsOrder(t *testing.T) {
 	assert.Equal(t, "recover: revoke ext/ext-1 with: rancher delete token ext-1 --apply --yes", lines[len(lines)-1])
 }
 
-// TestLoginFailureDetailsTextCarriesEveryUnnamedFate pins that a fate the
+// TestLoginFailureDetailsTextCarriesEveryUnnamedFate asserts that a fate the
 // CLI could not name still renders its cleanup result: an unknown or
 // unidentified token with nothing attempted is a fact the operator needs.
 func TestLoginFailureDetailsTextCarriesEveryUnnamedFate(t *testing.T) {
@@ -112,7 +112,7 @@ func TestLoginFailureDetailsTextCarriesEveryUnnamedFate(t *testing.T) {
 	assert.Contains(t, lines, "derived token: unidentified (ext), marked; cleanup: notAttempted")
 }
 
-// TestFateLineRendersEveryCleanupResult pins one rendered line per
+// TestFateLineRendersEveryCleanupResult asserts one rendered line per
 // RevokeResult, plus the shapes a fate takes when it has no name.
 func TestFateLineRendersEveryCleanupResult(t *testing.T) {
 	t.Parallel()
@@ -149,7 +149,7 @@ func TestFateLineRendersEveryCleanupResult(t *testing.T) {
 	}
 }
 
-// TestLoginFailureDetailsTextIncludesThePrimaryDetails pins that the
+// TestLoginFailureDetailsTextIncludesThePrimaryDetails asserts that the
 // primary's own projection is rendered directly under it, exactly once,
 // and that a primary without details adds no line.
 func TestLoginFailureDetailsTextIncludesThePrimaryDetails(t *testing.T) {

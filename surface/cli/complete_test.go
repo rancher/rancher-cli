@@ -306,7 +306,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 
 	// The expected set is the descriptor's own enum (sorted, as
 	// resolveStaticEnum emits) — no third hand-copied verb list; the enum's
-	// content is pinned to the registry by TestSchemaVerbEnumMatchesCommandVerbs.
+	// content is asserted against the registry by TestSchemaVerbEnumMatchesCommandVerbs.
 	var want []string
 	for _, f := range runtime.NewSchemaCommand(nil, "", "", nil).Describe().Flags {
 		if f.Name == "verb" {
@@ -422,11 +422,11 @@ func TestGVRPathNamedGroup(t *testing.T) {
 // TestSchemaPositionalCompletionSurfaces drives schema's SE-12 selector
 // candidates through the real Adapt-installed ShellComplete callback
 // (BuildRoot + root.Run), the same wiring path the use-context callback tests
-// pin. The candidates come from schemaCmd.CompleteArgs via the config-local
+// assert. The candidates come from schemaCmd.CompleteArgs via the config-local
 // dispatch layer; no network is involved. Multi-token selector candidates
 // ("get pods") are dropped at this layer by the AC-21 completion charset
 // (sanitizeCandidates rejects spaces), so the shell sees the single-token
-// subset — the full candidate set is pinned at the runtime layer by
+// subset — the full candidate set is asserted at the runtime layer by
 // TestSchemaPositionalCompletionShape.
 func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -459,7 +459,7 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	}
 }
 
-// TestNewConfigViewSortsNames pins the completion output order for server
+// TestNewConfigViewSortsNames asserts the completion output order for server
 // names at the source every delegating command shares.
 func TestNewConfigViewSortsNames(t *testing.T) {
 	t.Parallel()

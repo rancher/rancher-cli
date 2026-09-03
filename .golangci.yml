@@ -24,6 +24,6 @@ linters:
         - formatter
       # float-compare, encoded-compare, and empty are OFF: the suite has
       # deliberate exact-contract tests (byte-identical schema/manifest
-      # output, exact float64 JSON counts, pinned compact JSON encoding)
+      # output, exact float64 JSON counts, exact compact JSON encoding)
       # that these checkers would otherwise flag for a "softer" assertion
       # that would weaken the contract being tested.

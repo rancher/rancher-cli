@@ -31,7 +31,7 @@ func redirectingServer(t *testing.T, status int) (srv *httptest.Server, caPEM st
 	return srv, caPEM, elsewhereHits
 }
 
-// TestPreflightRefusesCrossOriginRedirect pins the user-visible contract
+// TestPreflightRefusesCrossOriginRedirect asserts the user-visible contract
 // through the public path: a redirected preflight is a non-retryable
 // GENERIC refusal naming both origins, never the retryable "cannot reach
 // server" connectivity wording, and nothing reaches the other origin.
@@ -121,7 +121,7 @@ func TestMapPreflightErr(t *testing.T) {
 	}
 }
 
-// TestPreflightRedirectLoopIsNotRetryable pins that a same-origin redirect
+// TestPreflightRedirectLoopIsNotRetryable asserts that a same-origin redirect
 // loop hitting the hop cap is rendered as the structured, non-retryable
 // refusal, never as the retryable "cannot reach server" connectivity
 // wording whose remedy (check the CA) cannot apply.

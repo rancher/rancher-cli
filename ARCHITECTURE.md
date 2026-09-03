@@ -379,7 +379,7 @@ authoritative "does this touch the network / need credentials" signal — not
 MCP-vocabulary key — `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
 singular — `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
 (`management` | `downstream`), `Deletable`, `Binding` (contract/stability for the generated
-generic ops), and table `Columns`. `Key` is conformance-tested against a pinned fixture
+generic ops), and table `Columns`. `Key` is conformance-tested against a recorded fixture
 copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) — the test matches on
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
 MCP identity.
@@ -564,7 +564,7 @@ last-writer-win with identical values and self-correct on the next run. Writing 
 machine-specific state into a portable file.
 
 **Kind table + composed resolver.** Generic verbs are generated from a declarative kind
-table whose MCP keys are conformance-pinned, and each op's safety binding has exactly one
+table whose MCP keys are conformance-tested, and each op's safety binding has exactly one
 owner (kind table for generated ops, bespoke `Resolver` for the rest), with overlaps
 rejected at `BuildRoot`.
 
@@ -621,7 +621,7 @@ RBAC), the kind table's generated verbs are only possible untyped, and parts
 of the surface (ext.cattle.io, CAPI) resolve served versions by discovery at
 call time. The stated cost is no compile-time field safety; the mitigations
 are structural — field paths verified against Rancher source during design
-review, conformance tests pinning the vocabulary, live acceptance exercises
+review, conformance tests asserting the vocabulary, live acceptance exercises
 against real servers, and thin hand-owned structs (a few fields, decoded
 locally) where a specific shape matters. kubectl makes the same choice for
 its generic verbs.

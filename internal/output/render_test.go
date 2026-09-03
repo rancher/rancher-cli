@@ -72,7 +72,7 @@ func (wideRows) WideRows() [][]string  { return [][]string{{"acme", "https://a"}
 
 var _ WideTabular = wideRows{}
 
-// TestRenderWidePrefersWideTabular pins the superset render and column
+// TestRenderWidePrefersWideTabular asserts the superset render and column
 // order: -o wide on a WideTabular payload uses WideColumns/WideRows, not
 // the narrow Columns/Rows.
 func TestRenderWidePrefersWideTabular(t *testing.T) {
@@ -86,7 +86,7 @@ func TestRenderWidePrefersWideTabular(t *testing.T) {
 	assert.Contains(t, out, "https://a")
 }
 
-// TestRenderWideFallsBackToTabularByteIdentical pins the no-wide-columns
+// TestRenderWideFallsBackToTabularByteIdentical asserts the no-wide-columns
 // contract: a plain Tabular payload (no WideTabular) renders byte-identical
 // under -o wide and -o table.
 func TestRenderWideFallsBackToTabularByteIdentical(t *testing.T) {
@@ -98,7 +98,7 @@ func TestRenderWideFallsBackToTabularByteIdentical(t *testing.T) {
 	assert.Equal(t, table.String(), wide.String())
 }
 
-// TestRenderWideAndTableRejectNonTabular pins the closed-world contract:
+// TestRenderWideAndTableRejectNonTabular asserts the closed-world contract:
 // there is no pretty-JSON fallback for -o table/-o wide. A payload that is
 // neither WideTabular nor Tabular is a rendering error for both formats —
 // the caller's declared shape promised Tabular and its Data does not honor
@@ -188,7 +188,7 @@ func TestRenderTemplateInvalidSource(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid template:")
 }
 
-// TestRenderJSONNoHTMLEscape above pins the -o json path. The two below cover
+// TestRenderJSONNoHTMLEscape above asserts the -o json path. The two below cover
 // the paths it does not: the shared EncodeJSON helper and the default/table
 // fallback for a non-Tabular payload — the fallback is what actually regressed
 // (bare `schema` emitted the escaped form for the `>` in descriptions).
@@ -291,7 +291,7 @@ func TestRenderTemplateRootAndStrip(t *testing.T) {
 	assert.Equal(t, "root-field\n", buf.String(), "fast path root unchanged")
 }
 
-// TestRenderTableRejectsNonTabularEffectPayload pins the closed-world
+// TestRenderTableRejectsNonTabularEffectPayload asserts the closed-world
 // contract over the same shape the old pretty-JSON fallback used to paper
 // over: a non-Tabular payload (e.g. an Effect preview) is a rendering error
 // under table/default format, never a JSON dump. The scrubbing behavior
@@ -345,7 +345,7 @@ func TestRenderTableAndNameNeverMarshal(t *testing.T) {
 		"format error precedes any marshal")
 }
 
-// TestRenderStyledBoldsHeaderRowOnly pins the styling scope: the rendered
+// TestRenderStyledBoldsHeaderRowOnly asserts the styling scope: the rendered
 // header LINE carries the bold wrap; no row's bytes do.
 func TestRenderStyledBoldsHeaderRowOnly(t *testing.T) {
 	t.Parallel()
@@ -360,7 +360,7 @@ func TestRenderStyledBoldsHeaderRowOnly(t *testing.T) {
 	assert.NotContains(t, lines[1], "\x1b[", "row bytes must never carry an escape code")
 }
 
-// TestRenderStyledStripInvariant pins the content-invariant for every
+// TestRenderStyledStripInvariant asserts the content-invariant for every
 // styled/eligible-format combination: strip(styled) == plain byte-for-byte.
 func TestRenderStyledStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -377,7 +377,7 @@ func TestRenderStyledStripInvariant(t *testing.T) {
 	}
 }
 
-// TestRenderStyledNeverStylesIneligibleFormats pins the eligibility rule: a
+// TestRenderStyledNeverStylesIneligibleFormats asserts the eligibility rule: a
 // caller passing Enabled: true still gets byte-plain output for json, yaml,
 // name, and template — no flag or environment value can ever reach these
 // formats, since the eligibility gate is structural, not caller-supplied.
@@ -409,7 +409,7 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return c.Buffer.Write(p)
 }
 
-// TestWriteTableStyledStreamsMultiRowTable pins the styled table writer's
+// TestWriteTableStyledStreamsMultiRowTable asserts the styled table writer's
 // streaming contract: a multi-row table's rows flow to the destination
 // across multiple writes rather than as one whole-table copy, only the
 // header line carries the bold escapes, and strip(styled) still equals the

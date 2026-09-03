@@ -522,7 +522,7 @@ func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
 	assert.NotEmpty(t, final.IDToken)
 }
 
-// TestFacadeIdPURLPointsProviderAtExternalOrigin pins the split-origin
+// TestFacadeIdPURLPointsProviderAtExternalOrigin asserts the split-origin
 // wiring: with IdPURL set, the azureADProvider document names the external
 // origin for every endpoint and the façade itself no longer answers /idp/*,
 // while IdPHandler serves the stub for that external server.
@@ -563,7 +563,7 @@ func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, ext.StatusCode)
 }
 
-// TestIdPHandlerWithoutIdPIsNotFound pins that a façade built without
+// TestIdPHandlerWithoutIdPIsNotFound asserts that a façade built without
 // EnableIdP still hands out a usable handler: every route is 404 instead of
 // a nil-receiver panic.
 func TestIdPHandlerWithoutIdPIsNotFound(t *testing.T) {
@@ -594,7 +594,7 @@ func nameOfBearer(bearer string) string {
 	return name
 }
 
-// TestFacadeJSONLoginReturnsV3ShapeWithDescription pins the responseType
+// TestFacadeJSONLoginReturnsV3ShapeWithDescription asserts the responseType
 // json login: the response is the v3 token shape and the description the
 // client sent is recorded and applied.
 func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
@@ -618,7 +618,7 @@ func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
 	assert.Equal(t, []string{"rancher-cli login @ h [op:0123456789ab]"}, f.LoginDescriptions())
 }
 
-// TestFacadeDeleteRecordsKindNameAndBearer pins what cleanup tests read:
+// TestFacadeDeleteRecordsKindNameAndBearer asserts what cleanup tests read:
 // every DELETE against either token store is recorded with its kind, name,
 // and bearer.
 func TestFacadeDeleteRecordsKindNameAndBearer(t *testing.T) {
@@ -637,7 +637,7 @@ func TestFacadeDeleteRecordsKindNameAndBearer(t *testing.T) {
 	assert.Equal(t, testrancher.DeleteRecord{Kind: "v3", Name: "token-abc", Bearer: "seed:secret"}, recs[0])
 }
 
-// TestFacadeLoginFailureFixturesCreateTheRightKind pins that every login
+// TestFacadeLoginFailureFixturesCreateTheRightKind asserts that every login
 // failure fixture still created the resource the request asked for: a json
 // login is a v3 record whatever the response looked like, and no ext record
 // appears.
@@ -670,7 +670,7 @@ func TestFacadeLoginFailureFixturesCreateTheRightKind(t *testing.T) {
 	}
 }
 
-// TestFacadeKubeconfigLoginIsAnExtObjectWithAName pins the kubeconfig login
+// TestFacadeKubeconfigLoginIsAnExtObjectWithAName asserts the kubeconfig login
 // shape: an ext Token object whose metadata names the record and whose
 // bearer carries the ext prefix, recorded as an ext token.
 func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
@@ -697,7 +697,7 @@ func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
 	assert.Empty(t, f.BearersOfKind("v3"))
 }
 
-// TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx pins the
+// TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx asserts the
 // façade's model of the server: a deterministic 4xx proves nothing was
 // created, so no record exists after it; any other forced status models a
 // commit the client never learned of, so the record exists.
@@ -740,7 +740,7 @@ func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
 	}
 }
 
-// TestFacadeDeleteFaultModesFollowTheRecordRole pins that the fault modes
+// TestFacadeDeleteFaultModesFollowTheRecordRole asserts that the fault modes
 // select by the record's role, not by the route: a v3 session token, an
 // ext session token, and an ext derived token each answer their own mode.
 func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
@@ -802,7 +802,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 	}
 }
 
-// TestFacadeAuthTokenDepositOnCommand pins the SAML fixture: nothing is served
+// TestFacadeAuthTokenDepositOnCommand asserts the SAML fixture: nothing is served
 // at /v1-public/authtokens/<id> until DepositAuthToken, then the encrypted
 // bearer appears.
 func TestFacadeAuthTokenDepositOnCommand(t *testing.T) {
@@ -825,7 +825,7 @@ func TestFacadeAuthTokenDepositOnCommand(t *testing.T) {
 	assert.Equal(t, testrancher.AuthTokensRequest{Method: http.MethodGet, Path: "/v1-public/authtokens/req-1"}, recs[0])
 }
 
-// TestFacadeExtTokenListAndDryRunDelete pins what the CLI's get and delete
+// TestFacadeExtTokenListAndDryRunDelete asserts what the CLI's get and delete
 // verbs need against the façade: the ext collection lists every ext record
 // with a resourceVersion, a dry-run delete with the current precondition
 // changes nothing, a stale precondition is refused with 409, and every

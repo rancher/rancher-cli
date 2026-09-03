@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCountGenerated pins the shared countGenerated helper used by both
+// TestCountGenerated asserts the shared countGenerated helper used by both
 // renderTOCText and tocView.toc() to keep the collapsed-line N and the
 // JSON GeneratedCommandCount in sync.
 func TestCountGenerated(t *testing.T) {
@@ -115,7 +115,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
-// TestSchemaCommandCardPrimeSentence pins the command card's one appended
+// TestSchemaCommandCardPrimeSentence asserts the command card's one appended
 // sentence for a Prime requirement, and its absence for an ordinary command.
 func TestSchemaCommandCardPrimeSentence(t *testing.T) {
 	t.Parallel()
@@ -158,7 +158,7 @@ func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 	assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 }
 
-// TestSchemaCommandCardOmitsEmptySections pins the card's behavior for a
+// TestSchemaCommandCardOmitsEmptySections asserts the card's behavior for a
 // minimal local command: no flags block, no examples block, no empty
 // contract segments, and the footer still carries the exit strip + pointer.
 func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
@@ -180,7 +180,7 @@ func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
 	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
-// TestSchemaCommandCardDependsOnInput pins the SE-3 dependsOnInput wording on
+// TestSchemaCommandCardDependsOnInput asserts the SE-3 dependsOnInput wording on
 // a rendered card (not just the gate function).
 func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 	t.Parallel()
@@ -199,7 +199,7 @@ func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 		"gates: --apply; --yes when the input is destructive (see description)")
 }
 
-// TestSchemaKindCardFields pins the SE-5 kind card: identity (canonical
+// TestSchemaKindCardFields asserts the SE-5 kind card: identity (canonical
 // name, key, aliases), GVR, scope, the namespace/routing line, wait default,
 // traits, and the verb table in get/patch/delete order.
 func TestSchemaKindCardFields(t *testing.T) {
@@ -236,7 +236,7 @@ func TestSchemaKindCardFields(t *testing.T) {
 	assert.Equal(t, "  delete: not available — controller-owned; delete the owning source object", lines[verbsAt+3])
 }
 
-// TestSchemaKindCardPrimeTrait pins the kind card's "prime" trait, appended
+// TestSchemaKindCardPrimeTrait asserts the kind card's "prime" trait, appended
 // alongside sensitive/completable — a projection of SchemaKind.Prime, never
 // a separately authored string.
 func TestSchemaKindCardPrimeTrait(t *testing.T) {
@@ -250,7 +250,7 @@ func TestSchemaKindCardPrimeTrait(t *testing.T) {
 	assert.Contains(t, lines, "traits: prime")
 }
 
-// TestSchemaKindCardOmitsEmptyFields pins the card for a minimal kind: no
+// TestSchemaKindCardOmitsEmptyFields asserts the card for a minimal kind: no
 // aliases, group, version, wait, or traits lines when those fields are empty.
 func TestSchemaKindCardOmitsEmptyFields(t *testing.T) {
 	t.Parallel()
@@ -418,7 +418,7 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 // in the rendered line (name or usage) carries no fragment; an alias match
 // names the full alias form; a desc match shows the surrounding fragment with
 // ellipses.
-// TestTocLinePrimeMarker pins the "[prime]" marker tocLine appends before
+// TestTocLinePrimeMarker asserts the "[prime]" marker tocLine appends before
 // the usage separator — the single function feeding the bare TOC, the
 // filtered TOC, and group cards, so the marker cannot appear in one and not
 // the others.
@@ -464,7 +464,7 @@ func TestSchemaSearchFragment(t *testing.T) {
 	assert.Equal(t, "", searchFragment(c, "zzz"), "no match yields no fragment")
 }
 
-// TestTOCRendersReadOnlyLine pins the spec'd read-only mirror: BOTH TOC text views gain
+// TestTOCRendersReadOnlyLine asserts the spec'd read-only mirror: BOTH TOC text views gain
 // a read-only line when active, so tocView's unconditional readOnly
 // fields mirror text on the bare and filtered paths alike.
 func TestTOCRendersReadOnlyLine(t *testing.T) {
@@ -485,7 +485,7 @@ func TestTOCRendersReadOnlyLine(t *testing.T) {
 	assert.NotContains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only")
 }
 
-// TestSchemaCommandCardReadOnlyLine pins the read-only banner on the command
+// TestSchemaCommandCardReadOnlyLine asserts the read-only banner on the command
 // card: present when the manifest carries ReadOnly: true, absent otherwise.
 func TestSchemaCommandCardReadOnlyLine(t *testing.T) {
 	t.Parallel()
@@ -506,7 +506,7 @@ func TestSchemaCommandCardReadOnlyLine(t *testing.T) {
 	}
 }
 
-// TestSchemaKindCardReadOnlyLine pins the read-only banner on the kind card:
+// TestSchemaKindCardReadOnlyLine asserts the read-only banner on the kind card:
 // present when the manifest carries ReadOnly: true, absent otherwise, and
 // always immediately after the "kind: <name>" header line.
 func TestSchemaKindCardReadOnlyLine(t *testing.T) {

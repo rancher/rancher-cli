@@ -45,7 +45,7 @@ func (s *schemaCmd) Describe() Descriptor {
 				Desc: "resolve the selector as a kind, not a command"},
 			// The verb enum is a static literal — the descriptor cannot see
 			// the registry's full command set at Describe time. The surface
-			// test TestSchemaVerbEnumMatchesCommandVerbs pins it to the real
+			// test TestSchemaVerbEnumMatchesCommandVerbs asserts it to the real
 			// registry's distinct first name tokens; a new verb fails there
 			// until this list is updated.
 			{Name: "verb", Type: "string",
@@ -56,7 +56,7 @@ func (s *schemaCmd) Describe() Descriptor {
 			{Name: "destructive", Type: "bool",
 				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
 			// Contracts PRESENT in the manifest, not every declared safety.Contract —
-			// pinned by TestSchemaContractEnumMatchesCommandContracts.
+			// asserted by TestSchemaContractEnumMatchesCommandContracts.
 			{Name: "contract", Type: "string",
 				Enum: []string{"public", "internal"},
 				Desc: "show only commands with this contract designation"},
@@ -415,7 +415,7 @@ const maxNearestMatches = 10
 // full surface: -o name for the command list, -o json for the kinds array.
 // unknownSelection names both in its message when the miss is genuinely
 // ambiguous (no single command covers both), and carries the one that
-// applies as the Hint when the tier pins a single interpretation.
+// applies as the Hint when the tier settles on a single interpretation.
 const commandListCmd = "rancher schema -o name"
 const kindsArrayCmd = "rancher schema -o json"
 
@@ -424,12 +424,12 @@ const kindsArrayCmd = "rancher schema -o json"
 // (kindOnly) the selector could only ever be a kind, so the message and the
 // candidate set are restricted to kinds.
 func unknownSelection(m Manifest, want string, kindOnly bool) error {
-	// Three ambiguity tiers: --kind pins the kind interpretation; a
+	// Three ambiguity tiers: --kind fixes the kind interpretation; a
 	// multi-token selector is command-shaped (kinds are single tokens,
 	// always) so the kind half of the dual guidance is noise; only a bare
 	// single token is genuinely either. The dual tier names both commands in
 	// the message — an "X or Y" pair is never a hint — while the other two
-	// tiers pin one command, which the Hint carries.
+	// tiers name one command, which the Hint carries.
 	commandShaped := len(strings.Fields(want)) > 1
 	var noun, guidance, hint string
 	switch {
@@ -544,7 +544,7 @@ func matchesSubstring(c SchemaCommand, q string) bool {
 
 // matchesAlias reports whether want names c via a kind alias. Aliases on
 // generated commands are BARE kind aliases (get.go:48 copies k.Aliases, e.g.
-// "pods", "po" — the existing schema.txtar canary pins `aliases.0 == pods`),
+// "pods", "po" — the existing schema.txtar canary asserts `aliases.0 == pods`),
 // so the alias full name is "<verb> <alias>" with the verb taken from c.Name.
 func matchesAlias(c SchemaCommand, want string) bool {
 	verb, _, ok := strings.Cut(c.Name, " ")

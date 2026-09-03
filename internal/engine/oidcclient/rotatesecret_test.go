@@ -33,7 +33,7 @@ func TestRotateSecretDescriptorDeclaresCapabilityAndOnceOnlySeam(t *testing.T) {
 	assert.False(t, d.Args[1].Required, "secret-name is optional at the descriptor level")
 }
 
-// TestRotateSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite pins that
+// TestRotateSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite asserts that
 // an unprovisioned client (empty status.clientID) must fail VALIDATION
 // before any Secret read or write: a client with status.clientSecrets
 // populated but clientID empty/mistyped (a manual status patch) must not
@@ -54,7 +54,7 @@ func TestRotateSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite(t *testing.T)
 	assert.Zero(t, client.createCalls, "no dry-run/update may fire before the provisioned guard")
 }
 
-// TestRotateSecretPlanOmittedNameSingleSecretAutoSelects pins the one
+// TestRotateSecretPlanOmittedNameSingleSecretAutoSelects asserts the one
 // deterministic omission case.
 func TestRotateSecretPlanOmittedNameSingleSecretAutoSelects(t *testing.T) {
 	t.Parallel()
@@ -71,7 +71,7 @@ func TestRotateSecretPlanOmittedNameSingleSecretAutoSelects(t *testing.T) {
 	assert.NotNil(t, exec)
 }
 
-// TestRotateSecretPlanOmittedNameAmbiguousIsValidation pins the reject
+// TestRotateSecretPlanOmittedNameAmbiguousIsValidation asserts the reject
 // cases: omitting secret-name with zero or multiple secrets is VALIDATION,
 // listing the actual names as candidates.
 func TestRotateSecretPlanOmittedNameAmbiguousIsValidation(t *testing.T) {
@@ -99,7 +99,7 @@ func TestRotateSecretPlanOmittedNameAmbiguousIsValidation(t *testing.T) {
 	}
 }
 
-// TestRotateSecretPlanNamedSecretNotFoundListsCandidates pins the typo
+// TestRotateSecretPlanNamedSecretNotFoundListsCandidates asserts the typo
 // case: the controller silently skips an unknown name, so this must fail
 // at Plan with the real names as candidates.
 func TestRotateSecretPlanNamedSecretNotFoundListsCandidates(t *testing.T) {
@@ -118,7 +118,7 @@ func TestRotateSecretPlanNamedSecretNotFoundListsCandidates(t *testing.T) {
 }
 
 // TestRotateSecretPlanCorrelationReadFailureIsOrdinaryPreMutationRefusal
-// pins the FORBIDDEN-at-read contract: a caller who cannot read the
+// asserts the FORBIDDEN-at-read contract: a caller who cannot read the
 // backing Secret at Plan time cannot be delivered the new value either, so
 // this fails BEFORE the mutation — ordinary RBAC, no committed details.
 func TestRotateSecretPlanCorrelationReadFailureIsOrdinaryPreMutationRefusal(t *testing.T) {
@@ -248,7 +248,7 @@ func (h *hangingSecretAfterFirstRead) Get(ctx context.Context, gvr schema.GroupV
 	return nil, ctx.Err()
 }
 
-// TestRotateSecretExecPerTickReadHonorsTimeout pins that check()'s
+// TestRotateSecretExecPerTickReadHonorsTimeout asserts that check()'s
 // correlation read is handed the deadline-bound context, not execute's
 // outer (unbounded) ctx: exec returns promptly once --timeout elapses
 // instead of hanging indefinitely on a stuck read.
@@ -305,7 +305,7 @@ func (f *secretErrAfterFirstRead) Get(ctx context.Context, gvr schema.GroupVersi
 }
 
 // alwaysErrSecretRead succeeds on the first secrets-GVR Get, then returns
-// err on every read after — for pinning the never-recovers-before-deadline
+// err on every read after — for asserting the never-recovers-before-deadline
 // case, where secretErrAfterFirstRead's exhaustion-then-success shape would
 // let the wait succeed instead of time out.
 type alwaysErrSecretRead struct {
@@ -325,7 +325,7 @@ func (f *alwaysErrSecretRead) Get(ctx context.Context, gvr schema.GroupVersionRe
 	return nil, f.err
 }
 
-// TestRotateSecretExecTransientSecretReadRetriesUntilSuccess pins that
+// TestRotateSecretExecTransientSecretReadRetriesUntilSuccess asserts that
 // check()'s per-tick Secret read must tolerate a transient error and keep
 // polling, mirroring waitForOIDCClient's own contract for its OIDCClient
 // Get — both a clierr.Error explicitly classified Retryable and a raw
@@ -363,7 +363,7 @@ func TestRotateSecretExecTransientSecretReadRetriesUntilSuccess(t *testing.T) {
 	}
 }
 
-// TestRotateSecretExecPerTickRBACReadIsTerminal pins the other half of the
+// TestRotateSecretExecPerTickRBACReadIsTerminal asserts the other half of the
 // classification: a definitive, non-retryable error (RBAC) must still end
 // the wait immediately on the FIRST post-annotation read, never tolerated
 // as if it were transient.
@@ -393,7 +393,7 @@ func TestRotateSecretExecPerTickRBACReadIsTerminal(t *testing.T) {
 	assert.Equal(t, 2, client.secretGetCalls, "terminal on the first post-annotation read, no retries")
 }
 
-// TestRotateSecretExecTimeoutAfterConsumptionCarriesCommittedDetails pins
+// TestRotateSecretExecTimeoutAfterConsumptionCarriesCommittedDetails asserts
 // that when the annotation is already consumed but the Secret stays
 // unreadable on every tick, the eventual timeout must still carry
 // committed context — the rotation may have succeeded even though
@@ -422,7 +422,7 @@ func TestRotateSecretExecTimeoutAfterConsumptionCarriesCommittedDetails(t *testi
 	assert.True(t, details.Committed, "the annotation was already consumed; the rotation may have succeeded even though delivery timed out")
 }
 
-// TestRotateSecretExecTimeoutIsRetryable pins rotate's ONE divergence from
+// TestRotateSecretExecTimeoutIsRetryable asserts rotate's ONE divergence from
 // create/add/remove: its timeout IS retryable, because the stated recovery
 // is literally rotating the same key again.
 func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
@@ -455,7 +455,7 @@ func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
 	}, details.TextDetails())
 }
 
-// TestRotateSecretUnchangedValueProjectsCommittedDetails pins the
+// TestRotateSecretUnchangedValueProjectsCommittedDetails asserts the
 // should-be-impossible rotate-unchanged terminal error: non-retryable, and
 // its projection echoes the same re-check recovery TextDetails renders —
 // never an invitation to retry a rotation whose value never actually moved.

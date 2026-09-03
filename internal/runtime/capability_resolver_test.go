@@ -61,7 +61,7 @@ func (r refusingExecuteResolverRead) ResolveCapability(context.Context, Input) (
 
 // refusingPlanResolverMutating fails the test if Plan is ever invoked,
 // proving the deferred capability stage runs before Plan — the mode-1
-// ordering invariant, same as refusingPlanMutating pins for the static path.
+// ordering invariant, same as refusingPlanMutating asserts for the static path.
 type refusingPlanResolverMutating struct {
 	d        Descriptor
 	resolved CapabilityRequirement
@@ -79,7 +79,7 @@ func (r refusingPlanResolverMutating) ResolveCapability(context.Context, Input) 
 }
 
 // staticAndResolverRead implements both a static requirement AND
-// CapabilityResolver, to pin Run's own static-wins precedence directly
+// CapabilityResolver, to assert Run's own static-wins precedence directly
 // (independent of the registry's mutual-exclusion startup rejection).
 type staticAndResolverRead struct {
 	d            Descriptor
@@ -181,11 +181,11 @@ func TestRunResolverCheckedBeforePlan(t *testing.T) {
 	assert.Equal(t, clierr.CodePrimeRequired, ce.Code)
 }
 
-// TestRunStaticCapabilityNeverConsultsResolver pins static-wins precedence
+// TestRunStaticCapabilityNeverConsultsResolver asserts static-wins precedence
 // directly at Run: a command implementing both a static requirement and
 // CapabilityResolver never has its resolver called — the two cannot
 // legitimately coexist (the registry rejects it at startup), but Run's own
-// precedence is pinned independently here.
+// precedence is asserted independently here.
 func TestRunStaticCapabilityNeverConsultsResolver(t *testing.T) {
 	t.Parallel()
 	calls := 0
@@ -200,7 +200,7 @@ func TestRunStaticCapabilityNeverConsultsResolver(t *testing.T) {
 	assert.Equal(t, 1, checker.calls)
 }
 
-// TestRunMalformedStaticCapabilityFailsBeforeResolver pins the full-shape
+// TestRunMalformedStaticCapabilityFailsBeforeResolver asserts the full-shape
 // validator's first boundary: a malformed STATIC value fails before the
 // resolver is ever called, for all three malformations.
 func TestRunMalformedStaticCapabilityFailsBeforeResolver(t *testing.T) {
@@ -228,7 +228,7 @@ func TestRunMalformedStaticCapabilityFailsBeforeResolver(t *testing.T) {
 	}
 }
 
-// TestRunMalformedResolvedCapabilityFailsBeforeChecker pins the full-shape
+// TestRunMalformedResolvedCapabilityFailsBeforeChecker asserts the full-shape
 // validator's second boundary: a malformed value RETURNED by a resolver
 // fails before the checker and Plan/Execute, for all three malformations.
 func TestRunMalformedResolvedCapabilityFailsBeforeChecker(t *testing.T) {

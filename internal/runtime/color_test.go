@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestActivateColor pins every row of the activation table, plus the named
+// TestActivateColor asserts every row of the activation table, plus the named
 // edge cases: empty NO_COLOR counts as unset, CLICOLOR_FORCE=0/FORCE_COLOR=0
 // count as unset, and disagreeing force variables let the non-"0" one win.
 func TestActivateColor(t *testing.T) {

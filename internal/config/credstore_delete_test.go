@@ -250,7 +250,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
 	// deletion (friction-4 semantics) — the replay and the cleanup below
-	// are the crash-boundary guarantees this test pins.
+	// are the crash-boundary guarantees this test asserts.
 	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
 		"the helper saw exactly the recorded identity")
@@ -260,7 +260,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	}))
 }
 
-// TestDeleteLoginTokenNoOpEraseNotReported pins live-exercise friction 4:
+// TestDeleteLoginTokenNoOpEraseNotReported asserts live-exercise friction 4:
 // when the helper holds no credential for the identity, the delete still runs
 // the idempotent erase, but must NOT report the helper in deletedFrom — the
 // output could not distinguish a no-op from an actual deletion. The policy
@@ -277,7 +277,7 @@ func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 	assert.Empty(t, from)
 }
 
-// TestDeleteLoginTokenCancellableWhileRecordsLockHeld pins the third-review
+// TestDeleteLoginTokenCancellableWhileRecordsLockHeld asserts the third-review
 // P1: a delete waiting on a contended helper-records lock must be
 // interruptible by the caller's context — before this, the wait was built
 // from context.Background() and Ctrl-C during logout could not reach it

@@ -251,7 +251,7 @@ func TestResolveMembersSamePrincipalTwoRoles(t *testing.T) {
 	}, rows)
 }
 
-// TestResolveMembersSortByBindingWhenPrincipalAndRoleTie pins the sort
+// TestResolveMembersSortByBindingWhenPrincipalAndRoleTie asserts the sort
 // key's third component: two bindings granting the SAME role to the SAME
 // principal (an out-of-band duplicate) sort deterministically by binding
 // name rather than depending on input order.

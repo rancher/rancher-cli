@@ -1416,7 +1416,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 }
 
 func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
-	// Regression pin for the exchange-ctx/rancherLogin-ctx shadowing bug: the
+	// Regression test for the exchange-ctx/rancherLogin-ctx shadowing bug: the
 	// caller's context must still govern the flow after the code exchange,
 	// with zero timing sensitivity (no slow-IdP race).
 	t.Parallel()
@@ -1472,7 +1472,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 }
 
 func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
-	// Regression pin: cancellation while still WAITING for the browser
+	// Regression test: cancellation while still WAITING for the browser
 	// callback (no callback ever arrives) must abort promptly via the wait
 	// select's ctx.Done() case, not surface later as a confusing exchange
 	// failure or wait for the flow timeout.
@@ -2125,7 +2125,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 	})
 }
 
-// TestNeedsEffGateEachDisjunct is the structural pin for the needsEff gate in
+// TestNeedsEffGateEachDisjunct is the structural assertion for the needsEff gate in
 // resolveConn. For each combination of inputs where ALL three disjuncts are
 // false, cfg.Effective (and its GetToken call) must not fire. errGetTokenStore
 // errors on GetToken for "ambient" — if Effective is called unexpectedly,
@@ -2196,7 +2196,7 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 	}
 }
 
-// TestResolveConnNoAmbientRequiresServer pins the resolveConn side of the
+// TestResolveConnNoAmbientRequiresServer asserts the resolveConn side of the
 // blank---server class: a noAmbientContext caller with no server must get the
 // "--server is required" validation error without cfg.Effective ever running —
 // never the ambient current-context URL. errGetTokenStore errors on GetToken
@@ -2223,7 +2223,7 @@ func TestResolveConnNoAmbientRequiresServer(t *testing.T) {
 }
 
 // errDeleteCacheStore wraps a CredStore but fails DeleteCachedCred with a
-// fixed error, for pinning delete-token's error classification pass-through.
+// fixed error, for asserting delete-token's error classification pass-through.
 type errDeleteCacheStore struct {
 	config.CredStore
 	delErr error
@@ -2231,7 +2231,7 @@ type errDeleteCacheStore struct {
 
 func (s *errDeleteCacheStore) DeleteCachedCred(string) error { return s.delErr }
 
-// TestDeleteTokenNamedPreservesLockTimeout pins the exercise-8/9-fixes
+// TestDeleteTokenNamedPreservesLockTimeout asserts the exercise-8/9-fixes
 // review finding: a named delete whose store delete times out on the
 // token-cache lock must surface LOCK_TIMEOUT (exit 8, retryable), matching
 // the --all path's pass-through, not the GENERIC catch-all.

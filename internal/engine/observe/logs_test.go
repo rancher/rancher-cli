@@ -37,7 +37,7 @@ func TestLogsExecuteMergesAndPrefixesMultiPod(t *testing.T) {
 	assert.Len(t, data.Entries, 2)
 }
 
-// TestLogsRendersByteIdenticalUnderColor pins the exemption: logs hand-builds
+// TestLogsRendersByteIdenticalUnderColor asserts the exemption: logs hand-builds
 // Text directly (user-owned log content) and sets no StyledText, so
 // --color=always renders byte-identical to plain.
 func TestLogsRendersByteIdenticalUnderColor(t *testing.T) {

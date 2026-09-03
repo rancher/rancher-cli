@@ -110,7 +110,7 @@ func crtBodyFixture(t *testing.T, ns, token string, overrides map[string]any) []
 	return b
 }
 
-// marshaledDoc pins the MARSHALED envelope shape (IC-5): the wire JSON,
+// marshaledDoc asserts the MARSHALED envelope shape (IC-5): the wire JSON,
 // not the in-memory struct.
 func marshaledDoc(t *testing.T, data any) (map[string]any, string) {
 	t.Helper()
@@ -207,8 +207,8 @@ func TestInspectClusterHappyPathEnvelope(t *testing.T) {
 	}
 }
 
-// TestInspectClusterCorrelatesRenamedClusterByStatusClusterName is IC-14's
-// correlation pin: a provisioning CR whose metadata.name AND
+// TestInspectClusterCorrelatesRenamedClusterByStatusClusterName asserts IC-14's
+// correlation rule: a provisioning CR whose metadata.name AND
 // spec.displayName differ from every management identity still correlates
 // via status.clusterName, and a non-matching sibling CR is ignored.
 func TestInspectClusterCorrelatesRenamedClusterByStatusClusterName(t *testing.T) {
@@ -403,7 +403,7 @@ func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 	})
 }
 
-// TestInspectClusterContextCancellationPropagates pins the degrade
+// TestInspectClusterContextCancellationPropagates asserts the degrade
 // boundary: only ordinary availability failures degrade the optional
 // sections. A canceled or deadline-expired context during either optional
 // lookup IS the command's error — execution stops (no further requests),
@@ -506,7 +506,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	assert.Equal(t, "", root.path, "no registration fetch after cancellation")
 }
 
-// TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext pins the
+// TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext asserts the
 // OTHER side of the cancellation boundary through the production adapter: the
 // provider's own per-request child deadline (opCtx) expiring while the
 // CALLER's context is still active is an ordinary availability failure, not a
@@ -612,7 +612,7 @@ func TestInspectClusterRegistrationPlaceholderFieldDropped(t *testing.T) {
 	assert.NotContains(t, raw, "{token}", "the placeholder never reaches output as data")
 }
 
-// TestInspectClusterRegistrationNothingUsableOmitsSection pins the
+// TestInspectClusterRegistrationNothingUsableOmitsSection asserts the
 // absent-is-never-{} contract for the registration section: when NO
 // surfaced field survives — every field placeholder-dropped, or the
 // server returned all five empty — the registration key is ABSENT from
@@ -672,7 +672,7 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 	})
 }
 
-// TestInspectClusterRegistrationWindowsPlaceholderSuppressed pins the phantom-
+// TestInspectClusterRegistrationWindowsPlaceholderSuppressed asserts the phantom-
 // warning fix: windowsNodeCommand and insecureWindowsNodeCommand are Steve-
 // guarded CRT fields that are NOT surfaced in inspect cluster's registration
 // envelope. A CRT whose only placeholder-bearing fields are those Windows
@@ -705,7 +705,7 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 	}
 }
 
-// TestInspectClusterResolutionErrors pins IC-2/IC-14's argument failures
+// TestInspectClusterResolutionErrors asserts IC-2/IC-14's argument failures
 // through the provider's REAL error vocabulary (clientFactory.ResolveCluster
 // delegates to projects.MatchOneOrError — the same contract get cluster's
 // named path uses): an unknown name-or-id is the structured NOT_FOUND
@@ -776,7 +776,7 @@ func TestInspectClusterRejectsProject(t *testing.T) {
 	assert.Contains(t, ce.Message, "--project does not apply to inspect cluster")
 }
 
-// TestInspectClusterTextSections pins the IC-1a multi-section text view
+// TestInspectClusterTextSections asserts the IC-1a multi-section text view
 // section by section: order, content, the trouble-first condition
 // ordering, sane message truncation, and the NEVER-truncated join
 // commands.
@@ -843,7 +843,7 @@ func TestInspectClusterTextSections(t *testing.T) {
 	assert.Contains(t, text, "https://rancher.example/v3/import/"+longToken+".yaml")
 }
 
-// TestInspectClusterTextAvailabilityMarkers pins the CONCISE in-place
+// TestInspectClusterTextAvailabilityMarkers asserts the CONCISE in-place
 // markers for omitted sections (IC-1a): the marker on stdout, the
 // detailed cause ONLY in Warnings.
 func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
@@ -919,7 +919,7 @@ func TestClusterMemberSystemJSONContract(t *testing.T) {
 	assert.False(t, has, "zero System must omit the key")
 }
 
-// TestClusterMemberJSONContract pins the shared memberRow shape: principal,
+// TestClusterMemberJSONContract asserts the shared memberRow shape: principal,
 // role, and binding are always present; displayName is omitted when blank.
 func TestClusterMemberJSONContract(t *testing.T) {
 	t.Parallel()
@@ -969,7 +969,7 @@ func TestRenderClusterTextMembersSection(t *testing.T) {
 	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  cluster-member\n  okta_user://never  cluster-member\n")
 }
 
-// TestClusterMembersLookupTriState pins the LOOKUP → tri-state mapping —
+// TestClusterMembersLookupTriState asserts the LOOKUP → tri-state mapping —
 // not just the serialization of hand-built pointers: failed LIST → nil +
 // warning; successful empty LIST → non-nil empty; canceled → error.
 func TestClusterMembersLookupTriState(t *testing.T) {
@@ -1006,7 +1006,7 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
-// TestClusterMembersBindingRoundTrips pins that the memberRow's binding key
+// TestClusterMembersBindingRoundTrips asserts that the memberRow's binding key
 // equals the seeded CRD object's own name — the join key back to `get
 // crtb`.
 func TestClusterMembersBindingRoundTrips(t *testing.T) {
@@ -1027,7 +1027,7 @@ func TestClusterMembersBindingRoundTrips(t *testing.T) {
 	assert.Equal(t, "crtb-9fjq2", (*members)[0].Binding)
 }
 
-// TestClusterMachinesLookupTriState pins the LOOKUP → tri-state mapping —
+// TestClusterMachinesLookupTriState asserts the LOOKUP → tri-state mapping —
 // not just the serialization of hand-built pointers: failed LIST → nil +
 // warning; successful empty LIST → non-nil empty; canceled → error.
 // Mirrors TestClusterMembersLookupTriState.
@@ -1117,7 +1117,7 @@ func TestClusterMachinesWithCreateError(t *testing.T) {
 		"CreateError message must appear in the text card")
 }
 
-// TestRenderClusterTextMachinesSection pins the MACHINES section text
+// TestRenderClusterTextMachinesSection asserts the MACHINES section text
 // rendering: unavailable marker, none, and machines with error messages.
 // Mirrors TestRenderClusterTextMembersSection.
 func TestRenderClusterTextMachinesSection(t *testing.T) {
@@ -1156,7 +1156,7 @@ func TestRenderClusterTextMachinesSection(t *testing.T) {
 		"empty machines with pools unavailable stays a plain none")
 }
 
-// TestReadyConditionOverridesStatusReady pins the live-exercise fix: when
+// TestReadyConditionOverridesStatusReady asserts the live-exercise fix: when
 // the Ready condition is present, its status drives the ready field rather
 // than status.ready, which was observed flipping true ~90s before the
 // condition left Unknown.
@@ -1187,7 +1187,7 @@ func TestReadyConditionOverridesStatusReady(t *testing.T) {
 	assert.Contains(t, res.Text, "ready: false")
 }
 
-// TestMachineConditionMessageSanitized pins the printable sanitizer on
+// TestMachineConditionMessageSanitized asserts the printable sanitizer on
 // machine error messages: escape sequences in provider-sourced condition
 // text must be stripped before they reach the text card.
 func TestMachineConditionMessageSanitized(t *testing.T) {
@@ -1202,7 +1202,7 @@ func TestMachineConditionMessageSanitized(t *testing.T) {
 }
 
 // TestInspectClusterStdoutStderrSplit drives the REAL pipeline
-// (runtime.Run's Text branch) and pins stdout and stderr separately
+// (runtime.Run's Text branch) and asserts stdout and stderr separately
 // (IC-1a): sections + markers on stdout, "# warning: ..." detail on
 // stderr, no duplication of the same text across the two streams.
 func TestInspectClusterStdoutStderrSplit(t *testing.T) {
@@ -1594,7 +1594,7 @@ func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 	assert.Contains(t, text, "  okta_user://operator  cluster-member\n")
 }
 
-// TestInspectClusterRegistrationWithheldByDefault pins the gate: without
+// TestInspectClusterRegistrationWithheldByDefault asserts the gate: without
 // --registration the section is withheld (no fetch issued), the text view
 // shows the withheld line, the JSON shape is {"withheld":true,...}, and
 // the real join token is absent from both outputs.
@@ -1630,7 +1630,7 @@ func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 	assert.NotContains(t, res.Text, "tok-abc", "join token must not appear in the text output when withheld")
 }
 
-// TestInspectClusterRegistrationFlagRestoresSection pins the --registration
+// TestInspectClusterRegistrationFlagRestoresSection asserts the --registration
 // flag: when set, the section is fetched and carries the full live-data shape
 // (no withheld marker, all surfaced fields present).
 func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
@@ -1829,7 +1829,7 @@ func TestInspectClusterDegradedParity(t *testing.T) {
 	}
 }
 
-// TestStyleClusterTextStripInvariant pins inspect cluster's bold spans:
+// TestStyleClusterTextStripInvariant asserts inspect cluster's bold spans:
 // every section header is bold, whole line; the strip invariant holds; and
 // a disabled Style returns text unchanged.
 func TestStyleClusterTextStripInvariant(t *testing.T) {
@@ -1848,7 +1848,7 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 	assert.NotContains(t, styled, "\x1b[1mid: c-abc", "a data line must not be styled")
 }
 
-// TestInspectClusterAutoscaledPoolReportsMinMax pins the cluster-family
+// TestInspectClusterAutoscaledPoolReportsMinMax asserts the cluster-family
 // enrichment: a pool carrying autoscalingMinSize/MaxSize surfaces both in
 // the JSON envelope and the text card, and the ClusterAutoscalerDeployment
 // Ready condition — a plain status.conditions entry — flows through the

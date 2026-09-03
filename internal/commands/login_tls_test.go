@@ -122,7 +122,7 @@ func TestLoginPlainExistingEntryRejectsUntrustedCert(t *testing.T) {
 	assert.Error(t, tokErr, "the token must never be persisted")
 }
 
-// TestLoginPastedTokenRejectsUntrustedCertBeforePersisting pins the same
+// TestLoginPastedTokenRejectsUntrustedCertBeforePersisting asserts the same
 // gate for the interactive paste path (promptForToken), which — like
 // --token-stdin — makes no network call of its own before this preflight.
 func TestLoginPastedTokenRejectsUntrustedCertBeforePersisting(t *testing.T) {
@@ -161,7 +161,7 @@ func TestLoginPlainExistingEntryWithStoredCASucceeds(t *testing.T) {
 	assert.Equal(t, "id:sec", tok)
 }
 
-// TestLoginProviderFlowReloginUsesStoredCAWithoutCacert pins the same
+// TestLoginProviderFlowReloginUsesStoredCAWithoutCacert asserts the same
 // CA-precedence fix on the provider-auth path: a re-login against an
 // existing entry must dial with the STORED CA (no --cacert flag exists on
 // plain login at all now), never system roots.
@@ -197,7 +197,7 @@ func TestLoginProviderFlowReloginUsesStoredCAWithoutCacert(t *testing.T) {
 	require.NoError(t, err, "provider re-login must reuse the stored CA, never rediscover trust")
 }
 
-// TestLoginPlainStoredCAPathMissingNamesEntry pins the stored-path arm: once
+// TestLoginPlainStoredCAPathMissingNamesEntry asserts the stored-path arm: once
 // a CA path stored with an entry disappears from disk, plain login is a hard
 // local error naming the entry and the exact repair command — never a
 // silent system-roots fallback.
@@ -254,7 +254,7 @@ func TestLoginExpiredCertNeverSuggestsCacert(t *testing.T) {
 	assert.NotContains(t, ce.Hint, "obtain the server's CA", "must never suggest pinning a CA fixes an expired certificate")
 }
 
-// TestLoginPlainPreflightSkipsHTTPServers pins the "every HTTPS login path"
+// TestLoginPlainPreflightSkipsHTTPServers asserts the "every HTTPS login path"
 // scope: an http:// server has no TLS to verify, so the preflight must be a
 // no-op rather than attempting a handshake that was never going to happen.
 func TestLoginPlainPreflightSkipsHTTPServers(t *testing.T) {
@@ -272,7 +272,7 @@ func TestLoginPlainPreflightSkipsHTTPServers(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestLoginPlainPreflightUnreachableServerNeverFailsLogin pins that this
+// TestLoginPlainPreflightUnreachableServerNeverFailsLogin asserts that this
 // preflight narrows to certificate trust only: an unreachable server (no
 // TLS to classify at all) keeps a warn-only posture rather than becoming a
 // new hard failure mode for login — for a --token-stdin login, which makes
@@ -287,7 +287,7 @@ func TestLoginPlainPreflightUnreachableServerNeverFailsLogin(t *testing.T) {
 	require.NoError(t, err, "an unreachable server must not become a preflight failure")
 }
 
-// TestLoginPlainPreflightRunsBeforeTokenRead pins the ordering the created-token
+// TestLoginPlainPreflightRunsBeforeTokenRead asserts the ordering the created-token
 // safety depends on: a failed preflight must surface before any token is
 // read or auth flow launched — with garbage on stdin, the TLS_TRUST error
 // (not a token-shape error) must come back.
@@ -317,7 +317,7 @@ func TestLoginHTTPServerIgnoresStaleStoredCAFile(t *testing.T) {
 }
 
 // TestLoginConflictWhenExplicitCacertFileContentRotatesDuringDelegatedLogin
-// pins the content-rotation guard on the DELEGATED (--url --cacert) path,
+// asserts the content-rotation guard on the DELEGATED (--url --cacert) path,
 // exercised end to end through login rather than only at the register.go
 // unit level: the flag being explicit does not make mid-registration file
 // rotation any less of a trust drift.

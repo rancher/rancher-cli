@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestScaleUpIsAlwaysDestructive pins the rev-5 ruling: provisioningcluster
+// TestScaleUpIsAlwaysDestructive asserts the rev-5 ruling: provisioningcluster
 // is a Sensitive kind, so every scale is Destructive regardless of
 // direction — the same gate a generic patch on the same object already
 // demands.
@@ -34,7 +34,7 @@ func TestScaleUpIsAlwaysDestructive(t *testing.T) {
 	assert.Equal(t, int64(5), gotQty)
 }
 
-// TestScaleMissingQuantityWarnsUnknown pins that a pool with no recorded
+// TestScaleMissingQuantityWarnsUnknown asserts that a pool with no recorded
 // quantity never silently reads as a current count of zero: the scale
 // still succeeds (Destructive regardless, per the Sensitive-kind rule
 // above), but the Effect names the current count as unknown.
@@ -107,7 +107,7 @@ func TestScalePoolLessClusterRefuses(t *testing.T) {
 	assert.Contains(t, ce.Message, "cluster scale")
 }
 
-// TestScalePoolLessClusterFieldPresentButEmptyRefuses pins that a cluster
+// TestScalePoolLessClusterFieldPresentButEmptyRefuses asserts that a cluster
 // whose machinePools field is present but currently empty gets a distinct
 // refusal from a wholly pool-less one — it is not an imported/custom
 // shape, so the message must not claim to be.

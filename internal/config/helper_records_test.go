@@ -202,7 +202,7 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 }
 
 // Deterministic interleaving tests: execStoreLockedHook fires while the
-// helper-records lock is HELD, so the test can pin exactly which operation owns
+// helper-records lock is HELD, so the test can choose exactly which operation owns
 // the lock first, start the competitor (which must block on the lock), then
 // release — both orders proven, both operations required to succeed, exact
 // final helper/record state asserted. Not parallel (package-level hook).

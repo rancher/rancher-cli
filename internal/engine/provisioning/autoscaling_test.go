@@ -62,7 +62,7 @@ func TestSetAutoscalingRejectsMinGreaterThanMax(t *testing.T) {
 	assert.Contains(t, ce.Message, "<=")
 }
 
-// TestSetAutoscalingRejectsNegativeMinOrMax pins that a negative bound is
+// TestSetAutoscalingRejectsNegativeMinOrMax asserts that a negative bound is
 // always rejected client-side, on any pool shape — sizes are counts, never
 // negative, regardless of role.
 func TestSetAutoscalingRejectsNegativeMinOrMax(t *testing.T) {
@@ -152,7 +152,7 @@ func TestClearAutoscalingRemovesBounds(t *testing.T) {
 	assert.Contains(t, res.Text, "left at manual quantity 4")
 }
 
-// TestClearAutoscalingOnUnmanagedPoolIsNoOp pins the design's convergence
+// TestClearAutoscalingOnUnmanagedPoolIsNoOp asserts the design's convergence
 // contract: a pool that already carries neither bound succeeds, naming
 // nothing-to-clear rather than surfacing a raw path-not-found error.
 func TestClearAutoscalingOnUnmanagedPoolIsNoOp(t *testing.T) {
@@ -170,7 +170,7 @@ func TestClearAutoscalingOnUnmanagedPoolIsNoOp(t *testing.T) {
 	assert.Contains(t, res.Text, "already manual; nothing to clear")
 }
 
-// TestClearAutoscalingHalfSetPoolClearsCleanly pins that clear removes
+// TestClearAutoscalingHalfSetPoolClearsCleanly asserts that clear removes
 // whichever of the two fields is actually present, even when the write-side
 // both-or-neither CEL is somehow bypassed.
 func TestClearAutoscalingHalfSetPoolClearsCleanly(t *testing.T) {

@@ -251,7 +251,7 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 }
 
 // TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically
-// pins review finding 2: when BOTH distros' release fetch hard-fails at
+// asserts review finding 2: when BOTH distros' release fetch hard-fails at
 // close to the same time (not a 404-degrade — a genuine 500), the returned
 // error must be rke2's (distroSpecs' fixed first entry), deterministically,
 // never whichever goroutine happened to race to completion first, and never
@@ -281,7 +281,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 }
 
 // TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure
-// pins review finding 1: clients.Cluster() now resolves BEFORE the
+// asserts review finding 1: clients.Cluster() now resolves BEFORE the
 // release-fetch fan-out starts, so when it fails at the same time a release
 // fetch would also have failed, the caller must see the client-resolution
 // error — the more fundamental root cause — never a release-fetch error.
@@ -304,7 +304,7 @@ func TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure(t
 	require.ErrorIs(t, err, clusterErr, "a clients.Cluster() failure must precede a simultaneous release-fetch failure")
 }
 
-// TestNewGetKubernetesVersionsDescribe pins the Descriptor shape: a
+// TestNewGetKubernetesVersionsDescribe asserts the Descriptor shape: a
 // bespoke read-only entry under the "get" verb group, network+auth true.
 func TestNewGetKubernetesVersionsDescribe(t *testing.T) {
 	t.Parallel()

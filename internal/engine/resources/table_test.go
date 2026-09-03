@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestTableRowsRenderBoolLeaves pins the column renderer's typed leaf ladder
+// TestTableRowsRenderBoolLeaves asserts the column renderer's typed leaf ladder
 // (NestedString → NestedBool → NestedInt64 → NestedFloat64): string leaves
 // render verbatim, bool leaves render "true"/"false" (the nodedriver row's
 // ACTIVE/BUILTIN columns are bools in the served v3 NodeDriver), an ABSENT
@@ -371,7 +371,7 @@ func TestTableRowsRenderJoinAndDefault(t *testing.T) {
 	assert.Equal(t, []string{"u-2", "true", "", ""}, tab.Rows()[3])
 }
 
-// TestTableRowsRenderSettingProvenance pins Setting's CUSTOMIZED/SOURCE
+// TestTableRowsRenderSettingProvenance asserts Setting's CUSTOMIZED/SOURCE
 // columns against the real wire shape: value/default/customized/source sit
 // at the object root (Setting is a flat CRD, not spec/status), and both
 // fields are always emitted (never omitempty), verified live against a
@@ -400,12 +400,12 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 	assert.Equal(t, []string{"server-url", "true", "env", ""}, tab.Rows()[1])
 }
 
-// TestTableRowsRenderFeatureBoolStatus pins Feature's VALUE/DEFAULT/DYNAMIC/
+// TestTableRowsRenderFeatureBoolStatus asserts Feature's VALUE/DEFAULT/DYNAMIC/
 // LOCKED columns: all are plain status bools (or, for VALUE, the merged
 // spec.value/status.default fallback) verified live against a v2.14.3
 // Rancher server on 2026-08-18. lockedValue is an omitempty *bool — absent
 // (unlocked) must render blank, never "false", since a locked-false feature
-// is a real, different state. VALUE is pinned both directions: spec.value
+// is a real, different state. VALUE is asserted both directions: spec.value
 // absent falls through to status.default, and spec.value present (even
 // false) wins over status.default.
 func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
@@ -445,7 +445,7 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	assert.Equal(t, []string{"explicitly-off", "false", "true", "true", "", "", "Explicitly disabled despite a true default", ""}, tab.Rows()[2])
 }
 
-// TestTableRowsRenderFeaturePrimeOnlyColumn pins PRIME-ONLY: it renders the
+// TestTableRowsRenderFeaturePrimeOnlyColumn asserts PRIME-ONLY: it renders the
 // wire's status.prime classification (true/false), and blank — never
 // "false" — when an older server omits the field: absent is not false,
 // nothing is fabricated.
@@ -474,7 +474,7 @@ func TestTableRowsRenderFeaturePrimeOnlyColumn(t *testing.T) {
 	assert.Equal(t, "", tab.Rows()[2][primeOnlyIdx], "absent status.prime must render blank, never false")
 }
 
-// TestTableRowsRenderCount pins the Count axis: len() of the map/slice at
+// TestTableRowsRenderCount asserts the Count axis: len() of the map/slice at
 // the path, absent → blank, present-but-empty → "0" (a real count, never
 // fabricated).
 func TestTableRowsRenderCount(t *testing.T) {
@@ -506,7 +506,7 @@ func TestTableRowsRenderCount(t *testing.T) {
 	assert.Equal(t, []string{"sa1", "3", ""}, rows[3])
 }
 
-// TestTableRowsRenderAge pins the AGE built-in: it is the LAST column on
+// TestTableRowsRenderAge asserts the AGE built-in: it is the LAST column on
 // every kind table, formatted with duration.HumanDuration since the now()
 // seam, and blank for an absent or unparseable creationTimestamp — never a
 // fabricated "0s".
@@ -538,7 +538,7 @@ func TestTableRowsRenderAge(t *testing.T) {
 	assert.Equal(t, []string{"w3", "Widget Three", ""}, tab.Rows()[2])
 }
 
-// TestTableWideColumnsAndRowsOrder pins the -o wide superset: WideColumns
+// TestTableWideColumnsAndRowsOrder asserts the -o wide superset: WideColumns
 // includes every column (Wide or not) in declaration order with AGE last —
 // after the wide columns, not spliced in the middle — while the narrow
 // Columns/Rows omit the Wide-marked columns entirely.

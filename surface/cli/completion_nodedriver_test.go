@@ -34,7 +34,7 @@ func nodeDriverServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalNodeDriverCandidates pins the management branch case for
+// TestLivePositionalNodeDriverCandidates asserts the management branch case for
 // the nodedriver kind: `get nodedriver <TAB>` lists v3 NodeDrivers from the
 // local (management) cluster — no downstream cluster needed — and hostile
 // names are dropped by the sanitize charset.
@@ -51,7 +51,7 @@ func TestLivePositionalNodeDriverCandidates(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
 
-// TestLivePositionalNodeDriverTokenBoundary pins the management-token
+// TestLivePositionalNodeDriverTokenBoundary asserts the management-token
 // boundary: a missing token or an exec-cred-only (IDOnly) capability cannot
 // authorize the management cluster list — nil, with ZERO requests.
 func TestLivePositionalNodeDriverTokenBoundary(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestFirstMatchFirstEntryWins pins the ordering contract of firstMatch:
+// TestFirstMatchFirstEntryWins asserts the ordering contract of firstMatch:
 // when two entries both match the input, the first entry's detail/hint is
 // returned, not the second's. A no-match case confirms ok is false.
 func TestFirstMatchFirstEntryWins(t *testing.T) {

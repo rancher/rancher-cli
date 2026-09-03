@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestStrictTTLSecondsSixCases pins the exact validation contract per flag:
+// TestStrictTTLSecondsSixCases asserts the exact validation contract per flag:
 // omission/defaulting, zero, sub-second, fractional-second, negative, and
 // overflow — run for both --token-ttl and --refresh-ttl since the logic
 // (not the flag name) is what must be exact.
@@ -46,7 +46,7 @@ func TestStrictTTLSecondsSixCases(t *testing.T) {
 	}
 }
 
-// TestStrictTTLSecondsExactBoundary pins the maximum: exactly maxTTLSeconds
+// TestStrictTTLSecondsExactBoundary asserts the maximum: exactly maxTTLSeconds
 // is accepted, one second above is rejected — math.MaxInt64/int64(time.Second),
 // the true Duration-overflow bound, not an arbitrary product limit.
 func TestStrictTTLSecondsExactBoundary(t *testing.T) {
@@ -69,7 +69,7 @@ func TestStrictTTLSecondsExactBoundary(t *testing.T) {
 	})
 }
 
-// TestStrictTTLSecondsRewrapsFlagName pins that extres.ParseTTL's hardcoded
+// TestStrictTTLSecondsRewrapsFlagName asserts that extres.ParseTTL's hardcoded
 // "--ttl" in both Message and Hint (it is shared with create token/create
 // kubeconfig, whose flag genuinely is --ttl) gets corrected to this
 // command's own flag name before the error reaches the user — never point

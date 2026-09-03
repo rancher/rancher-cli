@@ -73,7 +73,7 @@ func userPasswordWorkflowProbes() []Probe {
 	}
 }
 
-// capabilityProbes pins the two wire reads the Prime capability detector's
+// capabilityProbes asserts the two wire reads the Prime capability detector's
 // truth table decides on: the unauthenticated edition string and a named
 // Feature's effective-value and prime-classification fields. oidc-provider
 // is the one live case known to be un-tiered pre-v2.16 (status.prime false

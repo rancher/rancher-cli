@@ -48,7 +48,7 @@ func TestEffectJSONShape(t *testing.T) {
 	assert.NotContains(t, m, "tier")
 }
 
-// TestEffectWarningsNeverSerialize pins the json:"-" tag deliberately kept on
+// TestEffectWarningsNeverSerialize asserts the json:"-" tag deliberately kept on
 // Warnings (review R2-6): the Effect marshals inside the envelope's data
 // field, and renderEffect (internal/runtime/pipeline.go) copies these into
 // the envelope's top-level warnings — serializing here too would emit every

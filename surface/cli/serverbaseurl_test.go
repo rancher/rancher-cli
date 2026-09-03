@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestServerBaseURLConfiguredServer pins the 3c port against the ordinary
+// TestServerBaseURLConfiguredServer asserts the 3c port against the ordinary
 // configured-server path: the same scheme+host Root()'s rootClient.base
 // carries, no trailing slash.
 func TestServerBaseURLConfiguredServer(t *testing.T) {
@@ -24,7 +24,7 @@ func TestServerBaseURLConfiguredServer(t *testing.T) {
 	assert.Equal(t, srv.URL, base)
 }
 
-// TestServerBaseURLEnvOverride pins RANCHER_CLI_URL: the override clears the
+// TestServerBaseURLEnvOverride asserts RANCHER_CLI_URL: the override clears the
 // stored server name (Identity), but ServerBaseURL must still resolve the
 // EFFECTIVE (overridden) base — never the stale configured one.
 func TestServerBaseURLEnvOverride(t *testing.T) {
@@ -37,7 +37,7 @@ func TestServerBaseURLEnvOverride(t *testing.T) {
 	assert.Equal(t, srv.URL, base, "trailing slash must not survive into the base")
 }
 
-// TestServerBaseURLHTTP pins a plain-http development server: scheme must
+// TestServerBaseURLHTTP asserts a plain-http development server: scheme must
 // be preserved, never upgraded/assumed https.
 func TestServerBaseURLHTTP(t *testing.T) {
 	dir := t.TempDir()

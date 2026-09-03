@@ -198,7 +198,7 @@ func TestUninstall(t *testing.T) {
 	assert.Equal(t, VerdictAbsent, v)
 }
 
-// Crash between remove and rename leaves ABSENT (never mixed) — pinned via
+// Crash between remove and rename leaves ABSENT (never mixed) — asserted via
 // the deterministic renameHook seam, not by staging simulation.
 func TestCrashBetweenRemoveAndRenameLeavesAbsent(t *testing.T) {
 	SetSource(testSource(t))
@@ -411,7 +411,7 @@ func TestAcquireBusySecondTargetChangesNothing(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "first target must be untouched")
 }
 
-// TestLockFilePathCaseFold pins the case-folding contract: on case-insensitive
+// TestLockFilePathCaseFold asserts the case-folding contract: on case-insensitive
 // platforms (windows, darwin) two paths that differ only in case must produce
 // the same lock file path so they serialize on the same lock.
 func TestLockFilePathCaseFold(t *testing.T) {

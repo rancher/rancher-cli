@@ -24,7 +24,7 @@ func pemOf(t *testing.T, cert *x509.Certificate) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 }
 
-// TestNewExternalUsesOSRootsOnly pins the external client's trust model: a
+// TestNewExternalUsesOSRootsOnly asserts the external client's trust model: a
 // self-signed fixture fails as unknown authority because no pinned CA
 // exists, and the fixture's CA is absent from the transport's pool.
 func TestNewExternalUsesOSRootsOnly(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNewExternalUsesOSRootsOnly(t *testing.T) {
 	require.ErrorAs(t, err, &cve, "a self-signed fixture must fail verification against OS roots")
 }
 
-// TestNewInstallsRedirectPolicy pins that every Rancher-scoped client gets
+// TestNewInstallsRedirectPolicy asserts that every Rancher-scoped client gets
 // the policy without the call site opting in.
 func TestNewInstallsRedirectPolicy(t *testing.T) {
 	t.Parallel()

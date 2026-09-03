@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestScriptsCoverExactlyTheCanonicalShellList pins the "one shared shell
+// TestScriptsCoverExactlyTheCanonicalShellList asserts the "one shared shell
 // list" contract (external review finding 3): scripts.go has no reference
 // to runtime.ShellCompletionShells(), so adding a shell to one without the
 // other would otherwise compile fine and only fail at test/runtime time,

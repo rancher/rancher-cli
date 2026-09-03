@@ -274,7 +274,7 @@ func versionSupported(rangeRaw, rawVersion string) *bool {
 
 // fetchReleaseVersions GETs path against root and decodes its channel-server
 // release envelope ({"data":[{"version": "..."}, ...]}, channelserver
-// model/config.go:22-30 — the collection key is "data", pinned against the
+// model/config.go:22-30 — the collection key is "data", matched against the
 // fixture testrancher serves; the acceptance pass against a real server
 // corrects this if the shape differs). A malformed body is a typed
 // CodeGeneric error naming "decoding" and path, mirroring Task 5's

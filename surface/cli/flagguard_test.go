@@ -112,7 +112,7 @@ func TestCheckFlagValuesV1CompletionSuppressed(t *testing.T) {
 	assert.Nil(t, ce, "guard must not fire during v1 completion")
 }
 
-// TestCheckFlagValuesBeforeHookRendersPerParsedFormat pins the Before hook's
+// TestCheckFlagValuesBeforeHookRendersPerParsedFormat asserts the Before hook's
 // row of the pre-pipeline format table: flags have already parsed
 // successfully by the time checkFlagValues fires, so its rendering follows
 // the invocation's own parsed --output value directly (no raw-argv scan).

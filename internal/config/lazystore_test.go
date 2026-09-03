@@ -12,7 +12,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// TestLazyStoreResolvesBackendExactlyOnce pins the sync.Once contract: many
+// TestLazyStoreResolvesBackendExactlyOnce asserts the sync.Once contract: many
 // calls across many goroutines resolve the backend a single time, and every
 // call observes the same backend.
 func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
@@ -132,7 +132,7 @@ func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
 	assert.Equal(t, "tok", tok)
 }
 
-// TestNewLazyStoreNoSideEffectsBeforeFirstUse pins LS-1's core: constructing
+// TestNewLazyStoreNoSideEffectsBeforeFirstUse asserts LS-1's core: constructing
 // the store for a fresh dir creates NOTHING until a credential call happens.
 func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")

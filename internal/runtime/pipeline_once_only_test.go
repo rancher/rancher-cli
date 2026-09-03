@@ -43,7 +43,7 @@ func runOnceOnly(t *testing.T, out, errW *bytes.Buffer, res Result, format strin
 		safety.Binding{})
 }
 
-// TestFinishResultRequiresCommittedContextForDeliveryOnceOnly pins the
+// TestFinishResultRequiresCommittedContextForDeliveryOnceOnly asserts the
 // command-bug guard: a DeliveryOnceOnly executor that returns a Result with
 // no CommittedContext must never render — the absence is a structured
 // command-bug error, never a silent skip.
@@ -58,7 +58,7 @@ func TestFinishResultRequiresCommittedContextForDeliveryOnceOnly(t *testing.T) {
 	assert.Empty(t, out.String(), "no bytes may reach stdout without committed context")
 }
 
-// TestFinishOnceOnlyResultBuffersAndRenders pins the success path: a
+// TestFinishOnceOnlyResultBuffersAndRenders asserts the success path: a
 // DeliveryOnceOnly Result with CommittedContext set renders exactly like an
 // ordinary result on a working writer.
 func TestFinishOnceOnlyResultBuffersAndRenders(t *testing.T) {
@@ -124,7 +124,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 	}
 }
 
-// TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails pins
+// TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails asserts
 // the create-token shape of the post-commit render-failure fixture: the
 // TextDetails projection names the committed Token and echoes the
 // producer's own non-mutating recovery line verbatim, contradicting neither
@@ -170,7 +170,7 @@ func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 	assert.True(t, details.PartialOutput)
 }
 
-// TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite pins the
+// TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite asserts the
 // notice-preservation invariant: a notice drained from the invocation's
 // NoticeSource before the buffered render must land in the replacement
 // committed-context error's envelope warnings — not vanish with the
@@ -217,7 +217,7 @@ func TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite(t *testing.T) {
 	}
 }
 
-// TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope pins the
+// TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope asserts the
 // success-path counterpart: a notice recorded before a once-only command's
 // buffered render lands in Result.Warnings and is fully delivered as part
 // of the json envelope actually written to real stdout — nothing left to
@@ -262,7 +262,7 @@ func (r refusingOnceOnlyMutating) Plan(context.Context, Input) (safety.Effect, E
 	return safety.Effect{}, nil, nil
 }
 
-// TestRunOutputPolicyRejectsNameBeforePlan pins that a
+// TestRunOutputPolicyRejectsNameBeforePlan asserts that a
 // once-only command's OutputPolicy rejects "name" (and any format outside
 // its allow-list) with VALIDATION before Plan runs at all — zero total
 // requests, not merely zero mutation requests.
@@ -321,7 +321,7 @@ func onceOnlyTextDesc() Descriptor {
 	return d
 }
 
-// TestFinishOnceOnlyResultWideRendersExactText pins that "-o wide renders
+// TestFinishOnceOnlyResultWideRendersExactText asserts that "-o wide renders
 // exactly the Text" for once-only ShapeText commands: the shown-once secret
 // must reach the operator once, on stdout, identically under table and
 // wide — never duplicated onto the stderr warning channel (OnceOnlyNotice

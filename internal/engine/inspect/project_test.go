@@ -79,7 +79,7 @@ func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *
 	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{nsListItem("ns-a"), nsListItem("ns-b")},
 	})
-	// Cluster-wide lists (ns=""), filtered client-side by membership — pins
+	// Cluster-wide lists (ns=""), filtered client-side by membership — asserts
 	// the single-List-per-kind design (no more per-namespace List loop).
 	downstream.withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		podListItem("ns-a", "pod-a1"), podListItem("ns-b", "pod-b1"), podListItem("ns-b", "pod-b2"),
@@ -430,7 +430,7 @@ func TestRenderProjectTextSections(t *testing.T) {
 	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1 usage=250m\n  memory: request=1Gi limit=2Gi\n")
 }
 
-// TestStyleProjectTextStripInvariant pins inspect project's bold spans:
+// TestStyleProjectTextStripInvariant asserts inspect project's bold spans:
 // every section header is bold, whole line; the strip invariant holds; and
 // a disabled Style returns text unchanged.
 func TestStyleProjectTextStripInvariant(t *testing.T) {
@@ -524,7 +524,7 @@ func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
 	assert.NotContains(t, text, "unavailable")
 }
 
-// TestProjectUsageJSONContract pins the verified-zero usage state at the JSON
+// TestProjectUsageJSONContract asserts the verified-zero usage state at the JSON
 // level: Usage non-nil with zero values must serialize as a non-null object
 // (not null), so agents can distinguish "no pods measured" from "data absent".
 func TestProjectUsageJSONContract(t *testing.T) {
@@ -557,7 +557,7 @@ func TestProjectMemberJSONContract(t *testing.T) {
 	assert.JSONEq(t, `{"principal":"local://u-a","role":"project-owner","binding":"prtb-abc"}`, string(b))
 }
 
-// TestProjectMembersNullVsEmptyContract pins the WHOLE-payload encoding —
+// TestProjectMembersNullVsEmptyContract asserts the WHOLE-payload encoding —
 // the pre-existing non-omitempty field: nil slice → "members":null
 // (unavailable), empty slice → "members":[] (verified empty).
 func TestProjectMembersNullVsEmptyContract(t *testing.T) {
@@ -599,7 +599,7 @@ func TestProjectMemberSystemJSONContract(t *testing.T) {
 	assert.False(t, has, "zero System must omit the key")
 }
 
-// TestInspectProjectNotFoundCurated pins Fix 1: the post-Resolve project Get
+// TestInspectProjectNotFoundCurated asserts Fix 1: the post-Resolve project Get
 // returns a hint-less NOT_FOUND; it must be curated to "project not found:
 // <id>" with a list hint — the same shape inspect cluster uses.
 func TestInspectProjectNotFoundCurated(t *testing.T) {
@@ -658,7 +658,7 @@ func TestInspectProjectGetDeniedIsHardRBAC(t *testing.T) {
 	assert.Empty(t, res.Warnings)
 }
 
-// TestInspectProjectNotFoundWithHintPassesThrough pins that an already-curated
+// TestInspectProjectNotFoundWithHintPassesThrough asserts that an already-curated
 // NOT_FOUND (one that already carries a hint) passes through unchanged — a
 // resolver's candidates error must not be re-wrapped.
 func TestInspectProjectNotFoundWithHintPassesThrough(t *testing.T) {

@@ -72,7 +72,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, skillinstall.VerdictInSync, rows[0].Verdict)
 
-	// exit 7 pins the skew case — the e2e harness can only assert nonzero,
+	// exit 7 asserts the skew case — the e2e harness can only assert nonzero,
 	// so THIS test owns the exact value.
 	res, err = NewSkillStatus("v9.9.9").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 
 // TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements
 // output.Tabular and that its column headers and row cells are correct.
-// This pins the default (-o table) rendering path, which the existing tests
+// This asserts the default (-o table) rendering path, which the existing tests
 // exercise only via -o json.
 func TestSkillOutcomesImplementsTabular(t *testing.T) {
 	t.Parallel()

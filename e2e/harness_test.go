@@ -209,7 +209,7 @@ func TestMain(m *testing.M) {
 	startEnv := func() error {
 		var err error
 		if cfg, err = env.Start(); err != nil {
-			// The hint mirrors scripts/e2e's pinned invocation — keep the two
+			// The hint mirrors scripts/e2e's exact invocation — keep the two
 			// in lockstep so a direct `go test` resolves the same binaries.
 			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
 				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", err)

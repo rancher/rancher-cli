@@ -26,7 +26,7 @@ func createMachineConfigDescriptor() runtime.Descriptor {
 	}
 }
 
-// TestMachineConfigSetKeyCandidates pins MC-16: kind-scoped key
+// TestMachineConfigSetKeyCandidates asserts MC-16: kind-scoped key
 // candidates = Known − Credential − Curated, as key= continuation tokens,
 // in space and equals form, only for create machine-config's --set — and
 // the case OWNS that site for every kind (owned even when empty).
@@ -62,7 +62,7 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 		assert.Equal(t, []string{"--set=userdata="}, got)
 	})
 
-	t.Run("every curated key pinned absent", func(t *testing.T) {
+	t.Run("every curated key asserted absent", func(t *testing.T) {
 		t.Parallel()
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set"}
 		got, _ := machineConfigSetKeyCandidates(site, d, []string{"digitaloceanconfig", "web-pool", "--set"})
@@ -75,7 +75,7 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 		}
 	})
 
-	t.Run("every credential key pinned absent", func(t *testing.T) {
+	t.Run("every credential key asserted absent", func(t *testing.T) {
 		t.Parallel()
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set"}
 		got, _ := machineConfigSetKeyCandidates(site, d, []string{"digitaloceanconfig", "web-pool", "--set"})
@@ -141,7 +141,7 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 	})
 }
 
-// TestMachineConfigSetKeysServedWithoutNetwork pins MC-16's static
+// TestMachineConfigSetKeysServedWithoutNetwork asserts MC-16's static
 // position: compiled-in metadata, served through dispatchSite with the
 // network gate OFF and zero HTTP requests.
 func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
@@ -167,7 +167,7 @@ func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 	assert.Zero(t, hits.Load(), "compiled-in --set keys must cost zero requests")
 }
 
-// TestMachineConfigSetSiteOwnershipStopsLiveLayer pins the ownership
+// TestMachineConfigSetSiteOwnershipStopsLiveLayer asserts the ownership
 // contract through dispatchSite with the network gate ON: an unmatched
 // --set partial terminates with zero candidates and zero HTTP requests —
 // the fully static site never reaches the live layer.

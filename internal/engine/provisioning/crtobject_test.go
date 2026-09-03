@@ -33,7 +33,7 @@ func TestDecodeCRTObjectIsPolicyNeutral(t *testing.T) {
 	assert.Equal(t, "2099-01-01T00:00:00Z", obj.ExpiresAt)
 }
 
-// TestDecodeCRTObjectMalformedBody pins the typed decode error: never a
+// TestDecodeCRTObjectMalformedBody asserts the typed decode error: never a
 // panic, never a zero CRTObject standing in for a failure.
 func TestDecodeCRTObjectMalformedBody(t *testing.T) {
 	t.Parallel()
@@ -46,7 +46,7 @@ func TestDecodeCRTObjectMalformedBody(t *testing.T) {
 	assert.Contains(t, ce.Message, "/v1/broken")
 }
 
-// TestDecodeCRTObjectWrongShape pins the STRUCTURAL invariant: a body
+// TestDecodeCRTObjectWrongShape asserts the STRUCTURAL invariant: a body
 // that is valid JSON but not a Steve clusterregistrationtoken object —
 // missing metadata.namespace, metadata.name, or the status object — is
 // the same typed decode error as malformed JSON, never a silently-empty
@@ -90,7 +90,7 @@ func TestDecodeCRTObjectWrongShape(t *testing.T) {
 	})
 }
 
-// TestDecodeCRTCollectionWrongShapeElement pins the same invariant per
+// TestDecodeCRTCollectionWrongShapeElement asserts the same invariant per
 // collection element: one structurally invalid object fails the whole
 // decode with a typed error naming the path — consistent with the
 // existing malformed-body contract (decode failures abort; only the
@@ -112,7 +112,7 @@ func TestDecodeCRTCollectionWrongShapeElement(t *testing.T) {
 	assert.Contains(t, ce.Message, crtCollectionPath)
 }
 
-// TestDecodeCRTCollectionEnvelopeInvariant pins the collection ENVELOPE's
+// TestDecodeCRTCollectionEnvelopeInvariant asserts the collection ENVELOPE's
 // own shape rule: {"data":[]} is a VALID empty collection, while a
 // missing, null, or non-array data field is the typed wrong-shape error —
 // a bare {} or an error payload must never decode as a successful empty
@@ -152,7 +152,7 @@ func TestDecodeCRTCollectionEnvelopeInvariant(t *testing.T) {
 	}
 }
 
-// TestDecodeCRTCollectionDecodesEveryObject pins the collection envelope
+// TestDecodeCRTCollectionDecodesEveryObject asserts the collection envelope
 // decode ({"data": [...]}) over the same flat CRTObject view.
 func TestDecodeCRTCollectionDecodesEveryObject(t *testing.T) {
 	t.Parallel()
@@ -219,7 +219,7 @@ func TestPlaceholderFieldsReportsEachProtectedField(t *testing.T) {
 	})
 }
 
-// TestFetchDefaultCRTPathAndDecode pins the narrow default-token fetch:
+// TestFetchDefaultCRTPathAndDecode asserts the narrow default-token fetch:
 // exactly "<crtCollectionPath>/<management-cluster-id>/default-token" on
 // the same Steve path the get override reads, decoded through the shared
 // decoder.
@@ -240,7 +240,7 @@ func TestFetchDefaultCRTPathAndDecode(t *testing.T) {
 	assert.Contains(t, got.NodeCommand, "tok-abc")
 }
 
-// TestFetchDefaultCRTPropagatesRootError pins that a transport/RBAC/404
+// TestFetchDefaultCRTPropagatesRootError asserts that a transport/RBAC/404
 // failure surfaces as the RootClient's own typed error — inspect cluster
 // degrades it to a warning (IC-8), which needs the error intact.
 func TestFetchDefaultCRTPropagatesRootError(t *testing.T) {

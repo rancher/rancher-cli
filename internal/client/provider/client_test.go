@@ -98,7 +98,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
 }
 
-// TestAbsentExtGroupYieldsFriendlyHint pins EXT-R-4: an older Rancher without
+// TestAbsentExtGroupYieldsFriendlyHint asserts EXT-R-4: an older Rancher without
 // the aggregated ext.cattle.io APIService must surface a hint pointing at the
 // pre-existing local alternatives, not the generic "not served" message other
 // groups get. Non-ext absent groups carry their own actionable hint.
@@ -126,7 +126,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	assert.Contains(t, ce.Message, "rancher schema", "non-ext not-served message must mention rancher schema")
 }
 
-// TestResolveVersionErrorReturnsEarlyFromGet pins the REAL mechanism: a
+// TestResolveVersionErrorReturnsEarlyFromGet asserts the REAL mechanism: a
 // resolveVersion failure returns from Get unchanged before curateNotFound is
 // ever reached. The message and hint from resolveVersion are preserved because
 // the early return bypasses curation entirely, not because curateNotFound
@@ -367,7 +367,7 @@ func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 	assert.ErrorContains(t, err, "not found")
 }
 
-// TestClientGetCuratesKnownGVRNotFound pins that Get curates a hint-less
+// TestClientGetCuratesKnownGVRNotFound asserts that Get curates a hint-less
 // NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
 func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
@@ -381,7 +381,7 @@ func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
 }
 
-// TestClientGetHintedNotFoundPassesThrough pins that Get does not overwrite a
+// TestClientGetHintedNotFoundPassesThrough asserts that Get does not overwrite a
 // resolveVersion diagnostic with the curated "<kind> not found" shape: it
 // returns before curateNotFound is ever reached.
 func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
@@ -400,7 +400,7 @@ func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
 	assert.NotContains(t, ce.Message, "capi-cluster not found", "resolveVersion diagnostic must not be overwritten by curation")
 }
 
-// TestClientGetUnknownGVRNotFoundPassesThrough pins that Get does not curate a
+// TestClientGetUnknownGVRNotFoundPassesThrough asserts that Get does not curate a
 // hint-less NOT_FOUND for a GVR absent from the kinds table (Fix 3: unknown GVR
 // passes through untouched by curateNotFound).
 func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
@@ -423,7 +423,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 	assert.Empty(t, ce.Hint, "unknown GVR must not be curated — no hint expected")
 }
 
-// TestClientDeleteCuratesKnownGVRNotFound pins that Delete curates a hint-less
+// TestClientDeleteCuratesKnownGVRNotFound asserts that Delete curates a hint-less
 // NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
 func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
@@ -437,7 +437,7 @@ func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
 }
 
-// TestClientUpdateCuratesKnownGVRNotFound pins that Update curates a hint-less
+// TestClientUpdateCuratesKnownGVRNotFound asserts that Update curates a hint-less
 // NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
 func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
@@ -452,7 +452,7 @@ func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	assert.Equal(t, "list with: rancher get projects", ce.Hint)
 }
 
-// TestClusterClientDeleteRefusesCrossOriginRedirect pins that a mutation
+// TestClusterClientDeleteRefusesCrossOriginRedirect asserts that a mutation
 // through the dynamic client is refused at the redirect and rendered as
 // the structured refusal, with no request reaching the other origin.
 func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
@@ -472,7 +472,7 @@ func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
 	assert.Zero(t, hits.Load())
 }
 
-// TestDynamicRepoCreateAndUpdateNameTheFieldManager pins the manager name
+// TestDynamicRepoCreateAndUpdateNameTheFieldManager asserts the manager name
 // the server records in managedFields for every write this client makes:
 // an explicit, stable identity instead of one derived from the User-Agent.
 func TestDynamicRepoCreateAndUpdateNameTheFieldManager(t *testing.T) {

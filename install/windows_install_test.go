@@ -19,7 +19,7 @@ import (
 const rawInstallPsURL = "https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1"
 
 // windowsPlat is the asset suffix for the host the tests emulate; every
-// Windows test runs as windows/amd64 by pinning PROCESSOR_ARCHITECTURE.
+// Windows test runs as windows/amd64 by setting PROCESSOR_ARCHITECTURE.
 const windowsPlat = "windows-amd64"
 
 func TestWindowsCleanInstallProducesPairAndReceipt(t *testing.T) {
@@ -142,7 +142,7 @@ func TestWindowsVersionAndPreAreExclusive(t *testing.T) {
 	assert.Contains(t, errOut, "mutually exclusive")
 }
 
-// TestWindowsEnvTwins pins the environment twins of the parameters: the
+// TestWindowsEnvTwins asserts the environment twins of the parameters: the
 // same names install.sh reads, with the parameter winning over the twin.
 func TestWindowsEnvTwins(t *testing.T) {
 	t.Parallel()
@@ -213,7 +213,7 @@ func TestWindowsPreSkipsDraftsAndExhaustion(t *testing.T) {
 	}
 }
 
-// TestWindowsPreRejectsNonListingBodies pins that a 200 whose body is not a
+// TestWindowsPreRejectsNonListingBodies asserts that a 200 whose body is not a
 // release listing (a captive portal answering null or prose, a body cut
 // mid-stream) fails as a parse failure, not as a tag-grammar error on a
 // missing tag_name or an unhandled parser exception.
@@ -257,7 +257,7 @@ func TestWindowsChecksumMismatchIsFatal(t *testing.T) {
 	}
 }
 
-// TestWindowsChecksumEntryPerAssetCompleteness pins that each binary needs
+// TestWindowsChecksumEntryPerAssetCompleteness asserts that each binary needs
 // exactly one SHA256SUMS entry: a missing helper entry and a duplicated CLI
 // entry standing in for it are both fatal.
 func TestWindowsChecksumEntryPerAssetCompleteness(t *testing.T) {
@@ -344,7 +344,7 @@ func TestWindowsUpgradeSwitchesJunctionAndCollectsOldVersion(t *testing.T) {
 	}
 }
 
-// TestWindowsDowngradeIsNamedAsWarning pins that rolling back with -Version
+// TestWindowsDowngradeIsNamedAsWarning asserts that rolling back with -Version
 // works and is announced on stderr, while a same-version rerun says neither.
 func TestWindowsDowngradeIsNamedAsWarning(t *testing.T) {
 	t.Parallel()
@@ -620,7 +620,7 @@ func TestWindowsTakesOverByHandPairWithNotice(t *testing.T) {
 	}
 }
 
-// TestWindowsShadowScanFollowsReparseChains pins the epilogue's PATH shadow
+// TestWindowsShadowScanFollowsReparseChains asserts the epilogue's PATH shadow
 // warning: a junction elsewhere on PATH that leads back to the install runs
 // the identical binaries and must stay silent, while a plain copy elsewhere
 // on PATH is a shadow and must warn.
@@ -723,7 +723,7 @@ func TestWindowsCustomBinDirIsJunction(t *testing.T) {
 	assert.Equal(t, binDir, readReceipt(t, home)["binDir"])
 }
 
-// TestWindowsRefusesDriveRootBinDir pins that a drive root cannot serve as
+// TestWindowsRefusesDriveRootBinDir asserts that a drive root cannot serve as
 // the bin dir: the run fails during argument validation, before any request
 // leaves the process and before anything is written.
 func TestWindowsRefusesDriveRootBinDir(t *testing.T) {
@@ -772,7 +772,7 @@ func TestWindowsRefusesBinDirThatIsAFile(t *testing.T) {
 	}
 }
 
-// TestWindowsRefusesBinDirThatIsADirectorySymlink pins the refusal of a
+// TestWindowsRefusesBinDirThatIsADirectorySymlink asserts the refusal of a
 // directory symbolic link as the bin dir; only a junction may be replaced.
 // Creating one needs SeCreateSymbolicLinkPrivilege or developer mode, so
 // the test skips where the link cannot be made.
@@ -803,7 +803,7 @@ func TestWindowsRefusesBinDirThatIsADirectorySymlink(t *testing.T) {
 	}
 }
 
-// TestWindowsForeignJunctionBinDirIsReplacedWithNotice pins the takeover of
+// TestWindowsForeignJunctionBinDirIsReplacedWithNotice asserts the takeover of
 // a junction pointing outside the versions dir: the reparse point itself is
 // replaced under a notice while its target's contents stay untouched.
 func TestWindowsForeignJunctionBinDirIsReplacedWithNotice(t *testing.T) {
@@ -868,7 +868,7 @@ func TestWindowsKillDuringStagingLeavesOldPairAndRerunCompletes(t *testing.T) {
 	assert.Equal(t, []string{"v1.3.0"}, names, "rerun must collect staging litter and the old version")
 }
 
-// TestWindowsKillBetweenAsideAndSwitchKeepsOldPairAndRerunRecovers pins
+// TestWindowsKillBetweenAsideAndSwitchKeepsOldPairAndRerunRecovers asserts
 // the by-hand takeover's kill window: a kill after the plain bin dir moved
 // aside but before the junction was renamed in leaves the old pair intact
 // in the aside, and the next run restores it, switches, and collects it.
@@ -914,7 +914,7 @@ func TestWindowsKillBetweenAsideAndSwitchKeepsOldPairAndRerunRecovers(t *testing
 	}
 }
 
-// TestWindowsMigrationSurvivesLockedStaleAside pins the by-hand takeover
+// TestWindowsMigrationSurvivesLockedStaleAside asserts the by-hand takeover
 // against a stale <bin>.old.<pid> from an earlier run whose pid the
 // installer now reuses, held by a file open with no delete share: the
 // takeover moves the pair to a uniquely named aside and finishes, the
@@ -961,7 +961,7 @@ func TestWindowsMigrationSurvivesLockedStaleAside(t *testing.T) {
 	}
 }
 
-// TestWindowsKillAfterMigrationSwitchLeavesAsideForNextRun pins that a
+// TestWindowsKillAfterMigrationSwitchLeavesAsideForNextRun asserts that a
 // by-hand takeover killed after the junction rename already serves the new
 // pair, and that the aside it never removed is collected by the next run.
 func TestWindowsKillAfterMigrationSwitchLeavesAsideForNextRun(t *testing.T) {
@@ -996,7 +996,7 @@ func TestWindowsKillAfterMigrationSwitchLeavesAsideForNextRun(t *testing.T) {
 	assert.Empty(t, asidesBeside(t, home.binDir()), "the rerun must collect the aside")
 }
 
-// TestWindowsIntactVersionDirIsReusedAfterInterruptedSwitch pins that a
+// TestWindowsIntactVersionDirIsReusedAfterInterruptedSwitch asserts that a
 // version dir fully staged by a run killed before its switch is reused by
 // the next run rather than collected and copied again: a marker dropped
 // into it survives, and the rerun reports the dir as already present.
@@ -1122,7 +1122,7 @@ func TestWindowsConcurrentInstallErrorsOnHeldLock(t *testing.T) {
 	}
 }
 
-// TestWindowsQuietSuppressesNotesNotWarnings pins that -Quiet hides progress
+// TestWindowsQuietSuppressesNotesNotWarnings asserts that -Quiet hides progress
 // notes while warnings still reach stderr.
 func TestWindowsQuietSuppressesNotesNotWarnings(t *testing.T) {
 	t.Parallel()
@@ -1189,7 +1189,7 @@ func TestWindowsPlatformMatrixConformance(t *testing.T) {
 		"install.ps1's accepted platforms (windowsPlatformMappingCases) must match release.yaml's windows targets")
 }
 
-// TestWindowsTruncatedScriptMidFunctionExecutesNothing pins that a download
+// TestWindowsTruncatedScriptMidFunctionExecutesNothing asserts that a download
 // cut inside Install-RancherCli cannot run a partial install: the host
 // rejects the unbalanced script and the profile is unchanged.
 func TestWindowsTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
@@ -1344,7 +1344,7 @@ func TestWindowsGhBootstrapSnippet(t *testing.T) {
 	assert.Contains(t, string(out), "tag: v0.1.0-alpha.1")
 }
 
-// TestWindowsBootstrapPropagatesInstallerFailure pins that a failing install
+// TestWindowsBootstrapPropagatesInstallerFailure asserts that a failing install
 // under Invoke-Expression surfaces as a non-zero host exit code, so scripted
 // callers of the one-liner see the failure.
 func TestWindowsBootstrapPropagatesInstallerFailure(t *testing.T) {
@@ -1383,7 +1383,7 @@ func shortPathName(t *testing.T, path string) string {
 	return s
 }
 
-// TestWindowsShortPathEnvironmentInstallsAndReruns pins that an environment
+// TestWindowsShortPathEnvironmentInstallsAndReruns asserts that an environment
 // handing out 8.3 short paths installs cleanly, passes its own switch
 // verification, and on a rerun recognizes its own junction rather than
 // treating it as foreign or garbage-collecting the version directory the

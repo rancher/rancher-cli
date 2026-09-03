@@ -439,7 +439,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	assert.Equal(t, before, hashDir(t, dir), "AC-27: completion must write nothing (no prune-on-read or other writes)")
 }
 
-// TestGlobalFlagSetsAgree pins the 4-way lockstep agreement between the
+// TestGlobalFlagSetsAgree asserts the 4-way lockstep agreement between the
 // three sources that must enumerate the same global flags:
 //   - registry.go GlobalFlags (schema metadata, canonical source)
 //   - surface/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
@@ -490,7 +490,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 // without a static enum (--context, --project) at the group level route through
 // the full dispatch pipeline and return live candidates when network is enabled —
 // matching the leaf path's behavior (get pod --context <TAB> already works via
-// the leaf's descriptor; this test pins the same for the group level). Also
+// the leaf's descriptor; this test asserts the same for the group level). Also
 // verifies --config yields no candidates gracefully (no enum, no live site, shell
 // falls back to file completion) and the network-off path returns nothing with
 // zero HTTP requests.

@@ -188,7 +188,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	assert.Contains(t, res.CommittedContext.Recovery, "delete kubeconfig kubeconfig-abc")
 }
 
-// TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam pins that create
+// TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam asserts that create
 // kubeconfig opts into Delivery: DeliveryOnceOnly and restricts OutputPolicy
 // to "table" — the one format its RawBytes payload actually honors, since
 // renderResult writes it verbatim regardless of -o.
@@ -203,7 +203,7 @@ func TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 	assert.False(t, d.OutputPolicy.Allows("json"), "RawBytes never varies with -o, so json must be rejected pre-Plan")
 }
 
-// TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests pins the
+// TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests asserts the
 // pipeline-level enforcement: `create kubeconfig -o json` is rejected
 // before Plan ever runs — zero total requests, not merely zero mutation
 // requests — rather than silently accepting the flag and returning raw

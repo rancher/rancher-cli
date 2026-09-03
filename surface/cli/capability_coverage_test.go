@@ -96,7 +96,7 @@ func coveredWidgetVerbs() map[string]registeredCommand {
 }
 
 // TestCapabilityCoverageCreateEdgeUncoveredWhenNoResolver and its sibling
-// below pin the create-edge exactly: a synthetic creatable gated row is
+// below assert the create-edge exactly: a synthetic creatable gated row is
 // covered when the create command implements the capability resolver, and
 // uncovered when it does not.
 func TestCapabilityCoverageCreateEdgeUncoveredWhenNoResolver(t *testing.T) {
@@ -124,7 +124,7 @@ func TestCapabilityCoverageCreateEdgeCoveredWithResolver(t *testing.T) {
 	assert.Empty(t, res.uncoveredGated)
 }
 
-// TestCapabilityCoverageCreateEdgeExemptsNoCreateViaManifest pins the
+// TestCapabilityCoverageCreateEdgeExemptsNoCreateViaManifest asserts the
 // per-row structural-refusal exemption: a NoCreateViaManifest row is exempt
 // on the create edge even though it is Capability-bearing, the same class
 // as an override's refusals entry.

@@ -31,7 +31,7 @@ func renderHelp(t *testing.T, color string, path ...string) string {
 
 // TestStyledHelpGroupCardBoldsHeadersAndAlignsCommands renders the "auth"
 // group card (SubcommandHelpTemplate: a command with visible subcommands)
-// and pins gh's shape: bold section headers, plain colon-aligned command
+// and asserts gh's shape: bold section headers, plain colon-aligned command
 // rows, no bolding anywhere else.
 func TestStyledHelpGroupCardBoldsHeadersAndAlignsCommands(t *testing.T) {
 	t.Parallel()
@@ -48,7 +48,7 @@ func TestStyledHelpGroupCardBoldsHeadersAndAlignsCommands(t *testing.T) {
 }
 
 // TestStyledHelpLeafCardBoldsHeaders renders the "auth login" leaf card
-// (CommandHelpTemplate: no visible subcommands) and pins the same header
+// (CommandHelpTemplate: no visible subcommands) and asserts the same header
 // bolding with no COMMANDS section (a leaf has none).
 func TestStyledHelpLeafCardBoldsHeaders(t *testing.T) {
 	t.Parallel()
@@ -65,7 +65,7 @@ func TestStyledHelpLeafCardBoldsHeaders(t *testing.T) {
 
 // TestStyledHelpRootCardBoldsHeaders renders the bare `rancher --help` card
 // (RootCommandHelpTemplate: the one shape with VERSION and a colon-aligned
-// COMMANDS list at the top level) and pins the same header bolding the
+// COMMANDS list at the top level) and asserts the same header bolding the
 // group and leaf cards get.
 func TestStyledHelpRootCardBoldsHeaders(t *testing.T) {
 	t.Parallel()
@@ -88,7 +88,7 @@ func TestStyledHelpRootCardBoldsHeaders(t *testing.T) {
 	assert.Contains(t, globalOptLine, "auto|always|never", "the global options list includes --color's own row")
 }
 
-// TestStyledHelpDescriptionPrecedesUsage pins the layout change: when a
+// TestStyledHelpDescriptionPrecedesUsage asserts the layout change: when a
 // command carries a Description (the Prime marker is the one case that sets
 // one today), it renders above USAGE, not between VERSION and AUTHOR.
 func TestStyledHelpDescriptionPrecedesUsage(t *testing.T) {
@@ -100,7 +100,7 @@ func TestStyledHelpDescriptionPrecedesUsage(t *testing.T) {
 	assert.Less(t, descAt, usageAt, "DESCRIPTION: must render before USAGE:")
 }
 
-// TestStyledHelpStripInvariant pins the content-invariant for a rendered
+// TestStyledHelpStripInvariant asserts the content-invariant for a rendered
 // help card: strip(styled) == plain byte-for-byte, and the styled render
 // actually differs from plain (proving the wrap ran). Not parallel-safe: it
 // sets the color env vars to a known-clean state for the plain baseline,
@@ -114,8 +114,8 @@ func TestStyledHelpStripInvariant(t *testing.T) {
 	assert.Equal(t, plain, style.Strip(styled))
 }
 
-// TestStyledHelpNoColorWinsOverForceVar pins NO_COLOR's precedence over a
-// force variable under --color=auto (the same rule ActivateColor pins
+// TestStyledHelpNoColorWinsOverForceVar asserts NO_COLOR's precedence over a
+// force variable under --color=auto (the same rule ActivateColor asserts
 // directly): CLICOLOR_FORCE alone styles help output, but adding NO_COLOR
 // suppresses it back to the byte-identical plain render. Not parallel-safe:
 // it mutates the color env vars directly.
@@ -132,7 +132,7 @@ func TestStyledHelpNoColorWinsOverForceVar(t *testing.T) {
 	assert.Equal(t, plain, suppressed, "NO_COLOR must win over CLICOLOR_FORCE and restore the plain render")
 }
 
-// TestColonOffsetCommandsAlignsOnLongestJoinedNames pins the alignment
+// TestColonOffsetCommandsAlignsOnLongestJoinedNames asserts the alignment
 // arithmetic the COMMANDS block depends on: the returned width tracks the
 // longest comma-joined "name, aliases" (plus a colon), so a command with
 // aliases widens the column exactly as far as its full joined-names string
@@ -148,7 +148,7 @@ func TestColonOffsetCommandsAlignsOnLongestJoinedNames(t *testing.T) {
 
 // TestStyledHelpCommandRowShowsAliases renders `rancher get --help` (a
 // subcommand card whose leaves include kinds with declared aliases) and
-// pins that a leaf's full name list — canonical name plus every alias,
+// asserts that a leaf's full name list — canonical name plus every alias,
 // comma-joined — renders before the colon, matching urfave's own stock
 // comma-joined listing rather than the canonical name alone.
 func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
@@ -158,7 +158,7 @@ func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
 	assert.Contains(t, styled, "pod, pods, po:", "a leaf's declared aliases must render comma-joined before the colon")
 }
 
-// setNoColorEnv pins all three color-activating env vars to empty — "unset"
+// setNoColorEnv sets all three color-activating env vars to empty — "unset"
 // per ActivateColor's own contract — so a "plain" (--color not passed)
 // render is actually plain, regardless of what the test runner's ambient
 // shell has set.
