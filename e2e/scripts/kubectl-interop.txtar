@@ -1,7 +1,7 @@
 # This script sticks to the WARM exec-credential cache path via
 # seedexeccache; kubectl-interop-cold.txtar covers the cold round trip
 # through the façade's /v1-public/* endpoints and the ext.cattle.io/v1
-# token mint instead (spec FA-0 supersedes the old "shim must not grow"
+# token create instead (spec FA-0 supersedes the old "shim must not grow"
 # note — the façade is a separate layer composed in front of the
 # unchanged router).
 # seedexeccache pre-warms the cache through the real config store API, so

@@ -18,7 +18,7 @@ type Options struct {
 
 // DefaultTimeout is the client-level request bound callers reach for when
 // they have no tighter, already-established timeout of their own (auth and
-// token-mint round trips run unattended under kubectl's exec-credential
+// token-creation round trips run unattended under kubectl's exec-credential
 // plugin, so a caller must never rely on dial/TLS-handshake timeouts alone
 // to cap an unresponsive server). Callers that already bound the request
 // via a shorter context deadline (a per-path timeout var, tested and
@@ -95,7 +95,7 @@ func newTransport(tlsConfig *tls.Config) *http.Transport {
 // Do executes req and reads the full response body, closing it before
 // returning — the one request/response shape every hand-rolled Rancher API
 // caller in this codebase needs (token's provider dance, login's ext-token
-// mint/revoke), so it lives here once instead of once per package.
+// create/revoke), so it lives here once instead of once per package.
 func Do(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
 	resp, err := client.Do(req)
 	if err != nil {

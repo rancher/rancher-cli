@@ -21,7 +21,7 @@ type createKubeconfigCmd struct {
 // NewCreateKubeconfig builds `create kubeconfig [--clusters a,b|*|local]
 // [--current-context <c>] [--ttl <dur>] [--description <d>]
 // [--include-default-entry true|false]` (mutating): a SEPARATE command from
-// the local, exec-credential `kubeconfig` — this one mints a server-side,
+// the local, exec-credential `kubeconfig` — this one creates a server-side,
 // embedded, revocable kubeconfig via the ext Kubeconfig store. The store
 // ignores metadata.name/generateName exactly like Token, so neither is set.
 func NewCreateKubeconfig(clients engine.ClusterClientFactory) runtime.Command {

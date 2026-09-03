@@ -1,5 +1,6 @@
-# Token shim end to end: stored-login mint, warm cache hit, distinct cache
-# slots, and schema binding. The shim uses stored-login mint by design —
+# Token shim end to end: a token derived from the stored login, warm cache
+# hit, distinct cache slots, and schema binding. The shim derives its token
+# from the stored login by design —
 # kubeconfig exec-credential plugins run non-interactively, so the only
 # viable path is to consume the session credential that `auth login` already
 # stored. The different-user step succeeds (not fails) because the stored
@@ -40,7 +41,7 @@ cp config.yaml.bak $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # A different --user is a different cache slot. The stored login credential is
 # shared, so even with --no-input the shim succeeds non-interactively.
-# Branch taken: SUCCESS via stored-login mint.
+# Branch taken: SUCCESS via a token derived from the stored login.
 exec rancher token --server $TEST_RANCHER_URL --user othercluster --no-input
 jsonquery stdout kind ExecCredential
 ! jsonquery stdout status.token ''

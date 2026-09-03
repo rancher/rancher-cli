@@ -28,7 +28,7 @@ const projectLabel = "field.cattle.io/projectId"
 // message; this returns the matched id set (0, 1, or 2+) plus idFound and
 // the display-match count for wording it. Most callers want
 // MatchOneOrError below, which wraps this and owns the error/candidate
-// shaping; the token mint path resolves through that wrapper too.
+// shaping; the create token path resolves through that wrapper too.
 func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string) string) (matched []string, idFound bool, displayMatchCount int) {
 	set := map[string]bool{}
 	for _, id := range ids {

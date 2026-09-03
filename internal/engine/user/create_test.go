@@ -196,7 +196,7 @@ func TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity(t *tes
 
 // TestCreateSecretFailureAfterUserCommittedNamesRecovery proves the
 // committed-context requirement: a Secret failure after the User committed
-// must never invite a blind retry (which would mint a second User). The
+// must never invite a blind retry (which would create a second User). The
 // recovery creates the missing Secret directly via `create resource -f -`
 // — NOT `create password-change-request`, which changes an existing
 // password Secret and fails ("failed to get password secret") against a

@@ -177,7 +177,7 @@ type Descriptor struct {
 type Delivery string
 
 // DeliveryOnceOnly marks a command whose Result carries a value the caller
-// can never retrieve again (a minted secret, a bearer token): finishResult
+// can never retrieve again (a generated secret, a bearer token): finishResult
 // buffers its render and requires committed-mutation context before any
 // stdout write. The zero value (ordinary delivery) needs no declaration.
 const DeliveryOnceOnly Delivery = "onceOnly"

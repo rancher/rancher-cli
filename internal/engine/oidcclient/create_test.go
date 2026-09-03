@@ -396,7 +396,7 @@ func TestCreateExecImpossibleShapesAreTerminalNotTimeout(t *testing.T) {
 
 // TestCreateExecTimeoutIsNonRetryable pins create's timeout contract: a
 // NEVER-satisfied predicate times out with a non-retryable error naming the
-// committed resource — retrying would mint a second client.
+// committed resource — retrying would create a second client.
 func TestCreateExecTimeoutIsNonRetryable(t *testing.T) {
 	withFastPoll(t)
 	neverProvisioned := oidcClientObj("my-app", "", nil)
@@ -483,7 +483,7 @@ func TestCreateOutputPolicyRejectsNameWithZeroRequests(t *testing.T) {
 }
 
 // TestCreateExecSecretReadFailureIsCommittedPartialSuccess pins the
-// mint-then-FORBIDDEN persona (the only verb that keeps this post-commit
+// create-then-FORBIDDEN persona (the only verb that keeps this post-commit
 // path): the backing-Secret GET fails after a committed mutation, and the
 // resulting error preserves the original classification while adding
 // committed-mutation details.

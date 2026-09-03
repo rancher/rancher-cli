@@ -50,11 +50,11 @@ No credential is **not an error**: exit 0 with `{"protocolVersion":1}`
 (absent `token` = not found). `expiresAt` (optional, RFC 3339) marks the
 token short-lived: the CLI caches it in memory only (never on disk),
 refreshes 30 seconds before expiry, retries once if a token arrives already
-expired, and hard-errors on a malformed timestamp. This lets a helper *mint*
+expired, and hard-errors on a malformed timestamp. This lets a helper *create*
 short-lived credentials rather than store long-lived ones.
 
 `store` → exit 0 with empty output or `{"protocolVersion":1}`. A read-only
-(minting) helper responds `{"protocolVersion":1,"unsupported":true}`:
+(credential-creating) helper responds `{"protocolVersion":1,"unsupported":true}`:
 `rancher auth login` then succeeds with a warning that the token was not
 persisted.
 

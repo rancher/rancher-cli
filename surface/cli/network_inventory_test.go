@@ -10,7 +10,7 @@ import (
 
 // networkedLocalCommandInventory is the reviewed, closed-world set of
 // runtime.Local commands that perform live network I/O (a TLS/version
-// preflight, a live token mint) and must declare Network: true so the
+// preflight, a live token creation) and must declare Network: true so the
 // schema manifest reflects what they actually do. The generated kind-table
 // rows (runtime.ReadOnly/runtime.Mutating commands) always talk to the
 // server and declare Network: true at their one shared builder — outside

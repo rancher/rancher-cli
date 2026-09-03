@@ -1,6 +1,6 @@
 // Package extres holds the fixed mutating commands for Rancher's aggregated
 // ext.cattle.io/v1 API: create token (server-derived tokens) and create
-// kubeconfig (server-minted kubeconfigs).
+// kubeconfig (server-generated kubeconfigs).
 package extres
 
 import (

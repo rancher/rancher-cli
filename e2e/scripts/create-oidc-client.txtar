@@ -68,7 +68,7 @@ flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"client
 seedobj core/v1/secrets cattle-oidc-client-secrets lifecycle-secret.yaml
 
 # add-secret: baseline {client-secret-1} -> {client-secret-1, client-secret-2}.
-# The controller's half (consuming the annotation, updating status, minting
+# The controller's half (consuming the annotation, updating status, generating
 # the backing value) is simulated the same way wait-success.txtar simulates
 # Fleet: a short pause for the real annotation write to land, then the
 # generic `patch` verb (the deliberately kept power-user escape hatch)

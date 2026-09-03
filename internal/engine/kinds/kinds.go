@@ -599,7 +599,7 @@ var table = []Kind{
 		// states them, with no derivation and no ordering assumption —
 		// Rancher's own code treats principal order as meaningless (every
 		// consumer scans the whole slice). The id prefix carries no type
-		// signal at all: EnsureUser mints u-* ids for external-SSO users
+		// signal at all: EnsureUser creates u-* ids for external-SSO users
 		// and system accounts alike, and locally-seeded users get m-* ids.
 		// ENABLED: v3 User.enabled is an omitempty *bool whose absence
 		// means enabled — Default carries that.

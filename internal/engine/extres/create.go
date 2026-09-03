@@ -17,7 +17,7 @@ type createTokenCmd struct {
 }
 
 // NewCreateToken builds `create token [--ttl <dur>] [--description <d>]
-// [--cluster <c>]` (mutating): the ext Token store mints a derived bearer
+// [--cluster <c>]` (mutating): the ext Token store creates a derived bearer
 // token (spec.kind stays empty — only Rancher's own login flow sets
 // "session"). The store ignores metadata.name/generateName and always
 // generates one, so neither is set here.

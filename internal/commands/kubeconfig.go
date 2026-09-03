@@ -21,7 +21,7 @@ type kubeconfigCmd struct {
 }
 
 // NewKubeconfig builds the top-level `kubeconfig` command (local): it emits an
-// exec-credential kubeconfig on stdout, delegating token minting to `auth
+// exec-credential kubeconfig on stdout, delegating token creation to `auth
 // get-token` rather than embedding a long-lived credential.
 func NewKubeconfig(dir string, store config.CredStore, clients engine.ClusterClientFactory) runtime.Command {
 	return &kubeconfigCmd{dir: dir, store: store, clients: clients}

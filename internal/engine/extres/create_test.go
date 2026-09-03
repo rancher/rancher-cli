@@ -207,8 +207,8 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 }
 
 // TestCreateTokenDescriptorDeclaresOnceOnlySeam pins that create token
-// declares the same OutputPolicy/Delivery classification as the OIDC mint
-// verbs, excluding "name" and requiring committed context.
+// declares the same OutputPolicy/Delivery classification as the oidc-client
+// create and add-secret verbs, excluding "name" and requiring committed context.
 func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 	t.Parallel()
 	d := NewCreateToken(stubFactory{c: &fakeClient{}}).Describe()
@@ -223,7 +223,7 @@ func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 // missing-value contract: an empty status.bearerToken after a committed
 // Create is a non-retryable error naming the token and the delete-then-
 // recreate recovery — never a bare generic failure that could read as
-// retryable (retrying would mint a second token).
+// retryable (retrying would create a second token).
 func TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{name: "token-empty", status: map[string]any{"bearerToken": ""}}

@@ -99,7 +99,7 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 }
 
 // ProvisionedUserID derives the deterministic user id Rancher's EnsureUser
-// mints for a principal (pkg/auth/providers/common/usermanager.go:281-283):
+// creates for a principal (pkg/auth/providers/common/usermanager.go:281-283):
 // "u-" + lowercase(base32-no-padding(sha256(principal))[:10]).
 func ProvisionedUserID(principal string) string {
 	h := sha256.New()

@@ -189,7 +189,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		if len(secrets) > 1 {
 			return waitOutcome{terminal: impossibleCreateShape(name, secrets)}
 		}
-		return waitOutcome{} // clientID set, controller has not minted the initial secret yet
+		return waitOutcome{} // clientID set, controller has not generated the initial secret yet
 	}
 	secretName, err := waitForOIDCClient(ctx, client, k.GVR, name, timeout, check,
 		func(last *unstructured.Unstructured) *clierr.Error { return createTimeoutError(name) })
@@ -242,7 +242,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 // resolved base and no endpoints, with a warning naming what failed.
 // Discovery failure (a blip, a proxy, the server's 500 when zero clients
 // exist racing a concurrent delete) never fails a committed create — a
-// failure here would read as retryable, and a retry mints a second client.
+// failure here would read as retryable, and a retry creates a second client.
 func (c *createCmd) discover(ctx context.Context, base string) (*oidcEndpoints, string, []string) {
 	fallbackIssuer := base + "/oidc"
 	degrade := func(reason string) (*oidcEndpoints, string, []string) {
@@ -329,7 +329,7 @@ func impossibleCreateShape(name string, secrets map[string]any) *clierr.Error {
 
 // createTimeoutError builds create's timeout error: NON-RETRYABLE (a
 // clierr.Error defaults Retryable to false) — retrying a create whose
-// mutation already committed would mint a second client. Names
+// mutation already committed would create a second client. Names
 // oidc-provider as the likely cause (with the flag off, the server accepts
 // the create but status never populates) and points at the object for
 // re-checking; no automatic cleanup.

@@ -1,7 +1,7 @@
 # This script's façade instance runs in legacy mode (harness_test.go's
-# legacyScripts table, keyed by this file's name) — the ext.cattle.io mint
+# legacyScripts table, keyed by this file's name) — the ext.cattle.io token create
 # route 404s, so cold get-token falls back to the raw stored login token,
-# cached for the bounded legacyMintTTL (spec FA-4.4). Cache-hit assertion is
+# cached for the bounded legacyTokenTTL (spec FA-4.4). Cache-hit assertion is
 # via stderr, not a counter: the cold call emits the legacy-caching notice
 # and the warm call emits nothing.
 stdin token.txt

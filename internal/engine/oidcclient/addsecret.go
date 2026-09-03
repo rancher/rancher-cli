@@ -18,8 +18,8 @@ type addSecretCmd struct {
 }
 
 // NewAddSecret builds `oidc-client add-secret <client>` (mutating): sets
-// the create annotation, waits for the controller to mint a new secret,
-// and prints it once. Destructive + --yes (mint-and-reveal, the create
+// the create annotation, waits for the controller to generate a new secret,
+// and prints it once. Destructive + --yes (generate-and-reveal, the create
 // token precedent).
 func NewAddSecret(clients engine.ClusterClientFactory) runtime.Command {
 	return &addSecretCmd{clients: clients}
@@ -68,7 +68,7 @@ func (c *addSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 	// Delivery preflight: verify the backing Secret is readable BEFORE any
 	// dry-run/write — a manage-oidc-clients-only persona could not be
 	// delivered the new value either way, so refuse pre-mutation rather
-	// than mint an undeliverable secret.
+	// than generate an undeliverable secret.
 	if err := preflightReadSecret(ctx, c.clients, clientID); err != nil {
 		return safety.Effect{}, nil, err
 	}

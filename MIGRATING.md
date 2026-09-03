@@ -85,7 +85,7 @@ KUBECONFIG=~/.kube/config:<(rancher kubeconfig --cluster X) kubectl config view 
 
 **No `rancher` binary on the target machine?** (CI, teammates without the
 CLI) `rancher kubeconfig`'s exec mode is not the only option: `rancher create
-kubeconfig [--clusters ...] --apply` mints a server-side, embedded, revocable
+kubeconfig [--clusters ...] --apply` creates a server-side, embedded, revocable
 kubeconfig (same as the Dashboard's "Download KubeConfig") that needs no
 local `rancher` binary to authenticate — the output goes straight to stdout,
 with a shown-once notice on where its server-assigned name is.
