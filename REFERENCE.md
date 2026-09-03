@@ -370,6 +370,14 @@ client cascades: its backing secret is removed (Kubernetes garbage
 collection via an owner reference, independent of the `oidc-provider`
 controller), instantly invalidating every live client secret.
 
+### Field ownership
+
+Every `create` and `patch` the CLI performs names itself to the server as
+the field manager `cli.rancher.io`, so an object's managed fields
+(`kubectl get <kind> <name> -o yaml --show-managed-fields`) show which
+fields the CLI wrote. The name is the CLI's domain, unversioned, so it
+stays the same across releases and binary names.
+
 ## Cluster provisioning
 
 Rancher's provisioning model (node drivers, machine pools, imported and

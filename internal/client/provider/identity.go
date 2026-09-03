@@ -26,7 +26,7 @@ func Identity(ctx context.Context, eff config.Effective) (string, error) {
 		return "", err
 	}
 	defer cancel()
-	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{})
+	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{FieldManager: FieldManager})
 	if err != nil {
 		return "", mapErr(err)
 	}

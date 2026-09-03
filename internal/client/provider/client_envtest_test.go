@@ -112,3 +112,39 @@ func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 }
+
+// TestFieldManagerIsRecordedInManagedFields confirms against a real
+// apiserver what the fake client can only show as an option: the manager
+// the server records for a Create and for an Update is the CLI's own name,
+// with the Update operation (the CLI never uses server-side apply).
+func TestFieldManagerIsRecordedInManagedFields(t *testing.T) {
+	t.Parallel()
+	env := &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
+	rc, err := env.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = env.Stop() })
+	repo, err := NewClusterClient(rc, "test")
+	require.NoError(t, err)
+	ctx := t.Context()
+
+	w := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "test.rancher.io/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "owned", "namespace": "default"},
+		"spec":     map[string]any{"size": int64(1)},
+	}}
+	created, err := repo.Create(ctx, widgetGVR, "default", w, false)
+	require.NoError(t, err)
+	managers := func(u *unstructured.Unstructured) []string {
+		var out []string
+		for _, e := range u.GetManagedFields() {
+			out = append(out, e.Manager+"/"+string(e.Operation))
+		}
+		return out
+	}
+	assert.Equal(t, []string{FieldManager + "/Update"}, managers(created))
+
+	created.Object["spec"] = map[string]any{"size": int64(2)}
+	updated, err := repo.Update(ctx, widgetGVR, "default", created, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{FieldManager + "/Update"}, managers(updated), "one manager keeps owning the fields it wrote")
+}

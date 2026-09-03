@@ -471,3 +471,27 @@ func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
 	require.ErrorContains(t, err, "credentialed redirects are not followed across origins")
 	assert.Zero(t, hits.Load())
 }
+
+// TestDynamicRepoCreateAndUpdateNameTheFieldManager pins the manager name
+// the server records in managedFields for every write this client makes:
+// an explicit, stable identity instead of one derived from the User-Agent.
+func TestDynamicRepoCreateAndUpdateNameTheFieldManager(t *testing.T) {
+	t.Parallel()
+	r, fc := newFakeClient(project("c-x", "p-1"))
+	var createManager, updateManager string
+	fc.PrependReactor("create", "projects", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		createManager = a.(k8stesting.CreateActionImpl).GetCreateOptions().FieldManager
+		return false, nil, nil
+	})
+	fc.PrependReactor("update", "projects", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		updateManager = a.(k8stesting.UpdateActionImpl).GetUpdateOptions().FieldManager
+		return false, nil, nil
+	})
+	_, err := r.Create(t.Context(), projectGVR, "c-x", project("c-x", "p-2"), false)
+	require.NoError(t, err)
+	_, err = r.Update(t.Context(), projectGVR, "c-x", project("c-x", "p-1"), true)
+	require.NoError(t, err)
+	assert.Equal(t, FieldManager, createManager)
+	assert.Equal(t, FieldManager, updateManager)
+	assert.Equal(t, "cli.rancher.io", FieldManager, "the identity is the CLI's domain, unversioned, so it survives a binary rename and a schema bump")
+}
