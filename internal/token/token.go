@@ -646,16 +646,24 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
 	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
+	return r, loginError(resp, err)
+}
+
+// loginError classifies the outcome of a login POST the same way for every
+// flow that carries credentials to Rancher: a transport error keeps its
+// cause, 401 and 403 are AUTH rejections, any other non-201 is GENERIC.
+// A caller reading the error code sees one class for one fact.
+func loginError(resp *http.Response, err error) error {
 	if err != nil {
-		return r, fmt.Errorf("error logging user in: %w", err)
+		return fmt.Errorf("error logging user in: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return r, clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return r, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
-	return r, nil
+	return nil
 }
 
 // loginCreateResult classifies a login response: the body declares which

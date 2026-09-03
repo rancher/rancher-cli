@@ -398,16 +398,5 @@ func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, o
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
 	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
-	if err != nil {
-		return r, fmt.Errorf("error logging user in: %w", err)
-	}
-	// The same classification as basicAuth: a rejection is an
-	// authentication failure whichever flow carried the credentials.
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return r, clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return r, clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
-	}
-	return r, nil
+	return r, loginError(resp, err)
 }

@@ -1936,6 +1936,11 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 			}
 			joined := strings.Join(res.Warnings, "\n")
 			assert.Contains(t, joined, "no credential was stored")
+			readOnly := strings.Index(joined, "credential helper is read-only")
+			firstResidual := strings.Index(joined, "could not be revoked")
+			require.GreaterOrEqual(t, readOnly, 0)
+			require.GreaterOrEqual(t, firstResidual, 0)
+			assert.Less(t, readOnly, firstResidual, "why nothing was persisted is read before what to clean up")
 			// Every residual here has a known name, so the prose is the exact
 			// command after a re-login; marker search and handoff facts are
 			// for tokens without a name and must not appear.
@@ -2636,13 +2641,110 @@ func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
 		require.GreaterOrEqual(t, len(revokeWords), 3, revoke)
 		assert.Equal(t, []string{"rancher", "get"}, listWords[:2], list)
 		assert.Equal(t, []string{"rancher", "delete"}, revokeWords[:2], revoke)
+		// The kind each command must name is fixed by the input, not read
+		// back from the output: a v3 token is the management-token kind, an
+		// ext token the token kind.
+		wantKey := map[clierr.TokenKind]string{clierr.TokenKindV3: "managementtoken", clierr.TokenKindExt: "token"}[kind]
 		k, ok := kinds.Lookup(revokeWords[2])
 		require.True(t, ok, "delete names a kind the table knows: %q", revokeWords[2])
+		assert.Equal(t, wantKey, k.Key, "delete names the kind the input kind maps to")
 		lk, ok := kinds.Lookup(listWords[2])
 		require.True(t, ok, "list names a kind or alias the table knows: %q", listWords[2])
-		assert.Equal(t, k.Key, lk.Key, "list and delete name the same kind")
+		assert.Equal(t, wantKey, lk.Key, "list names the same kind")
 		assert.Equal(t, k.Binding.Stability == safety.Deprecated, slices.Contains(revokeWords, "--allow-deprecated"),
 			"the deprecated gate follows the table for %s", k.Name)
 		assert.Contains(t, revokeWords, "tok-1")
 	}
+}
+
+// TestTokenFatesFrom pins the projection of a credential onto its token
+// fates: on the derived path the session fate is acquisition's cleanup and
+// the derived fate takes the given outcome; on the legacy path the session
+// token is the credential and takes it; a user-supplied credential has none.
+func TestTokenFatesFrom(t *testing.T) {
+	t.Parallel()
+	sRef := &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "s"}
+	dRef := &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "d"}
+	sClean := clierr.RevokeOutcome{Ref: sRef, Result: clierr.ResultRevoked}
+	dClean := clierr.RevokeOutcome{Ref: dRef, Result: clierr.ResultFailed, Error: "500"}
+
+	session, derived := tokenFatesFrom(token.LoginCredential{Provenance: token.ProvenanceDerived, Ref: dRef, SessionTokenCleanup: sClean, SessionCreatedAt: "s-at", DerivedCreatedAt: "d-at"}, dClean)
+	require.NotNil(t, session)
+	require.NotNil(t, derived)
+	assert.Equal(t, sRef, session.Ref)
+	assert.Equal(t, &sClean, session.Cleanup)
+	assert.Equal(t, "s-at", session.CreatedAt)
+	assert.True(t, session.Marked)
+	assert.Equal(t, dRef, derived.Ref)
+	assert.Equal(t, &dClean, derived.Cleanup)
+	assert.Equal(t, "d-at", derived.CreatedAt)
+
+	session, derived = tokenFatesFrom(token.LoginCredential{Provenance: token.ProvenanceLegacySession, Ref: sRef, SessionTokenUnmarked: true, SessionCreatedAt: "s-at"}, sClean)
+	require.NotNil(t, session)
+	assert.Nil(t, derived)
+	assert.Equal(t, sRef, session.Ref)
+	assert.Equal(t, &sClean, session.Cleanup, "the legacy session token is the credential and takes the given outcome")
+	assert.False(t, session.Marked)
+
+	session, derived = tokenFatesFrom(token.UserSupplied("id:secret"), clierr.RevokeOutcome{Result: clierr.ResultNotApplicable})
+	assert.Nil(t, session)
+	assert.Nil(t, derived)
+}
+
+// TestLoginReadOnlyHelperThenConfigWriteFailureLegacySession asserts the
+// legacy-session variant of the read-only-helper-then-failed-write case:
+// the credential is the session token itself, the finalizer revokes it
+// once, and the failure reports that revoke on the session fate.
+func TestLoginReadOnlyHelperThenConfigWriteFailureLegacySession(t *testing.T) {
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	f := testrancher.New(testrancher.Options{Legacy: true})
+	srv := newTLSFacade(t, fix, f)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	cmd := &loginCmd{
+		dir:          dir,
+		newStore:     func(string, string) (config.CredStore, string, error) { return unsupportedStore{}, "", nil },
+		tlsPreflight: tlsPreflightDefault,
+	}
+	restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+	defer restore()
+
+	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Nil(t, d.DerivedToken, "a legacy login creates no derived token")
+	require.NotNil(t, d.SessionToken)
+	require.NotNil(t, d.SessionToken.Cleanup)
+	assert.Equal(t, clierr.ResultRevoked, d.SessionToken.Cleanup.Result)
+	var v3Deletes int
+	for _, r := range f.DeleteRequests() {
+		if r.Kind == "v3" {
+			v3Deletes++
+		}
+	}
+	assert.Equal(t, 1, v3Deletes, "the session token is revoked exactly once")
+}
+
+// TestLoginEarlyFailureKeepsTheVersionWarning asserts that a failure before
+// the commit (a pasted token the verify round-trip rejects) still carries
+// the server-version warning learned during registration, as every later
+// failure does.
+func TestLoginEarlyFailureKeepsTheVersionWarning(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", "https://r.example", "", false)
+	cmd := &loginCmd{
+		dir:      dir,
+		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		verify: func(context.Context, config.Effective) (string, error) {
+			return "", clierr.New(clierr.CodeAuth, "token rejected")
+		},
+	}
+	in := args{b: map[string]bool{"token-stdin": true}, a: []string{"prod"}}
+	const versionWarning = "server 2.10.0 is below the supported minimum 2.14; some commands may fail"
+	_, err := cmd.authenticateAndStore(t.Context(), in, stdinPrompter("id:secret"), "prod", "https://r.example", "", "", versionWarning, "", false, false)
+	ce, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.CodeAuth, d.Primary.Code)
+	assert.Contains(t, ce.Warnings(), versionWarning)
 }

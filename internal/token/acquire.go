@@ -73,7 +73,7 @@ type acquireState struct {
 // change a return value already evaluated. sClean and dClean are already
 // notAttempted with the token's ref when no DELETE ran.
 func (st *acquireState) finishAcquireError(primary error) *AcquireError {
-	if st.sOwned && st.session.Create.Ref != nil && st.session.Create.Bearer != "" {
+	if st.sOwned {
 		ctx, cancel := cleanupContext(st.ctx)
 		st.sClean = revokeToken(ctx, st.client, st.base, *st.session.Create.Ref, st.session.Create.Bearer)
 		cancel()
@@ -128,7 +128,9 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		case CreateNotAttempted, CreateNotCreated:
 			return LoginCredential{}, err
 		}
-		// unknown, unidentified, or known without a usable bearer
+		// unknown, unidentified, known without a usable bearer, or known
+		// with one that arrived alongside an error (a status the CLI
+		// refuses): the last is owned and is revoked here.
 		return LoginCredential{}, st.finishAcquireError(err)
 	}
 	s := st.session.Create
@@ -163,7 +165,11 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		// One bounded context covers both cleanups, so a slow server costs
 		// at most one cleanup timeout before the failure is reported. D
 		// goes first, by name with S as the bearer, while S is still valid;
-		// then S itself. The two are sequential by necessity.
+		// then S itself. The two are sequential by necessity. The shared
+		// bound is a deliberate trade: a D delete that consumes most of it
+		// leaves S little time and S may go unrevoked, which the failure
+		// reports; two full bounds would double the worst-case wait of an
+		// interactive login against a server that is already failing.
 		c, cancel := cleanupContext(ctx)
 		if dr.Outcome == CreateKnown && dr.Ref != nil {
 			st.dClean = revokeToken(c, client, st.base, *dr.Ref, s.Bearer)

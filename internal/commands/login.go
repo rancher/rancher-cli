@@ -482,6 +482,14 @@ func (l loginCmd) authenticateAndStore(
 		caBytes = pendingTrust.pem
 	}
 
+	// st accumulates what each persistence system holds as the login
+	// proceeds, plus every advisory learned so far, so any failure reports
+	// the state reached and keeps the warnings that belong to steps that
+	// did happen.
+	st := loginStates{config: clierr.ConfigNotWritten}
+	if versionWarning != "" {
+		st.warnings = append(st.warnings, versionWarning)
+	}
 	cred, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
 	bearer := cred.Token
 	viaProvider := cred.Provenance != token.ProvenanceUserSupplied
@@ -495,7 +503,7 @@ func (l loginCmd) authenticateAndStore(
 			// report it with the same shape every later failure carries.
 			authErr = failLogin(clierr.New(clierr.CodeValidation,
 				"invalid token (expected non-empty id:secret); get one from the Rancher UI"),
-				clierr.StageCommit, loginStates{config: clierr.ConfigNotWritten}, cred, name)
+				clierr.StageCommit, st, cred, name)
 		}
 	}
 	if authErr != nil {
@@ -517,7 +525,7 @@ func (l loginCmd) authenticateAndStore(
 				verr = ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
 					WithHint("")
 			}
-			composed := failLogin(verr, clierr.StageCommit, loginStates{config: clierr.ConfigNotWritten}, cred, name)
+			composed := failLogin(verr, clierr.StageCommit, st, cred, name)
 			if delegated {
 				return runtime.Result{}, decorateDelegatedVerifyFailure(ctx, l.dir, composed, snap)
 			}
@@ -525,10 +533,6 @@ func (l loginCmd) authenticateAndStore(
 		}
 	}
 
-	warnings := []string{}
-	if versionWarning != "" {
-		warnings = append(warnings, versionWarning)
-	}
 	var (
 		currentServer string
 		currentValid  bool
@@ -536,10 +540,6 @@ func (l loginCmd) authenticateAndStore(
 		persisted     bool
 	)
 	if err := config.WithLock(ctx, l.dir, func() error {
-		// st accumulates what each persistence system holds as the commit
-		// proceeds, so any failure below reports the state reached, not the
-		// state intended.
-		st := loginStates{config: clierr.ConfigNotWritten}
 		fail := func(primary error) error {
 			// A cancelled operation is reported as cancellation: the local
 			// symptom (a lock timeout, a half-read config) describes the
@@ -547,7 +547,6 @@ func (l loginCmd) authenticateAndStore(
 			if cerr := ctx.Err(); cerr != nil {
 				primary = cerr
 			}
-			st.warnings = warnings
 			return failLogin(primary, clierr.StageCommit, st, cred, name)
 		}
 		if l.beforeCommitHook != nil {
@@ -567,7 +566,7 @@ func (l loginCmd) authenticateAndStore(
 			return fail(err)
 		}
 		if storeNotice != "" {
-			warnings = append(warnings, storeNotice)
+			st.warnings = append(st.warnings, storeNotice)
 		}
 		// Login is the one place auto may re-probe and upgrade a stale "file"
 		// pin to the keychain; the returned store is the one to write into.
@@ -578,7 +577,7 @@ func (l loginCmd) authenticateAndStore(
 			return fail(err)
 		}
 		if pinNotice != "" {
-			warnings = append(warnings, pinNotice)
+			st.warnings = append(st.warnings, pinNotice)
 		}
 		ref := config.ServerRef{Name: name, URL: serverURL}
 		out, tokenErr := config.CommitToken(store, ref, bearer)
@@ -588,17 +587,14 @@ func (l loginCmd) authenticateAndStore(
 		if tokenErr == nil {
 			persisted = true
 			if out.Notice != "" {
-				warnings = append(warnings, out.Notice)
+				st.warnings = append(st.warnings, out.Notice)
 			}
 		}
 		if tokenErr != nil {
 			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
 				return fail(tokenErr)
 			}
-			w, r, dClean := finishUnsupportedStore(cred, name)
-			warnings = append(warnings, w...)
-			residual = append(residual, r...)
-			st.derivedCleanup = &dClean
+			residual = append(residual, finishUnsupportedStore(cred, name, &st)...)
 		}
 		if pendingTrust != nil {
 			// The token write (or its declared ErrTokenStoreUnsupported
@@ -647,7 +643,7 @@ func (l loginCmd) authenticateAndStore(
 		if f := fateOf(clierr.CreateKnown, "", cred.SessionTokenCleanup.Ref, !cred.SessionTokenUnmarked,
 			cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch); f != nil {
 			text, _ := residualRecovery(*f, name, cred.Marker, true)
-			warnings = append(warnings, fmt.Sprintf("the transient session token %s created by this login could not be revoked (%s); %s",
+			st.warnings = append(st.warnings, fmt.Sprintf("the transient session token %s created by this login could not be revoked (%s); %s",
 				f.Ref.String(), f.Cleanup.Error, text))
 			residual = append(residual, *f)
 		}
@@ -657,7 +653,7 @@ func (l loginCmd) authenticateAndStore(
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
 		"residualTokens": residual,
 	}}
-	res.Warnings = warnings
+	res.Warnings = st.warnings
 	var lines []string
 	if added {
 		lines = append(lines, "server "+name+" added")
@@ -701,10 +697,12 @@ type loginStates struct {
 	// keyring notice, the read-only-helper warnings); they belong to steps
 	// that did happen and a later failure must not swallow them.
 	warnings []string
-	// derivedCleanup is set when the derived token was already revoked
-	// before the failure (the read-only-helper finalizer ran); failLogin
-	// reports that outcome instead of revoking a second time.
-	derivedCleanup *clierr.RevokeOutcome
+	// credentialCleanup is set when the credential this login created was
+	// already revoked before the failure (the read-only-helper finalizer
+	// ran): the derived token on the derived path, the session token itself
+	// on the legacy path. failLogin reports that outcome instead of
+	// revoking a second time.
+	credentialCleanup *clierr.RevokeOutcome
 }
 
 // credentialStateOf derives the reported state from the backend outcome
@@ -820,8 +818,8 @@ func failLogin(primary error, stage clierr.LoginStage, st loginStates, cred toke
 	// The credential is revoked once: when the read-only-helper finalizer
 	// already did it, its outcome is the one reported.
 	var dClean clierr.RevokeOutcome
-	if st.derivedCleanup != nil {
-		dClean = *st.derivedCleanup
+	if st.credentialCleanup != nil {
+		dClean = *st.credentialCleanup
 	} else {
 		dClean = cred.Revoke()
 	}
@@ -995,11 +993,14 @@ func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) s
 // helper: it starts from the fates the credential already carries, revokes
 // what this operation created, and derives warnings and residual tokens
 // from the aggregate under one rule — nothing was persisted, so every
-// residual gets the nothing-persisted recovery and no delete hint.
-func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings []string, residual []clierr.TokenFate, derivedCleanup clierr.RevokeOutcome) {
-	warnings = append(warnings,
+// residual gets the nothing-persisted recovery and no delete hint. It
+// appends its warnings to the login state itself, in reading order: why
+// nothing was persisted, then what to clean up.
+func finishUnsupportedStore(cred token.LoginCredential, server string, st *loginStates) (residual []clierr.TokenFate) {
+	st.warnings = append(st.warnings,
 		"credential helper is read-only; token not persisted — future commands will re-acquire it through the helper")
 	dClean := cred.Revoke()
+	st.credentialCleanup = &dClean
 	add := func(f *clierr.TokenFate) {
 		if f != nil && f.Cleanup != nil && f.Cleanup.Result == clierr.ResultFailed {
 			residual = append(residual, *f)
@@ -1010,10 +1011,10 @@ func finishUnsupportedStore(cred token.LoginCredential, server string) (warnings
 	add(derived)
 	for _, r := range residual {
 		text, _ := residualRecovery(r, server, cred.Marker, false)
-		warnings = append(warnings, fmt.Sprintf("the token %s created by this login could not be revoked (%s); %s",
+		st.warnings = append(st.warnings, fmt.Sprintf("the token %s created by this login could not be revoked (%s); %s",
 			r.Ref.String(), r.Cleanup.Error, text))
 	}
-	return warnings, residual, dClean
+	return residual
 }
 
 // decorateDelegatedAuthFailure scopes a failed delegated login's retry hint
