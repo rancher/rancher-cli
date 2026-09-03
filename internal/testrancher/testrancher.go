@@ -20,19 +20,18 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/rancher/rancher-cli/internal/token"
 )
 
 const (
 	authProvidersPath = "/v1-public/authproviders"
 	loginPath         = "/v1-public/login"
 
-	// mintTokensPath is production's own constant, not a duplicated literal:
-	// the architecture conformance edge only forbids a production package
-	// importing testrancher, not the reverse, so this is the one place the
-	// path lives.
-	mintTokensPath = token.MintTokensPath
+	// mintTokensPath is the ext token collection behind the local-cluster
+	// proxy. It repeats production's token.MintTokensPath as a literal
+	// because the token package's own tests exercise this façade, and an
+	// import of token here would make that a cycle; a test asserts the two
+	// stay equal.
+	mintTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 
 	// v3TokensPath is the deprecated management.cattle.io/v3 token
 	// collection behind the local-cluster proxy — where a session token

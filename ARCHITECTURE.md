@@ -286,8 +286,6 @@ graph TD
     output --> clierr
     output --> outputstyle
 
-    testrancher --> token
-
     fidelity --> token
     fidelity --> testrancher
     fidelity --> httpx
