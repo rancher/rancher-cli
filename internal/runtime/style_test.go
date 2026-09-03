@@ -285,10 +285,10 @@ func TestStyleSchemaTOCStripInvariant(t *testing.T) {
 	m := tocManifest()
 	text := renderTOC(m)
 
-	styled := styleSchemaTOC(text, m.Groups, style.Style{Enabled: true})
+	styled := styleSchemaTOC(text, m, allPrimeGroups(m), style.Style{Enabled: true})
 	assert.NotEqual(t, text, styled)
 	assert.Equal(t, text, style.Strip(styled))
-	assert.Equal(t, text, styleSchemaTOC(text, m.Groups, style.Style{}), "disabled style returns text unchanged")
+	assert.Equal(t, text, styleSchemaTOC(text, m, allPrimeGroups(m), style.Style{}), "disabled style returns text unchanged")
 
 	plainLines := splitKeepNewline(text)
 	styledLines := splitKeepNewline(styled)
@@ -307,6 +307,88 @@ func TestStyleSchemaTOCStripInvariant(t *testing.T) {
 	assert.NotContains(t, styledLines[authIdx+1], "\x1b[", "a command row must not be styled")
 }
 
+// TestStyleSchemaTOCColorsPrimeMarkers asserts the green span wraps exactly
+// "[Prime]" on a Prime command's row and on an all-Prime group's own label
+// line, while a non-Prime row or a mixed group's label stays entirely plain
+// beyond the pre-existing bold.
+func TestStyleSchemaTOCColorsPrimeMarkers(t *testing.T) {
+	t.Parallel()
+	m := Manifest{
+		CLIVersion: "v-test",
+		Commands: []SchemaCommand{
+			{Name: "oidc-client create", Usage: "Create a client", Prime: true},
+			{Name: "cluster scale", Usage: "Scale a pool"},
+			{Name: "cluster set-autoscaling", Usage: "Turn on autoscaling", Prime: true},
+		},
+		Groups: []SchemaGroup{
+			{Name: "oidc-client", Commands: []string{"oidc-client create"}},
+			{Name: "cluster", Commands: []string{"cluster scale", "cluster set-autoscaling"}},
+		},
+	}
+	text := renderTOCText(m, false)
+	s := style.Style{Enabled: true}
+	styled := styleSchemaTOC(text, m, allPrimeGroups(m), s)
+	assert.Equal(t, text, style.Strip(styled))
+
+	greenPrime := s.Green("[Prime]")
+	oidcLabel := lineContainingRT(t, styled, "oidc-client:")
+	assert.Contains(t, oidcLabel, greenPrime, "an all-Prime group's label carries the green marker")
+	assert.Contains(t, oidcLabel, "\x1b[1m", "the label line stays bold")
+
+	clusterLabel := lineContainingRT(t, styled, "cluster:")
+	assert.NotContains(t, clusterLabel, "[Prime]", "a mixed group's label carries no marker")
+
+	primeRow := lineContainingRT(t, styled, "cluster set-autoscaling")
+	assert.Contains(t, primeRow, greenPrime, "a Prime command row's marker is green")
+
+	scaleRow := lineContainingRT(t, styled, "cluster scale —")
+	assert.NotContains(t, scaleRow, "\x1b[", "a non-Prime row stays entirely plain")
+}
+
+// lineContainingRT returns the first line of text containing substr, failing
+// the test if none matches.
+func lineContainingRT(t *testing.T, text, substr string) string {
+	t.Helper()
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.Contains(line, substr) {
+			return line
+		}
+	}
+	t.Fatalf("no line containing %q in:\n%s", substr, text)
+	return ""
+}
+
+// TestStyleSchemaTOCLabelMarkerFollowsPassedPrimeGroups asserts the styler
+// colors a group label's marker from the primeGroups it is handed, never
+// from the (possibly filtered) manifest it is styling: a mixed group whose
+// only surviving member is Prime renders and stays a plain label, and an
+// all-Prime group's label marker is green.
+func TestStyleSchemaTOCLabelMarkerFollowsPassedPrimeGroups(t *testing.T) {
+	t.Parallel()
+	full := Manifest{
+		Commands: []SchemaCommand{
+			{Name: "p one", Usage: "One", Prime: true},
+			{Name: "mixed prime", Usage: "Prime member", Prime: true},
+			{Name: "mixed plain", Usage: "Plain member"},
+		},
+		Groups: []SchemaGroup{
+			{Name: "p", Commands: []string{"p one"}},
+			{Name: "mixed", Commands: []string{"mixed prime", "mixed plain"}},
+		},
+	}
+	fm := full
+	fm.Commands = []SchemaCommand{full.Commands[0], full.Commands[1]}
+	fm.Groups = filterGroups(full.Groups, map[string]bool{"p one": true, "mixed prime": true})
+	prime := allPrimeGroups(full)
+	text := renderFilteredTOC(fm, schemaFilters{search: "x"}, prime)
+	s := style.Style{Enabled: true}
+	styled := styleSchemaTOC(text, fm, prime, s)
+	assert.Contains(t, styled, s.Bold("p: "+s.Green(PrimeMarker)), "all-Prime label marker is green inside the bold label")
+	assert.Contains(t, styled, s.Bold("mixed:")+"\n", "mixed group label stays plain and unmarked")
+	assert.NotContains(t, styled, "mixed: "+s.Green(PrimeMarker))
+	assert.Equal(t, text, style.Strip(styled))
+}
+
 // TestStyleSchemaFilteredTOCStripInvariant asserts the filtered TOC's bold
 // header line, plus the strip invariant and the inactive-style identity.
 func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
@@ -316,10 +398,10 @@ func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 	fm := filterManifest(m, f)
 	text := renderFilteredTOC(fm, f, allPrimeGroups(m))
 
-	styled := styleSchemaTOC(text, fm.Groups, style.Style{Enabled: true})
+	styled := styleSchemaTOC(text, fm, allPrimeGroups(m), style.Style{Enabled: true})
 	assert.NotEqual(t, text, styled)
 	assert.Equal(t, text, style.Strip(styled))
-	assert.Equal(t, text, styleSchemaTOC(text, fm.Groups, style.Style{}))
+	assert.Equal(t, text, styleSchemaTOC(text, fm, allPrimeGroups(m), style.Style{}))
 
 	styledLines := splitKeepNewline(styled)
 	assert.Contains(t, styledLines[0], "\x1b[1m", "the match-count header line must be bold")
@@ -336,10 +418,10 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 	gv := newGroupView(m, g)
 	text := renderGroupCard(m, gv)
 
-	styled := styleSchemaGroupCard(text, true, style.Style{Enabled: true})
+	styled := styleSchemaGroupCard(text, true, gv.prime, gv.bespoke, style.Style{Enabled: true})
 	assert.NotEqual(t, text, styled)
 	assert.Equal(t, text, style.Strip(styled))
-	assert.Equal(t, text, styleSchemaGroupCard(text, true, style.Style{}))
+	assert.Equal(t, text, styleSchemaGroupCard(text, true, gv.prime, gv.bespoke, style.Style{}))
 
 	plainLines := splitKeepNewline(text)
 	styledLines := splitKeepNewline(styled)
@@ -355,6 +437,31 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 	require.GreaterOrEqual(t, cmdIdx, 0)
 	assert.Contains(t, styledLines[cmdIdx], "\x1b[1m", "the commands: label must be bold")
 	assert.NotContains(t, styledLines[cmdIdx+1], "\x1b[", "a command row must not be styled")
+}
+
+// TestStyleSchemaGroupCardColorsPrimeHeader asserts an all-Prime group's
+// "group: <name>" header carries a green "[Prime]" span alongside its
+// existing whole-line bold, and that its Prime member's own row is
+// colorized too — while a non-Prime group's header and rows carry none.
+func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
+	t.Parallel()
+	s := style.Style{Enabled: true}
+
+	primeCmds := []SchemaCommand{{Name: "oidc-client create", Usage: "Create a client", Prime: true}}
+	primeText := "group: oidc-client [Prime]\ncommands:\n  " + tocLine(primeCmds[0]) + "\n"
+	styled := styleSchemaGroupCard(primeText, true, true, primeCmds, s)
+	assert.Equal(t, primeText, style.Strip(styled))
+	lines := strings.SplitAfter(styled, "\n")
+	assert.Contains(t, lines[0], "\x1b[1m", "the header stays bold")
+	assert.Contains(t, lines[0], s.Green("[Prime]"), "the header's marker is green")
+	assert.Contains(t, lines[2], s.Green("[Prime]"), "the Prime member's own row is colorized")
+
+	mixedCmds := []SchemaCommand{{Name: "cluster scale", Usage: "Scale a pool"}}
+	mixedText := "group: cluster\ncommands:\n  " + tocLine(mixedCmds[0]) + "\n"
+	styledMixed := styleSchemaGroupCard(mixedText, true, false, mixedCmds, s)
+	mixedLines := strings.SplitAfter(styledMixed, "\n")
+	assert.NotContains(t, mixedLines[0], "[Prime]")
+	assert.NotContains(t, mixedLines[2], "\x1b[", "a non-Prime row stays entirely plain")
 }
 
 // TestStyleSchemaCommandCardStripInvariant asserts the command card's bold
@@ -408,6 +515,21 @@ func TestStyleSchemaCommandCardStripInvariant(t *testing.T) {
 	flagIdx := find("  --filename")
 	assert.True(t, strings.HasPrefix(styledLines[flagIdx], "  \x1b[1m--filename/-f\x1b[0m "),
 		"flag name is bold, type/description/env stay plain")
+}
+
+// TestStyleSchemaCommandCardColorsPrimeSentence asserts a Prime command
+// card's PrimeSentence line renders entirely green, while every other line
+// keeps its existing (non-green) styling.
+func TestStyleSchemaCommandCardColorsPrimeSentence(t *testing.T) {
+	t.Parallel()
+	c := SchemaCommand{Name: "cluster set-autoscaling", Usage: "Turn on autoscaling", Prime: true, CommandType: Local}
+	text := renderCommandCard(cardManifest(), c)
+	require.Contains(t, text, PrimeSentence)
+
+	s := style.Style{Enabled: true}
+	styled := styleSchemaCommandCard(text, false, false, s)
+	assert.Equal(t, text, style.Strip(styled))
+	assert.Contains(t, styled, s.Green(PrimeSentence), "the PrimeSentence line renders entirely green")
 }
 
 // TestStyleSchemaCommandCardFlagShapedDescStaysPlain asserts flag-name
@@ -469,7 +591,7 @@ func TestStyleSchemaCommandCardAbsentSectionNoTheft(t *testing.T) {
 	assert.Contains(t, got, "\x1b[1mcontract:\x1b[0m local")
 
 	group := "group: g\nDesc first.\ncommands:\n"
-	gotGroup := styleSchemaGroupCard(group, false, s)
+	gotGroup := styleSchemaGroupCard(group, false, false, nil, s)
 	assert.NotContains(t, gotGroup, "\x1b[1mcommands:", "an empty group's Desc line must stay plain")
 }
 

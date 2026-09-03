@@ -59,7 +59,7 @@ func colorPrimeMark(s style.Style, cmd *ucli.Command, wrapped string) string {
 	if !commandIsPrime(cmd) {
 		return wrapped
 	}
-	return strings.Replace(wrapped, "[Prime]", s.Green("[Prime]"), 1)
+	return runtime.ColorPrimeMarker(wrapped, s)
 }
 
 // helpStyle mirrors internal/runtime's stylesFor for the OUT stream, without

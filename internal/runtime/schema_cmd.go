@@ -142,7 +142,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		}
 		text := renderTOCText(m, false)
 		return Result{Kind: "Schema", Data: newSchemaView(m), Text: text,
-			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m.Groups, s) }}, nil
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m, allPrimeGroups(m), s) }}, nil
 	}
 	if f.active() {
 		// SE-20: filters and --search span the whole surface; a positional
@@ -151,9 +151,10 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
 		}
 		fm := filterManifest(m, f)
-		text := renderFilteredTOC(fm, f, allPrimeGroups(m))
+		primeGroups := allPrimeGroups(m)
+		text := renderFilteredTOC(fm, f, primeGroups)
 		return Result{Kind: "Schema", Data: newTOCView(fm, false), Text: text,
-			StyledText: func(s style.Style) string { return styleSchemaTOC(text, fm.Groups, s) }}, nil
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, fm, primeGroups, s) }}, nil
 	}
 	if len(in.Args()) == 0 {
 		if asKind {
@@ -162,7 +163,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		}
 		text := renderTOC(m)
 		return Result{Kind: "Schema", Data: newTOCView(m, true), Text: text,
-			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m.Groups, s) }}, nil
+			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m, allPrimeGroups(m), s) }}, nil
 	}
 	want := strings.Join(in.Args(), " ")
 	// Resolution order (SE-5/SE-6): command match wins; a positional that
@@ -204,7 +205,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			}
 			return Result{Kind: "Schema", Data: gv, Text: text,
 				StyledText: func(s style.Style) string {
-					return styleSchemaGroupCard(text, len(gv.bespoke) > 0 || gv.generatedCount > 0, s)
+					return styleSchemaGroupCard(text, len(gv.bespoke) > 0 || gv.generatedCount > 0, gv.prime, gv.bespoke, s)
 				}}, nil
 		}
 	}
