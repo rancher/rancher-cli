@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/token"
@@ -2171,4 +2173,410 @@ func TestLoginAuthStageFailureCarriesDetails(t *testing.T) {
 	assert.Equal(t, clierr.CreateUnknown, d.DerivedToken.Outcome)
 	assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
 	assert.Contains(t, d.Recovery, "rancher get tokens")
+}
+
+// newTLSFacade serves the façade over TLS with fix's certificate, answering
+// /rancherversion itself: guided trust re-verifies a consented certificate
+// through the version preflight, which the façade does not serve.
+func newTLSFacade(t *testing.T, fix tlsFixture, f *testrancher.Facade) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rancherversion" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"Version":"v2.20.0"}`))
+			return
+		}
+		f.ServeHTTP(w, r)
+	}))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{fix.cert}}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestLoginCombinedWorstCaseCarriesFourDistinctErrors asserts that S
+// cleanup, local compensation, D revoke, and the primary each land in
+// their own field of the decoded JSON envelope. The config write that
+// fails is the guided-trust commit, so the login runs over a self-signed
+// façade with consent given. Not parallel: it mutates the package-level
+// trustCommitConfigWriteHookForTest.
+func TestLoginCombinedWorstCaseCarriesFourDistinctErrors(t *testing.T) {
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	f := testrancher.New(testrancher.Options{SessionDeleteMode: "fail", DerivedDeleteMode: "fail"})
+	srv := newTLSFacade(t, fix, f)
+
+	dir, realStore := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	compErr := errors.New("keychain locked")
+	store := &compensationFailingStore{CredStore: realStore, compErr: compErr}
+	cmd := &loginCmd{
+		dir:          dir,
+		newStore:     func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		tlsPreflight: tlsPreflightDefault,
+	}
+	configErr := errors.New("disk full")
+	restore := setTrustCommitConfigWriteHookForTest(func() error { return configErr })
+	defer restore()
+
+	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true) // consent, then the local credentials
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	b, merr := json.Marshal(d)
+	require.NoError(t, merr)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(b, &got)) // decoded field access, not a rendered-JSON string match
+	assert.Contains(t, got["primary"].(map[string]any)["message"], "disk full")
+	assert.Equal(t, "writeFailed", got["configState"])
+	assert.Equal(t, "compensationFailed", got["credentialState"])
+	assert.Equal(t, "keychain locked", got["credentialRecovery"].(map[string]any)["compensationError"])
+	assert.Contains(t, got["derivedToken"].(map[string]any)["cleanup"].(map[string]any)["error"], "500")
+	assert.Contains(t, got["sessionToken"].(map[string]any)["cleanup"].(map[string]any)["error"], "500")
+	assert.Len(t, f.DeleteRequests(), 2, "S at acquire, D at commit failure")
+}
+
+// compensationFailingStore commits through the real store and replaces
+// the backend's compensation with one that fails.
+type compensationFailingStore struct {
+	config.CredStore
+	compErr error
+}
+
+func (s *compensationFailingStore) SetTokenWithOutcome(ref config.ServerRef, token string) (config.CommitOutcome, error) {
+	out, err := s.CredStore.SetTokenWithOutcome(ref, token)
+	if err == nil && out.Compensate != nil {
+		out.Compensate = func() error { return s.compErr }
+	}
+	return out, err
+}
+
+// TestLoginUnknownDerivedLeavesOneMarkedToken asserts the state the recovery
+// procedure starts from: after a lost create response exactly one façade
+// token carries the marker, and the recovery names re-login, the
+// kind-correct list command, and the marker. The procedure itself is
+// executed with the real binary by e2e/scripts/login-recovery.txtar.
+func TestLoginUnknownDerivedLeavesOneMarkedToken(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{DropDerivedCreateResponse: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.CreateUnknown, d.DerivedToken.Outcome)
+	assert.Equal(t, clierr.ResultNotAttempted, d.DerivedToken.Cleanup.Result)
+	assert.Contains(t, d.Recovery, "rancher auth login "+shquote("prod"))
+	list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
+	assert.Contains(t, d.Recovery, list)
+	assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
+	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:"+d.OperationMarker+"]"), 1, "exactly one ext token carries the marker")
+}
+
+// unreadablePriorKeyring is a keyring seam whose Get fails with a
+// non-not-found error while no item is stored: the prior state cannot be
+// classified, so a write that lands cannot be undone. Set stores the value
+// and then reports an error, and the read-back that follows sees it.
+type unreadablePriorKeyring struct {
+	mu    sync.Mutex
+	items map[string]string
+	err   error
+}
+
+func (k *unreadablePriorKeyring) Set(service, user, password string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.items[service+"\x00"+user] = password
+	return k.err
+}
+
+func (k *unreadablePriorKeyring) Get(service, user string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	v, ok := k.items[service+"\x00"+user]
+	if !ok {
+		return "", errors.New("keychain locked")
+	}
+	return v, nil
+}
+
+func (k *unreadablePriorKeyring) Delete(service, user string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.items, service+"\x00"+user)
+	return nil
+}
+
+// refusingKeyring is a keyring seam that stores nothing and reports an
+// error: every read is a miss, so the read-back proves the write did not
+// land.
+type refusingKeyring struct{ err error }
+
+func (k refusingKeyring) Set(string, string, string) error   { return k.err }
+func (k refusingKeyring) Get(string, string) (string, error) { return "", keyring.ErrNotFound }
+func (k refusingKeyring) Delete(string, string) error        { return nil }
+
+// unknownReadbackKeyring is a keyring seam that answers the prior-state
+// read with a miss, fails the write, and then fails the read-back: what the
+// keychain now holds is unknown.
+type unknownReadbackKeyring struct {
+	mu   sync.Mutex
+	gets int
+	err  error
+}
+
+func (k *unknownReadbackKeyring) Set(string, string, string) error { return k.err }
+
+func (k *unknownReadbackKeyring) Get(string, string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.gets++
+	if k.gets == 1 {
+		return "", keyring.ErrNotFound
+	}
+	return "", errors.New("dbus: no reply")
+}
+
+func (k *unknownReadbackKeyring) Delete(string, string) error { return nil }
+
+// TestLoginUncompensatableKeyringCommitSucceedsWithNotice asserts the
+// committedUncompensatable branch on the success path: the prior item could
+// not be read, the write landed anyway, and the advisory reaches warnings.
+// Not parallel: it swaps the package-global keyring seam.
+func TestLoginUncompensatableKeyringCommitSucceedsWithNotice(t *testing.T) {
+	keyring.MockInit()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	fk := &unreadablePriorKeyring{items: map[string]string{}, err: errors.New("dbus: reply lost")}
+	restore := config.SetKeyringBackendForTest(fk)
+	defer restore()
+	store, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "keyring reported an error after storing the token")
+	tok, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, tok)
+}
+
+// TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery asserts
+// the same branch when the guided-trust config write then fails: nothing can
+// undo the keychain write, so the failure names what the keychain holds,
+// carries the unknown prior source, and the derived token is revoked.
+// Not parallel: it swaps the package-global keyring seam and mutates
+// trustCommitConfigWriteHookForTest.
+func TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery(t *testing.T) {
+	keyring.MockInit()
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	f := testrancher.New(testrancher.Options{})
+	srv := newTLSFacade(t, fix, f)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	fk := &unreadablePriorKeyring{items: map[string]string{}, err: errors.New("dbus: reply lost")}
+	restoreKeyring := config.SetKeyringBackendForTest(fk)
+	defer restoreKeyring()
+	store, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+	defer restore()
+
+	cmd := &loginCmd{
+		dir:          dir,
+		newStore:     func(string, string) (config.CredStore, string, error) { return store, "", nil },
+		tlsPreflight: tlsPreflightDefault,
+	}
+	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true) // consent, then the local credentials
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err = cmd.Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.StageCommit, d.Stage)
+	assert.Equal(t, clierr.ConfigWriteFailed, d.ConfigState)
+	assert.Equal(t, clierr.CredentialCommittedUncompensatable, d.CredentialState)
+	require.NotNil(t, d.CredentialRecovery)
+	assert.Equal(t, clierr.BackendKeyring, d.CredentialRecovery.Backend)
+	assert.Equal(t, clierr.PriorUnknown, d.CredentialRecovery.PriorSource)
+	assert.Empty(t, d.CredentialRecovery.CompensationError)
+	assert.Contains(t, d.Recovery, "the earlier item could not be read")
+	require.NotNil(t, d.DerivedToken)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+}
+
+// TestLoginKeyringNotWrittenFailsWithoutCredentialRecovery asserts the
+// notWritten branch through the command: the read-back proves the keychain
+// is untouched, so the failure reports no local residue at all.
+// Not parallel: it swaps the package-global keyring seam.
+func TestLoginKeyringNotWrittenFailsWithoutCredentialRecovery(t *testing.T) {
+	keyring.MockInit()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	restoreKeyring := config.SetKeyringBackendForTest(refusingKeyring{err: errors.New("dbus: reply lost")})
+	defer restoreKeyring()
+	store, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err = newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.StageCommit, d.Stage)
+	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
+	assert.Equal(t, clierr.CredentialNotWritten, d.CredentialState)
+	assert.Nil(t, d.CredentialRecovery)
+	require.NotNil(t, d.DerivedToken)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+}
+
+// TestLoginKeyringPossiblyCommittedFailsWithKeychainRecovery asserts the
+// possiblyCommitted branch through the command: the read-back itself failed,
+// so the recovery says the keychain item cannot be identified.
+// Not parallel: it swaps the package-global keyring seam.
+func TestLoginKeyringPossiblyCommittedFailsWithKeychainRecovery(t *testing.T) {
+	keyring.MockInit()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, _ := filePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	restoreKeyring := config.SetKeyringBackendForTest(&unknownReadbackKeyring{err: errors.New("dbus: reply lost")})
+	defer restoreKeyring()
+	store, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err = newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	_, d := decodeLoginFailure(t, err)
+	assert.Equal(t, clierr.StageCommit, d.Stage)
+	assert.Equal(t, clierr.CredentialPossiblyCommitted, d.CredentialState)
+	require.NotNil(t, d.CredentialRecovery)
+	assert.Equal(t, clierr.BackendKeyring, d.CredentialRecovery.Backend)
+	assert.Equal(t, "rancher auth logout "+shquote("prod"), d.CredentialRecovery.Command)
+	assert.Contains(t, d.Recovery, "may be this login's token, the earlier value, or another value")
+	require.NotNil(t, d.DerivedToken)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+}
+
+// deleteJSONPath removes the value at a dotted path from a decoded JSON
+// document, walking only through objects. A path that does not resolve is a
+// no-op: the fields it names are the per-run ones, and their absence in one
+// side is itself what the comparison must not depend on.
+func deleteJSONPath(doc map[string]any, path string) {
+	head, rest, more := strings.Cut(path, ".")
+	if !more {
+		delete(doc, head)
+		return
+	}
+	child, ok := doc[head].(map[string]any)
+	if !ok {
+		return
+	}
+	deleteJSONPath(child, rest)
+}
+
+// assertJSONEqualIgnoring compares two JSON documents field by field after
+// dropping the paths whose values change from run to run (names, timestamps,
+// the marker, and the recovery text that embeds them).
+func assertJSONEqualIgnoring(t *testing.T, want, got []byte, ignore ...string) {
+	t.Helper()
+	var w, g map[string]any
+	require.NoError(t, json.Unmarshal(want, &w))
+	require.NoError(t, json.Unmarshal(got, &g))
+	for _, p := range ignore {
+		deleteJSONPath(w, p)
+		deleteJSONPath(g, p)
+	}
+	assert.Equal(t, w, g)
+}
+
+// loginFailureEnvelope renders err through the error envelope exactly as an
+// invocation would, so the golden is the document an agent parses. The
+// fixture's ephemeral URL becomes a placeholder, which keeps the failure
+// messages themselves contractual.
+func loginFailureEnvelope(t *testing.T, err error, serverURL string) []byte {
+	t.Helper()
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "expected a structured error, got %v", err)
+	var buf bytes.Buffer
+	require.NoError(t, output.Render(&buf, "json", output.ErrorEnvelope(ce)))
+	return bytes.ReplaceAll(buf.Bytes(), []byte(serverURL), []byte("$SERVER"))
+}
+
+// checkLoginFailureGolden compares the rendered envelope with the stored
+// one, or rewrites it under -update.
+func checkLoginFailureGolden(t *testing.T, path string, got []byte, ignore ...string) {
+	t.Helper()
+	if *updateCompletionGoldens {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, got, 0o600))
+		return
+	}
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assertJSONEqualIgnoring(t, want, got, ignore...)
+}
+
+// TestLoginFailureEnvelopeGoldens asserts the JSON an agent parses for the
+// three failure shapes. The per-run names, timestamps, marker, and the
+// recovery text built from them are dropped; every other field is
+// contractual. Not parallel: the combined case mutates
+// trustCommitConfigWriteHookForTest.
+func TestLoginFailureEnvelopeGoldens(t *testing.T) {
+	ignore := []string{
+		"data.error.details.sessionToken.createdAt",
+		"data.error.details.derivedToken.createdAt",
+		"data.error.details.operationMarker",
+		"data.error.details.sessionToken.ref.name",
+		"data.error.details.derivedToken.ref.name",
+		"data.error.details.recovery",
+	}
+	t.Run("unknown derived token", func(t *testing.T) {
+		f := testrancher.New(testrancher.Options{DropDerivedCreateResponse: true})
+		srv := httptest.NewServer(f)
+		t.Cleanup(srv.Close)
+		dir, store := filePolicyDir(t)
+		seedServer(t, dir, "prod", srv.URL, "", false)
+		in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+		p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+		_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+		checkLoginFailureGolden(t, "testdata/loginfailure/unknown-derived.json", loginFailureEnvelope(t, err, srv.URL), ignore...)
+	})
+	t.Run("authentication stage with failed session cleanup", func(t *testing.T) {
+		f := testrancher.New(testrancher.Options{DerivedCreateStatus: 500, SessionDeleteMode: "fail"})
+		srv := httptest.NewServer(f)
+		t.Cleanup(srv.Close)
+		dir, store := filePolicyDir(t)
+		seedServer(t, dir, "prod", srv.URL, "", false)
+		in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+		p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+		_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+		checkLoginFailureGolden(t, "testdata/loginfailure/auth-stage-session-residue.json", loginFailureEnvelope(t, err, srv.URL), ignore...)
+	})
+	t.Run("combined worst case", func(t *testing.T) {
+		fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		f := testrancher.New(testrancher.Options{SessionDeleteMode: "fail", DerivedDeleteMode: "fail"})
+		srv := newTLSFacade(t, fix, f)
+		dir, realStore := filePolicyDir(t)
+		seedServer(t, dir, "prod", srv.URL, "", false)
+		store := &compensationFailingStore{CredStore: realStore, compErr: errors.New("keychain locked")}
+		cmd := &loginCmd{
+			dir:          dir,
+			newStore:     func(string, string) (config.CredStore, string, error) { return store, "", nil },
+			tlsPreflight: tlsPreflightDefault,
+		}
+		restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+		defer restore()
+		p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true)
+		in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+		_, err := cmd.Execute(t.Context(), in, p)
+		checkLoginFailureGolden(t, "testdata/loginfailure/combined-worst-case.json", loginFailureEnvelope(t, err, srv.URL), ignore...)
+	})
 }

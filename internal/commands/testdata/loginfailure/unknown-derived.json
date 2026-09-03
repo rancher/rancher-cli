@@ -1,0 +1,48 @@
+{
+  "apiVersion": "cli.rancher.io/v1",
+  "kind": "Error",
+  "data": {
+    "error": {
+      "code": "GENERIC",
+      "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens\": EOF",
+      "hint": "rancher auth login 'prod'",
+      "retryable": false,
+      "details": {
+        "primary": {
+          "code": "GENERIC",
+          "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens\": EOF",
+          "retryable": false
+        },
+        "stage": "authentication",
+        "operationMarker": "1c84e5f1c5da",
+        "sessionToken": {
+          "outcome": "known",
+          "kind": "v3",
+          "ref": {
+            "kind": "v3",
+            "name": "fac-token-1"
+          },
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "ref": {
+              "kind": "v3",
+              "name": "fac-token-1"
+            },
+            "result": "revoked"
+          }
+        },
+        "derivedToken": {
+          "outcome": "unknown",
+          "kind": "ext",
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "result": "notAttempted"
+          }
+        },
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod', then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:1c84e5f1c5da]\" in its description; revoke it with the found name"
+      }
+    }
+  }
+}

@@ -13,11 +13,16 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rogpeppe/go-internal/testscript"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -53,6 +58,254 @@ func cmdJSONQuery(ts *testscript.TestScript, neg bool, args []string) {
 			ts.Fatalf("jsonquery %s %q: got %q, want anything but %q", file, path, got, want)
 		}
 		ts.Fatalf("jsonquery %s %q: got %q, want %q", file, path, got, want)
+	}
+}
+
+// cmdJSONGet writes the value a gjson path selects to a file, so a later
+// command can consume it: jsonget <file> <gjson-path> <output-file>. A path
+// that selects nothing is a failure — a script that carries a value forward
+// must never carry an empty one.
+func cmdJSONGet(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("jsonget does not support the ! prefix")
+	}
+	if len(args) != 3 {
+		ts.Fatalf("usage: jsonget <file> <gjson-path> <output-file>")
+	}
+	file, path, out := args[0], args[1], args[2]
+	res := gjson.Get(ts.ReadFile(file), path)
+	if !res.Exists() {
+		ts.Fatalf("jsonget %s %q: path selects nothing", file, path)
+	}
+	if res.String() == "" {
+		ts.Fatalf("jsonget %s %q: selected an empty value", file, path)
+	}
+	if err := os.WriteFile(ts.MkAbs(out), []byte(res.String()), 0o600); err != nil {
+		ts.Fatalf("jsonget: writing %s: %v", out, err)
+	}
+}
+
+// cmdSetenvFrom sets an environment variable for the rest of the script
+// from a file's content, trimmed: setenvfrom <NAME> <file>.
+func cmdSetenvFrom(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("setenvfrom does not support the ! prefix")
+	}
+	if len(args) != 2 {
+		ts.Fatalf("usage: setenvfrom <NAME> <file>")
+	}
+	value := strings.TrimSpace(ts.ReadFile(args[1]))
+	if value == "" {
+		ts.Fatalf("setenvfrom %s: %s is empty", args[0], args[1])
+	}
+	ts.Setenv(args[0], value)
+}
+
+// recordingT records what a testscript run logs and whether it failed,
+// standing in for the *testing.T a script would otherwise fail. A command's
+// own failure path can only be exercised through a running script —
+// *testscript.TestScript has no exported constructor.
+type recordingT struct {
+	mu     sync.Mutex
+	log    strings.Builder
+	failed bool
+}
+
+func (r *recordingT) Skip(args ...any) {
+	r.Log(args...)
+	runtime.Goexit()
+}
+
+func (r *recordingT) Fatal(args ...any) {
+	r.Log(args...)
+	r.FailNow()
+}
+
+func (r *recordingT) Parallel() {}
+
+func (r *recordingT) Log(args ...any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fmt.Fprintln(&r.log, args...)
+}
+
+func (r *recordingT) FailNow() {
+	r.mu.Lock()
+	r.failed = true
+	r.mu.Unlock()
+	runtime.Goexit()
+}
+
+func (r *recordingT) Verbose() bool { return false }
+
+// Run executes f on its own goroutine so the runtime.Goexit a failure ends
+// with unwinds that goroutine instead of the test's.
+func (r *recordingT) Run(name string, f func(testscript.T)) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f(r)
+	}()
+	<-done
+}
+
+func (r *recordingT) result() (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.log.String(), r.failed
+}
+
+// runInlineScript runs script through testscript with only the two commands
+// under test registered, and reports its log and whether it failed.
+func runInlineScript(t *testing.T, script string) (string, bool) {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "case.txtar"), []byte(script), 0o600))
+	rec := &recordingT{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		testscript.RunT(rec, testscript.Params{
+			Dir: dir,
+			Cmds: map[string]func(*testscript.TestScript, bool, []string){
+				"jsonget":    cmdJSONGet,
+				"setenvfrom": cmdSetenvFrom,
+			},
+		})
+	}()
+	<-done
+	return rec.result()
+}
+
+// TestJSONGetWritesSelectedValue pins that the selected value reaches the
+// output file with no trailing newline, so a later setenvfrom carries it
+// verbatim.
+func TestJSONGetWritesSelectedValue(t *testing.T) {
+	t.Parallel()
+	log, failed := runInlineScript(t, `jsonget doc.json 'data.#(spec.description%"*[op:abc]*").metadata.name' out.txt
+grep '\Afac-token-2\z' out.txt
+
+-- doc.json --
+{"data":[{"metadata":{"name":"fac-token-1"},"spec":{"description":"login [op:zzz]"}},{"metadata":{"name":"fac-token-2"},"spec":{"description":"login [op:abc]"}}]}
+`)
+	assert.False(t, failed, log)
+}
+
+// TestJSONGetFailures pins the three ways the command refuses to carry a
+// value forward.
+func TestJSONGetFailures(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		script string
+		want   string
+	}{
+		{
+			name: "wrong arity",
+			script: `jsonget doc.json data.name
+
+-- doc.json --
+{"data":{"name":"x"}}
+`,
+			want: "usage: jsonget <file> <gjson-path> <output-file>",
+		},
+		{
+			name: "path selects nothing",
+			script: `jsonget doc.json data.missing out.txt
+
+-- doc.json --
+{"data":{"name":"x"}}
+`,
+			want: "path selects nothing",
+		},
+		{
+			name: "empty value",
+			script: `jsonget doc.json data.name out.txt
+
+-- doc.json --
+{"data":{"name":""}}
+`,
+			want: "selected an empty value",
+		},
+		{
+			name: "negated",
+			script: `! jsonget doc.json data.name out.txt
+
+-- doc.json --
+{"data":{"name":"x"}}
+`,
+			want: "jsonget does not support the ! prefix",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			log, failed := runInlineScript(t, tc.script)
+			assert.True(t, failed, log)
+			assert.Contains(t, log, tc.want)
+		})
+	}
+}
+
+// TestSetenvFromSetsTrimmedValue pins the round trip the recovery scenario
+// depends on: what jsonget wrote is what later lines expand.
+func TestSetenvFromSetsTrimmedValue(t *testing.T) {
+	t.Parallel()
+	log, failed := runInlineScript(t, `jsonget doc.json data.name value.txt
+setenvfrom LEFTOVER value.txt
+cp value.txt $LEFTOVER.out
+exists fac-token-1.out
+
+-- doc.json --
+{"data":{"name":"fac-token-1"}}
+`)
+	assert.False(t, failed, log)
+}
+
+// TestSetenvFromFailures pins that a missing argument or an empty file stops
+// the script rather than setting an empty variable.
+func TestSetenvFromFailures(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		script string
+		want   string
+	}{
+		{
+			name: "wrong arity",
+			script: `setenvfrom LEFTOVER
+
+-- value.txt --
+fac-token-1
+`,
+			want: "usage: setenvfrom <NAME> <file>",
+		},
+		{
+			name: "empty file",
+			script: `setenvfrom LEFTOVER value.txt
+
+-- value.txt --
+   
+`,
+			want: "value.txt is empty",
+		},
+		{
+			name: "negated",
+			script: `! setenvfrom LEFTOVER value.txt
+
+-- value.txt --
+fac-token-1
+`,
+			want: "setenvfrom does not support the ! prefix",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			log, failed := runInlineScript(t, tc.script)
+			assert.True(t, failed, log)
+			assert.Contains(t, log, tc.want)
+		})
 	}
 }
 

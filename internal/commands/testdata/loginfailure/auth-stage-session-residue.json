@@ -1,0 +1,49 @@
+{
+  "apiVersion": "cli.rancher.io/v1",
+  "kind": "Error",
+  "data": {
+    "error": {
+      "code": "GENERIC",
+      "message": "creating derived token: 500 Internal Server Error",
+      "hint": "rancher auth login 'prod'",
+      "retryable": false,
+      "details": {
+        "primary": {
+          "code": "GENERIC",
+          "message": "creating derived token: 500 Internal Server Error",
+          "retryable": false
+        },
+        "stage": "authentication",
+        "operationMarker": "5150f322c1d8",
+        "sessionToken": {
+          "outcome": "known",
+          "kind": "v3",
+          "ref": {
+            "kind": "v3",
+            "name": "fac-token-1"
+          },
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "ref": {
+              "kind": "v3",
+              "name": "fac-token-1"
+            },
+            "result": "failed",
+            "error": "500 Internal Server Error"
+          }
+        },
+        "derivedToken": {
+          "outcome": "unknown",
+          "kind": "ext",
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "result": "notAttempted"
+          }
+        },
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod', then revoke v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated; no credential was stored; log in again with: rancher auth login 'prod', then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:5150f322c1d8]\" in its description; revoke it with the found name"
+      }
+    }
+  }
+}

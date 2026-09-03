@@ -58,6 +58,58 @@ var legacyScripts = map[string]bool{
 	"get-token-legacy": true,
 }
 
+// scriptOptions adjusts a script's own façade options before the façade is
+// built, keyed the way legacyScripts is.
+var scriptOptions = map[string]func(*testrancher.Options){
+	"login-recovery": func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
+}
+
+// scriptChecks run after their script, with the façade it ran against, for
+// the assertions a script cannot make about what the server recorded.
+var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
+	"login-recovery": checkLoginRecovery,
+}
+
+// checkLoginRecovery asserts what login-recovery.txtar cannot see: the
+// delete verb ran a dry run and an execution against the leftover token,
+// bound to one resource version, and the token the failed login left
+// behind is the one that went away. The revokes a login performs carry
+// neither a dry run nor a precondition, so the filter isolates the delete
+// verb's two attempts.
+func checkLoginRecovery(t testscript.T, f *testrancher.Facade) {
+	var attempts []testrancher.DeleteRecord
+	for _, r := range f.DeleteRequests() {
+		if r.Kind == "ext" && (r.DryRun || r.Precondition != "") {
+			attempts = append(attempts, r)
+		}
+	}
+	if len(attempts) != 2 {
+		t.Fatal(fmt.Sprintf("expected the delete verb's dry run and execution against the leftover, got %d ext attempts: %+v", len(attempts), attempts))
+	}
+	if !attempts[0].DryRun || attempts[1].DryRun {
+		t.Fatal(fmt.Sprintf("expected dry run then execution, got %+v", attempts))
+	}
+	if attempts[0].Precondition == "" || attempts[0].Precondition != attempts[1].Precondition {
+		t.Fatal(fmt.Sprintf("expected the same non-empty resourceVersion precondition in preview and execution, got %+v", attempts))
+	}
+
+	descs := f.LoginDescriptions()
+	if len(descs) == 0 {
+		t.Fatal("no login description recorded")
+	}
+	i := strings.Index(descs[0], "[op:")
+	if i < 0 {
+		t.Fatal(fmt.Sprintf("the first login description carries no operation marker: %q", descs[0]))
+	}
+	first := descs[0][i:]
+	if n := len(f.TokensWithDescriptionContaining("ext", first)); n != 0 {
+		t.Fatal(fmt.Sprintf("expected the first login's marked token to be gone, found %d", n))
+	}
+	if n := len(f.TokensWithDescriptionContaining("ext", "[op:")); n != 1 {
+		t.Fatal(fmt.Sprintf("expected exactly the second login's derived token to remain, found %d marked ext tokens", n))
+	}
+}
+
 // newRouter builds the shim's cluster-proxy handler: a bearer check via
 // validBearer, then the /k8s/clusters/<id> prefix rewrite into the shared
 // envtest reverse proxy. It is a constructor, not a single shared instance,
@@ -99,6 +151,16 @@ func TestMain(m *testing.M) {
 	for name := range legacyScripts {
 		if _, err := os.Stat(filepath.Join("scripts", name+".txtar")); err != nil {
 			panic(fmt.Sprintf("legacyScripts references missing scripts/%s.txtar: %v", name, err))
+		}
+	}
+	for name := range scriptOptions {
+		if _, err := os.Stat(filepath.Join("scripts", name+".txtar")); err != nil {
+			panic(fmt.Sprintf("scriptOptions references missing scripts/%s.txtar: %v", name, err))
+		}
+	}
+	for name := range scriptChecks {
+		if _, err := os.Stat(filepath.Join("scripts", name+".txtar")); err != nil {
+			panic(fmt.Sprintf("scriptChecks references missing scripts/%s.txtar: %v", name, err))
 		}
 	}
 
@@ -370,13 +432,20 @@ func TestScenarios(t *testing.T) {
 			idpSrv.TLS = &tls.Config{Certificates: []tls.Certificate{idpCert}}
 			idpSrv.StartTLS()
 			e.Defer(idpSrv.Close)
-			facade = testrancher.New(testrancher.Options{
+			opts := testrancher.Options{
 				Fallthrough: router,
 				Legacy:      legacyScripts[scriptName],
 				SeedToken:   testToken,
 				EnableIdP:   true,
 				IdPURL:      idpSrv.URL,
-			})
+			}
+			if adjust := scriptOptions[scriptName]; adjust != nil {
+				adjust(&opts)
+			}
+			facade = testrancher.New(opts)
+			if check := scriptChecks[scriptName]; check != nil {
+				e.Defer(func() { check(e.T(), facade) })
+			}
 			facadeSrv := httptest.NewTLSServer(facade)
 			e.Defer(facadeSrv.Close)
 			// client-go's exec-credential plugin (kubectl, `rancher auth
@@ -429,6 +498,8 @@ func TestScenarios(t *testing.T) {
 			"rawget":        cmdRawGet,
 			"seedexeccache": cmdSeedExecCache,
 			"seedobj":       cmdSeedObj,
+			"jsonget":       cmdJSONGet,
+			"setenvfrom":    cmdSetenvFrom,
 		},
 	})
 }

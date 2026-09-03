@@ -58,38 +58,6 @@ func TestAllCodesNonEmpty(t *testing.T) {
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count pins the full enum: 10 originals plus
 // LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, and CAPABILITY_UNSUPPORTED.
-func TestTrustCommitFailureDetailsTextDetailsNotCommitted(t *testing.T) {
-	d := TrustCommitFailureDetails{TokenCommitted: false, ConfigWriteError: "disk full"}
-	assert.Equal(t, []string{
-		"config write failed: disk full",
-		"the credential store was not written",
-	}, d.TextDetails())
-}
-
-func TestTrustCommitFailureDetailsTextDetailsCompensated(t *testing.T) {
-	d := TrustCommitFailureDetails{TokenCommitted: true, Compensated: true, ConfigWriteError: "disk full"}
-	assert.Equal(t, []string{
-		"config write failed: disk full",
-		"the credential store write was undone",
-	}, d.TextDetails())
-}
-
-func TestTrustCommitFailureDetailsTextDetailsCompensateFailed(t *testing.T) {
-	d := TrustCommitFailureDetails{TokenCommitted: true, CompensateError: "keychain locked", ConfigWriteError: "disk full"}
-	assert.Equal(t, []string{
-		"config write failed: disk full",
-		"the credential store still holds the new token; undoing it failed: keychain locked",
-	}, d.TextDetails())
-}
-
-func TestTrustCommitFailureDetailsTextDetailsNoCompensationAvailable(t *testing.T) {
-	d := TrustCommitFailureDetails{TokenCommitted: true, ConfigWriteError: "disk full"}
-	assert.Equal(t, []string{
-		"config write failed: disk full",
-		"the credential store still holds the new token (this backend cannot undo a write)",
-	}, d.TextDetails())
-}
-
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
 	assert.Len(t, codes, 14)

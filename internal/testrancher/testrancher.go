@@ -126,6 +126,10 @@ type Options struct {
 	// DropDerivedCreateResponse creates the derived token and then closes the
 	// connection without writing.
 	DropDerivedCreateResponse bool
+	// DropDerivedCreateResponseOnce does the same for the first create only
+	// and answers every later one normally, so one process can fail a login
+	// and then complete the next.
+	DropDerivedCreateResponseOnce bool
 	// MalformedDerivedCreateResponse answers a created derived token with a 201 whose body
 	// establishes no token shape.
 	MalformedDerivedCreateResponse bool
@@ -211,6 +215,7 @@ type Facade struct {
 	relay          map[string]string // request id → encrypted base64 bearer
 	logins         int
 	derivedCreates int
+	dropped        bool
 }
 
 // LoginDescriptions returns the descriptions the token-creating requests of
@@ -610,7 +615,7 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case f.opts.DerivedCreateStatus != 0:
 		w.WriteHeader(f.opts.DerivedCreateStatus)
-	case f.opts.DropDerivedCreateResponse:
+	case f.opts.DropDerivedCreateResponse, f.opts.DropDerivedCreateResponseOnce && f.dropFirstCreate():
 		dropConnection(w)
 	case f.opts.MalformedDerivedCreateResponse:
 		writeJSON(w, http.StatusCreated, map[string]any{"broken": true})
@@ -621,6 +626,18 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		}
 		writeExtTokenAs(w, http.StatusCreated, rec, rec.name, bearer)
 	}
+}
+
+// dropFirstCreate reports whether this create is the first one, marking it
+// dropped so every later create is answered normally.
+func (f *Facade) dropFirstCreate() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dropped {
+		return false
+	}
+	f.dropped = true
+	return true
 }
 
 // handleExtCollection lists every ext record as a TokenList. With a

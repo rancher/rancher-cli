@@ -1,0 +1,69 @@
+{
+  "apiVersion": "cli.rancher.io/v1",
+  "kind": "Error",
+  "data": {
+    "error": {
+      "code": "GENERIC",
+      "message": "storing the accepted certificate for prod: disk full",
+      "hint": "rancher auth login 'prod'",
+      "retryable": false,
+      "details": {
+        "primary": {
+          "code": "GENERIC",
+          "message": "storing the accepted certificate for prod: disk full",
+          "hint": "rancher auth login 'prod'",
+          "retryable": false
+        },
+        "stage": "commit",
+        "configState": "writeFailed",
+        "credentialState": "compensationFailed",
+        "credentialRecovery": {
+          "backend": "file",
+          "state": "compensationFailed",
+          "priorSource": "none",
+          "compensationError": "keychain locked",
+          "command": "rancher auth logout 'prod'",
+          "dataLossRisk": "removes the credential for prod from every backend (keychain, file, credential helper), including a credential from an earlier login"
+        },
+        "operationMarker": "29f993d7cd12",
+        "sessionToken": {
+          "outcome": "known",
+          "kind": "v3",
+          "ref": {
+            "kind": "v3",
+            "name": "fac-token-1"
+          },
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "ref": {
+              "kind": "v3",
+              "name": "fac-token-1"
+            },
+            "result": "failed",
+            "error": "500 Internal Server Error"
+          }
+        },
+        "derivedToken": {
+          "outcome": "known",
+          "kind": "ext",
+          "ref": {
+            "kind": "ext",
+            "name": "fac-token-2"
+          },
+          "marked": true,
+          "createdAt": "2026-09-03T05:27:38Z",
+          "cleanup": {
+            "ref": {
+              "kind": "ext",
+              "name": "fac-token-2"
+            },
+            "result": "failed",
+            "error": "500 Internal Server Error"
+          }
+        },
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod', then revoke v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated; no credential was stored; log in again with: rancher auth login 'prod', then revoke ext/fac-token-2 with: rancher delete token fac-token-2 --apply --yes; the file entry for prod may still hold this login's token; restoring the earlier value failed (keychain locked)"
+      }
+    }
+  }
+}

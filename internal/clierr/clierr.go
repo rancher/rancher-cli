@@ -102,36 +102,6 @@ func (d CommittedContextDetails) TextDetails() []string {
 	return lines
 }
 
-// TrustCommitFailureDetails is the details payload for a guided-trust commit
-// whose config write failed AFTER the credential-store write already ran:
-// it names exactly what the credential store holds, whether an attempted
-// compensation (undo) succeeded, and the config-write failure itself —
-// never a silent orphan naming only one side of the two separate
-// persistence systems a commit touches.
-type TrustCommitFailureDetails struct {
-	TokenCommitted   bool   `json:"tokenCommitted"`
-	Compensated      bool   `json:"compensated"`
-	CompensateError  string `json:"compensateError,omitempty"`
-	ConfigWriteError string `json:"configWriteError"`
-}
-
-// TextDetails projects the config-write failure and the credential store's
-// resulting state onto indented lines.
-func (d TrustCommitFailureDetails) TextDetails() []string {
-	lines := []string{"config write failed: " + d.ConfigWriteError}
-	switch {
-	case !d.TokenCommitted:
-		lines = append(lines, "the credential store was not written")
-	case d.Compensated:
-		lines = append(lines, "the credential store write was undone")
-	case d.CompensateError != "":
-		lines = append(lines, "the credential store still holds the new token; undoing it failed: "+d.CompensateError)
-	default:
-		lines = append(lines, "the credential store still holds the new token (this backend cannot undo a write)")
-	}
-	return lines
-}
-
 // exitCodes maps a code to its process exit status.
 var exitCodes = map[string]int{
 	CodeValidation:           2,
