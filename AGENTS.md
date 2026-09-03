@@ -77,9 +77,12 @@ Two gotchas:
   credential/CA pin concept, tests say "asserts" instead.
 - **Descriptions:** operator-facing help is terse and plain; the schema `desc`
   carries the fuller, precise wording. Keep internal jargon out of both:
-  plain verbs in user-facing text (create/generate — never "mint"), no
-  coined terms; established internal vocabulary (mint in identifiers,
-  probe, seam, envelope) lives in code and comments only.
+  plain verbs (create/generate — never "mint", in identifiers and comments
+  as well as user-facing text; the token a login creates for storage is
+  "the derived token"), no coined terms; for anything Kubernetes or
+  Rancher names, use their term (the API field name or their docs'
+  phrase) and never a synonym of our own. Established internal vocabulary
+  (probe, seam, envelope) lives in code and comments only.
 - **Completion ships with the surface.** A change that adds or alters a
   value-taking flag or argument includes its shell completion (static enum
   or live fetch) and completion tests in the same change. A suggestion must
