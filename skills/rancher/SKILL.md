@@ -51,6 +51,10 @@ token), not an error condition; don't treat it as one. If it fails with
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
   not a stored login session.
+- If a login fails with `details.stage` and token outcomes, follow
+  `details.recovery` before retrying; an outcome of `unknown` or
+  `unidentified` means the server may hold a token this login created —
+  never assume it is clean.
 - Added ≠ logged in: a server can be added without a stored credential
   (`NOT_LOGGED_IN` until you log in). `auth login` never switches the current
   server — `rancher config use-server <name>` is the only switch verb.

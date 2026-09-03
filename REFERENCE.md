@@ -601,6 +601,45 @@ degrading to `null` with a warning is expected, not a bug — including
 create-verb request. `auth status`'s connectivity result (`ok`) never depends
 on them.
 
+## When login fails after a token was created
+
+A provider sign-in creates tokens on the server before anything is stored
+locally. If the login then fails, the CLI revokes what it created and
+reports the outcome in the error's `details`:
+
+- `stage`: `authentication` (before the credential was ready) or `commit`.
+- `sessionToken` / `derivedToken`: each token's `outcome` (`known`,
+  `unknown` when the server may hold a token the CLI never saw,
+  `unidentified`, `notCreated`), its resource name, and its `cleanup`
+  result.
+- `credentialRecovery`: what the local credential store may still hold and
+  the command that clears it (`rancher auth logout <name>`, which removes
+  the credential from every backend).
+- `operationMarker`: the tokens a password or device-code sign-in creates
+  carry `[op:<marker>]` in their description, so a leftover can be found
+  by listing the collection its `kind` names and revoked with the
+  `recovery` command.
+
+A leftover derived token is always a `token`. A leftover session token is
+whatever kind Rancher created it as: `management-token` (a deprecated
+kind: deleting it needs `--allow-deprecated`) or, on a Rancher that has
+moved session tokens to the new API, a `token`; the failure details say
+which (`sessionToken.ref.kind`, or `sessionToken.kind` when the name is
+unknown). When the sign-in response was lost, the kind is unknown too and
+`recovery` names both collections, so the marker search cannot miss the
+token. A pasted or piped token is yours and is never revoked.
+
+A browser (SAML) sign-in is different: Rancher creates the session token
+from the browser, so it carries no marker. When the CLI learned its name
+from the sign-in, `recovery` gives the exact `management-token` command.
+When it did not, `sessionToken.search` carries what the CLI knows: the
+auth provider, when the browser was opened (`handoffAt`), when the CLI
+stopped waiting (`pollEndedAt`, which is not a bound: the browser sign-in
+can complete later), and, when the server declared one, the relay expiry
+(`serverRelayExpiresAt`). Those facts narrow a manual check of
+`rancher get management-tokens -o json` or the UI's Account & API Keys
+page; they cannot identify the token.
+
 ## kubectl integration
 
 `rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
