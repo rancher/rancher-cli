@@ -35,7 +35,31 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 	ucli.HelpPrinterCustom(w, templ, data, map[string]any{
 		"bold":                s.Bold,
 		"colonOffsetCommands": colonOffsetCommands,
+		"primeMark":           primeMark,
+		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
 	})
+}
+
+// primeMark returns the plain (uncolored) "[Prime] " prefix for a Prime
+// command's usage text, or "" for an ordinary one. It stays uncolored so the
+// COMMANDS block's wrap computes column widths off plain text length, same
+// as any other row — coloring happens afterward, in colorPrimeMark.
+func primeMark(cmd *ucli.Command) string {
+	if commandIsPrime(cmd) {
+		return "[Prime] "
+	}
+	return ""
+}
+
+// colorPrimeMark colors the leading "[Prime]" token green in a row already
+// wrapped by primeMark+wrap, leaving every other row byte-identical. Usage
+// text never carries the literal token (an invariant enforced elsewhere), so
+// the first occurrence in a Prime row's wrapped text is always the marker.
+func colorPrimeMark(s style.Style, cmd *ucli.Command, wrapped string) string {
+	if !commandIsPrime(cmd) {
+		return wrapped
+	}
+	return strings.Replace(wrapped, "[Prime]", s.Green("[Prime]"), 1)
 }
 
 // helpStyle mirrors internal/runtime's stylesFor for the OUT stream, without
@@ -88,7 +112,7 @@ func colonOffsetCommands(cmds []*ucli.Command, fixed int) int {
 // visibleCommandCategoryTemplate/visibleCommandTemplate, which cannot be
 // overridden (they are unexported template names urfave always re-parses).
 const commandsBlock = `{{ $cv := colonOffsetCommands .VisibleCommands 5 }}{{range .VisibleCommands}}
-   {{$s := printf "%s:" (join .Names ", ")}}{{$s}}{{ $sp := subtract $cv (offset $s 3) }}{{ indent $sp ""}}{{wrap .Usage $cv}}{{end}}`
+   {{$s := printf "%s:" (join .Names ", ")}}{{$s}}{{ $sp := subtract $cv (offset $s 3) }}{{ indent $sp ""}}{{colorPrimeMark . (wrap (print (primeMark .) .Usage) $cv)}}{{end}}`
 
 // rootCommandHelpTemplate is urfave's RootCommandHelpTemplate with bold
 // section headers, the DESCRIPTION block moved above USAGE, and a

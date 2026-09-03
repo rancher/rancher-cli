@@ -158,6 +158,75 @@ func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
 	assert.Contains(t, styled, "pod, pods, po:", "a leaf's declared aliases must render comma-joined before the colon")
 }
 
+// TestStyledHelpMarksPrimeCommandRows renders the "cluster" group card and
+// asserts the four Prime autoscaling verbs carry "[Prime]" as the first word
+// of their usage column while the every-edition "scale" verb carries none.
+func TestStyledHelpMarksPrimeCommandRows(t *testing.T) {
+	t.Parallel()
+	plain := renderHelp(t, "", "cluster")
+
+	for _, verb := range []string{"set-autoscaling", "clear-autoscaling", "pause-autoscaling", "resume-autoscaling"} {
+		line := lineContaining(t, plain, verb+":")
+		assert.Contains(t, line, "[Prime] ", "Prime verb %q must carry the marker as the first usage word", verb)
+	}
+	scaleLine := lineContaining(t, plain, "scale:")
+	assert.NotContains(t, scaleLine, "[Prime]", "scale runs on every edition and must carry no marker")
+}
+
+// TestStyledHelpMarksAllPrimeGroupRow renders the root card and asserts the
+// all-Prime "oidc-client" group row carries the marker, while the mixed
+// "cluster" and "auth" (every-edition) group rows do not.
+func TestStyledHelpMarksAllPrimeGroupRow(t *testing.T) {
+	t.Parallel()
+	plain := renderHelp(t, "")
+
+	oidcLine := lineContaining(t, plain, "oidc-client:")
+	assert.Contains(t, oidcLine, "[Prime] ", "an all-Prime group's own row must carry the marker")
+
+	clusterLine := lineContaining(t, plain, "cluster:")
+	assert.NotContains(t, clusterLine, "[Prime]", "a mixed group's own row must carry no marker")
+
+	authLine := lineContaining(t, plain, "auth:")
+	assert.NotContains(t, authLine, "[Prime]", "an every-edition group's own row must carry no marker")
+}
+
+// TestStyledHelpColorsPrimeMarkExactly asserts the green span wraps exactly
+// "[Prime]" and nothing else on the row, and that stripping it restores the
+// plain render byte for byte.
+func TestStyledHelpColorsPrimeMarkExactly(t *testing.T) {
+	t.Parallel()
+	plain := renderHelp(t, "", "cluster")
+	styled := renderHelp(t, "always", "cluster")
+
+	assert.Equal(t, plain, style.Strip(styled))
+
+	greenPrime := style.Style{Enabled: true}.Green("[Prime]")
+	line := lineContaining(t, styled, "set-autoscaling:")
+	assert.Contains(t, line, greenPrime, "the marker must render in green")
+	assert.NotContains(t, line, "\x1b[32mTurn", "only the marker itself is colored, not the usage text after it")
+
+	scaleLine := lineContaining(t, styled, "   scale:")
+	assert.NotContains(t, scaleLine, "\x1b[", "a non-Prime row stays entirely plain")
+}
+
+// TestStyledHelpPrimeRowWrapsAtSameColumnAsPlainRow proves a long Prime usage
+// wraps at the same column an equal-length non-Prime usage would: the marker
+// is added to the plain text before wrapping, so the wrap decision is the
+// same as it would be for ordinary text of that length.
+func TestStyledHelpPrimeRowWrapsAtSameColumnAsPlainRow(t *testing.T) {
+	t.Parallel()
+	plain := renderHelp(t, "", "cluster")
+
+	primeLine := lineContaining(t, plain, "set-autoscaling:")
+	nonPrimeLine := lineContaining(t, plain, "   scale:")
+
+	primeCol := strings.Index(primeLine, "[Prime]")
+	nonPrimeCol := strings.Index(nonPrimeLine, "Scale a machine")
+	require.NotEqual(t, -1, primeCol)
+	require.NotEqual(t, -1, nonPrimeCol)
+	assert.Equal(t, nonPrimeCol, primeCol, "the usage column starts at the same offset for every row")
+}
+
 // setNoColorEnv sets all three color-activating env vars to empty — "unset"
 // per ActivateColor's own contract — so a "plain" (--color not passed)
 // render is actually plain, regardless of what the test runner's own
