@@ -304,6 +304,57 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	}
 }
 
+// TestBuildRootFlagsPrimeCommandsInMetadata asserts every adapted ucli.Command
+// carries the Prime metadata flag exactly when the manifest says its
+// descriptor is Prime, and that a group carries the flag exactly when every
+// leaf underneath it does — the manifest is the source of truth, so this
+// walks it rather than hardcoding a full command list.
+func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
+	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	require.NoError(t, err)
+	manifest := wr.reg.Schema("golden", config.MinRancherVersion)
+	primeByName := map[string]bool{}
+	for _, c := range manifest.Commands {
+		primeByName[c.Name] = c.Prime
+	}
+
+	// BuildRoot is called fresh, rather than reused from wr, so the tree
+	// walked below is never Run(): urfave's Run lazily appends a synthetic
+	// "help" subcommand to every command it visits, which would otherwise
+	// turn an ordinary leaf into a false "group" by the time this walks it.
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	byName := map[string]*ucli.Command{}
+	var checked int
+	for _, top := range root.Commands {
+		byName[top.Name] = top
+		if len(top.Commands) == 0 {
+			if want, ok := primeByName[top.Name]; ok {
+				assert.Equal(t, want, commandIsPrime(top), "command %q metadata disagrees with manifest", top.Name)
+				checked++
+			}
+			continue
+		}
+		allPrime := true
+		for _, leaf := range top.Commands {
+			fullName := top.Name + " " + leaf.Name
+			want, ok := primeByName[fullName]
+			require.True(t, ok, "manifest missing command %q", fullName)
+			assert.Equal(t, want, commandIsPrime(leaf), "command %q metadata disagrees with manifest", fullName)
+			checked++
+			allPrime = allPrime && want
+		}
+		assert.Equal(t, allPrime, commandIsPrime(top), "group %q metadata disagrees with its leaves", top.Name)
+	}
+	require.NotZero(t, checked)
+
+	require.Contains(t, byName, "oidc-client")
+	assert.True(t, commandIsPrime(byName["oidc-client"]), "oidc-client is an all-Prime group")
+	require.Contains(t, byName, "cluster")
+	assert.False(t, commandIsPrime(byName["cluster"]), "cluster mixes Prime and non-Prime verbs")
+}
+
 // TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape — the
 // progressive-disclosure contract (spec 2026-08-06): orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.

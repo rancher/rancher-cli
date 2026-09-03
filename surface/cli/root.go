@@ -548,6 +548,26 @@ func printCompletionCandidate(w io.Writer, name, usage string) {
 	_, _ = fmt.Fprintln(w, formatCandidate(name, usage))
 }
 
+// groupPrimeMetadata flags a group Prime when every one of its leaves is —
+// an all-Prime group carries the same marker as its members do, a mixed one
+// carries none. It reads the leaves' own metadata rather than the schema
+// manifest on purpose: the help rows under this group row are rendered from
+// that same metadata, so the group row and its rows agree by construction,
+// with no second source that could drift from what the rows show. The schema
+// renderer's groupAllPrime states the same rule over manifest commands, and
+// TestPrimeMarkerConformance asserts the two agree on the real manifest.
+func groupPrimeMetadata(leaves []*ucli.Command) map[string]any {
+	if len(leaves) == 0 {
+		return nil
+	}
+	for _, leaf := range leaves {
+		if !commandIsPrime(leaf) {
+			return nil
+		}
+	}
+	return map[string]any{primeMetadataKey: true}
+}
+
 // assembleCommands builds the root command list: the top-level commands
 // followed by one group command per group in first-appearance order. Leaves in
 // the "" group are attached at the top level.
@@ -562,7 +582,7 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 			out = append(out, leaves...)
 			continue
 		}
-		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, CommandNotFound: commandNotFound, OnUsageError: onUsageError})
+		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, Metadata: groupPrimeMetadata(leaves), CommandNotFound: commandNotFound, OnUsageError: onUsageError})
 	}
 	return out
 }

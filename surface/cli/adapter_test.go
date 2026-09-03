@@ -66,6 +66,17 @@ func TestPrimeDescriptionMarksHelpWithoutTouchingUsage(t *testing.T) {
 	assert.Empty(t, primeDescription(runtime.Descriptor{Name: "get pod"}), "an ordinary command gets no Description")
 }
 
+// TestAdaptSetsPrimeMetadataFlag asserts Adapt stamps the Prime metadata flag
+// on a Capability.Tier == CapabilityPrime command, and leaves it unset on an
+// ordinary command — the seam the help and schema renderers read the marker
+// from, distinct from primeDescription's urfave DESCRIPTION seam.
+func TestAdaptSetsPrimeMetadataFlag(t *testing.T) {
+	t.Parallel()
+	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
+	assert.True(t, commandIsPrime(Adapt(reg, primePingCmd{})))
+	assert.False(t, commandIsPrime(Adapt(reg, pingCmd{})))
+}
+
 // TestAdaptedPrimeCommandShowsHelpMarker proves the marker actually reaches
 // urfave's rendered --help output for an Adapt-wired command.
 func TestAdaptedPrimeCommandShowsHelpMarker(t *testing.T) {

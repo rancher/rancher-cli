@@ -390,6 +390,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		Aliases:     d.Aliases,
 		Usage:       d.Usage,
 		Description: primeDescription(d),
+		Metadata:    primeMetadata(d),
 		ArgsUsage:   argsUsage(d.Args),
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default

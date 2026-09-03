@@ -192,6 +192,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		Aliases:     d.Aliases,
 		Usage:       d.Usage,
 		Description: primeDescription(d),
+		Metadata:    primeMetadata(d),
 		ArgsUsage:   argsUsage(d.Args),
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
@@ -243,6 +244,26 @@ func primeDescription(d runtime.Descriptor) string {
 		return runtime.PrimeSentence
 	}
 	return ""
+}
+
+// primeMetadataKey is the Metadata map key the help and schema TOC renderers
+// read to decide whether a command's row carries the "[Prime]" marker.
+const primeMetadataKey = "prime"
+
+// primeMetadata returns a Metadata map flagging a Prime descriptor, or nil
+// for an ordinary one — nil leaves urfave's Metadata absent, exactly as
+// before this flag existed.
+func primeMetadata(d runtime.Descriptor) map[string]any {
+	if d.Capability.Tier != runtime.CapabilityPrime {
+		return nil
+	}
+	return map[string]any{primeMetadataKey: true}
+}
+
+// commandIsPrime reports whether cmd carries the Prime metadata flag.
+func commandIsPrime(cmd *ucli.Command) bool {
+	v, _ := cmd.Metadata[primeMetadataKey].(bool)
+	return v
 }
 
 // installShellComplete installs the universal completion callback on cmd for
