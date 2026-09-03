@@ -236,6 +236,7 @@ type groupView struct {
 	bespoke          []SchemaCommand // non-generated members, listed individually
 	generatedCount   int             // 0 for groups with no generated members
 	generatedPattern string          // e.g. "get <kind>"; empty when generatedCount == 0
+	prime            bool            // every member of group is Prime (see groupAllPrime)
 	readOnly         bool
 	readOnlySources  []string
 	// kindHint names the same-name kind when the selector collides (set
@@ -281,6 +282,7 @@ func newGroupView(m Manifest, g SchemaGroup) groupView {
 		bespoke:          bespoke,
 		generatedCount:   genCount,
 		generatedPattern: pattern,
+		prime:            groupAllPrime(g, idx),
 		readOnly:         m.ReadOnly,
 		readOnlySources:  m.ReadOnlySources,
 	}

@@ -55,6 +55,11 @@ const (
 // that, backed by the detector's affirmative per-server evidence.
 const PrimeSentence = "A Rancher Prime capability; availability is decided by the connected server."
 
+// PrimeMarker is the token every command list places at the head of a
+// Prime command's usage column, and after an all-Prime group's label. One
+// spelling, used by every renderer and colored by ColorPrimeMarker.
+const PrimeMarker = "[Prime]"
+
 // CapabilityDecision is one Check call's result, carrying the detail fields
 // a PRIME_REQUIRED error's Details needs.
 type CapabilityDecision struct {

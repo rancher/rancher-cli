@@ -314,7 +314,7 @@ func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 	m := tocManifest()
 	f := schemaFilters{verb: "get"}
 	fm := filterManifest(m, f)
-	text := renderFilteredTOC(fm, f)
+	text := renderFilteredTOC(fm, f, allPrimeGroups(m))
 
 	styled := styleSchemaTOC(text, fm.Groups, style.Style{Enabled: true})
 	assert.NotEqual(t, text, styled)

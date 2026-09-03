@@ -151,7 +151,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
 		}
 		fm := filterManifest(m, f)
-		text := renderFilteredTOC(fm, f)
+		text := renderFilteredTOC(fm, f, allPrimeGroups(m))
 		return Result{Kind: "Schema", Data: newTOCView(fm, false), Text: text,
 			StyledText: func(s style.Style) string { return styleSchemaTOC(text, fm.Groups, s) }}, nil
 	}

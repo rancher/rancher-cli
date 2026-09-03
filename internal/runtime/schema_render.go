@@ -173,7 +173,11 @@ func gateLine(ct CommandType, destructive, stability string) string {
 func renderGroupCard(m Manifest, gv groupView) string {
 	g := gv.group
 	var b strings.Builder
-	b.WriteString("group: " + g.Name + "\n")
+	header := "group: " + g.Name
+	if gv.prime {
+		header += " " + PrimeMarker
+	}
+	b.WriteString(header + "\n")
 	b.WriteString(readOnlyLine(m))
 	if g.Desc != "" {
 		b.WriteString(g.Desc + "\n")
@@ -338,7 +342,11 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 		}
 		b.WriteString("\n")
 		if g.Name != "" {
-			b.WriteString(g.Name + ":\n")
+			label := g.Name + ":"
+			if groupAllPrime(g, byName) {
+				label += " " + PrimeMarker
+			}
+			b.WriteString(label + "\n")
 		}
 		for _, c := range bespoke {
 			b.WriteString(indent + tocLine(c) + "\n")
@@ -374,7 +382,11 @@ func renderTOC(m Manifest) string { return renderTOCText(m, true) }
 // ARE the content), a search's matching fragment where the match is not
 // already visible in the line, and the `-o json` pointer. Zero hits render
 // the no-matches message alone; the caller returns success either way.
-func renderFilteredTOC(m Manifest, f schemaFilters) string {
+// primeGroups names the groups whose every member is Prime in the FULL
+// manifest (allPrimeGroups); m here is already filtered, and a filtered
+// subset must never decide a label's marker — a mixed group whose only
+// surviving member is Prime stays a plain label.
+func renderFilteredTOC(m Manifest, f schemaFilters, primeGroups map[string]bool) string {
 	filters := strings.Join(f.describe(), " ")
 	if len(m.Commands) == 0 {
 		return "no commands match " + filters + "\n" + readOnlyLine(m)
@@ -387,7 +399,11 @@ func renderFilteredTOC(m Manifest, f schemaFilters) string {
 		b.WriteString("\n")
 		indent := ""
 		if g.Name != "" {
-			b.WriteString(g.Name + ":\n")
+			label := g.Name + ":"
+			if primeGroups[g.Name] {
+				label += " " + PrimeMarker
+			}
+			b.WriteString(label + "\n")
 			indent = "  "
 		}
 		for _, name := range g.Commands {
@@ -405,19 +421,52 @@ func renderFilteredTOC(m Manifest, f schemaFilters) string {
 }
 
 // tocLine renders one TOC entry: `name — usage`, or the bare name when the
-// command carries no usage line. A Prime requirement appends a "[prime]"
-// marker to the name, before the usage separator — the bare and filtered
-// TOCs, and the group card, all render through this one function, so the
-// marker cannot appear in one and not the others.
+// command carries no usage line. A Prime requirement inserts a "[Prime]"
+// marker right after the usage separator, as the first word of the usage
+// column — `name — [Prime]` when the command carries no usage line either.
+// The bare and filtered TOCs, and the group card, all render through this
+// one function, so the marker cannot appear in one and not the others.
 func tocLine(c SchemaCommand) string {
-	name := c.Name
-	if c.Prime {
-		name += " [prime]"
+	switch {
+	case c.Usage == "" && c.Prime:
+		return c.Name + " — " + PrimeMarker
+	case c.Usage == "":
+		return c.Name
+	case c.Prime:
+		return c.Name + " — " + PrimeMarker + " " + c.Usage
+	default:
+		return c.Name + " — " + c.Usage
 	}
-	if c.Usage == "" {
-		return name
+}
+
+// allPrimeGroups returns the names of every group in m whose every member is
+// Prime, judged on m's full command index. Callers rendering a filtered view
+// compute it from the unfiltered manifest and pass it down.
+func allPrimeGroups(m Manifest) map[string]bool {
+	byName := commandIndex(m.Commands)
+	out := map[string]bool{}
+	for _, g := range m.Groups {
+		if g.Name != "" && groupAllPrime(g, byName) {
+			out[g.Name] = true
+		}
 	}
-	return name + " — " + c.Usage
+	return out
+}
+
+// groupAllPrime reports whether every command named in g.Commands is Prime,
+// checked against the full manifest command index (bespoke and generated
+// members alike) — a group can never be marked Prime by omitting a member,
+// and an empty or wholly-unknown group is never Prime.
+func groupAllPrime(g SchemaGroup, byName map[string]SchemaCommand) bool {
+	if len(g.Commands) == 0 {
+		return false
+	}
+	for _, name := range g.Commands {
+		if !byName[name].Prime {
+			return false
+		}
+	}
+	return true
 }
 
 // countGenerated counts how many commands in cmds appear in the generated

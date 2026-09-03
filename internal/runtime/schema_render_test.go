@@ -418,15 +418,15 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 // in the rendered line (name or usage) carries no fragment; an alias match
 // names the full alias form; a desc match shows the surrounding fragment with
 // ellipses.
-// TestTocLinePrimeMarker asserts the "[prime]" marker tocLine appends before
-// the usage separator — the single function feeding the bare TOC, the
+// TestTocLinePrimeMarker asserts the "[Prime]" marker tocLine inserts right
+// after the usage separator — the single function feeding the bare TOC, the
 // filtered TOC, and group cards, so the marker cannot appear in one and not
 // the others.
 func TestTocLinePrimeMarker(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "get widget [prime] — List widgets",
+	assert.Equal(t, "get widget — [Prime] List widgets",
 		tocLine(SchemaCommand{Name: "get widget", Usage: "List widgets", Prime: true}))
-	assert.Equal(t, "get widget [prime]",
+	assert.Equal(t, "get widget — [Prime]",
 		tocLine(SchemaCommand{Name: "get widget", Prime: true}))
 	assert.Equal(t, "get pod — List pods",
 		tocLine(SchemaCommand{Name: "get pod", Usage: "List pods"}))
@@ -441,8 +441,88 @@ func TestSchemaFilteredTOCCarriesPrimeMarker(t *testing.T) {
 		Commands: []SchemaCommand{{Name: "get widget", Usage: "List widgets", Prime: true}},
 		Groups:   []SchemaGroup{{Name: "get", Commands: []string{"get widget"}}},
 	}
-	text := renderFilteredTOC(m, schemaFilters{})
-	assert.Contains(t, text, "get widget [prime] — List widgets")
+	text := renderFilteredTOC(m, schemaFilters{}, allPrimeGroups(m))
+	assert.Contains(t, text, "get widget — [Prime] List widgets")
+}
+
+// TestRenderFilteredTOCMarksGroupLabelFromFullManifest asserts the filtered
+// TOC decides a group label's marker from the FULL manifest's membership,
+// never from the filtered subset: a group whose every member is Prime keeps
+// its "[Prime]" label when a filter narrows it, and a mixed group never gains
+// one just because the filter happened to keep only its Prime members.
+func TestRenderFilteredTOCMarksGroupLabelFromFullManifest(t *testing.T) {
+	t.Parallel()
+	full := Manifest{
+		Commands: []SchemaCommand{
+			{Name: "p one", Usage: "One", Prime: true},
+			{Name: "p two", Usage: "Two", Prime: true},
+			{Name: "mixed prime", Usage: "Prime member", Prime: true},
+			{Name: "mixed plain", Usage: "Plain member"},
+		},
+		Groups: []SchemaGroup{
+			{Name: "p", Commands: []string{"p one", "p two"}},
+			{Name: "mixed", Commands: []string{"mixed prime", "mixed plain"}},
+		},
+	}
+	keep := map[string]bool{"p one": true, "mixed prime": true}
+	fm := full
+	fm.Commands = []SchemaCommand{full.Commands[0], full.Commands[2]}
+	fm.Groups = filterGroups(full.Groups, keep)
+
+	text := renderFilteredTOC(fm, schemaFilters{search: "x"}, allPrimeGroups(full))
+	assert.Contains(t, text, "p: [Prime]\n", "an all-Prime group keeps its label marker under a filter")
+	assert.Contains(t, text, "\nmixed:\n", "a mixed group's label must stay bare even when only its Prime member survives the filter")
+	assert.NotContains(t, text, "mixed: [Prime]")
+}
+
+// TestGroupAllPrimeRequiresEveryMember asserts groupAllPrime checks every
+// member of a group against the full manifest command index — a group with
+// no members, one non-Prime member, or an unknown member name is never
+// marked Prime; a group whose every named member is Prime is.
+func TestGroupAllPrimeRequiresEveryMember(t *testing.T) {
+	t.Parallel()
+	byName := map[string]SchemaCommand{
+		"oidc-client create": {Name: "oidc-client create", Prime: true},
+		"oidc-client delete": {Name: "oidc-client delete", Prime: true},
+		"cluster scale":      {Name: "cluster scale", Prime: false},
+	}
+	assert.True(t, groupAllPrime(SchemaGroup{Name: "oidc-client", Commands: []string{"oidc-client create", "oidc-client delete"}}, byName))
+	assert.False(t, groupAllPrime(SchemaGroup{Name: "cluster", Commands: []string{"cluster scale"}}, byName))
+	assert.False(t, groupAllPrime(SchemaGroup{Name: "empty"}, byName))
+	assert.False(t, groupAllPrime(SchemaGroup{Name: "unknown", Commands: []string{"nope"}}, byName))
+}
+
+// TestRenderTOCTextMarksAllPrimeGroupLabel asserts the bare TOC's group label
+// line carries " [Prime]" exactly when every command in that group is Prime.
+func TestRenderTOCTextMarksAllPrimeGroupLabel(t *testing.T) {
+	t.Parallel()
+	m := Manifest{
+		CLIVersion: "v-test",
+		Commands: []SchemaCommand{
+			{Name: "oidc-client create", Usage: "Create a client", Prime: true},
+			{Name: "cluster scale", Usage: "Scale a pool"},
+			{Name: "cluster set-autoscaling", Usage: "Turn on autoscaling", Prime: true},
+		},
+		Groups: []SchemaGroup{
+			{Name: "oidc-client", Commands: []string{"oidc-client create"}},
+			{Name: "cluster", Commands: []string{"cluster scale", "cluster set-autoscaling"}},
+		},
+	}
+	text := renderTOCText(m, false)
+	assert.Contains(t, text, "\noidc-client: [Prime]\n", "an all-Prime group's label carries the marker")
+	assert.Contains(t, text, "\ncluster:\n", "a mixed group's label carries no marker")
+}
+
+// TestRenderGroupCardMarksAllPrimeHeader asserts the group card header line
+// carries " [Prime]" exactly when the group's own prime flag is set.
+func TestRenderGroupCardMarksAllPrimeHeader(t *testing.T) {
+	t.Parallel()
+	m := Manifest{}
+	primeGV := groupView{group: SchemaGroup{Name: "oidc-client"}, prime: true}
+	assert.True(t, strings.HasPrefix(renderGroupCard(m, primeGV), "group: oidc-client [Prime]\n"))
+
+	mixedGV := groupView{group: SchemaGroup{Name: "cluster"}, prime: false}
+	assert.True(t, strings.HasPrefix(renderGroupCard(m, mixedGV), "group: cluster\n"))
 }
 
 func TestSchemaSearchFragment(t *testing.T) {
@@ -471,18 +551,18 @@ func TestTOCRendersReadOnlyLine(t *testing.T) {
 	t.Parallel()
 	m := readOnlyTOCManifest()
 	assert.Contains(t, renderTOC(m), "read-only (RANCHER_CLI_READONLY)")
-	assert.Contains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only (RANCHER_CLI_READONLY)")
+	assert.Contains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}, nil), "read-only (RANCHER_CLI_READONLY)")
 
 	// Zero-hit filtered result: the early-return branch must carry the
 	// read-only line too (review P1).
 	empty := readOnlyTOCManifest()
 	empty.Commands = nil
-	assert.Contains(t, renderFilteredTOC(empty, schemaFilters{verb: "zzz"}), "read-only (RANCHER_CLI_READONLY)")
+	assert.Contains(t, renderFilteredTOC(empty, schemaFilters{verb: "zzz"}, nil), "read-only (RANCHER_CLI_READONLY)")
 
 	m.ReadOnly = false
 	m.ReadOnlySources = nil
 	assert.NotContains(t, renderTOC(m), "read-only")
-	assert.NotContains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}), "read-only")
+	assert.NotContains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}, nil), "read-only")
 }
 
 // TestSchemaCommandCardReadOnlyLine asserts the read-only banner on the command
