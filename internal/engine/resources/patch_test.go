@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -516,4 +517,133 @@ func TestPatchDescribeInheritsCapability(t *testing.T) {
 	k := kinds.Kind{Name: "widget", Aliases: []string{"widgets"}, Capability: req}
 	d := NewPatch(k, nil, nil).Describe()
 	assert.Equal(t, req, d.Capability)
+}
+
+// TestPatchRefusesManagedFieldsOps pins that no RFC 6902 op may target the
+// object's managed fields: field ownership is recorded by the server, and a
+// patch that rewrites it would forge that record. The check covers the
+// path of every op and the from of a move or copy, the exact path and
+// anything under it, and leaves a sibling field with a similar name alone.
+func TestPatchRefusesManagedFieldsOps(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7","managedFieldsX":"keep"},"spec":{"replicas":1}}`)
+	cases := []struct {
+		name    string
+		ops     string
+		refused bool
+	}{
+		{"replace the whole list", `[{"op":"replace","path":"/metadata/managedFields","value":[]}]`, true},
+		{"remove the whole list", `[{"op":"remove","path":"/metadata/managedFields"}]`, true},
+		{"add under it", `[{"op":"add","path":"/metadata/managedFields/0/manager","value":"x"}]`, true},
+		{"move from under it", `[{"op":"move","from":"/metadata/managedFields/0","path":"/spec/x"}]`, true},
+		{"copy from it", `[{"op":"copy","from":"/metadata/managedFields","path":"/spec/x"}]`, true},
+		{"second op offends", `[{"op":"replace","path":"/spec/replicas","value":2},{"op":"remove","path":"/metadata/managedFields"}]`, true},
+		{"sibling with a similar name", `[{"op":"replace","path":"/metadata/managedFieldsX","value":"other"}]`, false},
+		{"ordinary spec change", `[{"op":"replace","path":"/spec/replicas","value":3}]`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &patchClient{obj: orig}
+			fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+			cmd := NewPatch(mustKind(t, "deployment"), fac, nil)
+			_, _, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+				"cluster": "prod", "namespace": "ns1", "patch": tc.ops,
+			}})
+			if !tc.refused {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, err, "/metadata/managedFields")
+			require.ErrorContains(t, err, "the server sets this field and a patch cannot change it")
+			assert.Empty(t, client.getName, "refused before any request is made")
+		})
+	}
+}
+
+// TestPatchRefusesServerOwnedMetadataOps pins the refusal of ops on the
+// fields the server owns and the diff already skips: managed fields and
+// the resource version, exact or under, and an add or replace of an
+// ancestor whose value smuggles managed fields in.
+func TestPatchRefusesServerOwnedMetadataOps(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	cases := []struct {
+		name string
+		ops  string
+		want string
+	}{
+		{"resourceVersion", `[{"op":"replace","path":"/metadata/resourceVersion","value":"1"}]`, "/metadata/resourceVersion"},
+		{"replace metadata carrying managedFields", `[{"op":"replace","path":"/metadata","value":{"name":"web","managedFields":[]}}]`, "/metadata/managedFields"},
+		{"replace whole object carrying managedFields", `[{"op":"replace","path":"","value":{"metadata":{"name":"web","managedFields":[]}}}]`, "/metadata/managedFields"},
+		{"add metadata carrying managedFields", `[{"op":"add","path":"/metadata","value":{"managedFields":[{"manager":"x"}]}}]`, "/metadata/managedFields"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &patchClient{obj: orig}
+			fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+			cmd := NewPatch(mustKind(t, "deployment"), fac, nil)
+			_, _, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+				"cluster": "prod", "namespace": "ns1", "patch": tc.ops,
+			}})
+			require.Error(t, err)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, err, tc.want)
+			assert.Empty(t, client.getName, "refused before any request is made")
+		})
+	}
+}
+
+// TestPatchSendsTheFetchedManagedFieldsUnchanged pins that whatever a patch
+// does to metadata, the object sent to the server carries the managed
+// fields exactly as fetched: a replace of /metadata that omits them would
+// otherwise reset field ownership on the server.
+func TestPatchSendsTheFetchedManagedFieldsUnchanged(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7","labels":{"a":"b"},"managedFields":[{"manager":"kubectl","operation":"Update","fieldsType":"FieldsV1","fieldsV1":{"f:spec":{}}}]},"spec":{"replicas":1}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "deployment"), fac, nil)
+	_, exec, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"replace","path":"/metadata","value":{"name":"web","labels":{"a":"c"}}}]`,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	require.NotEmpty(t, client.updates, "the dry run sent the patched object")
+	sent, _, err := unstructured.NestedSlice(client.updates[0].obj.Object, "metadata", "managedFields")
+	require.NoError(t, err)
+	want, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
+	assert.Equal(t, want, sent, "managed fields travel exactly as fetched")
+	labels, _, _ := unstructured.NestedStringMap(client.updates[0].obj.Object, "metadata", "labels")
+	assert.Equal(t, map[string]string{"a": "c"}, labels, "the rest of the metadata change still applies")
+}
+
+// TestPatchMoveIntoMetadataCannotForgeManagedFields pins that a move or
+// copy whose destination is /metadata, carrying a managedFields value from
+// elsewhere in the object, is not caught by the path check (nothing static
+// says what the moved value holds) but cannot reach the server: the fetched
+// managed fields are restored after the local apply.
+func TestPatchMoveIntoMetadataCannotForgeManagedFields(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7","managedFields":[{"manager":"kubectl","operation":"Update","fieldsType":"FieldsV1","fieldsV1":{"f:spec":{}}}]},"spec":{"replicas":1,"fake":{"name":"web","managedFields":[{"manager":"forged","operation":"Apply"}]}}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewPatch(mustKind(t, "deployment"), fac, nil)
+	_, _, err := planPatch(t, cmd, input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"move","from":"/spec/fake","path":"/metadata"}]`,
+	}})
+	require.NoError(t, err)
+	require.NotEmpty(t, client.updates)
+	sent, _, _ := unstructured.NestedSlice(client.updates[0].obj.Object, "metadata", "managedFields")
+	want, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
+	assert.Equal(t, want, sent, "the forged value never reaches the server")
 }

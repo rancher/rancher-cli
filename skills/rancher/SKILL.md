@@ -176,6 +176,10 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   error's `message` names the exact flags to add. Relay the dry-run Effect
   (action, target, diff) to the user before applying anything non-trivial.
 - Patch previews include a field-level diff (`data.diff`) — show it.
+- A patch preview may carry a warning that a changed field is applied by
+  another manager (Flux, Argo CD) which may revert the change on its next
+  reconcile; relay it before applying, and suggest changing the source that
+  manager applies instead.
 - `secret` diffs are redacted by design: `data`/`stringData` entries show the
   changed path but `from`/`to` are `<redacted>`, never the raw value.
 - `--allow-deprecated` is required to write through a deprecated-stability API.

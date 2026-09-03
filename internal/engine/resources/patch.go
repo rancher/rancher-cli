@@ -125,6 +125,10 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err := patched.UnmarshalJSON(patchedJSON); err != nil {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "patched object is not valid: "+err.Error())
 	}
+	// Whatever the patch did to metadata, the server receives the managed
+	// fields exactly as fetched: a PUT that dropped them would reset field
+	// ownership on the server, and one that changed them would forge it.
+	patched.SetManagedFields(orig.GetManagedFields())
 
 	// Diff the fetched and patched objects field-by-field — correct for every op
 	// type, unlike mapping ops to entries (a move would misreport as a single
@@ -146,6 +150,12 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return eff, exec, err
 	}
+	// A changed field another manager applies (Flux, Argo) may be put back
+	// on that manager's next reconcile; say so before the operator confirms.
+	// The managed fields are on the fetched object already (the diff skips
+	// them), so this costs no request.
+	managedFields, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
+	eff.Warnings = append(eff.Warnings, ownershipWarnings(managedFields, diff)...)
 	for _, e := range c.enrich {
 		e(orig, patched, &eff)
 	}
@@ -178,7 +188,54 @@ func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
 		return nil, clierr.New(clierr.CodeValidation,
 			"invalid patch: "+err.Error()+"; expected an RFC 6902 JSON patch array")
 	}
+	if err := refuseServerOwnedOps(patch); err != nil {
+		return nil, err
+	}
 	return patch, nil
+}
+
+// refuseServerOwnedOps rejects any op that would change a field the server
+// owns (engine.ServerOwnedPaths): an op whose path, or whose from on a move
+// or copy, is that field or anything under it, and an op whose value
+// carries the field into an ancestor. The CLI sends the fetched managed
+// fields and resource version back as they were (Plan restores both after
+// the local apply), so this check exists to say clearly why an op is
+// pointless rather than to protect the server; a move or copy that lands a
+// forged value under /metadata is caught by the restore alone.
+func refuseServerOwnedOps(patch jsonpatch.Patch) error {
+	for i, op := range patch {
+		path, _ := op.Path()
+		from, fromErr := op.From() // only move and copy carry one; the library answers "unknown" with an error otherwise
+		for _, keys := range engine.ServerOwnedPaths {
+			if matchesRedactPath(path, keys) || (fromErr == nil && matchesRedactPath(from, keys)) || valueCarries(op, path, keys) {
+				return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+					"patch op %d targets /%s; the server sets this field and a patch cannot change it", i, strings.Join(keys, "/")))
+			}
+		}
+	}
+	return nil
+}
+
+// valueCarries reports whether an op on an ancestor of the server-owned
+// path (the whole object, or /metadata) has a value that contains the
+// field, which would smuggle it past a path check. Ops without a value
+// (remove, move, copy, test) never match.
+func valueCarries(op jsonpatch.Operation, path string, keys []string) bool {
+	pointer := "/" + strings.Join(keys, "/")
+	if path != "" && !strings.HasPrefix(pointer, path+"/") {
+		return false
+	}
+	value, err := op.ValueInterface()
+	if err != nil {
+		return false
+	}
+	node, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	depth := strings.Count(path, "/")
+	_, found, _ := unstructured.NestedFieldNoCopy(node, keys[depth:]...)
+	return found
 }
 
 // redactSensitiveDiff blanks From/To for diff entries under /data or

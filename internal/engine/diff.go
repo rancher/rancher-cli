@@ -16,19 +16,22 @@ func DiffObjects(a, b any) []safety.DiffEntry {
 	return diffObjects("", a, b)
 }
 
-// skippedPaths are the field paths diffObjects suppresses, as []string key
-// sequences — the same shape kinds.Kind.RedactPaths uses and ScrubPaths
-// consumes directly.
-var skippedPaths = [][]string{
+// ServerOwnedPaths are the metadata fields the server writes and a client
+// never meaningfully changes: the resource version (the CLI stamps the
+// fetched one as an update precondition) and the managed fields (the
+// server's record of field ownership). The diff suppresses them and patch
+// refuses ops that target them. []string key sequences, the same shape
+// kinds.Kind.RedactPaths uses and ScrubPaths consumes directly.
+var ServerOwnedPaths = [][]string{
 	{"metadata", "resourceVersion"},
 	{"metadata", "managedFields"},
 }
 
-// skippedPointers is skippedPaths rendered as JSON pointers, for comparison
+// skippedPointers is ServerOwnedPaths rendered as JSON pointers, for comparison
 // against the pointer-shaped prefixes diffObjects builds while walking.
 var skippedPointers = func() []string {
-	out := make([]string, len(skippedPaths))
-	for i, p := range skippedPaths {
+	out := make([]string, len(ServerOwnedPaths))
+	for i, p := range ServerOwnedPaths {
 		out[i] = "/" + strings.Join(p, "/")
 	}
 	return out
@@ -59,7 +62,7 @@ func scrubValue(prefix string, v any) any {
 	var rel [][]string
 	for i, p := range skippedPointers {
 		if strings.HasPrefix(p, prefix+"/") {
-			rel = append(rel, skippedPaths[i][depth:])
+			rel = append(rel, ServerOwnedPaths[i][depth:])
 		}
 	}
 	if len(rel) == 0 {

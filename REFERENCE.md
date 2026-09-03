@@ -378,6 +378,17 @@ the field manager `cli.rancher.io`, so an object's managed fields
 fields the CLI wrote. The name is the CLI's domain, unversioned, so it
 stays the same across releases and binary names.
 
+`patch` reads the same record before it changes anything. When a field the
+patch changes is owned by a manager that applies it (server-side apply, as
+Flux and Argo CD do), the plan carries a warning naming that manager: it
+may put the old value back on its next reconcile. Fields owned by managers
+that merely updated them (Rancher's controllers, `kubectl edit`) are not
+flagged. The warning informs; it never gates. A patch op whose `path` (or
+`from`) is `/metadata/managedFields` or `/metadata/resourceVersion`, or
+anything under them, is refused with `VALIDATION`; so is a replace of
+`/metadata` or of the whole object whose value carries them. The server
+sets both fields; the CLI always sends them back exactly as fetched.
+
 ## Cluster provisioning
 
 Rancher's provisioning model (node drivers, machine pools, imported and
