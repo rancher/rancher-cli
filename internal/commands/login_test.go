@@ -1903,10 +1903,10 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 			var f *testrancher.Facade
 			var p runtime.Prompter
 			if tc.saml {
-				opts.EnableSAMLRelay = true
+				opts.EnableSAMLAuthTokens = true
 				opts.ExtraProviders = []string{"oktaProvider"}
 				f = testrancher.New(opts)
-				p = newDepositingPrompter(func(id, pub string) { f.DepositRelay(id, pub) })
+				p = newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
 			} else {
 				f = testrancher.New(opts)
 				p = ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
@@ -2071,7 +2071,7 @@ func TestLoginSuccessWithFailedExtSessionCleanupNamesTheTokenKind(t *testing.T) 
 func TestLoginSAMLTimeoutRecoveryNamesHandoffFacts(t *testing.T) {
 	restore := token.SetSAMLTimingForTest(100*time.Millisecond, 10*time.Millisecond)
 	defer restore()
-	f := testrancher.New(testrancher.Options{EnableSAMLRelay: true, ExtraProviders: []string{"oktaProvider"}})
+	f := testrancher.New(testrancher.Options{EnableSAMLAuthTokens: true, ExtraProviders: []string{"oktaProvider"}})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	dir, store := filePolicyDir(t)

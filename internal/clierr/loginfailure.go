@@ -134,10 +134,10 @@ type PrimaryFailure struct {
 // time window of the browser handoff. These narrow a candidate set; they
 // cannot identify one token.
 type UnmarkedTokenSearch struct {
-	AuthProvider         string `json:"authProvider"`
-	HandoffAt            string `json:"handoffAt"`
-	PollEndedAt          string `json:"pollEndedAt"`
-	ServerRelayExpiresAt string `json:"serverRelayExpiresAt,omitempty"`
+	AuthProvider     string `json:"authProvider"`
+	HandoffAt        string `json:"handoffAt"`
+	PollEndedAt      string `json:"pollEndedAt"`
+	RequestExpiresAt string `json:"requestExpiresAt,omitempty"`
 }
 
 // TokenFate is one token's outcome and cleanup.

@@ -752,7 +752,7 @@ func fateOf(outcome clierr.CreateOutcome, kind clierr.TokenKind, ref *clierr.Tok
 	}
 	if search != nil && !marked {
 		f.Search = &clierr.UnmarkedTokenSearch{AuthProvider: search.Provider, HandoffAt: search.HandoffAt,
-			PollEndedAt: search.PollEndedAt, ServerRelayExpiresAt: search.ServerRelayExpiresAt}
+			PollEndedAt: search.PollEndedAt, RequestExpiresAt: search.RequestExpiresAt}
 	}
 	return f
 }
@@ -904,8 +904,8 @@ func residualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 // than offering a command that would delete the wrong one.
 func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
 	window := "at or after " + s.HandoffAt
-	if s.ServerRelayExpiresAt != "" {
-		window += " and not after " + s.ServerRelayExpiresAt
+	if s.RequestExpiresAt != "" {
+		window += " and not after " + s.RequestExpiresAt
 	}
 	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
 		"but the browser sign-in can still complete after that, so the token may be newer; "+

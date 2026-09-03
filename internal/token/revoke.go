@@ -114,13 +114,13 @@ func (c LoginCredential) Revoke() RevokeOutcome {
 
 // SAMLHandoff is recorded immediately before the SAML browser URL is
 // shown. PollEndedAt is when the CLI stopped waiting and bounds nothing:
-// the browser sign-in can still complete afterwards. ServerRelayExpiresAt
+// the browser sign-in can still complete afterwards. RequestExpiresAt
 // is set only when the server declares an expiry for the deposited auth
 // token and is the only value that bounds creation from above.
 type SAMLHandoff struct {
-	Provider             string
-	HandoffAt            string
-	PollEndedAt          string
-	RequestID            string
-	ServerRelayExpiresAt string
+	Provider         string
+	HandoffAt        string
+	PollEndedAt      string
+	RequestID        string
+	RequestExpiresAt string
 }

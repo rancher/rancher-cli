@@ -202,7 +202,7 @@ func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
 	assert.Equal(t, ResultNotAttempted, ae.DerivedTokenCleanup.Result)
 	assert.Empty(t, ae.Marker)
 	assert.Empty(t, f.DeleteRequests())
-	assertRelayOnly(t, f)
+	assertAuthTokensOnly(t, f)
 }
 
 // TestAcquireErrorWithPrimaryKeepsEvidence pins the composition rule: the
@@ -298,7 +298,7 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 // collection the browser sign-in deposits into.
 func samlProviderFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *httptest.Server) {
 	t.Helper()
-	opts.EnableSAMLRelay = true
+	opts.EnableSAMLAuthTokens = true
 	opts.ExtraProviders = []string{"oktaProvider"}
 	f := testrancher.New(opts)
 	srv := httptest.NewServer(f)
@@ -341,12 +341,12 @@ func samlInput(server string) *loginInput {
 	return &loginInput{server: server, authProvider: "oktaProvider", responseType: "json"}
 }
 
-// assertRelayOnly pins the SAML wire protocol: the CLI never posts a login
+// assertAuthTokensOnly pins the SAML wire protocol: the CLI never posts a login
 // body; it publishes a URL and polls the authtokens collection.
-func assertRelayOnly(t *testing.T, f *testrancher.Facade) {
+func assertAuthTokensOnly(t *testing.T, f *testrancher.Facade) {
 	t.Helper()
 	assert.Zero(t, f.LoginCount(), "the SAML path issues no login POST")
-	for _, r := range f.RelayRequests() {
+	for _, r := range f.AuthTokensRequests() {
 		assert.Contains(t, []string{"GET", "DELETE"}, r.Method, r.Path)
 	}
 }
@@ -375,7 +375,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 		assert.NotEmpty(t, res.Handoff.PollEndedAt)
 		assert.Equal(t, CreateUnknown, res.Create.Outcome)
 		assert.False(t, res.Create.Marked)
-		assertRelayOnly(t, f)
+		assertAuthTokensOnly(t, f)
 	})
 	t.Run("timeout while callback in flight", func(t *testing.T) {
 		f, srv := samlProviderFacade(t, testrancher.Options{})
@@ -383,21 +383,21 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, CreateUnknown, res.Create.Outcome)
 		require.NotNil(t, res.Handoff)
-		assertRelayOnly(t, f)
+		assertAuthTokensOnly(t, f)
 	})
 	t.Run("deposit after timeout is still findable", func(t *testing.T) {
 		f, srv := samlProviderFacade(t, testrancher.Options{})
 		p := newHandoffPrompter(nil)
 		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
 		require.Error(t, err)
-		f.DepositRelay(p.requestID, p.publicKey) // the browser completes after the CLI stopped waiting
+		f.DepositAuthToken(p.requestID, p.publicKey) // the browser completes after the CLI stopped waiting
 		// The recovery criteria search forward from HandoffAt; PollEndedAt is not a bound.
 		assert.LessOrEqual(t, res.Handoff.HandoffAt, res.Handoff.PollEndedAt)
 		assert.Equal(t, 1, f.TokenCount(), "the server created S after the CLI stopped waiting")
 	})
 	t.Run("valid deposit is known", func(t *testing.T) {
 		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, pub string) { f.DepositRelay(id, pub) })
+		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
 		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
 		require.NoError(t, err)
 		assert.Equal(t, CreateKnown, res.Create.Outcome)
@@ -405,13 +405,13 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 		assert.Equal(t, TokenKindV3, res.Create.Ref.Kind)
 		assert.NotEmpty(t, res.Create.Bearer)
 		assert.Equal(t, 1, f.TokenCount())
-		assertRelayOnly(t, f)
-		recs := f.RelayRequests()
+		assertAuthTokensOnly(t, f)
+		recs := f.AuthTokensRequests()
 		assert.Equal(t, "DELETE", recs[len(recs)-1].Method, "the deposited copy is deleted after decryption")
 	})
 	t.Run("undecodable payload is unknown", func(t *testing.T) {
 		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, _ string) { f.DepositRelayRaw(id, "!!not-base64") })
+		p := newHandoffPrompter(func(id, _ string) { f.DepositAuthTokenRaw(id, "!!not-base64") })
 		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
 		require.Error(t, err)
 		assert.Equal(t, CreateUnknown, res.Create.Outcome)
@@ -419,7 +419,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	})
 	t.Run("decrypted bearer failing validation is unidentified", func(t *testing.T) {
 		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, pub string) { f.DepositRelayPlaintext(id, pub, "no-colon-here") })
+		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthTokenPlaintext(id, pub, "no-colon-here") })
 		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
 		require.Error(t, err)
 		assert.Equal(t, CreateUnidentified, res.Create.Outcome)

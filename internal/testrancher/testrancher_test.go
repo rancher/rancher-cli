@@ -802,12 +802,12 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 	}
 }
 
-// TestFacadeRelayDepositOnCommand pins the SAML fixture: nothing is served
-// at /v1-public/authtokens/<id> until DepositRelay, then the encrypted
+// TestFacadeAuthTokenDepositOnCommand pins the SAML fixture: nothing is served
+// at /v1-public/authtokens/<id> until DepositAuthToken, then the encrypted
 // bearer appears.
-func TestFacadeRelayDepositOnCommand(t *testing.T) {
+func TestFacadeAuthTokenDepositOnCommand(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{EnableSAMLRelay: true})
+	f := testrancher.New(testrancher.Options{EnableSAMLAuthTokens: true})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/v1-public/authtokens/req-1")
@@ -815,14 +815,14 @@ func TestFacadeRelayDepositOnCommand(t *testing.T) {
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	pub := testPublicKeyB64(t)
-	f.DepositRelay("req-1", pub)
+	f.DepositAuthToken("req-1", pub)
 	resp, err = http.Get(srv.URL + "/v1-public/authtokens/req-1")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	recs := f.RelayRequests()
+	recs := f.AuthTokensRequests()
 	require.Len(t, recs, 2)
-	assert.Equal(t, testrancher.RelayRecord{Method: http.MethodGet, Path: "/v1-public/authtokens/req-1"}, recs[0])
+	assert.Equal(t, testrancher.AuthTokensRequest{Method: http.MethodGet, Path: "/v1-public/authtokens/req-1"}, recs[0])
 }
 
 // TestFacadeExtTokenListAndDryRunDelete pins what the CLI's get and delete

@@ -39,10 +39,10 @@ const (
 	// route that revokes it.
 	v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 
-	// relayPathPrefix is the authtokens collection: the CLI polls
+	// authTokensPathPrefix is the authtokens collection: the CLI polls
 	// <prefix>/<requestID> for the encrypted bearer the browser sign-in
 	// deposited.
-	relayPathPrefix = "/v1-public/authtokens/"
+	authTokensPathPrefix = "/v1-public/authtokens/"
 
 	defaultDerivedTTL = 15 * time.Minute
 
@@ -152,10 +152,10 @@ type Options struct {
 	SessionDeleteMode string
 	DerivedDeleteMode string
 
-	// EnableSAMLRelay serves the authtokens collection the browser sign-in
+	// EnableSAMLAuthTokens serves the authtokens collection the browser sign-in
 	// polls.
-	// Nothing is served for a request id until DepositRelay.
-	EnableSAMLRelay bool
+	// Nothing is served for a request id until DepositAuthToken.
+	EnableSAMLAuthTokens bool
 }
 
 // record is one façade-issued token.
@@ -186,8 +186,8 @@ func (r *record) bearer() string {
 	return "ext/" + r.name + ":" + r.secret
 }
 
-// RelayRecord is one request the authtokens path received.
-type RelayRecord struct {
+// AuthTokensRequest is one request the authtokens path received.
+type AuthTokensRequest struct {
 	Method string
 	Path   string
 }
@@ -213,8 +213,8 @@ type Facade struct {
 	tokens         map[string]*record
 	descriptions   []string
 	deletes        []DeleteRecord
-	relayReqs      []RelayRecord
-	relay          map[string]string // request id → encrypted base64 bearer
+	authTokensReqs []AuthTokensRequest
+	authTokens     map[string]string // request id → encrypted base64 bearer
 	logins         int
 	derivedCreates int
 	dropped        bool
@@ -250,12 +250,12 @@ func (f *Facade) DeleteRequests() []DeleteRecord {
 	return slices.Clone(f.deletes)
 }
 
-// RelayRequests returns every request the authtokens path received, in
+// AuthTokensRequests returns every request the authtokens path received, in
 // order.
-func (f *Facade) RelayRequests() []RelayRecord {
+func (f *Facade) AuthTokensRequests() []AuthTokensRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.relayReqs)
+	return slices.Clone(f.authTokensReqs)
 }
 
 // TokenCount is how many tokens the façade holds.
@@ -294,30 +294,30 @@ func (f *Facade) BearersOfKind(kind string) []string {
 	return bearers
 }
 
-// DepositRelay creates a v3 session token and deposits it for requestID,
+// DepositAuthToken creates a v3 session token and deposits it for requestID,
 // encrypted to publicKeyB64 the way the browser sign-in does.
-func (f *Facade) DepositRelay(requestID, publicKeyB64 string) {
+func (f *Facade) DepositAuthToken(requestID, publicKeyB64 string) {
 	rec := f.newToken("", 0)
 	f.mu.Lock()
 	rec.kind = "v3"
 	rec.role = "session"
 	f.mu.Unlock()
-	f.DepositRelayRaw(requestID, encryptToPublicKey(publicKeyB64, rec.bearer()))
+	f.DepositAuthTokenRaw(requestID, encryptToPublicKey(publicKeyB64, rec.bearer()))
 }
 
-// DepositRelayPlaintext deposits plaintext for requestID, encrypted to
+// DepositAuthTokenPlaintext deposits plaintext for requestID, encrypted to
 // publicKeyB64 in place of a real bearer, for a payload the client can
 // decrypt but cannot read as a token.
-func (f *Facade) DepositRelayPlaintext(requestID, publicKeyB64, plaintext string) {
-	f.DepositRelayRaw(requestID, encryptToPublicKey(publicKeyB64, plaintext))
+func (f *Facade) DepositAuthTokenPlaintext(requestID, publicKeyB64, plaintext string) {
+	f.DepositAuthTokenRaw(requestID, encryptToPublicKey(publicKeyB64, plaintext))
 }
 
-// DepositRelayRaw deposits b64 for requestID as it is, for a payload the
+// DepositAuthTokenRaw deposits b64 for requestID as it is, for a payload the
 // client cannot decrypt.
-func (f *Facade) DepositRelayRaw(requestID, b64 string) {
+func (f *Facade) DepositAuthTokenRaw(requestID, b64 string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.relay[requestID] = b64
+	f.authTokens[requestID] = b64
 }
 
 // New builds a Facade from opts, applying defaults for the fields FA-1
@@ -329,7 +329,7 @@ func New(opts Options) *Facade {
 	if opts.LoginPass == "" {
 		opts.LoginPass = "e2e-pass"
 	}
-	f := &Facade{opts: opts, tokens: map[string]*record{}, relay: map[string]string{}}
+	f := &Facade{opts: opts, tokens: map[string]*record{}, authTokens: map[string]string{}}
 	if opts.EnableIdP {
 		f.idp = newIdPStub(opts.IdPPendingPolls)
 	}
@@ -371,8 +371,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleDelete(w, r, "ext", strings.TrimPrefix(r.URL.Path, extTokensPath+"/"))
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, v3TokensPath+"/"):
 		f.handleDelete(w, r, "v3", strings.TrimPrefix(r.URL.Path, v3TokensPath+"/"))
-	case f.opts.EnableSAMLRelay && strings.HasPrefix(r.URL.Path, relayPathPrefix):
-		f.handleRelay(w, r, strings.TrimPrefix(r.URL.Path, relayPathPrefix))
+	case f.opts.EnableSAMLAuthTokens && strings.HasPrefix(r.URL.Path, authTokensPathPrefix):
+		f.handleAuthTokens(w, r, strings.TrimPrefix(r.URL.Path, authTokensPathPrefix))
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
@@ -687,15 +687,15 @@ func (f *Facade) handleExtCollection(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleRelay serves the authtokens collection: 404 until a token is
+// handleAuthTokens serves the authtokens collection: 404 until a token is
 // deposited for the request id, then the encrypted bearer, and a DELETE
 // removes it. Every request is recorded before it is answered.
-func (f *Facade) handleRelay(w http.ResponseWriter, r *http.Request, id string) {
+func (f *Facade) handleAuthTokens(w http.ResponseWriter, r *http.Request, id string) {
 	f.mu.Lock()
-	f.relayReqs = append(f.relayReqs, RelayRecord{Method: r.Method, Path: r.URL.Path})
-	payload, ok := f.relay[id]
+	f.authTokensReqs = append(f.authTokensReqs, AuthTokensRequest{Method: r.Method, Path: r.URL.Path})
+	payload, ok := f.authTokens[id]
 	if r.Method == http.MethodDelete {
-		delete(f.relay, id)
+		delete(f.authTokens, id)
 	}
 	f.mu.Unlock()
 

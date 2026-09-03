@@ -635,8 +635,8 @@ from the sign-in, `recovery` gives the exact `management-token` command.
 When it did not, `sessionToken.search` carries what the CLI knows: the
 auth provider, when the browser was opened (`handoffAt`), when the CLI
 stopped waiting (`pollEndedAt`, which is not a bound: the browser sign-in
-can complete later), and, when the server declared one, the relay expiry
-(`serverRelayExpiresAt`). Those facts narrow a manual check of
+can complete later), and, when the server declared one, the request expiry
+(`requestExpiresAt`). Those facts narrow a manual check of
 `rancher get management-tokens -o json` or the UI's Account & API Keys
 page; they cannot identify the token.
 
