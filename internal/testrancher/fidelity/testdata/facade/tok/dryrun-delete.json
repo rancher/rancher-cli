@@ -8,6 +8,10 @@
       "body": {
         "apiVersion": "ext.cattle.io/v1",
         "kind": "Token",
+        "metadata": {
+          "name": "\u003cname\u003e",
+          "resourceVersion": "\u003crv\u003e"
+        },
         "status": {
           "bearerToken": "\u003csecret\u003e",
           "expiresAt": "\u003cts\u003e"

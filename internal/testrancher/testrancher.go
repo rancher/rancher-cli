@@ -7,10 +7,16 @@ package testrancher
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +33,17 @@ const (
 	// importing testrancher, not the reverse, so this is the one place the
 	// path lives.
 	mintTokensPath = token.MintTokensPath
+
+	// v3TokensPath is the deprecated management.cattle.io/v3 token
+	// collection behind the local-cluster proxy — where a session token
+	// Rancher created through /v1-public/login lives, and therefore the
+	// route that revokes it.
+	v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
+
+	// relayPathPrefix is the authtokens collection: the CLI polls
+	// <prefix>/<requestID> for the encrypted bearer the browser sign-in
+	// deposited.
+	relayPathPrefix = "/v1-public/authtokens/"
 
 	defaultMintTTL = 15 * time.Minute
 
@@ -77,6 +94,55 @@ type Options struct {
 	// existing e2e script already authenticates with (FA-1: "the mint
 	// requires a valid façade-issued (or seed) bearer").
 	SeedToken string
+
+	// DropLoginResponse creates the token and then closes the connection
+	// without writing: the client never learns what the server did.
+	DropLoginResponse bool
+	// MalformedLoginResponse answers a created login with a 201 whose body
+	// establishes no token shape.
+	MalformedLoginResponse bool
+	// LoginNameOnly answers with the kind's shape carrying the resource name
+	// but no bearer.
+	LoginNameOnly bool
+	// LoginNoIdentity answers with the kind's recognized shape carrying a
+	// bearer but no resource name.
+	LoginNoIdentity bool
+	// LoginBearerOverride replaces the bearer in the login response with this
+	// string, for a token the client cannot use or parse.
+	LoginBearerOverride string
+	// LoginStatus forces a status on the login POST. A deterministic 4xx
+	// (400, 401, 403, 404, 409, 422) is answered before any record exists;
+	// any other status is answered after, modelling a create the client never
+	// learned of.
+	LoginStatus int
+	// LoginShape forces the login response shape and the created record's
+	// kind ("ext" or "v3") regardless of the requested responseType. Empty
+	// follows the response type: json is v3, kubeconfig is ext.
+	LoginShape string
+
+	// DropMintResponse creates the derived token and then closes the
+	// connection without writing.
+	DropMintResponse bool
+	// MalformedMintResponse answers a created mint with a 201 whose body
+	// establishes no token shape.
+	MalformedMintResponse bool
+	// MintBearerOverride replaces the bearer in the mint response with this
+	// string.
+	MintBearerOverride string
+	// MintStatus forces a status on the mint POST, with LoginStatus's rule
+	// about when the record is created.
+	MintStatus int
+
+	// SessionDeleteMode and DerivedDeleteMode fail the revoke of a located
+	// record by its role, on either route: "" answers normally, "gone"
+	// answers 404, "fail" answers 500.
+	SessionDeleteMode string
+	DerivedDeleteMode string
+
+	// EnableSAMLRelay serves the authtokens collection the browser sign-in
+	// polls.
+	// Nothing is served for a request id until DepositRelay.
+	EnableSAMLRelay bool
 }
 
 // record is one façade-issued token.
@@ -85,19 +151,135 @@ type record struct {
 	secret          string
 	resourceVersion string
 	clusterName     string
-	expiresAt       time.Time
+	description     string
+	// kind is the resource the façade pretends to have created, "ext" or
+	// "v3". It is fixed when the record is created, whatever shape the
+	// client is later shown, because a server creates one definite kind.
+	kind string
+	// role is what the operation created the token for: "session" for the
+	// login handler and the SAML authtokens flow, "derived" for the mint
+	// endpoint. The
+	// delete fault modes select on it.
+	role      string
+	expiresAt time.Time
 }
 
-func (r *record) bearer() string { return "ext/" + r.name + ":" + r.secret }
+// bearer renders the record's bearer in its kind's shape: an ext token
+// carries the ext prefix, a v3 token is <name>:<secret>.
+func (r *record) bearer() string {
+	if r.kind == "v3" {
+		return r.name + ":" + r.secret
+	}
+	return "ext/" + r.name + ":" + r.secret
+}
+
+// RelayRecord is one request the authtokens path received.
+type RelayRecord struct {
+	Method string
+	Path   string
+}
+
+// DeleteRecord is one recorded DELETE against either token store, dry-run
+// and refused attempts included, so a test can prove that the preview and
+// the execution of one delete carried the same precondition.
+type DeleteRecord struct {
+	Kind         string // "ext" or "v3"
+	Name         string
+	Bearer       string
+	DryRun       bool   // the body's dryRun contained "All"
+	Precondition string // the body's preconditions.resourceVersion, or ""
+}
 
 // Facade is a fake Rancher auth surface. It implements http.Handler.
 type Facade struct {
 	opts Options
 	idp  *idpStub
 
-	mu      sync.Mutex
-	counter int
-	tokens  map[string]*record
+	mu           sync.Mutex
+	counter      int
+	tokens       map[string]*record
+	descriptions []string
+	deletes      []DeleteRecord
+	relayReqs    []RelayRecord
+	relay        map[string]string // request id → encrypted base64 bearer
+}
+
+// LoginDescriptions returns the descriptions login requests carried, in
+// order.
+func (f *Facade) LoginDescriptions() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.descriptions)
+}
+
+// DeleteRequests returns every recorded DELETE attempt, in order.
+func (f *Facade) DeleteRequests() []DeleteRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.deletes)
+}
+
+// RelayRequests returns every request the authtokens path received, in
+// order.
+func (f *Facade) RelayRequests() []RelayRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.relayReqs)
+}
+
+// TokenCount is how many tokens the façade holds.
+func (f *Facade) TokenCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.tokens)
+}
+
+// TokensWithDescriptionContaining returns the resource names of the records
+// of kind ("ext" or "v3") whose description contains sub.
+func (f *Facade) TokensWithDescriptionContaining(kind, sub string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var names []string
+	for _, rec := range f.tokens {
+		if rec.kind == kind && strings.Contains(rec.description, sub) {
+			names = append(names, rec.name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+// BearersOfKind returns the bearers of every record of kind, sorted.
+func (f *Facade) BearersOfKind(kind string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var bearers []string
+	for _, rec := range f.tokens {
+		if rec.kind == kind {
+			bearers = append(bearers, rec.bearer())
+		}
+	}
+	slices.Sort(bearers)
+	return bearers
+}
+
+// DepositRelay creates a v3 session token and deposits it for requestID,
+// encrypted to publicKeyB64 the way the browser sign-in does.
+func (f *Facade) DepositRelay(requestID, publicKeyB64 string) {
+	rec := f.mintToken("", 0)
+	f.mu.Lock()
+	rec.kind = "v3"
+	rec.role = "session"
+	f.mu.Unlock()
+	f.DepositRelayRaw(requestID, encryptToPublicKey(publicKeyB64, rec.bearer()))
+}
+
+// DepositRelayRaw deposits b64 for requestID as it is, for a payload the
+// client cannot decrypt.
+func (f *Facade) DepositRelayRaw(requestID, b64 string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.relay[requestID] = b64
 }
 
 // New builds a Facade from opts, applying defaults for the fields FA-1
@@ -109,7 +291,7 @@ func New(opts Options) *Facade {
 	if opts.LoginPass == "" {
 		opts.LoginPass = "e2e-pass"
 	}
-	f := &Facade{opts: opts, tokens: map[string]*record{}}
+	f := &Facade{opts: opts, tokens: map[string]*record{}, relay: map[string]string{}}
 	if opts.EnableIdP {
 		f.idp = newIdPStub(opts.IdPPendingPolls)
 	}
@@ -143,10 +325,16 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleLogin(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == mintTokensPath:
 		f.handleTokensPOST(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == mintTokensPath:
+		f.handleExtCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
 		f.handleNamedGet(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, mintTokensPath+"/"):
-		f.handleDelete(w, r, strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
+		f.handleDelete(w, r, "ext", strings.TrimPrefix(r.URL.Path, mintTokensPath+"/"))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, v3TokensPath+"/"):
+		f.handleDelete(w, r, "v3", strings.TrimPrefix(r.URL.Path, v3TokensPath+"/"))
+	case f.opts.EnableSAMLRelay && strings.HasPrefix(r.URL.Path, relayPathPrefix):
+		f.handleRelay(w, r, strings.TrimPrefix(r.URL.Path, relayPathPrefix))
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
@@ -215,10 +403,12 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Type    string `json:"type"`
-		User    string `json:"username"`
-		Pass    string `json:"password"`
-		IDToken string `json:"id_token"`
+		Type         string `json:"type"`
+		User         string `json:"username"`
+		Pass         string `json:"password"`
+		IDToken      string `json:"id_token"`
+		ResponseType string `json:"responseType"`
+		Description  string `json:"description"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -239,8 +429,85 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	// A deterministic 4xx proves the server created nothing, so it is
+	// answered before any record exists.
+	if deterministic4xx(f.opts.LoginStatus) {
+		w.WriteHeader(f.opts.LoginStatus)
+		return
+	}
+
 	rec := f.mintToken("", 0)
-	writeExtToken(w, http.StatusCreated, rec)
+	f.mu.Lock()
+	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
+	rec.role = "session"
+	rec.description = req.Description
+	if req.Description != "" {
+		f.descriptions = append(f.descriptions, req.Description)
+	}
+	f.mu.Unlock()
+
+	name, bearer := rec.name, rec.bearer()
+	if f.opts.LoginBearerOverride != "" {
+		bearer = f.opts.LoginBearerOverride
+	}
+	if f.opts.LoginNameOnly {
+		bearer = ""
+	}
+	if f.opts.LoginNoIdentity {
+		name = ""
+	}
+
+	switch {
+	case f.opts.LoginStatus != 0:
+		// The record exists and the client learns nothing about it.
+		w.WriteHeader(f.opts.LoginStatus)
+	case f.opts.DropLoginResponse:
+		dropConnection(w)
+	case f.opts.MalformedLoginResponse:
+		writeJSON(w, http.StatusCreated, map[string]any{"broken": true})
+	case rec.kind == "v3":
+		writeV3Token(w, http.StatusCreated, rec, name, bearer)
+	default:
+		writeExtTokenAs(w, http.StatusCreated, rec, name, bearer)
+	}
+}
+
+// loginKind is the kind of resource a login creates: the forced shape when
+// a test sets one, else the shape the response type asks for.
+func loginKind(shape, responseType string) string {
+	switch {
+	case shape != "":
+		return shape
+	case responseType == "json":
+		return "v3"
+	default:
+		return "ext"
+	}
+}
+
+// deterministic4xx reports whether a status proves the request had no
+// effect on the server.
+func deterministic4xx(status int) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+		http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity:
+		return true
+	}
+	return false
+}
+
+// dropConnection closes the connection with no response, so the client
+// cannot tell whether the request took effect.
+func dropConnection(w http.ResponseWriter) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		return
+	}
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
 }
 
 func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
@@ -273,15 +540,123 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if deterministic4xx(f.opts.MintStatus) {
+		w.WriteHeader(f.opts.MintStatus)
+		return
+	}
+
 	var mintReq struct {
 		Spec struct {
 			TTL         int64  `json:"ttl"`
 			ClusterName string `json:"clusterName"`
+			Description string `json:"description"`
 		} `json:"spec"`
 	}
 	_ = json.Unmarshal(body, &mintReq)
 	rec := f.mintToken(mintReq.Spec.ClusterName, mintReq.Spec.TTL)
-	writeExtToken(w, http.StatusCreated, rec)
+	f.mu.Lock()
+	rec.kind = "ext"
+	rec.role = "derived"
+	rec.description = mintReq.Spec.Description
+	f.mu.Unlock()
+
+	switch {
+	case f.opts.MintStatus != 0:
+		w.WriteHeader(f.opts.MintStatus)
+	case f.opts.DropMintResponse:
+		dropConnection(w)
+	case f.opts.MalformedMintResponse:
+		writeJSON(w, http.StatusCreated, map[string]any{"broken": true})
+	default:
+		bearer := rec.bearer()
+		if f.opts.MintBearerOverride != "" {
+			bearer = f.opts.MintBearerOverride
+		}
+		writeExtTokenAs(w, http.StatusCreated, rec, rec.name, bearer)
+	}
+}
+
+// handleExtCollection lists every ext record as a TokenList. With a
+// fallthrough, the records the real apiserver holds are listed first and
+// the façade's own appended, so a listing shows both.
+func (f *Facade) handleExtCollection(w http.ResponseWriter, r *http.Request) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	items := []any{}
+	if f.opts.Fallthrough != nil {
+		rec := httptest.NewRecorder()
+		f.opts.Fallthrough.ServeHTTP(rec, r)
+		var upstream struct {
+			Items []any `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &upstream); err == nil {
+			items = append(items, upstream.Items...)
+		}
+	}
+	f.mu.Lock()
+	names := make([]string, 0, len(f.tokens))
+	for name, tok := range f.tokens {
+		if tok.kind == "ext" {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		items = append(items, tokenCRBody(f.tokens[name]))
+	}
+	f.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"apiVersion": "ext.cattle.io/v1",
+		"kind":       "TokenList",
+		"items":      items,
+	})
+}
+
+// handleRelay serves the authtokens collection: 404 until a token is
+// deposited for the request id, then the encrypted bearer, and a DELETE
+// removes it. Every request is recorded before it is answered.
+func (f *Facade) handleRelay(w http.ResponseWriter, r *http.Request, id string) {
+	f.mu.Lock()
+	f.relayReqs = append(f.relayReqs, RelayRecord{Method: r.Method, Path: r.URL.Path})
+	payload, ok := f.relay[id]
+	if r.Method == http.MethodDelete {
+		delete(f.relay, id)
+	}
+	f.mu.Unlock()
+
+	switch {
+	case r.Method == http.MethodDelete:
+		w.WriteHeader(http.StatusOK)
+	case !ok:
+		http.NotFound(w, r)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"token":     payload,
+			"expiresAt": time.Now().Add(defaultMintTTL).UTC().Format(time.RFC3339),
+		})
+	}
+}
+
+// encryptToPublicKey encrypts plaintext to the base64-encoded JSON RSA
+// public key the browser sign-in publishes, the way Rancher deposits an
+// auth token. A key the client cannot parse yields an empty payload,
+// which the client reads as nothing deposited yet.
+func encryptToPublicKey(publicKeyB64, plaintext string) string {
+	raw, err := base64.StdEncoding.DecodeString(publicKeyB64)
+	if err != nil {
+		return ""
+	}
+	var pub rsa.PublicKey
+	if err := json.Unmarshal(raw, &pub); err != nil {
+		return ""
+	}
+	cipher, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &pub, []byte(plaintext), nil)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(cipher)
 }
 
 func (f *Facade) handleNamedGet(w http.ResponseWriter, r *http.Request, name string) {
@@ -306,19 +681,46 @@ type deleteOptions struct {
 	} `json:"preconditions"`
 }
 
-func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, name string) {
-	if !f.authorizedBearer(r) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+// handleDelete serves a DELETE against either token store. The attempt is
+// recorded before anything can reject it, so a refused, dry-run, or absent
+// target is recorded too, and a test can prove that the preview and the
+// execution of one delete carried the same precondition.
+func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "reading body", http.StatusBadRequest)
 		return
 	}
+	var opts deleteOptions
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &opts)
+	}
+	precondition := ""
+	if opts.Preconditions != nil && opts.Preconditions.ResourceVersion != nil {
+		precondition = *opts.Preconditions.ResourceVersion
+	}
+	dryRun := slices.Contains(opts.DryRun, "All")
+
+	f.mu.Lock()
+	f.deletes = append(f.deletes, DeleteRecord{
+		Kind:         kind,
+		Name:         name,
+		Bearer:       bearerFromHeader(r),
+		DryRun:       dryRun,
+		Precondition: precondition,
+	})
+	f.mu.Unlock()
+
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 
 	f.mu.Lock()
 	rec, ok := f.tokens[name]
+	if ok && rec.kind != kind {
+		ok = false
+	}
 	f.mu.Unlock()
 	if !ok {
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -326,21 +728,18 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 
-	var opts deleteOptions
-	if len(body) > 0 {
-		_ = json.Unmarshal(body, &opts)
-	}
-	if opts.Preconditions != nil && opts.Preconditions.ResourceVersion != nil &&
-		*opts.Preconditions.ResourceVersion != rec.resourceVersion {
-		w.WriteHeader(http.StatusConflict)
+	switch f.deleteMode(rec) {
+	case "gone":
+		http.NotFound(w, r)
+		return
+	case "fail":
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	dryRun := false
-	for _, v := range opts.DryRun {
-		if v == "All" {
-			dryRun = true
-		}
+	if precondition != "" && precondition != rec.resourceVersion {
+		w.WriteHeader(http.StatusConflict)
+		return
 	}
 	if dryRun {
 		writeJSON(w, http.StatusOK, tokenCRBody(rec))
@@ -351,6 +750,18 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	delete(f.tokens, name)
 	f.mu.Unlock()
 	writeJSON(w, http.StatusOK, tokenCRBody(rec))
+}
+
+// deleteMode is the fault mode configured for the located record's role,
+// so an ext-shaped session token fails where the derived token succeeds.
+func (f *Facade) deleteMode(rec *record) string {
+	switch rec.role {
+	case "session":
+		return f.opts.SessionDeleteMode
+	case "derived":
+		return f.opts.DerivedDeleteMode
+	}
+	return ""
 }
 
 // crtFixture is one façade-served clusterregistrationtoken. Token is the
@@ -512,24 +923,56 @@ func (f *Facade) mintToken(clusterName string, ttlMs int64) *record {
 }
 
 func tokenCRBody(rec *record) map[string]any {
+	spec := map[string]any{"clusterName": rec.clusterName}
+	if rec.description != "" {
+		spec["description"] = rec.description
+	}
 	return map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
 		"kind":       "Token",
 		"metadata":   map[string]any{"name": rec.name, "resourceVersion": rec.resourceVersion},
-		"spec":       map[string]any{"clusterName": rec.clusterName},
+		"spec":       spec,
 		"status":     map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)},
 	}
 }
 
-func writeExtToken(w http.ResponseWriter, status int, rec *record) {
+// writeExtTokenAs writes the ext Token object with the given identity: the
+// resource's name in metadata and its bearer in status. Either may be
+// empty, which withholds that field, for a response the client cannot
+// fully identify.
+func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, bearer string) {
+	statusBlock := map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)}
+	if bearer != "" {
+		statusBlock["bearerToken"] = bearer
+	}
+	metadata := map[string]any{"resourceVersion": rec.resourceVersion}
+	if name != "" {
+		metadata["name"] = name
+	}
 	writeJSON(w, status, map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
 		"kind":       "Token",
-		"status": map[string]any{
-			"bearerToken": rec.bearer(),
-			"expiresAt":   rec.expiresAt.UTC().Format(time.RFC3339),
-		},
+		"metadata":   metadata,
+		"status":     statusBlock,
 	})
+}
+
+// writeV3Token writes the Norman token shape a responseType json login
+// returns: the bearer under "token" and the resource name under "id".
+// Either may be empty, which withholds that field.
+func writeV3Token(w http.ResponseWriter, status int, rec *record, name, bearer string) {
+	body := map[string]any{
+		"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339),
+		"baseType":  "token",
+		"type":      "token",
+	}
+	if name != "" {
+		body["id"] = name
+	}
+	if bearer != "" {
+		body["token"] = bearer
+	}
+	writeJSON(w, status, body)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

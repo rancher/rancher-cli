@@ -133,7 +133,7 @@ func authProbes() []Probe {
 			{Path: "spec.userID", Replace: "<user-id>"},
 			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
 		},
-		FacadeDivergence: "façade mint returns a minimal Token {apiVersion,kind,status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
+		FacadeDivergence: "façade mint returns a Token carrying only {apiVersion,kind,metadata:{name,resourceVersion},status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
 		Teardown:         []Step{deleteFixture("minted standard token", token.MintTokensPath+"/{tokname}")},
 	}
 
@@ -173,10 +173,9 @@ func authProbes() []Probe {
 }
 
 func tokProbes() []Probe {
-	// The imperative mint response carries its credential only under
-	// status.bearerToken (testrancher.writeExtToken includes no metadata),
-	// so the minted name is derived from the ext-shaped bearer — the same
-	// mechanism RealTarget.revokedBearer uses.
+	// The minted name is derived from the ext-shaped bearer under
+	// status.bearerToken — the same mechanism RealTarget.revokedBearer
+	// uses, and one that holds whatever metadata the response carries.
 	mint := Observation{
 		Name:     "mint",
 		Request:  RequestSpec{Method: http.MethodPost, Path: token.MintTokensPath, Body: `{"spec":{}}`, Identity: IdentityAdmin},
@@ -185,11 +184,11 @@ func tokProbes() []Probe {
 	namedPath := token.MintTokensPath + "/{tokname}"
 	revokeLeftover := deleteFixture("minted token", namedPath)
 
-	// The façade's ext-token store returns a minimal Token; every full-Token
+	// The façade's ext-token store returns a sparse Token; every full-Token
 	// observation therefore diverges on shape (missing metadata labels/uid,
 	// spec.userPrincipal, and status.hash/current/expired/lastUpdateTime, plus
 	// an empty spec.clusterName the façade emits on GET).
-	const tokenShapeDivergence = "façade returns a minimal Token {apiVersion,kind,status:{bearerToken,expiresAt}} on mint and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
+	const tokenShapeDivergence = "façade returns a Token carrying {metadata.name/rv, status:{bearerToken,expiresAt}} on mint and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
 
 	// The mint/get/revoke Token bodies carry the acting admin's per-install
 	// user id (spec.userID, the cattle.io/user-id label, and the userPrincipal
@@ -269,7 +268,7 @@ func tokProbes() []Probe {
 			NormalizeRule{Path: "details.name", Replace: "<name>"},
 			NormalizeRule{Path: "message", Replace: "<message>"},
 		),
-		FacadeDivergence: "façade mint and revoke return a minimal Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
+		FacadeDivergence: "façade mint and revoke return a sparse Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
 	}
 	return []Probe{mintShape, dryrunDelete, stalePrecondition, revoke}
 }

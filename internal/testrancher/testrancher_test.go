@@ -2,6 +2,9 @@ package testrancher_test
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -330,7 +333,7 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	assert.Equal(t, http.StatusOK, revokeResp.StatusCode)
 }
 
-func TestNamedGetServedUnknownAndListFallThrough(t *testing.T) {
+func TestNamedGetServedUnknownFallsThroughAndListMerges(t *testing.T) {
 	t.Parallel()
 	fall := &recordingHandler{}
 	f, srv := newFacade(t, testrancher.Options{SeedToken: "e2e:secret"}, fall)
@@ -375,8 +378,22 @@ func TestNamedGetServedUnknownAndListFallThrough(t *testing.T) {
 	unknownResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath+"/no-such-token", nil, "e2e:secret")
 	assert.Equal(t, http.StatusTeapot, unknownResp.StatusCode, "unknown-name GET must fall through")
 
-	listResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath, nil, "e2e:secret")
-	assert.Equal(t, http.StatusTeapot, listResp.StatusCode, "LIST must always fall through")
+	before := len(fall.requests)
+	listResp, listBody := doJSON(t, srv.Client(), http.MethodGet, srv.URL+mintTokensPath, nil, "e2e:secret")
+	require.Equal(t, http.StatusOK, listResp.StatusCode)
+	assert.Len(t, fall.requests, before+1, "LIST asks the fallthrough for its own items first")
+	var list struct {
+		Kind  string `json:"kind"`
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(listBody, &list))
+	assert.Equal(t, "TokenList", list.Kind)
+	require.Len(t, list.Items, 1, "the fallthrough served no items, so only the façade record is listed")
+	assert.Equal(t, "fac-token-1", list.Items[0].Metadata.Name)
 }
 
 func TestDeleteDryRunRealDeleteReDeleteFallsThrough(t *testing.T) {
@@ -557,4 +574,333 @@ func TestIdPHandlerWithoutIdPIsNotFound(t *testing.T) {
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// testPublicKeyB64 is a base64-encoded JSON RSA public key the authtokens
+// accepts. Nothing here decrypts: the private half is dropped.
+func testPublicKeyB64(t *testing.T) string {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	b, err := json.Marshal(priv.PublicKey)
+	require.NoError(t, err)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// nameOfBearer returns the resource name a façade bearer carries: the text
+// between an optional "ext/" prefix and the secret separator.
+func nameOfBearer(bearer string) string {
+	name, _, _ := strings.Cut(strings.TrimPrefix(bearer, "ext/"), ":")
+	return name
+}
+
+// TestFacadeJSONLoginReturnsV3ShapeWithDescription pins the responseType
+// json login: the response is the v3 token shape and the description the
+// client sent is recorded and applied.
+func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	body := `{"type":"localProvider","responseType":"json","description":"rancher-cli login @ h [op:0123456789ab]","username":"e2e-user","password":"e2e-pass"}`
+	resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var got struct {
+		Token     string `json:"token"`
+		ID        string `json:"id"`
+		ExpiresAt string `json:"expiresAt"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	assert.NotEmpty(t, got.ID)
+	assert.True(t, strings.HasPrefix(got.Token, got.ID+":"), "v3 bearer is <name>:<key>")
+	assert.Equal(t, []string{"rancher-cli login @ h [op:0123456789ab]"}, f.LoginDescriptions())
+}
+
+// TestFacadeDeleteRecordsKindNameAndBearer pins what cleanup tests read:
+// every DELETE against either token store is recorded with its kind, name,
+// and bearer.
+func TestFacadeDeleteRecordsKindNameAndBearer(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{SeedToken: "seed:secret"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/management.cattle.io/v3/tokens/token-abc", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer seed:secret")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 1)
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "v3", Name: "token-abc", Bearer: "seed:secret"}, recs[0])
+}
+
+// TestFacadeLoginFailureFixturesCreateTheRightKind pins that every login
+// failure fixture still created the resource the request asked for: a json
+// login is a v3 record whatever the response looked like, and no ext record
+// appears.
+func TestFacadeLoginFailureFixturesCreateTheRightKind(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		opts testrancher.Options
+	}{
+		{"dropped", testrancher.Options{DropLoginResponse: true}},
+		{"malformed", testrancher.Options{MalformedLoginResponse: true}},
+		{"name only", testrancher.Options{LoginNameOnly: true}},
+		{"unusable bearer", testrancher.Options{LoginBearerOverride: "malformed"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := testrancher.New(tc.opts)
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			body := `{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`
+			resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+			assert.Equal(t, 1, f.TokenCount(), "the token was created whatever the response")
+			assert.Len(t, f.BearersOfKind("v3"), 1, "a json login creates a v3 record")
+			assert.Empty(t, f.BearersOfKind("ext"))
+		})
+	}
+}
+
+// TestFacadeKubeconfigLoginIsAnExtObjectWithAName pins the kubeconfig login
+// shape: an ext Token object whose metadata names the record and whose
+// bearer carries the ext prefix, recorded as an ext token.
+func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	body := `{"type":"localProvider","responseType":"kubeconfig","username":"e2e-user","password":"e2e-pass"}`
+	resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	var got struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+		Status struct {
+			BearerToken string `json:"bearerToken"`
+		} `json:"status"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	require.NotEmpty(t, got.Metadata.Name)
+	assert.Equal(t, "ext/"+got.Metadata.Name+":", got.Status.BearerToken[:len("ext/"+got.Metadata.Name+":")])
+	assert.Equal(t, []string{got.Status.BearerToken}, f.BearersOfKind("ext"))
+	assert.Empty(t, f.BearersOfKind("v3"))
+}
+
+// TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx pins the
+// façade's model of the server: a deterministic 4xx proves nothing was
+// created, so no record exists after it; any other forced status models a
+// commit the client never learned of, so the record exists.
+func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		opts   testrancher.Options
+		mint   bool
+		status int
+		want   int
+	}{
+		{"login 401", testrancher.Options{LoginStatus: 401}, false, 401, 0},
+		{"login 500", testrancher.Options{LoginStatus: 500}, false, 500, 1},
+		{"mint 401", testrancher.Options{MintStatus: 401, SeedToken: "seed:secret"}, true, 401, 0},
+		{"mint 500", testrancher.Options{MintStatus: 500, SeedToken: "seed:secret"}, true, 500, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := testrancher.New(tc.opts)
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			var req *http.Request
+			var err error
+			if tc.mint {
+				req, err = http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{}}`))
+				require.NoError(t, err)
+				req.Header.Set("Authorization", "Bearer seed:secret")
+			} else {
+				req, err = http.NewRequest(http.MethodPost, srv.URL+"/v1-public/login", strings.NewReader(`{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`))
+				require.NoError(t, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			assert.Equal(t, tc.status, resp.StatusCode)
+			assert.Equal(t, tc.want, f.TokenCount())
+		})
+	}
+}
+
+// TestFacadeDeleteFaultModesFollowTheRecordRole pins that the fault modes
+// select by the record's role, not by the route: a v3 session token, an
+// ext session token, and an ext derived token each answer their own mode.
+func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name              string
+		opts              testrancher.Options
+		wantSessionStatus int
+		wantDerivedStatus int
+	}{
+		{"v3 session fails, derived fine", testrancher.Options{SessionDeleteMode: "fail"}, 500, 200},
+		{"ext session fails, derived fine", testrancher.Options{LoginShape: "ext", SessionDeleteMode: "fail"}, 500, 200},
+		{"derived fails, ext session fine", testrancher.Options{LoginShape: "ext", DerivedDeleteMode: "fail"}, 200, 500},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := testrancher.New(tc.opts)
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			login, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(`{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`))
+			require.NoError(t, err)
+			_ = login.Body.Close()
+			sessionKind := "v3"
+			if tc.opts.LoginShape == "ext" {
+				sessionKind = "ext"
+			}
+			sBearer := f.BearersOfKind(sessionKind)[0]
+			mint, err := http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{}}`))
+			require.NoError(t, err)
+			mint.Header.Set("Authorization", "Bearer "+sBearer)
+			resp, err := http.DefaultClient.Do(mint)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			var dBearer string
+			for _, b := range f.BearersOfKind("ext") {
+				if b != sBearer {
+					dBearer = b
+				}
+			}
+			require.NotEmpty(t, dBearer)
+			del := func(kind, name, bearer string) int {
+				path := "/k8s/clusters/local/apis/management.cattle.io/v3/tokens/"
+				if kind == "ext" {
+					path = mintTokensPath + "/"
+				}
+				req, err := http.NewRequest(http.MethodDelete, srv.URL+path+name, nil)
+				require.NoError(t, err)
+				req.Header.Set("Authorization", "Bearer "+bearer)
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				_ = resp.Body.Close()
+				return resp.StatusCode
+			}
+			sName, dName := nameOfBearer(sBearer), nameOfBearer(dBearer)
+			assert.Equal(t, tc.wantSessionStatus, del(sessionKind, sName, dBearer))
+			assert.Equal(t, tc.wantDerivedStatus, del("ext", dName, dBearer))
+		})
+	}
+}
+
+// TestFacadeRelayDepositOnCommand pins the SAML fixture: nothing is served
+// at /v1-public/authtokens/<id> until DepositRelay, then the encrypted
+// bearer appears.
+func TestFacadeRelayDepositOnCommand(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{EnableSAMLRelay: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1-public/authtokens/req-1")
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	pub := testPublicKeyB64(t)
+	f.DepositRelay("req-1", pub)
+	resp, err = http.Get(srv.URL + "/v1-public/authtokens/req-1")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	recs := f.RelayRequests()
+	require.Len(t, recs, 2)
+	assert.Equal(t, testrancher.RelayRecord{Method: http.MethodGet, Path: "/v1-public/authtokens/req-1"}, recs[0])
+}
+
+// TestFacadeExtTokenListAndDryRunDelete pins what the CLI's get and delete
+// verbs need against the façade: the ext collection lists every ext record
+// with a resourceVersion, a dry-run delete with the current precondition
+// changes nothing, a stale precondition is refused with 409, and every
+// attempt is recorded with its dry-run flag and precondition. The record is
+// created through the mint POST, so it is an ext token, not a v3 login
+// token.
+func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{SeedToken: "seed:secret"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	mint, err := http.NewRequest(http.MethodPost, srv.URL+mintTokensPath, strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
+	require.NoError(t, err)
+	mint.Header.Set("Authorization", "Bearer seed:secret")
+	resp, err := http.DefaultClient.Do(mint)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	names := f.TokensWithDescriptionContaining("ext", "[op:0123456789ab]")
+	require.Len(t, names, 1)
+	assert.Empty(t, f.TokensWithDescriptionContaining("v3", "[op:0123456789ab]"))
+	var created struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
+	assert.Equal(t, names[0], created.Metadata.Name, "the mint response names the created resource")
+
+	get := func(path string) map[string]any {
+		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer seed:secret")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var got map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		return got
+	}
+	list := get(mintTokensPath)
+	assert.Equal(t, "TokenList", list["kind"])
+	items, _ := list["items"].([]any)
+	descriptions := map[string]string{}
+	for _, it := range items {
+		obj, _ := it.(map[string]any)
+		meta, _ := obj["metadata"].(map[string]any)
+		spec, _ := obj["spec"].(map[string]any)
+		desc, _ := spec["description"].(string)
+		descriptions[meta["name"].(string)] = desc
+	}
+	require.Contains(t, descriptions, names[0], "the ext collection lists the ext record")
+	assert.Equal(t, "x [op:0123456789ab]", descriptions[names[0]], "the list carries the description the recovery searches")
+	one := get(mintTokensPath + "/" + names[0])
+	meta, _ := one["metadata"].(map[string]any)
+	rv, _ := meta["resourceVersion"].(string)
+	require.NotEmpty(t, rv)
+
+	del := func(body string) int {
+		req, err := http.NewRequest(http.MethodDelete, srv.URL+mintTokensPath+"/"+names[0], strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer seed:secret")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	assert.Equal(t, http.StatusOK, del(`{"dryRun":["All"],"preconditions":{"resourceVersion":"`+rv+`"}}`))
+	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:0123456789ab]"), 1, "dry run deletes nothing")
+	assert.Equal(t, http.StatusConflict, del(`{"preconditions":{"resourceVersion":"stale"}}`))
+	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:0123456789ab]"), 1, "a stale precondition deletes nothing")
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 2, "every attempt is recorded")
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", DryRun: true, Precondition: rv}, recs[0])
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", Precondition: "stale"}, recs[1])
 }
