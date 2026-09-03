@@ -27,7 +27,7 @@ func BaseURL(serverURL string) string {
 
 // RESTConfig builds a client-go rest.Config aimed at the Rancher k8s proxy
 // for the EXPLICITLY named cluster ("local" for the management plane). The
-// cluster is a required parameter, never ambient state: callers pass
+// cluster is a required parameter, never inherited from stored state: callers pass
 // engine.LocalCluster or the invocation's own --cluster value.
 func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	if cluster == "" {

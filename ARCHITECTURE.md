@@ -532,11 +532,11 @@ from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 ## Key design decisions
 
 **Scope is explicit and per-invocation.** Config holds servers and a
-`currentServer` pointer only. No cluster or project is ever persisted or ambient.
+`currentServer` pointer only. No cluster or project is ever persisted or implied.
 `--cluster` routes to a downstream cluster (required wherever routing is needed);
 `--project` filters Downstream namespaced kinds to a project's project namespaces.
 Defaults may never filter or place — a missing scope flag either widens the operation
-or is a `VALIDATION` error, never a silent ambient fallback.
+or is a `VALIDATION` error, never a silent fallback to stored state.
 
 **Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
 is a port; the concrete `clientFactory` (in `surface/cli`) loads config and computes the

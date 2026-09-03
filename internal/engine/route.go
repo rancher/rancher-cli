@@ -16,7 +16,7 @@ const FlagCluster = "cluster"
 // ResolveDownstreamCluster resolves --cluster for a command that always
 // targets a downstream cluster: an explicit flag is resolved via
 // ResolveCluster; an empty flag is a VALIDATION error — routing is never
-// filled from ambient state. Shared by resources.Route's Downstream branches
+// filled from stored state. Shared by resources.Route's Downstream branches
 // and the projects package's bespoke commands (create namespace, project
 // add/remove-namespace) — those live in a package resources already imports
 // (Route's project-membership validation), so this helper lives in engine,

@@ -70,7 +70,7 @@ func TestSkillEntriesAreMarkedBare(t *testing.T) {
 // regular file — a shape that would cause resolveDeps to fail with "not a
 // directory". The bare adapter path must never reach resolveDeps.
 func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
-	// Sandbox HOME and cache dirs so no ambient harness or lock state leaks.
+	// Sandbox HOME and cache dirs so no harness or lock state leaks in from the real home.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

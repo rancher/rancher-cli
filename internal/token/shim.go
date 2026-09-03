@@ -85,7 +85,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	name := config.LegacyCachePrefix + user
 	// Same whitespace-passes-Required gap as --user: a blank --server must
 	// fail loudly here, never fall through to resolveConn's config fallback
-	// and silently create against the ambient current server.
+	// and silently create against the stored current server.
 	server := strings.TrimSpace(in.String("server"))
 	if server == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,

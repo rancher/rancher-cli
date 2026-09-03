@@ -352,7 +352,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 		return clusterFamilyPoolCandidates(ctx, site, d, tail)
 	}
 
-	// Scope comes from the typed tail only — nothing ambient (no config, no
+	// Scope comes from the typed tail only — nothing inherited (no config, no
 	// env) may place or filter completion. A typed --project is its own
 	// announcement; absent flags leave the values empty.
 	clusterValue := ""

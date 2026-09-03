@@ -494,7 +494,7 @@ rancher oidc-client rotate-secret my-app --apply --yes
 
 - **Routing:** `--cluster` (display name or id) routes to a downstream cluster;
   `--namespace` scopes namespaced kinds. Scope is per-invocation only — no
-  cluster or project is persisted or ambient. Fleet kinds default to the
+  cluster or project is persisted or implied. Fleet kinds default to the
   `fleet-default` workspace.
 - **Project scope (`--project`):** `--project <id-or-name>` scopes Downstream
   namespaced kinds (`get`/`delete`/`patch`, plus `usage`) to a project's

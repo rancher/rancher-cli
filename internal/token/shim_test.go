@@ -147,7 +147,7 @@ func TestLegacyTokenAuthFlowEnvPrecedence(t *testing.T) {
 }
 
 // TestLegacyTokenNoContextCluster verifies that the shim never inherits the
-// ambient current-context cluster when --cluster is omitted: the cache slot
+// stored current-context cluster when --cluster is omitted: the cache slot
 // must be unscoped (empty cluster component) and the derived token create request body must
 // carry no clusterName, regardless of whatever cluster the operator's local
 // interactive CLI session has set.
@@ -261,7 +261,7 @@ func TestLegacyTokenCacheHitSurfacesLoosePermissionNotice(t *testing.T) {
 
 // errGetTokenStore wraps a CredStore and hard-fails GetToken for one server
 // (by Name), simulating a locked keychain or broken exec-credential helper for
-// an ambient server that is unrelated to the shim's actual target.
+// a stored current server that is unrelated to the shim's actual target.
 type errGetTokenStore struct {
 	config.CredStore
 	errName string
@@ -275,7 +275,7 @@ func (s *errGetTokenStore) GetToken(ref config.ServerRef) (string, error) {
 }
 
 // TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate is the round-3
-// repro for finding 1: a hard credential-store error for the ambient
+// repro for finding 1: a hard credential-store error for the stored current
 // current-context server (A) must not abort a cache-miss shim create for an
 // unrelated target server (B). Before the fix, resolveConn called
 // cfg.Effective unconditionally on a cache miss, and Effective's GetToken for
@@ -313,12 +313,12 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
-	// but must skip cfg.Effective (noAmbientContext=true, explicitServer=true)
+	// but must skip cfg.Effective (ignoreCurrentContext=true, explicitServer=true)
 	// and never call GetToken for server A.
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srvB.URL, "user": "b-user"}},
 		ui.Discard())
-	require.NoError(t, err, "store error for ambient server A must not block a derived token create against server B")
+	require.NoError(t, err, "store error for current server A must not block a derived token create against server B")
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/b-tok:secret", cred.Status.Token)
 }
@@ -355,7 +355,7 @@ func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 // empty or whitespace-only --server passes the pipeline's Required check
 // (which only rejects the literal empty string when the flag is absent) and
 // would otherwise fall through to resolveConn's config fallback, silently
-// creating against the ambient current-context server. Execute must reject it
+// creating against the stored current-context server. Execute must reject it
 // with a VALIDATION clierr, symmetric with the --user checks above.
 func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 	t.Parallel()
@@ -468,24 +468,24 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 		"padded-cluster invocation must not create a distinct 'local  ' slot")
 }
 
-// TestShimPathConsultsNoAmbientState is the permanent class guard against the shim
-// picking up ambient current-context state. A config whose current context names a
+// TestShimPathIgnoresCurrentContext is the permanent class guard against the shim
+// picking up stored current-context state. A config whose current context names a
 // same-host server entry ("wrong-server") whose GetToken hard-errors is paired with
 // a "right-server" entry (sorted first) that has a valid stored login token. A shim
 // invocation with the shared host URL, no --cluster, no --cacerts must succeed — it
 // must not call cfg.Effective (needsEff gated), must pick the CA from sorted order
-// not current-context (caForServer noAmbientContext), and must pick the stored login
+// not current-context (caForServer ignoreCurrentContext), and must pick the stored login
 // credential from rank-3 (sorted) not rank-2 (current-context). This test catches:
-// (1) caForServer ignoring the current-context tie-break when noAmbientContext=true,
-// (2) storedTokenForServer ignoring rank-2 when noAmbientContext=true,
-// (3) needsEff not calling cfg.Effective for the ambient server.
-func TestShimPathConsultsNoAmbientState(t *testing.T) {
+// (1) caForServer ignoring the current-context tie-break when ignoreCurrentContext=true,
+// (2) storedTokenForServer ignoring rank-2 when ignoreCurrentContext=true,
+// (3) needsEff not calling cfg.Effective for the current-context server.
+func TestShimPathIgnoresCurrentContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"metadata":{"name":"ambient-guard"},"status":{"bearerToken":"ext/ambient-guard:tok"}}`))
+			_, _ = w.Write([]byte(`{"metadata":{"name":"unrelated-guard"},"status":{"bearerToken":"ext/unrelated-guard:tok"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -509,7 +509,7 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	// Store hard-errors on GetToken for wrong-server, simulating a locked keychain
-	// or broken credential helper for the ambient current-context server.
+	// or broken credential helper for the stored current-context server.
 	store := &errGetTokenStore{CredStore: base, errName: "wrong-server"}
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
@@ -521,9 +521,9 @@ func TestShimPathConsultsNoAmbientState(t *testing.T) {
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testuser"}},
 		ui.Discard())
-	require.NoError(t, err, "shim must succeed: ambient wrong-server errors must not block a derived token create via right-server")
+	require.NoError(t, err, "shim must succeed: current-context wrong-server errors must not block a derived token create via right-server")
 	cred := res.Data.(*execCredential)
-	assert.Equal(t, "ext/ambient-guard:tok", cred.Status.Token)
+	assert.Equal(t, "ext/unrelated-guard:tok", cred.Status.Token)
 }
 
 // noticeRecordingStore wraps a CredStore with a pre-loaded notice buffer,

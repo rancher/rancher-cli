@@ -69,7 +69,7 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_COMPLETION_DEBUG` | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
 
 Scope is per-invocation: `--cluster` routes to a downstream cluster; `--project`
-filters namespaced kinds. No scope is persisted or ambient — see
+filters namespaced kinds. No scope is persisted or implied — see
 [Project scope](#project-scope---project).
 
 ## Install internals

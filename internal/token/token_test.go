@@ -1029,14 +1029,14 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 	assert.Equal(t, "tok-b", tok)
 }
 
-// TestStoredTokenForServerNoAmbientIgnoresLegacyNamedEntry is the round-7
+// TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry is the round-7
 // finding-3 repro: a config.yaml entry literally named "legacy:<user>" (a
 // hand-edited file, or one written before auth login rejected the prefix)
-// must NOT win the exact-name tier for a shim call. Under noAmbientContext,
+// must NOT win the exact-name tier for a shim call. Under ignoreCurrentContext,
 // wantName is a cache-slot label with no entry-name preference, so selection
 // follows sorted order alone — "aaa" here, not the exact-name match, which
 // sorts after it.
-func TestStoredTokenForServerNoAmbientIgnoresLegacyNamedEntry(t *testing.T) {
+func TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "legacy:zed"}, "tok-legacy"))
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "aaa"}, "tok-aaa"))
@@ -1049,7 +1049,7 @@ func TestStoredTokenForServerNoAmbientIgnoresLegacyNamedEntry(t *testing.T) {
 	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "legacy:zed", true, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok)
-	assert.Equal(t, "aaa", name, "sorted order must win; wantName carries no preference under noAmbientContext")
+	assert.Equal(t, "aaa", name, "sorted order must win; wantName carries no preference under ignoreCurrentContext")
 	assert.Equal(t, "tok-aaa", tok)
 }
 
@@ -1208,7 +1208,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	})
 
 	t.Run("empty cluster on shim path does not error", func(t *testing.T) {
-		// noAmbientContext=true (shim path): empty cluster stays unscoped, no error.
+		// ignoreCurrentContext=true (shim path): empty cluster stays unscoped, no error.
 		server, _, cluster, err := cmd.resolveConn("https://config.example", "", "", true)
 		require.NoError(t, err)
 		assert.Equal(t, "https://config.example", server)
@@ -2109,9 +2109,9 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 		assert.Equal(t, caZeta, got, "current server zeta must win over sorted alpha")
 	})
 
-	t.Run("noAmbientContext=true ignores current-server preference", func(t *testing.T) {
+	t.Run("ignoreCurrentContext=true ignores current-server preference", func(t *testing.T) {
 		t.Parallel()
-		// Same config as "current server wins" but with noAmbientContext=true:
+		// Same config as "current server wins" but with ignoreCurrentContext=true:
 		// even though the current server is "zeta", sorted order (alpha) must win.
 		cfg := &config.Config{
 			CurrentServer: "zeta",
@@ -2121,18 +2121,18 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 			},
 		}
 		got := caForServer(cfg, "https://shared.example", true)
-		assert.Equal(t, caAlpha, got, "noAmbientContext=true: current server zeta must be ignored; sorted alpha wins")
+		assert.Equal(t, caAlpha, got, "ignoreCurrentContext=true: current server zeta must be ignored; sorted alpha wins")
 	})
 }
 
 // TestNeedsEffGateEachDisjunct is the structural assertion for the needsEff gate in
 // resolveConn. For each combination of inputs where ALL three disjuncts are
 // false, cfg.Effective (and its GetToken call) must not fire. errGetTokenStore
-// errors on GetToken for "ambient" — if Effective is called unexpectedly,
+// errors on GetToken for "unrelated" — if Effective is called unexpectedly,
 // resolveConn returns an error and the test fails.
 //
 //   - Disjunct 1: server == ""
-//   - Disjunct 2: cluster == "" && !noAmbientContext
+//   - Disjunct 2: cluster == "" && !ignoreCurrentContext
 //   - Disjunct 3: caIn == "" && !explicitServer
 //
 // All three negations hold in each case below, so needsEff=false.
@@ -2140,79 +2140,79 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 	const inlinePEM = "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----"
 
 	cases := []struct {
-		name             string
-		server           string
-		cluster          string
-		caIn             string
-		noAmbientContext bool
+		name                 string
+		server               string
+		cluster              string
+		caIn                 string
+		ignoreCurrentContext bool
 	}{
 		{
-			// All three flags explicit, noAmbientContext=false:
+			// All three flags explicit, ignoreCurrentContext=false:
 			// server!="" (1 false), cluster!="" (2 false), caIn!="" (3 false).
-			name:   "all explicit flags noAmbientContext false",
+			name:   "all explicit flags ignoreCurrentContext false",
 			server: "https://test.example.com", cluster: "c-1", caIn: inlinePEM,
-			noAmbientContext: false,
+			ignoreCurrentContext: false,
 		},
 		{
-			// All three flags explicit, noAmbientContext=true:
-			// same logic; noAmbientContext irrelevant when cluster is set.
-			name:   "all explicit flags noAmbientContext true",
+			// All three flags explicit, ignoreCurrentContext=true:
+			// same logic; ignoreCurrentContext irrelevant when cluster is set.
+			name:   "all explicit flags ignoreCurrentContext true",
 			server: "https://test.example.com", cluster: "c-1", caIn: inlinePEM,
-			noAmbientContext: true,
+			ignoreCurrentContext: true,
 		},
 		{
-			// Shim's common case: explicit server + noAmbientContext=true, caIn="".
+			// Shim's common case: explicit server + ignoreCurrentContext=true, caIn="".
 			// Disjunct 1: server!="" → false.
-			// Disjunct 2: cluster="" but noAmbientContext=true → false.
+			// Disjunct 2: cluster="" but ignoreCurrentContext=true → false.
 			// Disjunct 3: caIn="" but explicitServer=true → false.
 			// Config is loaded (outer if: caIn==""), but Effective must not run.
-			name:   "noAmbientContext true empty cluster and caIn",
+			name:   "ignoreCurrentContext true empty cluster and caIn",
 			server: "https://test.example.com", cluster: "", caIn: "",
-			noAmbientContext: true,
+			ignoreCurrentContext: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			// Write a config with a current server pointing at "ambient".
-			// If Effective is called, GetToken for "ambient" errors → resolveConn
+			// Write a config with a current server pointing at "unrelated".
+			// If Effective is called, GetToken for "unrelated" errors → resolveConn
 			// propagates the error and the test catches it.
 			cfg := &config.Config{
-				CurrentServer: "ambient",
-				Servers:       map[string]config.Server{"ambient": {URL: "https://ambient.example.com"}},
+				CurrentServer: "unrelated",
+				Servers:       map[string]config.Server{"unrelated": {URL: "https://unrelated.example.com"}},
 			}
 			cfg.SetPath(config.FilePath(dir))
 			require.NoError(t, cfg.Write())
 
 			base := config.NewFileStore(dir)
-			store := &errGetTokenStore{CredStore: base, errName: "ambient"}
+			store := &errGetTokenStore{CredStore: base, errName: "unrelated"}
 			cmd := tokenCmd{dir: dir, store: store}
 
-			_, _, _, err := cmd.resolveConn(tc.server, tc.cluster, tc.caIn, tc.noAmbientContext)
+			_, _, _, err := cmd.resolveConn(tc.server, tc.cluster, tc.caIn, tc.ignoreCurrentContext)
 			require.NoError(t, err,
 				"resolveConn must not call cfg.Effective when needsEff=false (case %q)", tc.name)
 		})
 	}
 }
 
-// TestResolveConnNoAmbientRequiresServer asserts the resolveConn side of the
-// blank---server class: a noAmbientContext caller with no server must get the
+// TestResolveConnIgnoreCurrentContextRequiresServer asserts the resolveConn side of the
+// blank---server class: a ignoreCurrentContext caller with no server must get the
 // "--server is required" validation error without cfg.Effective ever running —
-// never the ambient current-context URL. errGetTokenStore errors on GetToken
-// for "ambient", so an unexpected Effective call would surface as a different
+// never the stored current-context URL. errGetTokenStore errors on GetToken
+// for "unrelated", so an unexpected Effective call would surface as a different
 // error and fail the assertions below.
-func TestResolveConnNoAmbientRequiresServer(t *testing.T) {
+func TestResolveConnIgnoreCurrentContextRequiresServer(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
-		CurrentServer: "ambient",
-		Servers:       map[string]config.Server{"ambient": {URL: "https://ambient.example.com"}},
+		CurrentServer: "unrelated",
+		Servers:       map[string]config.Server{"unrelated": {URL: "https://unrelated.example.com"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
 	base := config.NewFileStore(dir)
-	store := &errGetTokenStore{CredStore: base, errName: "ambient"}
+	store := &errGetTokenStore{CredStore: base, errName: "unrelated"}
 	cmd := tokenCmd{dir: dir, store: store}
 
 	_, _, _, err := cmd.resolveConn("", "", "", true)

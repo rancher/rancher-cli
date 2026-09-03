@@ -160,7 +160,7 @@ func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
 
 // setNoColorEnv sets all three color-activating env vars to empty — "unset"
 // per ActivateColor's own contract — so a "plain" (--color not passed)
-// render is actually plain, regardless of what the test runner's ambient
+// render is actually plain, regardless of what the test runner's own
 // shell has set.
 func setNoColorEnv(t *testing.T) {
 	t.Helper()

@@ -7,7 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
-// TestMain scrubs the ambient RANCHER_* env vars this package's tests
+// TestMain scrubs the RANCHER_* env vars inherited from the environment this package's tests
 // exercise as overrides, so a normal interactive shell with these set cannot
 // silently change what a test observes — DR-008.
 func TestMain(m *testing.M) {
