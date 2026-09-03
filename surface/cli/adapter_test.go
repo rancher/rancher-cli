@@ -94,6 +94,39 @@ func TestAdaptedPrimeCommandShowsHelpMarker(t *testing.T) {
 	assert.Contains(t, out.String(), runtime.PrimeSentence)
 }
 
+// TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled asserts the leaf
+// --help DESCRIPTION block renders PrimeSentence in green under the same
+// color-activation rule every other styled render uses, and plain when
+// styling is off — while an ordinary command's --help (no DESCRIPTION at
+// all) carries no color anywhere.
+func TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled(t *testing.T) {
+	t.Parallel()
+	render := func(color string) string {
+		var out bytes.Buffer
+		reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
+		root := &ucli.Command{
+			Name:     "rancher",
+			Writer:   &out,
+			Flags:    GlobalFlags(),
+			Commands: []*ucli.Command{Adapt(reg, primePingCmd{})},
+		}
+		argv := []string{"rancher", "primeping"}
+		if color != "" {
+			argv = append(argv, "--color", color)
+		}
+		argv = append(argv, "--help")
+		require.NoError(t, root.Run(t.Context(), argv))
+		return out.String()
+	}
+
+	styled := render("always")
+	assert.Contains(t, styled, "\x1b[32m"+runtime.PrimeSentence+"\x1b[0m", "PrimeSentence renders green when styling is on")
+
+	plain := render("never")
+	assert.NotContains(t, plain, "\x1b[", "PrimeSentence stays plain when styling is off")
+	assert.Contains(t, plain, runtime.PrimeSentence)
+}
+
 // TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker closes the loop the
 // runtime unit test opens: Adapt() never wires IO.Capability, so actually
 // EXECUTING a requirement-bearing command through the bare path must hit the

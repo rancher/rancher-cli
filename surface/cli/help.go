@@ -37,6 +37,9 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 		"colonOffsetCommands": colonOffsetCommands,
 		"primeMark":           primeMark,
 		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
+		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
+			return colorPrimeDescription(s, cmd, wrapped)
+		},
 	})
 }
 
@@ -46,7 +49,7 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 // as any other row — coloring happens afterward, in colorPrimeMark.
 func primeMark(cmd *ucli.Command) string {
 	if commandIsPrime(cmd) {
-		return "[Prime] "
+		return runtime.PrimeMarker + " "
 	}
 	return ""
 }
@@ -60,6 +63,18 @@ func colorPrimeMark(s style.Style, cmd *ucli.Command, wrapped string) string {
 		return wrapped
 	}
 	return runtime.ColorPrimeMarker(wrapped, s)
+}
+
+// colorPrimeDescription colors a Prime command's DESCRIPTION block entirely
+// green, under the same activation rule as every other styled render; an
+// ordinary command's Description is always empty, so wrapped is only ever
+// non-empty here for a Prime command, but the check stays explicit rather
+// than relying on that.
+func colorPrimeDescription(s style.Style, cmd *ucli.Command, wrapped string) string {
+	if !commandIsPrime(cmd) {
+		return wrapped
+	}
+	return s.Green(wrapped)
 }
 
 // helpStyle mirrors internal/runtime's stylesFor for the OUT stream, without
@@ -121,7 +136,7 @@ var rootCommandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
 {{bold "DESCRIPTION:"}}
-   {{template "descriptionTemplate" .}}{{end}}
+   {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
    {{if .UsageText}}{{wrap .UsageText 3}}{{else}}{{.FullName}} {{if .VisibleFlags}}[global options]{{end}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{else}}{{if .Arguments}} [arguments...]{{end}}{{end}}{{end}}{{if .Version}}{{if not .HideVersion}}
@@ -149,7 +164,7 @@ var commandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
 {{bold "DESCRIPTION:"}}
-   {{template "descriptionTemplate" .}}{{end}}
+   {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
    {{template "usageTemplate" .}}{{if .Category}}
@@ -172,7 +187,7 @@ var subcommandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
 {{bold "DESCRIPTION:"}}
-   {{template "descriptionTemplate" .}}{{end}}
+   {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
    {{if .UsageText}}{{wrap .UsageText 3}}{{else}}{{.FullName}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{else}}{{if .Arguments}} [arguments...]{{end}}{{end}}{{end}}{{if .Category}}
