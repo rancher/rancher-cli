@@ -107,8 +107,11 @@ func SetWaitForFlockHookForTest(fn func()) (restore func()) {
 // the in-process semaphore and the cross-process flock — immediately; the
 // lockWaitTimeout deadline covers the two waits together, not each.
 //
-// Lock ordering: the config lock is always OUTERMOST. Code holding the
-// token-cache lock or the helper-records lock must never acquire it.
+// Lock ordering: the config lock is outermost with ONE exception, the
+// plugin-login flock (WithPluginLoginLock), which the exec plugin holds
+// across an interactive login and takes BEFORE this lock; code holding
+// this lock never acquires that one. Code holding the token-cache lock or
+// the helper-records lock must never acquire this lock.
 //
 // RANCHER_CLI_CONFIG_NO_LOCK (any non-empty value) skips the flock —
 // escape hatch for filesystems with broken advisory locking — while the
