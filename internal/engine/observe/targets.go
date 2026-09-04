@@ -60,6 +60,10 @@ var Targets = []Target{
 	{Name: "fleet-agent", Selector: "app=fleet-agent"},
 	{Name: "kube-api-auth", DownstreamOnly: true, Namespace: "cattle-system", Selector: "app=kube-api-auth", Container: "kube-api-auth"},
 	{Name: "webhook", LocalOnly: true, Namespace: "cattle-system", Selector: "app=rancher-webhook"},
+	// The imperative API extension server (ext.cattle.io: tokens, kubeconfigs)
+	// runs as its own deployment on the local cluster; its store-side view of
+	// a token or kubeconfig operation is only visible here.
+	{Name: "api-extension", LocalOnly: true, Namespace: "cattle-system", Selector: "app=api-extension"},
 }
 
 // Lookup resolves a target by name.

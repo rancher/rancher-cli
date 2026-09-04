@@ -362,7 +362,7 @@
         },
         {
           "name": "logs",
-          "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+          "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)"
         },
         {
           "name": "support-bundle",

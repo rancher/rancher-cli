@@ -114,7 +114,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 | Command | Purpose |
 |---|---|
-| `logs <target>` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook` |
+| `logs <target>` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook`/`api-extension` |
 | `support-bundle` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 
 ## kubectl integration

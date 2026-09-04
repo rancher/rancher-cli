@@ -39,7 +39,7 @@ func NewLogs(clients engine.ClusterClientFactory) runtime.Command {
 func (c *logsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "logs",
-		Usage: "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)",
+		Usage: "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)",
 		Args:  []runtime.ArgSpec{{Name: "target", Type: "string", Required: true, Enum: Names()}},
 		Flags: []runtime.ArgSpec{
 			{Name: engine.FlagCluster, Type: "string", Desc: "target cluster `id|name`"},

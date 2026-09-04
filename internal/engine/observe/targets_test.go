@@ -20,7 +20,7 @@ func clierrCode(t *testing.T, err error) string {
 
 func TestLookup(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"server", "agent", "fleet-agent", "kube-api-auth", "webhook"} {
+	for _, name := range []string{"server", "agent", "fleet-agent", "kube-api-auth", "webhook", "api-extension"} {
 		_, ok := Lookup(name)
 		assert.True(t, ok, "target %q must be in the table", name)
 	}

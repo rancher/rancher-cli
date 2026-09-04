@@ -150,5 +150,5 @@ func TestLogsTargetCompletionYieldsExactlyTheTargetTable(t *testing.T) {
 	t.Parallel()
 	got, owned := positionalEnumCandidates(CompletionSite{Kind: SitePositional, Index: 0}, logsDescriptor)
 	assert.True(t, owned)
-	assert.Equal(t, []string{"agent", "fleet-agent", "kube-api-auth", "server", "webhook"}, got)
+	assert.Equal(t, []string{"agent", "api-extension", "fleet-agent", "kube-api-auth", "server", "webhook"}, got)
 }

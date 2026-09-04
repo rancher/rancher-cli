@@ -5412,7 +5412,8 @@
             "agent",
             "fleet-agent",
             "kube-api-auth",
-            "webhook"
+            "webhook",
+            "api-extension"
           ],
           "name": "target",
           "required": true,
@@ -5469,7 +5470,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook)"
+      "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)"
     },
     {
       "args": [
