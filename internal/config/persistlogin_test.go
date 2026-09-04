@@ -1,0 +1,616 @@
+package config
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"errors"
+	"math/big"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
+)
+
+const persistRestoreBase = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+
+func persistFixture(t *testing.T, existing *Server) (dir string, cfgPath string) {
+	t.Helper()
+	dir = t.TempDir()
+	t.Setenv(EnvCredentialStore, "")
+	// The file policy is explicit: under auto, RepinForLogin would probe the
+	// keychain and swap the store the test injected.
+	cfg := &Config{Servers: map[string]Server{"other": {URL: "https://other.ex"}}, CurrentServer: "other", TokenReuse: true, CredentialStore: "file"}
+	if existing != nil {
+		cfg.Servers["prod"] = *existing
+	}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+	return dir, FilePath(dir)
+}
+
+func fileOpen(store CredStore) func(string, string) (CredStore, string, error) {
+	return func(string, string) (CredStore, string, error) { return store, "", nil }
+}
+
+// pluginInput is the plugin caller's input against the fixture's file
+// policy: the decision names the file backend AND the disclosure the flow
+// gave, so revalidation passes; the revalidation tests override Decision
+// to make it fail on purpose.
+func pluginInput(dir, name string, store CredStore) PersistLoginInput {
+	return PersistLoginInput{Name: name, CollisionSuffix: true, CanonicalURL: "https://r.ex", CA: persistRestoreBase,
+		Provenance: clierr.ProvenanceExecLogin, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-new"},
+		TokenUserID: "user-a", Bearer: "ext/token-new:s", ExpiresAt: "2026-10-01T00:00:00Z",
+		OwnsEntry: true, ReadOnlyStoreIsFailure: true, OpenStore: fileOpen(store),
+		Decision: &StoreDecision{RequireSetting: true, Policy: "file", Pin: "", DisclosedPlaintextPath: CredentialsFilePath(dir)},
+		Now:      func() time.Time { return time.Date(2026, 9, 4, 18, 0, 0, 0, time.UTC) }}
+}
+
+func loginInput(dir string, store CredStore) PersistLoginInput {
+	in := pluginInput(dir, "prod", store)
+	in.CollisionSuffix, in.OwnsEntry, in.ReadOnlyStoreIsFailure = false, false, false
+	in.Provenance = clierr.ProvenanceDerived
+	in.Decision = nil
+	return in
+}
+
+func derivedEntry() *Server {
+	return &Server{URL: "https://r.ex", CA: persistRestoreBase, CAFingerprint: "f0",
+		Provenance: clierr.ProvenanceDerived, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"},
+		TokenUserID: "user-a", CredentialExpiresAt: "2026-09-20T08:00:00Z"}
+}
+
+// testCertificateAndFingerprint returns a self-signed certificate as PEM
+// and the fingerprint tlstrust.Fingerprint would compute for it.
+func testCertificateAndFingerprint(t *testing.T) (pemText, fingerprint string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	sum := sha256.Sum256(der)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), hex.EncodeToString(sum[:])
+}
+
+// TestPersistSuccessWritesEntryOnceAndRecordsThePriorToken asserts
+// the success path for both callers: exactly one config write before the
+// result, the entry naming the committed token, a superseded record for a
+// CLI-created prior token, CurrentServer untouched, and no failure
+// components.
+func TestPersistSuccessWritesEntryOnceAndRecordsThePriorToken(t *testing.T) {
+	for _, caller := range []string{"login", "plugin"} {
+		t.Run(caller, func(t *testing.T) {
+			dir, path := persistFixture(t, derivedEntry())
+			writes := 0
+			restore := SetPersistWriteHookForTest(func(string) error { writes++; return nil })
+			t.Cleanup(restore)
+			store := NewFileStore(dir)
+			in := loginInput(dir, store)
+			if caller == "plugin" {
+				in = pluginInput(dir, "prod", store)
+			}
+			out, err := PersistLoginCredential(t.Context(), dir, in)
+			require.NoError(t, err)
+			assert.Equal(t, 1, writes, "one config write on the success path")
+			assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
+			assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
+			assert.Nil(t, out.ConfigRecovery)
+			assert.Empty(t, out.Aborted)
+
+			cfg, err := Load(path)
+			require.NoError(t, err)
+			got := cfg.Servers["prod"]
+			assert.Equal(t, in.Provenance, got.Provenance)
+			assert.Equal(t, "token-new", got.TokenRef.Name)
+			assert.Equal(t, "user-a", got.TokenUserID)
+			assert.Equal(t, "2026-10-01T00:00:00Z", got.CredentialExpiresAt)
+			assert.Equal(t, persistRestoreBase, got.CA, "an update never changes trust")
+			assert.Equal(t, "f0", got.CAFingerprint)
+			require.Len(t, got.SupersededTokens, 1)
+			assert.Equal(t, clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}, got.SupersededTokens[0].Ref)
+			assert.Equal(t, "user-a", got.SupersededTokens[0].UserID)
+			assert.Equal(t, "2026-09-20T08:00:00Z", got.SupersededTokens[0].ExpiresAt)
+			assert.Equal(t, "2026-09-04T18:00:00Z", got.SupersededTokens[0].SupersededAt)
+			assert.Equal(t, got.SupersededTokens, out.SupersededTokens)
+			assert.Equal(t, "other", cfg.CurrentServer, "CurrentServer never changes")
+			assert.Equal(t, "other", out.CurrentServer)
+			assert.True(t, out.CurrentServerValid)
+			tok, err := store.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+			require.NoError(t, err)
+			assert.Equal(t, "ext/token-new:s", tok)
+		})
+	}
+}
+
+// TestPersistNeverRecordsAPriorTokenTheCLIDidNotCreate asserts a prior
+// token with a user-supplied or absent provenance leaves no record.
+func TestPersistNeverRecordsAPriorTokenTheCLIDidNotCreate(t *testing.T) {
+	for _, prior := range []Server{
+		{URL: "https://r.ex", Provenance: clierr.ProvenanceUserSupplied},
+		{URL: "https://r.ex"},
+	} {
+		name := string(prior.Provenance)
+		if name == "" {
+			name = "no provenance"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir, path := persistFixture(t, &prior)
+			_, err := PersistLoginCredential(t.Context(), dir, loginInput(dir, NewFileStore(dir)))
+			require.NoError(t, err)
+			cfg, err := Load(path)
+			require.NoError(t, err)
+			assert.Empty(t, cfg.Servers["prod"].SupersededTokens)
+		})
+	}
+}
+
+// TestPersistCreatesAnAbsentEntryForThePluginCallerOnly asserts the plugin
+// caller creates an absent entry with the connection's CA and no records,
+// and suffixes the name when it collides with a different-URL entry; the
+// login caller gets NOT_FOUND for an absent entry.
+func TestPersistCreatesAnAbsentEntryForThePluginCallerOnly(t *testing.T) {
+	dir, path := persistFixture(t, nil)
+	store := NewFileStore(dir)
+	out, err := PersistLoginCredential(t.Context(), dir, pluginInput(dir, "exec-login-r.ex", store))
+	require.NoError(t, err)
+	assert.Equal(t, "exec-login-r.ex", out.Name)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Servers, "exec-login-r.ex", "the absent entry was created")
+	assert.Equal(t, persistRestoreBase, cfg.Servers["exec-login-r.ex"].CA)
+	assert.Empty(t, cfg.Servers["exec-login-r.ex"].SupersededTokens)
+
+	// A same-URL plugin entry is reused, never duplicated.
+	out, err = PersistLoginCredential(t.Context(), dir, pluginInput(dir, "exec-login-r.ex", store))
+	require.NoError(t, err)
+	assert.Equal(t, "exec-login-r.ex", out.Name)
+	cfg, err = Load(path)
+	require.NoError(t, err)
+	assert.Len(t, cfg.Servers, 2, "the same-URL entry is reused, never duplicated")
+
+	// A different-URL collision takes the next free suffix.
+	cfg, _ = Load(path)
+	cfg.Servers["exec-login-x"] = Server{URL: "https://elsewhere.ex"}
+	cfg.Servers["exec-login-x-2"] = Server{URL: "https://elsewhere2.ex"}
+	require.NoError(t, cfg.Write())
+	out, err = PersistLoginCredential(t.Context(), dir, pluginInput(dir, "exec-login-x", store))
+	require.NoError(t, err)
+	assert.Equal(t, "exec-login-x-3", out.Name)
+
+	_, err = PersistLoginCredential(t.Context(), dir, loginInput(dir, store))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}
+
+// TestPersistEntryWriteFailureTouchesNothing asserts a failed entry
+// write reports writeFailed, leaves the store untouched, and leaves the
+// file byte-identical.
+func TestPersistEntryWriteFailureTouchesNothing(t *testing.T) {
+	for _, caller := range []string{"login", "plugin"} {
+		t.Run(caller, func(t *testing.T) {
+			dir, path := persistFixture(t, derivedEntry())
+			before, _ := os.ReadFile(path)
+			restore := SetPersistWriteHookForTest(func(step string) error {
+				if step == "entry" {
+					return errors.New("disk full")
+				}
+				return nil
+			})
+			t.Cleanup(restore)
+			store := NewFileStore(dir)
+			in := loginInput(dir, store)
+			if caller == "plugin" {
+				in = pluginInput(dir, "prod", store)
+			}
+			out, err := PersistLoginCredential(t.Context(), dir, in)
+			require.ErrorContains(t, err, "disk full")
+			assert.Equal(t, clierr.ConfigWriteFailed, out.ConfigState)
+			assert.Nil(t, out.Commit)
+			after, _ := os.ReadFile(path)
+			assert.Equal(t, string(before), string(after))
+			_, gerr := store.GetToken(ServerRef{Name: "prod"})
+			require.ErrorIs(t, gerr, ErrNoToken)
+		})
+	}
+}
+
+// failStore fails SetTokenWithOutcome with a fixed outcome and error.
+type failStore struct {
+	CredStore
+	out CommitOutcome
+	err error
+}
+
+func (f failStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) { return f.out, f.err }
+func (f failStore) SetToken(ref ServerRef, tok string) error {
+	_, err := f.SetTokenWithOutcome(ref, tok)
+	return err
+}
+
+// TestPersistRollsBackOnEveryErrorCarryingCommit asserts the rollback
+// cases: notWritten for create and update, possiblyCommitted for an
+// update, and the read-only store as a failure for the plugin caller. In
+// every case the entry is removed (create) or restored to its snapshot
+// (update), ConfigState is notWritten, and CurrentServer is unchanged. A
+// possiblyCommitted create keeps the entry and has its own test.
+func TestPersistRollsBackOnEveryErrorCarryingCommit(t *testing.T) {
+	boom := errors.New("backend refused")
+	cases := []struct {
+		name      string
+		existing  *Server
+		out       CommitOutcome
+		err       error
+		wantState clierr.CredentialState
+	}{
+		{"create notWritten", nil, CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}, boom, clierr.CredentialNotWritten},
+		{"update notWritten", derivedEntry(), CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}, boom, clierr.CredentialNotWritten},
+		{"update possiblyCommitted", derivedEntry(), CommitOutcome{Backend: clierr.BackendExec, State: CommitPossiblyCommitted, PriorSource: clierr.PriorUnknown, HelperRecordRetained: true}, boom, clierr.CredentialPossiblyCommitted},
+		{"read-only store is a failure", derivedEntry(), CommitOutcome{Backend: clierr.BackendExec, State: CommitNotWritten, PriorSource: clierr.PriorUnknown}, errors.Join(ErrTokenStoreUnsupported, errors.New("helper: read-only")), clierr.CredentialNotWritten},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, path := persistFixture(t, tc.existing)
+			name := "prod"
+			if tc.existing == nil {
+				name = "exec-login-r.ex"
+			}
+			var before Server
+			if tc.existing != nil {
+				before = *tc.existing
+			}
+			st := failStore{CredStore: NewFileStore(dir), out: tc.out, err: tc.err}
+			out, err := PersistLoginCredential(t.Context(), dir, pluginInput(dir, name, st))
+			require.ErrorIs(t, err, tc.err, "the commit's own error is the primary")
+			assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState, "rolled back")
+			assert.Equal(t, tc.wantState, out.CredentialState)
+			require.NotNil(t, out.Commit)
+			assert.Nil(t, out.ConfigRecovery)
+			cfg, lerr := Load(path)
+			require.NoError(t, lerr)
+			if tc.existing == nil {
+				_, present := cfg.Servers[name]
+				assert.False(t, present, "a created entry is removed")
+			} else {
+				assert.Equal(t, before, cfg.Servers[name], "an updated entry is restored to its snapshot")
+			}
+			assert.Equal(t, "other", cfg.CurrentServer)
+		})
+	}
+}
+
+// TestPersistKeepsACreatedEntryWhenTheCallerCannotClearTheStore is the one
+// exception to removal on create: a possiblyCommitted create keeps the
+// entry so `auth logout <entry>` has something to address, and the caller
+// reports credentialRecovery. The caller revokes the credential on every
+// failure, so the kept entry must not name a token: it is written back
+// with URL, trust, and provenance only, as a logout handle.
+func TestPersistKeepsACreatedEntryWhenTheCallerCannotClearTheStore(t *testing.T) {
+	dir, path := persistFixture(t, nil)
+	st := failStore{CredStore: NewFileStore(dir),
+		out: CommitOutcome{Backend: clierr.BackendExec, State: CommitPossiblyCommitted, PriorSource: clierr.PriorUnknown, HelperRecordRetained: true},
+		err: errors.New("helper hung")}
+	out, err := PersistLoginCredential(t.Context(), dir, pluginInput(dir, "exec-login-r.ex", st))
+	require.ErrorContains(t, err, "helper hung")
+	assert.Equal(t, clierr.ConfigWritten, out.ConfigState, "the entry stays as the logout handle")
+	// The credential-recovery component is composed by token.FailLogin from
+	// these facts; the primitive must carry them intact.
+	assert.Equal(t, clierr.CredentialPossiblyCommitted, out.CredentialState)
+	require.NotNil(t, out.Commit)
+	assert.True(t, out.Commit.HelperRecordRetained)
+	assert.Equal(t, clierr.BackendExec, out.Commit.Backend)
+	cfg, _ := Load(path)
+	got, present := cfg.Servers["exec-login-r.ex"]
+	require.True(t, present)
+	assert.Equal(t, "https://r.ex", got.URL)
+	assert.Equal(t, clierr.ProvenanceExecLogin, got.Provenance)
+	assert.Nil(t, got.TokenRef, "the entry never names a token the caller will revoke")
+	assert.Empty(t, got.TokenUserID)
+	assert.Empty(t, got.CredentialExpiresAt)
+}
+
+// TestPersistReadOnlyHelperForLoginRestoresAndReturnsTheSentinel
+// asserts auth login's warn-and-succeed input: the entry goes back to its
+// snapshot, nothing is stored, the sentinel is returned for the caller,
+// and a pending guided-trust CA is still applied to the restored entry.
+func TestPersistReadOnlyHelperForLoginRestoresAndReturnsTheSentinel(t *testing.T) {
+	dir, path := persistFixture(t, derivedEntry())
+	st := failStore{CredStore: NewFileStore(dir),
+		out: CommitOutcome{Backend: clierr.BackendExec, State: CommitNotWritten, PriorSource: clierr.PriorUnknown},
+		err: errors.Join(ErrTokenStoreUnsupported, errors.New("helper: read-only"))}
+	in := loginInput(dir, st)
+	in.PendingTrust = &PendingTrust{CA: "-----BEGIN CERTIFICATE-----\nNEW\n-----END CERTIFICATE-----\n", Fingerprint: "f1"}
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorIs(t, err, ErrTokenStoreUnsupported)
+	assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
+	cfg, _ := Load(path)
+	got := cfg.Servers["prod"]
+	assert.Equal(t, "token-old", got.TokenRef.Name, "metadata restored from the snapshot")
+	assert.Empty(t, got.SupersededTokens)
+	assert.Equal(t, in.PendingTrust.CA, got.CA, "trust the user accepted is persisted as today")
+	assert.Equal(t, "f1", got.CAFingerprint)
+}
+
+// TestPersistRollbackFailureReportsConfigRecovery asserts a failed
+// rollback write leaves the entry as written, reports rollbackFailed, and
+// carries the entry, the exact prior snapshot, and the delete-server
+// command; a create carries no prior.
+func TestPersistRollbackFailureReportsConfigRecovery(t *testing.T) {
+	for _, existing := range []*Server{derivedEntry(), nil} {
+		label, name := "update", "prod"
+		if existing == nil {
+			label, name = "create", "exec-login-r.ex"
+		}
+		t.Run(label, func(t *testing.T) {
+			dir, path := persistFixture(t, existing)
+			restore := SetPersistWriteHookForTest(func(step string) error {
+				if step == "rollback" {
+					return errors.New("read-only filesystem")
+				}
+				return nil
+			})
+			st := failStore{CredStore: NewFileStore(dir), out: CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}, err: errors.New("refused")}
+			out, err := PersistLoginCredential(t.Context(), dir, pluginInput(dir, name, st))
+			restore()
+			require.ErrorContains(t, err, "refused")
+			assert.Equal(t, clierr.ConfigRollbackFailed, out.ConfigState)
+			require.NotNil(t, out.ConfigRecovery)
+			assert.Equal(t, name, out.ConfigRecovery.Entry)
+			assert.Equal(t, "rancher config delete-server "+clierr.ShellQuote(name), out.ConfigRecovery.Command)
+			cfg, _ := Load(path)
+			assert.Equal(t, "token-new", cfg.Servers[name].TokenRef.Name, "the entry stays as written after step 3")
+			if existing == nil {
+				assert.Nil(t, out.ConfigRecovery.Prior)
+				return
+			}
+			prior := out.ConfigRecovery.Prior
+			require.NotNil(t, prior)
+			assert.Equal(t, existing.URL, prior.URL)
+			assert.Equal(t, existing.CA, prior.CA, "the exact CA value, byte for byte")
+			assert.Equal(t, "f0", prior.CAFingerprint)
+			assert.Equal(t, existing.Provenance, prior.Provenance)
+			assert.Equal(t, existing.TokenRef, prior.TokenRef)
+			assert.Equal(t, existing.TokenUserID, prior.TokenUserID)
+			assert.Equal(t, existing.CredentialExpiresAt, prior.CredentialExpiresAt)
+		})
+	}
+}
+
+// TestPersistPriorFingerprintIsComputedWhenNotStored asserts a snapshot
+// with an inline CA and no stored fingerprint still reports one, in the
+// same encoding tlstrust.Fingerprint uses (lowercase hex of SHA-256 over
+// the certificate's DER).
+func TestPersistPriorFingerprintIsComputedWhenNotStored(t *testing.T) {
+	certPEM, wantFingerprint := testCertificateAndFingerprint(t)
+	existing := derivedEntry()
+	existing.CA, existing.CAFingerprint = certPEM, ""
+	dir, _ := persistFixture(t, existing)
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "rollback" {
+			return errors.New("ro")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+	st := failStore{CredStore: NewFileStore(dir), out: CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}, err: errors.New("refused")}
+	out, _ := PersistLoginCredential(t.Context(), dir, loginInput(dir, st))
+	require.NotNil(t, out.ConfigRecovery)
+	assert.Equal(t, wantFingerprint, out.ConfigRecovery.Prior.CAFingerprint)
+}
+
+// TestPersistRecoveryCommandQuotesAHostileEntryName asserts the emitted
+// recovery command survives an operator-chosen entry name with whitespace,
+// quotes, and shell metacharacters: entry names are only prefix-checked,
+// and the command is meant to be pasted. The value round-trips through
+// /bin/sh as one argument.
+func TestPersistRecoveryCommandQuotesAHostileEntryName(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no POSIX shell")
+	}
+	hostile := "prod it's; rm -rf /"
+	existing := derivedEntry()
+	dir, path := persistFixture(t, nil)
+	cfg, _ := Load(path)
+	cfg.Servers[hostile] = *existing
+	require.NoError(t, cfg.Write())
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "rollback" {
+			return errors.New("ro")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+	st := failStore{CredStore: NewFileStore(dir), out: CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}, err: errors.New("refused")}
+	in := loginInput(dir, st)
+	in.Name = hostile
+	out, _ := PersistLoginCredential(t.Context(), dir, in)
+	require.NotNil(t, out.ConfigRecovery)
+	assert.Equal(t, "rancher config delete-server 'prod it'\\''s; rm -rf /'", out.ConfigRecovery.Command)
+	words, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(out.ConfigRecovery.Command, "rancher ")).Output()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"config", "delete-server", hostile}, strings.Split(strings.TrimRight(string(words), "\n"), "\n"))
+}
+
+// TestPersistRevalidationAbortsBeforeAnyWrite asserts the plugin
+// caller's pre-interaction decision is re-checked under the lock: the
+// setting turned off, or the backend now the plaintext file without the
+// disclosure, aborts with no write and no store access.
+func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
+	cases := []struct {
+		name    string
+		mutate  func(dir string, cfg *Config)
+		decide  StoreDecision
+		wantMsg string
+	}{
+		{"setting turned off", func(_ string, cfg *Config) { cfg.TokenReuse = false },
+			StoreDecision{RequireSetting: true, Policy: "file", DisclosedPlaintextPath: ""}, "token reuse was turned off"},
+		{"policy became file undisclosed", func(_ string, cfg *Config) { cfg.CredentialStore = "file" },
+			StoreDecision{RequireSetting: true, Policy: "keychain"}, "plaintext"},
+		{"auto pin became file undisclosed", func(dir string, cfg *Config) { cfg.CredentialStore = ""; require.NoError(t, WritePin(dir, "file")) },
+			StoreDecision{RequireSetting: true, Policy: "auto", Pin: "keychain"}, "plaintext"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, path := persistFixture(t, nil)
+			cfg, _ := Load(path)
+			tc.mutate(dir, cfg)
+			require.NoError(t, cfg.Write())
+			before, _ := os.ReadFile(path)
+			opened := false
+			in := pluginInput(dir, "exec-login-r.ex", NewFileStore(dir))
+			in.Decision = &tc.decide
+			in.OpenStore = func(p, d string) (CredStore, string, error) { opened = true; return NewFileStore(d), "", nil }
+			out, err := PersistLoginCredential(t.Context(), dir, in)
+			require.ErrorIs(t, err, ErrPersistAborted)
+			require.ErrorContains(t, err, tc.wantMsg)
+			assert.NotEmpty(t, out.Aborted)
+			assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState)
+			assert.False(t, opened, "no store access after an abort")
+			after, _ := os.ReadFile(path)
+			assert.Equal(t, string(before), string(after))
+		})
+	}
+
+	t.Run("disclosed file backend proceeds", func(t *testing.T) {
+		dir, path := persistFixture(t, nil)
+		cfg, _ := Load(path)
+		cfg.CredentialStore = "" // auto, pinned to file below
+		require.NoError(t, cfg.Write())
+		require.NoError(t, WritePin(dir, "file"))
+		// RepinForLogin probes the keychain under an auto file pin; the
+		// probe is stubbed unusable so the file pin stands.
+		old := keyringUsable
+		keyringUsable = func() bool { return false }
+		resetKeyringUsableCache()
+		t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
+		in := pluginInput(dir, "exec-login-r.ex", NewFileStore(dir))
+		in.Decision = &StoreDecision{RequireSetting: true, Policy: "auto", Pin: "file", DisclosedPlaintextPath: CredentialsFilePath(dir)}
+		_, err := PersistLoginCredential(t.Context(), dir, in)
+		require.NoError(t, err)
+	})
+}
+
+// TestPersistPreCheckRunsUnderTheLockBeforeAnyWrite asserts the caller's
+// pre-check sees the freshly loaded config and a failure writes nothing.
+func TestPersistPreCheckRunsUnderTheLockBeforeAnyWrite(t *testing.T) {
+	dir, path := persistFixture(t, derivedEntry())
+	before, _ := os.ReadFile(path)
+	in := loginInput(dir, NewFileStore(dir))
+	in.PreCheck = func(cfg *Config) error {
+		if _, ok := cfg.Servers["prod"]; !ok {
+			return errors.New("missing")
+		}
+		return clierr.New(clierr.CodeConflict, "server entry \"prod\" changed during login")
+	}
+	_, err := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorContains(t, err, "changed during login")
+	after, _ := os.ReadFile(path)
+	assert.Equal(t, string(before), string(after))
+}
+
+// TestPersistPendingTrustWriteFailureCompensatesAndRestores asserts auth
+// login's second write: a failed CA write after a committed credential
+// compensates the store and restores the snapshot; a failed restore
+// reports rollbackFailed with ConfigRecovery.
+func TestPersistPendingTrustWriteFailureCompensatesAndRestores(t *testing.T) {
+	dir, path := persistFixture(t, derivedEntry())
+	store := NewFileStore(dir)
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "ext/token-old:s"))
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "trust" {
+			return errors.New("trust write failed")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+	in := loginInput(dir, store)
+	in.PendingTrust = &PendingTrust{CA: "new-ca", Fingerprint: "f1"}
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorContains(t, err, "trust write failed")
+	assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState, "restored")
+	assert.Equal(t, clierr.CredentialCompensated, out.CredentialState)
+	tok, _ := store.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+	assert.Equal(t, "ext/token-old:s", tok, "the prior credential is back")
+	cfg, _ := Load(path)
+	assert.Equal(t, "token-old", cfg.Servers["prod"].TokenRef.Name)
+	assert.Equal(t, persistRestoreBase, cfg.Servers["prod"].CA)
+}
+
+// TestPersistSuccessStatesAreSuccessForEveryBackend asserts the three
+// nil-error commit states are success for both callers: a file store
+// (committed), the exec fake helper (helperNonAtomic), and a keyring whose
+// prior was unreadable (committedUncompensatable). None produces a
+// rollback or a recovery component.
+func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
+	t.Run("exec helperNonAtomic", func(t *testing.T) {
+		warmFakeHelper(t)
+		useFakeHelper(t, "ok")
+		dir, _ := persistFixture(t, derivedEntry())
+		in := pluginInput(dir, "prod", nil)
+		in.OpenStore = func(string, string) (CredStore, string, error) { return OpenStoreWithNotice("exec:fake", dir) }
+		out, err := PersistLoginCredential(t.Context(), dir, in)
+		require.NoError(t, err)
+		assert.Equal(t, clierr.CredentialHelperNonAtomic, out.CredentialState)
+		assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
+		assert.Nil(t, out.ConfigRecovery)
+	})
+	t.Run("keyring committedUncompensatable", func(t *testing.T) {
+		keyring.MockInit()
+		dir, path := persistFixture(t, derivedEntry())
+		cfg, _ := Load(path)
+		cfg.CredentialStore = "keychain" // explicit: no auto probe, no repin
+		require.NoError(t, cfg.Write())
+		withFakeKeyring(t, &fakeKeyring{items: map[string]string{}, reads: []keyringRead{{err: errors.New("locked")}}})
+		in := loginInput(dir, nil)
+		in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
+		out, err := PersistLoginCredential(t.Context(), dir, in)
+		require.NoError(t, err)
+		assert.Equal(t, clierr.CredentialCommittedUncompensatable, out.CredentialState)
+		assert.Nil(t, out.ConfigRecovery)
+	})
+}
+
+// TestPersistNoNetworkAndLockHeld asserts the primitive runs entirely
+// under the config lock (the lock hook fires once,
+// before any write) and takes no context-carrying network dependency.
+func TestPersistNoNetworkAndLockHeld(t *testing.T) {
+	dir, _ := persistFixture(t, derivedEntry())
+	held := 0
+	restore := SetLockHookForTest(func() { held++ })
+	t.Cleanup(restore)
+	_, err := PersistLoginCredential(t.Context(), dir, loginInput(dir, NewFileStore(dir)))
+	require.NoError(t, err)
+	assert.Equal(t, 1, held)
+}
+
+// TestUpdateServerEntryWritesOnlyWhenChanged asserts the record-write
+// helper: it reloads under the lock, writes only when fn reports a change,
+// and fails NOT_FOUND for an unknown entry.
+func TestUpdateServerEntryWritesOnlyWhenChanged(t *testing.T) {
+	dir, path := persistFixture(t, derivedEntry())
+	writes := 0
+	restore := SetPersistWriteHookForTest(func(string) error { writes++; return nil })
+	t.Cleanup(restore)
+	require.NoError(t, UpdateServerEntry(t.Context(), dir, "prod", func(*Server) bool { return false }))
+	assert.Equal(t, 0, writes)
+	require.NoError(t, UpdateServerEntry(t.Context(), dir, "prod", func(s *Server) bool { s.LoggedOutAt = "now"; return true }))
+	assert.Equal(t, 1, writes)
+	cfg, _ := Load(path)
+	assert.Equal(t, "now", cfg.Servers["prod"].LoggedOutAt)
+	err := UpdateServerEntry(t.Context(), dir, "nope", func(*Server) bool { return true })
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}

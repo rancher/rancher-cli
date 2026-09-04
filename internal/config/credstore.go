@@ -121,12 +121,17 @@ func NewFileStore(dir string) CredStore {
 	return newFileStore(dir, &noticeBuffer{})
 }
 
+// CredentialsFilePath is the plaintext file the file backend writes tokens
+// to, named in the disclosure the plugin-created login gives before an
+// interactive login under that backend.
+func CredentialsFilePath(dir string) string { return filepath.Join(dir, "credentials.yaml") }
+
 // newFileStore builds a fileStore recording onto nb — the shared-buffer
 // constructor keyringStore uses for its file-backed cache; NewFileStore
 // gives a standalone fileStore its own buffer.
 func newFileStore(dir string, nb *noticeBuffer) *fileStore {
 	return &fileStore{
-		path:          filepath.Join(dir, "credentials.yaml"),
+		path:          CredentialsFilePath(dir),
 		cachePath:     filepath.Join(dir, "token-cache.yaml"),
 		cacheLockPath: filepath.Join(dir, "token-cache.lock"),
 		notices:       nb,
@@ -1092,7 +1097,7 @@ func openStoreResolved(p, dir string) (CredStore, string, error) {
 		// path (resolution is a side-effect of the first credential call, outside
 		// any pipeline Result). Callers that have an envelope (login via
 		// OpenStoreWithNotice) get the notice as a return value instead.
-		notice := fmt.Sprintf("keychain unavailable; credentials will be stored in plaintext %s", filepath.Join(dir, "credentials.yaml"))
+		notice := fmt.Sprintf("keychain unavailable; credentials will be stored in plaintext %s", CredentialsFilePath(dir))
 		return NewFileStore(dir), notice, nil
 	}
 }
