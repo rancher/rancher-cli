@@ -1,6 +1,9 @@
 package clierr
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // TokenKind names the store a Rancher token lives in and therefore the
 // path that deletes it and the CLI kind that addresses it.
@@ -58,6 +61,10 @@ const (
 	ProvenanceDerived       Provenance = "derived"
 	ProvenanceLegacySession Provenance = "legacySession"
 	ProvenanceUserSupplied  Provenance = "userSupplied"
+	// ProvenanceExecLogin marks a login credential the exec plugin created
+	// for itself under the token-reuse setting; it is persisted with the
+	// entry, and only the setting decides whether it may be used.
+	ProvenanceExecLogin Provenance = "execLogin"
 )
 
 // CredentialBackend names the physical credential store a commit reached.
@@ -106,6 +113,9 @@ const (
 	ConfigNotWritten  ConfigState = "notWritten"
 	ConfigWritten     ConfigState = "written"
 	ConfigWriteFailed ConfigState = "writeFailed"
+	// ConfigRollbackFailed means an entry this operation wrote could not be
+	// restored to its prior state after the credential commit failed.
+	ConfigRollbackFailed ConfigState = "rollbackFailed"
 )
 
 // LoginStage is where a login failed: while acquiring the credential or
@@ -115,6 +125,10 @@ type LoginStage string
 const (
 	StageAuthentication LoginStage = "authentication"
 	StageCommit         LoginStage = "commit"
+	// StageClusterToken is the plugin-created login's own step: creating
+	// and validating the cluster token that proves the new credential can
+	// create, before anything is persisted.
+	StageClusterToken LoginStage = "clusterToken"
 )
 
 // PrimaryFailure is the primary error's own projection, kept whole so
@@ -171,6 +185,96 @@ type CredentialRecovery struct {
 	DataLossRisk         string            `json:"dataLossRisk"`
 }
 
+// SupersededToken is a CLI-created token an entry no longer holds the
+// credential for: it was replaced by a later login and has not yet been
+// retired. Its owner is captured from the create response that made it,
+// never inferred later; an empty owner is a fact the retirement rules
+// handle, not a gap to fill.
+type SupersededToken struct {
+	Ref          TokenRef `json:"ref"`
+	UserID       string   `json:"userId,omitempty"`
+	ExpiresAt    string   `json:"expiresAt,omitempty"`
+	SupersededAt string   `json:"supersededAt"`
+	// LastAttempt is the most recent failed retirement, carried without
+	// its Ref (the record's own Ref is the token); nil until a delete has
+	// failed. A successful retirement removes the record instead.
+	LastAttempt *RevokeOutcome `json:"lastAttempt,omitempty"`
+}
+
+// PriorEntry is the complete pre-write snapshot of a server entry, carried
+// so an operator can rebuild trust and URL by hand when the entry could
+// not be restored. CA is the exact stored value, byte for byte; the text
+// projection names only its shape.
+type PriorEntry struct {
+	URL                 string            `json:"url"`
+	CA                  string            `json:"ca,omitempty"`
+	CAFingerprint       string            `json:"caFingerprint,omitempty"`
+	Provenance          Provenance        `json:"provenance,omitempty"`
+	TokenRef            *TokenRef         `json:"tokenRef,omitempty"`
+	TokenUserID         string            `json:"tokenUserId,omitempty"`
+	CredentialExpiresAt string            `json:"credentialExpiresAt,omitempty"`
+	SupersededTokens    []SupersededToken `json:"supersededTokens,omitempty"`
+}
+
+// ConfigRecovery is present only when an entry this operation wrote could
+// not be rolled back: the entry, its complete prior state (nil when the
+// operation created it), and the one command that removes it. The command
+// ends in the same config write that just failed and, when the file is
+// still unwritable, fails the same way naming the file.
+type ConfigRecovery struct {
+	Entry   string      `json:"entry"`
+	Prior   *PriorEntry `json:"prior,omitempty"`
+	Command string      `json:"command"`
+}
+
+// caShape names the prior CA's shape for the text projection without
+// carrying its bytes.
+func (p *PriorEntry) caShape() string {
+	switch {
+	case p.CA == "":
+		return "system roots"
+	case strings.Contains(p.CA, "-----BEG"):
+		return fmt.Sprintf("inline PEM (%d bytes)", len(p.CA))
+	default:
+		return "path " + p.CA
+	}
+}
+
+// text renders the prior entry on one line: URL, CA shape and fingerprint,
+// provenance, the token it named with owner and expiry, and how many
+// superseded records it carried.
+func (p *PriorEntry) text() string {
+	parts := []string{p.URL, "CA " + p.caShape()}
+	if p.CAFingerprint != "" {
+		parts[1] += " fingerprint " + p.CAFingerprint
+	}
+	if p.Provenance != "" {
+		parts = append(parts, "provenance "+string(p.Provenance))
+	}
+	if p.TokenRef != nil {
+		tok := "token " + p.TokenRef.String()
+		var facts []string
+		if p.TokenUserID != "" {
+			facts = append(facts, "user "+p.TokenUserID)
+		}
+		if p.CredentialExpiresAt != "" {
+			facts = append(facts, "expires "+p.CredentialExpiresAt)
+		}
+		if len(facts) > 0 {
+			tok += " (" + strings.Join(facts, ", ") + ")"
+		}
+		parts = append(parts, tok)
+	}
+	switch n := len(p.SupersededTokens); n {
+	case 0:
+	case 1:
+		parts = append(parts, "1 superseded token")
+	default:
+		parts = append(parts, fmt.Sprintf("%d superseded tokens", n))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // LoginFailureDetails is the details payload of every auth login failure
 // after this operation attempted to create a token or reached its commit:
 // the primary failure, the stage, what each persistence system holds, the
@@ -184,6 +288,8 @@ type LoginFailureDetails struct {
 	OperationMarker    string              `json:"operationMarker,omitempty"`
 	SessionToken       *TokenFate          `json:"sessionToken,omitempty"`
 	DerivedToken       *TokenFate          `json:"derivedToken,omitempty"`
+	ClusterToken       *TokenFate          `json:"clusterToken,omitempty"`
+	ConfigRecovery     *ConfigRecovery     `json:"configRecovery,omitempty"`
 	Recovery           string              `json:"recovery"`
 }
 
@@ -242,6 +348,15 @@ func (d LoginFailureDetails) TextDetails() []string {
 	}
 	if d.DerivedToken != nil {
 		lines = append(lines, fateLine("derived token", d.DerivedToken))
+	}
+	if d.ClusterToken != nil {
+		lines = append(lines, fateLine("cluster token", d.ClusterToken))
+	}
+	if d.ConfigRecovery != nil {
+		lines = append(lines, "config entry "+d.ConfigRecovery.Entry+" could not be restored; remove it with: "+d.ConfigRecovery.Command)
+		if d.ConfigRecovery.Prior != nil {
+			lines = append(lines, "  prior entry: "+d.ConfigRecovery.Prior.text())
+		}
 	}
 	return append(lines, "recover: "+d.Recovery)
 }

@@ -178,3 +178,78 @@ func countLines(lines []string, want string) int {
 	}
 	return n
 }
+
+// TestProvenanceExecLoginIsFourthValue asserts the persisted provenance a
+// plugin-created login carries is distinct from the three acquisition
+// values and serializes as the documented string.
+func TestProvenanceExecLoginIsFourthValue(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, Provenance("execLogin"), ProvenanceExecLogin)
+	for _, p := range []Provenance{ProvenanceDerived, ProvenanceLegacySession, ProvenanceUserSupplied} {
+		assert.NotEqual(t, p, ProvenanceExecLogin)
+	}
+	assert.Equal(t, LoginStage("clusterToken"), StageClusterToken)
+	assert.Equal(t, ConfigState("rollbackFailed"), ConfigRollbackFailed)
+}
+
+// TestLoginFailureDetailsCarriesClusterTokenAndConfigRecovery asserts the
+// two new components serialize under their documented keys and render as
+// text lines: the cluster token like the other fates, the config recovery
+// with the remove command, the prior entry's URL, and the CA's shape
+// (never its bytes).
+func TestLoginFailureDetailsCarriesClusterTokenAndConfigRecovery(t *testing.T) {
+	t.Parallel()
+	ref := TokenRef{Kind: TokenKindExt, Name: "token-c1"}
+	d := LoginFailureDetails{
+		Primary: PrimaryFailure{Code: CodeGeneric, Message: "boom"},
+		Stage:   StageClusterToken,
+		ClusterToken: &TokenFate{Outcome: CreateKnown, Ref: &ref, Marked: true,
+			Cleanup: &RevokeOutcome{Ref: &ref, Result: ResultRevoked}},
+		ConfigState: ConfigRollbackFailed,
+		ConfigRecovery: &ConfigRecovery{Entry: "exec-login-r.ex", Command: "rancher config delete-server 'exec-login-r.ex'",
+			Prior: &PriorEntry{URL: "https://r.ex", CA: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+				CAFingerprint: "ab12", Provenance: ProvenanceExecLogin, TokenRef: &TokenRef{Kind: TokenKindExt, Name: "token-old"},
+				TokenUserID: "user-a", CredentialExpiresAt: "2026-09-20T08:00:00Z",
+				SupersededTokens: []SupersededToken{{Ref: TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"}, UserID: "user-a",
+					SupersededAt: "2026-09-04T18:00:00Z", LastAttempt: &RevokeOutcome{Result: ResultFailed, Error: "503"}}}}},
+		Recovery: "r",
+	}
+	raw, err := json.Marshal(d)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	ct := got["clusterToken"].(map[string]any)
+	assert.Equal(t, "known", ct["outcome"])
+	cr := got["configRecovery"].(map[string]any)
+	assert.Equal(t, "exec-login-r.ex", cr["entry"])
+	prior := cr["prior"].(map[string]any)
+	assert.Equal(t, "https://r.ex", prior["url"])
+	assert.Contains(t, prior["ca"], "BEGIN CERTIFICATE", "the exact CA value travels in the JSON projection")
+	recs := prior["supersededTokens"].([]any)
+	require.Len(t, recs, 1)
+	rec := recs[0].(map[string]any)
+	assert.Equal(t, "user-a", rec["userId"])
+	last := rec["lastAttempt"].(map[string]any)
+	assert.Equal(t, "failed", last["result"])
+	_, hasRef := last["ref"]
+	assert.False(t, hasRef, "lastAttempt carries no ref: the record's ref is the token")
+
+	lines := d.TextDetails()
+	assert.Contains(t, lines, "stage: clusterToken")
+	assert.Contains(t, lines, "config: rollbackFailed")
+	assert.Contains(t, lines, "cluster token ext/token-c1: known, marked; cleanup: revoked")
+	assert.Contains(t, lines, "config entry exec-login-r.ex could not be restored; remove it with: rancher config delete-server 'exec-login-r.ex'")
+	assert.Contains(t, lines, "  prior entry: https://r.ex, CA inline PEM (59 bytes) fingerprint ab12, provenance execLogin, token ext/token-old (user user-a, expires 2026-09-20T08:00:00Z), 1 superseded token")
+	for _, l := range lines {
+		assert.NotContains(t, l, "BEGIN CERTIFICATE", "text never carries CA bytes")
+	}
+}
+
+// TestPriorEntryTextShapes asserts the three CA shapes the prior entry can
+// name in text: system roots, a path, and an inline PEM.
+func TestPriorEntryTextShapes(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "system roots", (&PriorEntry{}).caShape())
+	assert.Equal(t, "path /etc/ca.pem", (&PriorEntry{CA: "/etc/ca.pem"}).caShape())
+	assert.Equal(t, "inline PEM (8 bytes)", (&PriorEntry{CA: "-----BEG"}).caShape())
+}
