@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -281,8 +282,22 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
+	var loginWarnings []string
+	if errors.Is(err, errNoStoredCredential) && t.tokenReuseOn() {
+		// A clean miss with the setting on: the plugin-created login. It
+		// returns errNoStoredCredential itself when the setting was turned
+		// off while it waited for the flock, which the switch below then
+		// handles as today's scoped interactive login.
+		rancherToken, loginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, client, params), p)
+	}
+	if rej, ok := errors.AsType[*pluginCredentialRejected](err); ok {
+		// A rejected plugin-created login: one refresh under the flock.
+		in := t.pluginInput(server, serverID, caPEM, clusterID, client, params)
+		in.refreshEntry = rej.name
+		rancherToken, loginWarnings, err = t.pluginLogin(ctx, in, p)
+	}
 	switch {
-	case errors.Is(err, errNoStoredCredential):
+	case errors.Is(err, errNoStoredCredential), errors.Is(err, errStoredCredentialRejected):
 		// Built only when a live login is needed: the cached-credential
 		// path, the steady state under kubectl's exec plugin, never dials
 		// an identity provider.
@@ -329,7 +344,41 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		}
 	}
 
-	return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
+	return runtime.Result{Raw: true, Kind: "ExecCredential", Warnings: loginWarnings, Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
+}
+
+// pluginLoginInput is what the plugin-created login needs from the
+// invocation that missed its cache.
+type pluginLoginInput struct {
+	server, serverID, caPEM, clusterID string
+	client                             *http.Client
+	authProvider, authFlow             string
+	newIdPClient                       func() *http.Client
+	wantName                           string
+	ignoreCurrentContext               bool
+	// refreshEntry is the plugin entry a 401 named; "" on first use. The
+	// re-login replaces that entry's credential as an update.
+	refreshEntry string
+}
+
+func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client *http.Client, params runParams) pluginLoginInput {
+	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, client: client,
+		authProvider: params.AuthProvider, authFlow: params.AuthFlow,
+		newIdPClient: func() *http.Client { return httpx.NewExternal(httpx.DefaultTimeout) },
+		wantName:     params.Name, ignoreCurrentContext: params.legacyShim}
+}
+
+// pluginLogin runs the plugin-created login for an invocation that has no
+// usable credential. It currently runs today's scoped interactive login,
+// which persists nothing and warns about nothing.
+func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtime.Prompter) (Token, []string, error) {
+	input := &loginInput{server: in.server, clusterID: in.clusterID, authProvider: in.authProvider,
+		authFlow: in.authFlow, idpClient: in.newIdPClient()}
+	res, err := loginAndGenerateCred(ctx, in.client, input, p)
+	if err != nil {
+		return Token{}, nil, err
+	}
+	return Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}, nil, nil
 }
 
 // cachedResultQ returns an ExecCredential result for a warm cache entry and
@@ -1166,15 +1215,54 @@ func matchingServerNames(cfg *config.Config, server string) []string {
 	return names
 }
 
-// errNoStoredCredential is storedCredToken's sentinel for "try the
-// interactive provider flow instead" — no usable stored credential exists,
-// or the create was rejected as an invalid/insufficient credential
-// (errCredentialUnauthorized or errCredentialForbidden). Any other error
+// errNoStoredCredential is storedCredToken's clean-miss sentinel: no
+// eligible stored credential exists at all. Any other error
 // storedCredToken returns is a real
 // failure (network/TLS/5xx, or a resolution error for --cluster) that the
 // caller must surface directly, never paper over with "interactive login
 // required".
 var errNoStoredCredential = errors.New("no usable stored login credential")
+
+// errStoredCredentialRejected is a 401 on a user's stored credential, from
+// the cluster list or the create: the caller runs the scoped interactive
+// login for this invocation and never a plugin login.
+var errStoredCredentialRejected = errors.New("the stored login credential was rejected")
+
+// pluginCredentialRejected is a 401 on a plugin-created login: the caller
+// takes the plugin-login flock and refreshes, at most one prompt.
+type pluginCredentialRejected struct {
+	name  string
+	entry config.Server
+}
+
+func (e *pluginCredentialRejected) Error() string {
+	return "the plugin-created login " + e.name + " was rejected by the server"
+}
+
+// tokenReuseOn reads the setting; an unreadable config reads as off.
+func (t tokenCmd) tokenReuseOn() bool {
+	cfg, err := config.Load(config.FilePath(t.dir))
+	return err == nil && cfg.TokenReuse
+}
+
+// storedCredential is one stored login credential with the entry it came
+// from, so the caller can apply provenance-specific rules.
+type storedCredential struct {
+	name  string
+	token string
+	ref   config.ServerRef
+	entry config.Server
+}
+
+// provenanceTier orders candidates before any other rank: every user entry
+// (any provenance but execLogin, including pre-provenance entries) ranks
+// ahead of every plugin login entry.
+func provenanceTier(s config.Server) int {
+	if s.Provenance == clierr.ProvenanceExecLogin {
+		return 1
+	}
+	return 0
+}
 
 // serverCandidateRank orders storedTokenForServer's BaseURL-matching
 // candidates: (0) an exact --name match, (1) a candidate whose name is a
@@ -1219,10 +1307,18 @@ func serverCandidateRank(name, wantName, curServer string) int {
 // interactive-session state) — stored-login selection falls directly to
 // rank-3 (deterministic sorted order), consistent with how ignoreCurrentContext
 // gates the cluster and CA fallbacks in resolveConn/caForServer.
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (name, tok string, ref config.ServerRef, ok bool, err error) {
+// A provenance tier precedes every rank: user entries before plugin login
+// entries; a plugin login entry is a candidate only while the token-reuse
+// setting is on.
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (storedCredential, bool, error) {
 	candidates := matchingServerNames(cfg, server)
+	if !cfg.TokenReuse {
+		candidates = slices.DeleteFunc(candidates, func(n string) bool {
+			return cfg.Servers[n].Provenance == clierr.ProvenanceExecLogin
+		})
+	}
 	if len(candidates) == 0 {
-		return "", "", config.ServerRef{}, false, nil
+		return storedCredential{}, false, nil
 	}
 
 	// A ignoreCurrentContext caller's wantName is a cache-slot label
@@ -1240,16 +1336,14 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	if !ignoreCurrentContext {
 		curServer = cfg.CurrentServer
 	}
-	rankOf := func(n string) int { return serverCandidateRank(n, wantName, curServer) }
+	rankOf := func(n string) int {
+		return provenanceTier(cfg.Servers[n])*serverCandidateRankCount + serverCandidateRank(n, wantName, curServer)
+	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
 
-	type hit struct {
-		name, tok string
-		ref       config.ServerRef
-	}
-	hitsByRank := map[int][]hit{}
+	hitsByRank := map[int][]storedCredential{}
 	// firstHardErr remembers the FIRST non-not-found helper/store failure — a
 	// missing helper binary, timeout, malformed response, version mismatch,
 	// backend outage — so a genuinely misconfigured store is surfaced rather
@@ -1268,9 +1362,9 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		if strings.TrimSpace(t) == "" {
 			continue
 		}
-		hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], hit{n, t, r})
+		hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], storedCredential{name: n, token: t, ref: r, entry: cfg.Servers[n]})
 	}
-	for rank := range serverCandidateRankCount {
+	for rank := range 2 * serverCandidateRankCount {
 		hs := hitsByRank[rank]
 		if len(hs) == 0 {
 			continue
@@ -1278,12 +1372,12 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		if len(hs) > 1 {
 			p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", len(hs), hs[0].name))
 		}
-		return hs[0].name, hs[0].tok, hs[0].ref, true, nil
+		return hs[0], true, nil
 	}
 	// No candidate produced a token. If any candidate failed with a hard
 	// error, surface it — a helper misconfiguration must not silently fall
 	// through to interactive auth.
-	return "", "", config.ServerRef{}, false, firstHardErr
+	return storedCredential{}, false, firstHardErr
 }
 
 // clustersPath is the management Cluster collection/object path, reached
@@ -1355,11 +1449,12 @@ func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, b
 const legacyTokenTTL = 15 * time.Minute
 
 // storedCredToken creates a cluster-scoped token from the stored login
-// credential for server, non-interactively, using the same derived-token
-// path `auth login` uses. errNoStoredCredential means the caller should
-// fall through to the interactive provider flow exactly as if no stored
-// credential existed — either none was found, or the create was rejected as
-// an invalid/insufficient credential. An unreadable config.yaml is noticed
+// credential for server, non-interactively: a user credential takes the
+// same derived-token path `auth login` uses, a plugin-created one takes
+// the fail-closed cluster-token chain. errNoStoredCredential means no eligible stored
+// credential was found; errStoredCredentialRejected and
+// *pluginCredentialRejected are the two 401 outcomes, and a 403 is an RBAC
+// error; see classifyRejection. An unreadable config.yaml is noticed
 // and also falls through to errNoStoredCredential (the config load failure
 // itself is never returned as a hard error here — see the doc on the
 // —no-input leftovers in the package's fix history). Any other non-nil error
@@ -1373,7 +1468,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		p.Notice(fmt.Sprintf("config unreadable: %v — skipping token creation from the stored credential", err))
 		return Token{}, errNoStoredCredential
 	}
-	name, stored, ref, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
+	sc, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
@@ -1383,16 +1478,23 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	if !ok {
 		return Token{}, errNoStoredCredential
 	}
+	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
-		return Token{}, rerr
+		return Token{}, t.classifyRejection(rerr, sc, p)
 	}
-	created, err := CreateDerivedToken(ctx, client, base, stored, resolvedCluster, 0, hostLoginDescription())
+	isPlugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
+	var created CreateResult
+	if isPlugin {
+		created, err = createClusterToken(ctx, client, base, stored, resolvedCluster, hostLoginDescription())
+	} else {
+		created, err = CreateDerivedToken(ctx, client, base, stored, resolvedCluster, 0, hostLoginDescription())
+	}
 	bearer, expiresAt := created.Bearer, created.ExpiresAt
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrExtGroupAbsent):
+		case errors.Is(err, ErrExtGroupAbsent) && !isPlugin:
 			// Legacy Rancher with no ext.cattle.io: use the stored token
 			// itself, matching auth login's own fallback. The stored token
 			// normally carries no expiry of its own, so cache it for a
@@ -1421,13 +1523,30 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			}
 			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
-			p.Notice(fmt.Sprintf("creating a token from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
-			return Token{}, errNoStoredCredential
+			return Token{}, t.classifyRejection(err, sc, p)
 		default:
 			return Token{}, err
 		}
 	}
 	return Token{Token: bearer, ExpiresAt: expiresAt}, nil
+}
+
+// classifyRejection maps a 401 or 403 from any credential-authenticated
+// request before or at the create onto the provenance-specific rule. A
+// 403 authenticates but cannot create tokens: the permission error is
+// surfaced and never prompts, because a new login yields the same RBAC.
+func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Prompter) error {
+	switch {
+	case errors.Is(err, errCredentialForbidden):
+		return clierr.New(clierr.CodeRBAC,
+			fmt.Sprintf("the stored login credential for %q cannot create tokens: %v", sc.name, err)).WithCause(err)
+	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
+		return &pluginCredentialRejected{name: sc.name, entry: sc.entry}
+	case errors.Is(err, errCredentialUnauthorized):
+		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login; refresh it with: rancher auth login %s", sc.name, err, clierr.ShellQuote(sc.name)))
+		return errStoredCredentialRejected
+	}
+	return err
 }
 
 // caForServer returns the CA of the configured server entry whose URL matches

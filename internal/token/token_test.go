@@ -30,6 +30,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -366,6 +367,10 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(legacyTokenTTL), expiry, time.Minute)
 }
 
+// TestGetTokenFallsBackToInteractiveWhenCreateRejected asserts the 401 half
+// of the fallback: a stored credential the server no longer accepts runs the
+// interactive flow. A 403 is a different rule; see
+// TestGetTokenCreateForbiddenIsRBACNotInteractive.
 func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +380,7 @@ func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"pingProvider"}]}`))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusForbidden)
+			w.WriteHeader(http.StatusUnauthorized)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -405,7 +410,7 @@ func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 // hanging forever, and that the resulting error keeps CreateDerivedToken's
 // existing classification: a *clierr.Error with CodeGeneric, the same shape
 // any other transport failure at this call site already takes (a timeout is
-// neither credential sentinel, so it must NOT fall back to the interactive flow the
+// neither rejection sentinel, so it must NOT fall back to the interactive flow the
 // way a rejected 401/403 create does).
 func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout.
@@ -449,7 +454,7 @@ func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is neither credential sentinel and must not trigger the interactive fallback")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is neither rejection sentinel and must not trigger the interactive fallback")
 	assert.Less(t, elapsed, 5*time.Second, "the derived token create request must be bounded by the client timeout, not hang on the blocked handler")
 }
 
@@ -884,11 +889,11 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 	}
 
 	var notices bytes.Buffer
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", false, ui.New(&notices, strings.NewReader(""), true, false))
+	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", false, ui.New(&notices, strings.NewReader(""), true, false))
 	require.NoError(t, serr)
 	require.True(t, ok)
-	assert.Equal(t, "prod-a", name)
-	assert.Equal(t, "tok-a", tok)
+	assert.Equal(t, "prod-a", got.name)
+	assert.Equal(t, "tok-a", got.token)
 	assert.Empty(t, notices.String(), "a rank-0 exact --name win is a certainty, not a tie-break")
 }
 
@@ -971,20 +976,20 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	}
 
 	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
-		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+		got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 		require.NoError(t, serr)
 		require.True(t, ok)
-		assert.Equal(t, "prod-a", name)
-		assert.Equal(t, "tok-a", tok)
+		assert.Equal(t, "prod-a", got.name)
+		assert.Equal(t, "tok-a", got.token)
 	})
 
 	t.Run("the current server wins the tie, regardless of name order", func(t *testing.T) {
 		cfg.CurrentServer = "prod-b"
-		name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+		got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 		require.NoError(t, serr)
 		require.True(t, ok)
-		assert.Equal(t, "prod-b", name)
-		assert.Equal(t, "tok-b", tok)
+		assert.Equal(t, "prod-b", got.name)
+		assert.Equal(t, "tok-b", got.token)
 	})
 }
 
@@ -1002,11 +1007,11 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok, "a tokenless top-ranked candidate must not short-circuit the search")
-	assert.Equal(t, "prod-b", name)
-	assert.Equal(t, "tok-b", tok)
+	assert.Equal(t, "prod-b", got.name)
+	assert.Equal(t, "tok-b", got.token)
 }
 
 // TestStoredTokenForServerNamePicksNamedServer is the round-3 repro for
@@ -1022,11 +1027,11 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", false, ui.Discard())
+	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok)
-	assert.Equal(t, "prod-b", name, "--name must win over the lexicographic default")
-	assert.Equal(t, "tok-b", tok)
+	assert.Equal(t, "prod-b", got.name, "--name must win over the lexicographic default")
+	assert.Equal(t, "tok-b", got.token)
 }
 
 // TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry is the round-7
@@ -1046,11 +1051,11 @@ func TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry(t *testin
 			"aaa":        {URL: "https://r.ex"},
 		},
 	}
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "legacy:zed", true, ui.Discard())
+	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "legacy:zed", true, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok)
-	assert.Equal(t, "aaa", name, "sorted order must win; wantName carries no preference under ignoreCurrentContext")
-	assert.Equal(t, "tok-aaa", tok)
+	assert.Equal(t, "aaa", got.name, "sorted order must win; wantName carries no preference under ignoreCurrentContext")
+	assert.Equal(t, "tok-aaa", got.token)
 }
 
 // TestStoredTokenForServerMatchesEquivalentURLSpellings is the impl-review
@@ -1062,11 +1067,11 @@ func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "tok"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: "https://host"}}}
 
-	name, tok, _, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", false, ui.Discard())
+	got, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", false, ui.Discard())
 	require.NoError(t, serr)
 	require.True(t, ok, "an equivalent URL spelling must still match the configured server")
-	assert.Equal(t, "prod", name)
-	assert.Equal(t, "tok", tok)
+	assert.Equal(t, "prod", got.name)
+	assert.Equal(t, "tok", got.token)
 }
 
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
@@ -2289,4 +2294,277 @@ func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	require.NotErrorIs(t, err, errCredentialUnauthorized)
+}
+
+// clustersFallthrough answers the management cluster list for a bearer
+// the facade recognizes, 401 otherwise, so resolveClusterIDForCreate can
+// be exercised against the facade in this package.
+func clustersFallthrough(valid func(string) bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !valid(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path != clustersPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-test"},"spec":{"displayName":"testcluster"}}]}`))
+	})
+}
+
+// newTokenFacade builds a facade with the clusters fallthrough wired to its
+// own ValidBearer.
+func newTokenFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *httptest.Server) {
+	t.Helper()
+	var f *testrancher.Facade
+	if opts.Fallthrough == nil {
+		opts.Fallthrough = clustersFallthrough(func(b string) bool { return f != nil && f.ValidBearer(b) })
+	}
+	f = testrancher.New(opts)
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	return f, srv
+}
+
+// seedEntry writes one server entry and its stored token.
+func seedEntry(t *testing.T, dir string, store config.CredStore, name string, s config.Server, tok string, reuse bool) {
+	t.Helper()
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers[name] = s
+	cfg.TokenReuse = reuse
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	if tok != "" {
+		require.NoError(t, store.SetToken(config.ServerRef{Name: name, URL: s.URL}, tok))
+	}
+}
+
+// TestStoredTokenForServerRanksUserEntriesAboveExecLogin asserts the
+// provenance tier: a user entry wins over a plugin login entry even when
+// the plugin entry is the exact --name match or the current server; with
+// the setting off the plugin entry is not a candidate at all.
+func TestStoredTokenForServerRanksUserEntriesAboveExecLogin(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	plugin := config.Server{URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "p"}}
+	user := config.Server{URL: "https://r.ex"}
+	cfg := &config.Config{Servers: map[string]config.Server{"exec-login-r.ex": plugin, "zz-user": user}, CurrentServer: "exec-login-r.ex", TokenReuse: true}
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "exec-login-r.ex", URL: "https://r.ex"}, "ext/p:s"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "zz-user", URL: "https://r.ex"}, "ext/u:s"))
+
+	got, ok, err := storedTokenForServer(cfg, store, "https://r.ex", "exec-login-r.ex", false, ui.Discard())
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "zz-user", got.name)
+	assert.Equal(t, "ext/u:s", got.token)
+	assert.Empty(t, got.entry.Provenance)
+
+	got, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", true, ui.Discard())
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "zz-user", got.name, "the shim's ordering keeps user before plugin too")
+
+	require.NoError(t, store.DeleteToken(config.ServerRef{Name: "zz-user", URL: "https://r.ex"}))
+	got, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "exec-login-r.ex", got.name)
+	assert.Equal(t, clierr.ProvenanceExecLogin, got.entry.Provenance)
+
+	cfg.TokenReuse = false
+	_, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	require.NoError(t, err)
+	assert.False(t, ok, "with the setting off a plugin login entry is skipped entirely")
+}
+
+// TestStoredCredTokenClassifiesRejections asserts the 401/403 rules per
+// provenance and per request: a user credential's 401 (cluster list or
+// create) is the scoped-interactive sentinel with the auth login notice;
+// a plugin credential's 401 is the refresh sentinel naming the entry; a
+// 403 from either request is an RBAC error for both provenances.
+func TestStoredCredTokenClassifiesRejections(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		provenance clierr.Provenance
+		opts       testrancher.Options
+		stale      bool // the stored bearer is not a facade token
+		cluster    string
+		want       string // "rejected", "plugin", "rbac"
+	}{
+		{"user 401 on create", "", testrancher.Options{}, true, "local", "rejected"},
+		{"user 401 on cluster list", "", testrancher.Options{}, true, "testcluster", "rejected"},
+		{"plugin 401 on create", clierr.ProvenanceExecLogin, testrancher.Options{}, true, "local", "plugin"},
+		{"plugin 401 on cluster list", clierr.ProvenanceExecLogin, testrancher.Options{}, true, "testcluster", "plugin"},
+		{"user 403 on create", "", testrancher.Options{ScopedCreateStatus: http.StatusForbidden}, false, "local", "rbac"},
+		{"plugin 403 on create", clierr.ProvenanceExecLogin, testrancher.Options{ScopedCreateStatus: http.StatusForbidden}, false, "local", "rbac"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, srv := newTokenFacade(t, tc.opts)
+			dir := t.TempDir()
+			store := config.NewFileStore(dir)
+			bearer := "ext/stale:s"
+			if !tc.stale {
+				cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+					ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+				require.NoError(t, err)
+				bearer = cred.Token
+			}
+			seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: tc.provenance}, bearer, true)
+			base := f.LoginCount()
+			var notices bytes.Buffer
+			p := ui.New(&notices, newLineReader(), true, false)
+			_, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, tc.cluster, "e", false, p)
+			switch tc.want {
+			case "rejected":
+				require.ErrorIs(t, err, errStoredCredentialRejected)
+				assert.Contains(t, notices.String(), "rancher auth login")
+			case "plugin":
+				rej, ok := errors.AsType[*pluginCredentialRejected](err)
+				require.True(t, ok, "%v", err)
+				assert.Equal(t, "e", rej.name)
+			case "rbac":
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok, "%v", err)
+				assert.Equal(t, clierr.CodeRBAC, ce.Code)
+				assert.Contains(t, ce.Message, "403")
+			}
+			assert.Equal(t, base, f.LoginCount(), "classification never starts a login")
+		})
+	}
+}
+
+// TestStoredCredTokenPluginLaneFailsClosed asserts the plugin-created
+// login's silent path: the ext create's scope is validated, a Rancher
+// without ext.cattle.io uses the v3 create, and when neither works the
+// unscoped credential is never served; the user lane keeps its legacy
+// fallback unchanged beside it.
+func TestStoredCredTokenPluginLaneFailsClosed(t *testing.T) {
+	t.Parallel()
+	other := "c-other"
+	cases := []struct {
+		name       string
+		provenance clierr.Provenance
+		opts       testrancher.Options
+		wantErr    error
+		wantServed string // "cluster", "stored", or ""
+	}{
+		{"plugin scope mismatch", clierr.ProvenanceExecLogin, testrancher.Options{ScopedCreateClusterName: &other}, errClusterTokenUnscoped, ""},
+		{"user scope mismatch unchanged", "", testrancher.Options{ScopedCreateClusterName: &other}, nil, "cluster"},
+		{"plugin legacy via v3", clierr.ProvenanceExecLogin, testrancher.Options{Legacy: true, V3TokenCreate: true}, nil, "cluster"},
+		{"plugin legacy too old", clierr.ProvenanceExecLogin, testrancher.Options{Legacy: true}, errServerTooOldForReuse, ""},
+		{"user legacy serves stored", "", testrancher.Options{Legacy: true}, nil, "stored"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, srv := newTokenFacade(t, tc.opts)
+			cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+				ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+			require.NoError(t, err)
+			dir := t.TempDir()
+			store := config.NewFileStore(dir)
+			seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: tc.provenance}, cred.Token, true)
+			tok, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				assert.Empty(t, tok.Token)
+				return
+			}
+			require.NoError(t, err)
+			switch tc.wantServed {
+			case "stored":
+				assert.Equal(t, cred.Token, tok.Token)
+			case "cluster":
+				assert.NotEqual(t, cred.Token, tok.Token)
+			}
+		})
+	}
+}
+
+// TestStoredCredTokenMetadataNeverDrivesServing asserts the metadata is
+// display-only: an expired-looking credentialExpiresAt never blocks a
+// credential the server still accepts, and a live-looking one never
+// rescues a credential the server rejects.
+func TestStoredCredTokenMetadataNeverDrivesServing(t *testing.T) {
+	t.Parallel()
+	_, srv := newTokenFacade(t, testrancher.Options{})
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2000-01-01T00:00:00Z"}, cred.Token, true)
+	tok, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	require.NoError(t, err, "expired-looking metadata never blocks a valid credential")
+	assert.NotEmpty(t, tok.Token)
+
+	dir2 := t.TempDir()
+	store2 := config.NewFileStore(dir2)
+	seedEntry(t, dir2, store2, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2999-01-01T00:00:00Z"}, "ext/stale:s", true)
+	_, err = tokenCmd{dir: dir2, store: store2}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	require.ErrorIs(t, err, errStoredCredentialRejected, "live-looking metadata never rescues a rejected credential")
+}
+
+// TestGetTokenUser401FallsBackToScopedInteractiveNeverPluginLogin asserts
+// the Trigger rule with the setting on: a stale user credential runs
+// today's scoped interactive login and creates no plugin login entry.
+func TestGetTokenUser401FallsBackToScopedInteractiveNeverPluginLogin(t *testing.T) {
+	t.Parallel()
+	f, srv := newTokenFacade(t, testrancher.Options{})
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	seedEntry(t, dir, store, "prod", config.Server{URL: srv.URL}, "ext/stale:s", true)
+	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": srv.URL, "cluster": "c-test", "name": "prod", "auth-provider": "localProvider"}},
+		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.LoginCount())
+	descs := f.LoginDescriptions()
+	assert.Empty(t, descs, "the scoped interactive login is unmarked, as today")
+	assert.Equal(t, "ExecCredential", res.Kind)
+	cfg, _ := config.Load(config.FilePath(dir))
+	for name := range cfg.Servers {
+		assert.False(t, config.IsExecLoginEntryName(name), "no plugin login entry appears beside a stale user credential")
+	}
+	_, err = store.GetToken(config.ServerRef{Name: config.ExecLoginEntryName(srv.URL), URL: srv.URL})
+	require.ErrorIs(t, err, config.ErrNoToken)
+}
+
+// TestGetTokenCreateForbiddenIsRBACNotInteractive asserts the one behavior
+// change to the existing lane: a 403 on the create surfaces the permission
+// error and never re-prompts, since a new login yields the same RBAC.
+func TestGetTokenCreateForbiddenIsRBACNotInteractive(t *testing.T) {
+	var authProviderHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
+			authProviderHits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "stored-login-token"))
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	_, err := NewTokenCommand(dir, store).(runtime.ReadCommand).Execute(t.Context(),
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}}, ui.Discard())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a 403 never falls back to the interactive flow")
 }
