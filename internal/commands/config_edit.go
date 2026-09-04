@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -305,7 +306,7 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 			offenses = append(offenses, fmt.Sprintf("servers.%s added (use: rancher config add-server)", n))
 		case bOK && !eOK:
 			offenses = append(offenses, fmt.Sprintf("servers.%s removed (use: rancher config delete-server)", n))
-		case bOK && eOK && b != e:
+		case bOK && eOK && !reflect.DeepEqual(b, e):
 			offenses = append(offenses, fmt.Sprintf("servers.%s changed (use: rancher config update-server)", n))
 		}
 	}

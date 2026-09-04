@@ -19,12 +19,18 @@ const RecoverySequenceAssumption = "assumes RANCHER_CLI_URL and RANCHER_CLI_TOKE
 // prefix; a later recovery for the same host reuses the entry, and a
 // recover-<host> that already names a different URL is refused by auth
 // login with its update-server hint.
-func RecoveryEntryName(serverURL string) string {
+func RecoveryEntryName(serverURL string) string { return HostEntryName("recover-", serverURL) }
+
+// HostEntryName derives an entry name from a server URL: the prefix, the
+// host, and -<port> when the URL names one, with every colon replaced by a
+// dash so an IPv6 literal yields a plain label. A URL that does not parse
+// or names no host yields <prefix>unknown.
+func HostEntryName(prefix, serverURL string) string {
 	u, err := url.Parse(serverURL)
 	if err != nil || u.Hostname() == "" {
-		return "recover-unknown"
+		return prefix + "unknown"
 	}
-	name := "recover-" + u.Hostname()
+	name := prefix + u.Hostname()
 	if p := u.Port(); p != "" {
 		name += "-" + p
 	}

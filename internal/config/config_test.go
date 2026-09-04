@@ -124,3 +124,100 @@ func TestResolveDirPrecedence(t *testing.T) {
 		assert.Equal(t, filepath.Join("/xdg", "rancher"), got)
 	})
 }
+
+// TestServerMetadataRoundTrips asserts the login-credential metadata a
+// server entry can carry survives Write and Load field for field, that an
+// entry without it reads back with zero values, and that the setting is
+// omitted from the file when off.
+func TestServerMetadataRoundTrips(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &Config{Servers: map[string]Server{
+		"plain": {URL: "https://a.ex"},
+		"exec-login-b.ex": {URL: "https://b.ex", Provenance: clierr.ProvenanceExecLogin,
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-h2qcs"}, TokenUserID: "user-tx66l",
+			CredentialExpiresAt: "2026-09-25T10:00:00Z", LoggedOutAt: "2026-09-26T00:00:00Z",
+			SupersededTokens: []SupersededToken{{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-2ww4s"},
+				UserID: "user-tx66l", ExpiresAt: "2026-09-20T08:00:00Z", SupersededAt: "2026-09-04T18:00:00Z",
+				LastAttempt: &clierr.RevokeOutcome{Result: clierr.ResultFailed, Error: "503 from the server"}}}},
+	}, TokenReuse: true}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	got, err := Load(FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, cfg.Servers["exec-login-b.ex"], got.Servers["exec-login-b.ex"])
+	assert.Equal(t, Server{URL: "https://a.ex"}, got.Servers["plain"])
+	assert.True(t, got.TokenReuse)
+
+	raw, err := os.ReadFile(FilePath(dir))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "tokenUserId: user-tx66l")
+	assert.Contains(t, string(raw), "lastAttempt:")
+	assert.NotContains(t, string(raw), "provenance: \"\"", "absent metadata is omitted, never written empty")
+
+	off := &Config{Servers: map[string]Server{}}
+	off.SetPath(FilePath(t.TempDir()))
+	require.NoError(t, off.Write())
+	raw, err = os.ReadFile(off.Path())
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "tokenReuse", "the setting is omitted when off")
+}
+
+// TestServerCLICreatedOwnedAndHoldsCLITokens asserts which entries the
+// durable surfaces list: a CLI-created provenance (with or without a named
+// token), or any superseded record; a user-supplied or pre-provenance entry
+// with no records is neither. CLIOwned additionally requires the name, and
+// records never make a pasted token read as CLI-created.
+func TestServerCLICreatedOwnedAndHoldsCLITokens(t *testing.T) {
+	t.Parallel()
+	ref := &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}
+	rec := []SupersededToken{{Ref: *ref, SupersededAt: "2026-09-04T18:00:00Z"}}
+	cases := []struct {
+		name                  string
+		s                     Server
+		created, owned, holds bool
+	}{
+		{"pre-provenance", Server{URL: "u"}, false, false, false},
+		{"userSupplied", Server{URL: "u", Provenance: clierr.ProvenanceUserSupplied}, false, false, false},
+		{"userSupplied with records", Server{URL: "u", Provenance: clierr.ProvenanceUserSupplied, TokenRef: ref, SupersededTokens: rec}, false, false, true},
+		{"derived", Server{URL: "u", Provenance: clierr.ProvenanceDerived, TokenRef: ref}, true, true, true},
+		{"legacySession", Server{URL: "u", Provenance: clierr.ProvenanceLegacySession, TokenRef: ref}, true, true, true},
+		{"execLogin", Server{URL: "u", Provenance: clierr.ProvenanceExecLogin, TokenRef: ref}, true, true, true},
+		{"derived without ref", Server{URL: "u", Provenance: clierr.ProvenanceDerived}, true, false, true},
+		{"records only", Server{URL: "u", SupersededTokens: rec}, false, false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.created, c.s.CLICreated())
+			assert.Equal(t, c.owned, c.s.CLIOwned())
+			assert.Equal(t, c.holds, c.s.HoldsCLITokens())
+		})
+	}
+}
+
+// TestServerCloneIsDeep asserts a cloned entry shares no record storage
+// with its source, so a snapshot survives the source's later mutation.
+func TestServerCloneIsDeep(t *testing.T) {
+	t.Parallel()
+	src := Server{URL: "u", SupersededTokens: []SupersededToken{{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "a"}}}}
+	c := src.Clone()
+	src.SupersededTokens[0].Ref.Name = "changed"
+	src.SupersededTokens = append(src.SupersededTokens, SupersededToken{})
+	assert.Equal(t, "a", c.SupersededTokens[0].Ref.Name)
+	assert.Len(t, c.SupersededTokens, 1)
+}
+
+// TestRecordOwnerState asserts the display-time derivation: same owner
+// only when both sides are non-empty and equal; an empty owner on either
+// side is unknown, never different.
+func TestRecordOwnerState(t *testing.T) {
+	t.Parallel()
+	rec := func(u string) SupersededToken { return SupersededToken{UserID: u} }
+	assert.Equal(t, OwnerSame, RecordOwnerState(rec("user-a"), "user-a"))
+	assert.Equal(t, OwnerDifferent, RecordOwnerState(rec("user-a"), "user-b"))
+	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec(""), "user-b"))
+	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec("user-a"), ""))
+	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec(""), ""))
+}

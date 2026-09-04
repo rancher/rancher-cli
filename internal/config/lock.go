@@ -13,6 +13,10 @@ import (
 
 const configLockName = "config.lock"
 
+// LockPath is the config lock's file, for tests that must prove no request
+// is in flight while it is held.
+func LockPath(dir string) string { return filepath.Join(dir, configLockName) }
+
 // lockWaitTimeout bounds how long WithLock waits for another process to
 // release the config lock. A var so tests shorten it.
 //

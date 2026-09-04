@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -129,6 +130,10 @@ func CompletionTimeoutWithRaw(cfg *Config) (effective time.Duration, raw string,
 	return d, raw, false
 }
 
+// SupersededToken is a CLI-created token an entry no longer holds the
+// credential for; see clierr.SupersededToken.
+type SupersededToken = clierr.SupersededToken
+
 // Server is a Rancher endpoint (secrets live in the credential store, not here).
 type Server struct {
 	URL string `json:"url"`
@@ -140,6 +145,89 @@ type Server struct {
 	// rather than patching CA in place, so an explicit CA replacement clears
 	// this field for free.
 	CAFingerprint string `json:"caFingerprint,omitempty"`
+	// Provenance says who created the stored login credential and therefore
+	// who may revoke it. Absent on entries written before provenance was
+	// persisted; those read as user entries.
+	Provenance clierr.Provenance `json:"provenance,omitempty"`
+	// TokenRef names the stored credential's server-side token, read only by
+	// revocation. Missing or malformed means "cannot revoke by name".
+	TokenRef *clierr.TokenRef `json:"tokenRef,omitempty"`
+	// TokenUserID is the token's owner as the create response reported it;
+	// empty when the response carried no owner (a SAML legacy credential).
+	TokenUserID string `json:"tokenUserId,omitempty"`
+	// CredentialExpiresAt is the server-reported expiry, for display only:
+	// serving a token is decided by the server's answer, never by this.
+	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`
+	// SupersededTokens are the CLI-created tokens earlier logins to this
+	// entry left live; each is retired when a same-owner login replaces the
+	// credential, or listed until then.
+	SupersededTokens []SupersededToken `json:"supersededTokens,omitempty"`
+	// LoggedOutAt is stamped by auth logout: the entry's own TokenRef then
+	// names a live token with no local credential to retire it, and config
+	// status lists it like a superseded record without reading the store.
+	LoggedOutAt string `json:"loggedOutAt,omitempty"`
+}
+
+// CLICreated reports whether a CLI login created the entry's current
+// token: the provenance is derived, legacySession, or execLogin. A token
+// the user pasted (userSupplied, or no provenance at all) is not ours to
+// revoke, however the entry came to hold superseded records.
+func (s Server) CLICreated() bool {
+	switch s.Provenance {
+	case clierr.ProvenanceDerived, clierr.ProvenanceLegacySession, clierr.ProvenanceExecLogin:
+		return true
+	}
+	return false
+}
+
+// CLIOwned reports whether the entry's current token was created by the
+// CLI and is named: a TokenRef is present to revoke it by.
+func (s Server) CLIOwned() bool { return s.CLICreated() && s.TokenRef != nil }
+
+// HoldsCLITokens reports whether the durable surfaces list this entry: the
+// CLI created the current token (named or not: a missing TokenRef is
+// reported as "cannot revoke by name", never hidden), or the entry carries
+// superseded records.
+func (s Server) HoldsCLITokens() bool { return s.CLICreated() || len(s.SupersededTokens) > 0 }
+
+// Clone returns a copy sharing no storage with s, for snapshots.
+func (s Server) Clone() Server {
+	c := s
+	if s.TokenRef != nil {
+		ref := *s.TokenRef
+		c.TokenRef = &ref
+	}
+	c.SupersededTokens = slices.Clone(s.SupersededTokens)
+	for i, r := range c.SupersededTokens {
+		if r.LastAttempt != nil {
+			la := *r.LastAttempt
+			c.SupersededTokens[i].LastAttempt = &la
+		}
+	}
+	return c
+}
+
+// Owner states a superseded record derives at display time against the
+// entry's current owner. Never persisted.
+const (
+	OwnerSame      = "sameOwner"
+	OwnerDifferent = "differentOwner"
+	OwnerUnknown   = "unknownOwner"
+)
+
+// RecordOwnerState compares a record's owner with the current credential's:
+// same only when both are known and equal; an empty owner on either side is
+// unknown, because a delete with the wrong bearer answers NotFound for a
+// live token and must never be attempted on a guess.
+func RecordOwnerState(rec SupersededToken, currentUserID string) string {
+	switch {
+	case rec.UserID == "" || currentUserID == "":
+		return OwnerUnknown
+	case rec.UserID == currentUserID:
+		return OwnerSame
+	default:
+		return OwnerDifferent
+	}
 }
 
 // Config is the on-disk CLI configuration. Beyond server entries and
@@ -154,6 +242,11 @@ type Config struct {
 	// session into read-only mode — see runtime.IO.ReadOnly. One-way: there
 	// is no per-invocation override to turn this back off from here.
 	ReadOnly bool `json:"readOnly,omitempty"`
+	// TokenReuse lets auth get-token create and use one plugin-created login
+	// credential per server instead of a per-cluster interactive login.
+	// Default off; set via `config set-token-reuse`. Governs only entries
+	// whose provenance is execLogin.
+	TokenReuse bool `json:"tokenReuse,omitempty"`
 	// Completion holds per-machine completion preferences (not user config —
 	// live completion is inherently machine-dependent). Stored inline in
 	// config.yaml for discoverability; see `config set-completion`.

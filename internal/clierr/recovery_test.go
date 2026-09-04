@@ -23,16 +23,30 @@ func shellFields(t *testing.T, line string) []string {
 	return append([]string{"rancher"}, strings.Split(strings.TrimRight(string(out), "\n"), "\n")...)
 }
 
-// TestRecoveryEntryName asserts the recovery entry name is derived from
-// the host, carries the port when the URL has one, and never contains a
-// colon (an IPv6 literal's colons become dashes).
+// TestHostEntryName asserts the shared derivation: the host after the
+// prefix, the port appended with a dash when the URL names one, and never
+// a colon (an IPv6 literal's colons become dashes).
+func TestHostEntryName(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ url, want string }{
+		{"https://rancher.example.com", "p-rancher.example.com"},
+		{"https://rancher.example.com:8443/", "p-rancher.example.com-8443"},
+		{"https://RANCHER.example.com", "p-RANCHER.example.com"},
+		{"https://[2001:db8::1]:8443", "p-2001-db8--1-8443"},
+		{"https://[fe80::1%25eth0]:8443", "p-fe80--1%eth0-8443"},
+		{"::not a url", "p-unknown"},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, HostEntryName("p-", c.url), c.url)
+	}
+}
+
+// TestRecoveryEntryName asserts the recovery entry carries the recover-
+// prefix over the shared derivation. Host case is preserved: the entry
+// name is a label, and the URL it binds to is canonical.
 func TestRecoveryEntryName(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "recover-rancher.example.com", RecoveryEntryName("https://rancher.example.com"))
 	assert.Equal(t, "recover-rancher.example.com-8443", RecoveryEntryName("https://rancher.example.com:8443/"))
-	assert.Equal(t, "recover-RANCHER.example.com", RecoveryEntryName("https://RANCHER.example.com"), "host case is preserved: the entry name is a label, and the URL it binds to is canonical")
-	assert.Equal(t, "recover-2001-db8--1-8443", RecoveryEntryName("https://[2001:db8::1]:8443"))
-	assert.Equal(t, "recover-fe80--1%eth0-8443", RecoveryEntryName("https://[fe80::1%25eth0]:8443"), "net/url decodes the zone's %25 to %")
 	assert.Equal(t, "recover-unknown", RecoveryEntryName("::not a url"))
 }
 
