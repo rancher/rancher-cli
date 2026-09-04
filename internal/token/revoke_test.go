@@ -73,15 +73,21 @@ func TestUserSuppliedRevokeIsNotApplicable(t *testing.T) {
 }
 
 // TestRevokeHasNoContextParameter asserts the API shape: the exported revoke
-// cannot receive the cancelled operation context, and it is the only
-// exported method on the credential.
+// of the credential's own token cannot receive the cancelled operation
+// context, and the credential exports no revoke beyond it and
+// RevokeCreated, which takes a context only to shorten its bound and can
+// never be cancelled by it.
 func TestRevokeHasNoContextParameter(t *testing.T) {
 	t.Parallel()
 	typ := reflect.TypeFor[LoginCredential]()
 	m, ok := typ.MethodByName("Revoke")
 	require.True(t, ok)
 	assert.Equal(t, 1, m.Type.NumIn(), "receiver only")
-	assert.Equal(t, 1, typ.NumMethod(), "Revoke is the only exported method")
+	rc, ok := typ.MethodByName("RevokeCreated")
+	require.True(t, ok)
+	require.Equal(t, 3, rc.Type.NumIn(), "receiver, context, ref")
+	assert.Equal(t, reflect.TypeFor[context.Context](), rc.Type.In(1))
+	assert.Equal(t, 2, typ.NumMethod(), "Revoke and RevokeCreated are the only exported methods")
 }
 
 // TestNoExportedRevokeFunctionBesidesTheMethod asserts that the package
@@ -109,4 +115,58 @@ func TestNoExportedRevokeFunctionBesidesTheMethod(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself asserts the
+// new revoke deletes the named token with the credential as bearer on the
+// kind's path, detached from the caller's cancellation, bounded by a still
+// running caller deadline or else by the cleanup bound (an expired
+// deadline never cancels the cleanup); a userSupplied credential is
+// notApplicable.
+func TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself(t *testing.T) {
+	t.Parallel()
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "slow-") {
+			// Records nothing: this handler never answers, so a later
+			// request's write to gotPath would race it.
+			<-r.Context().Done()
+			return
+		}
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	cred := LoginCredential{Token: "ext/d:s", Provenance: ProvenanceDerived, client: srv.Client(), base: srv.URL, parent: t.Context()}
+
+	out := cred.RevokeCreated(t.Context(), TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"})
+	assert.Equal(t, ResultRevoked, out.Result)
+	assert.Equal(t, V3TokensPath+"/kubeconfig-u-x", gotPath)
+	assert.Equal(t, "Bearer ext/d:s", gotAuth)
+
+	// A cancelled caller context does not cancel the revoke: it completes.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	out = cred.RevokeCreated(ctx, TokenRef{Kind: TokenKindExt, Name: "token-c"})
+	assert.Equal(t, ResultRevoked, out.Result)
+	assert.Equal(t, ExtTokensPath+"/token-c", gotPath)
+
+	// A deadline that already passed (kubectl gave up) is the reason for
+	// the cleanup, never a reason to skip it: the DELETE still runs.
+	ectx, ecancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer ecancel()
+	out = cred.RevokeCreated(ectx, TokenRef{Kind: TokenKindExt, Name: "token-e"})
+	assert.Equal(t, ResultRevoked, out.Result)
+	assert.Equal(t, ExtTokensPath+"/token-e", gotPath)
+
+	// A caller deadline shorter than the cleanup bound wins while it is
+	// still running. Last, because its handler never answers.
+	dctx, dcancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+	defer dcancel()
+	start := time.Now()
+	out = cred.RevokeCreated(dctx, TokenRef{Kind: TokenKindExt, Name: "slow-1"})
+	assert.Equal(t, ResultFailed, out.Result)
+	assert.Less(t, time.Since(start), 2*time.Second)
+
+	assert.Equal(t, ResultNotApplicable, UserSupplied("x").RevokeCreated(t.Context(), TokenRef{Kind: TokenKindExt, Name: "n"}).Result)
 }

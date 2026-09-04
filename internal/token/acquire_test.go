@@ -447,3 +447,35 @@ func TestAcquireRevokesSessionCreatedUnderAnUnexpectedStatus(t *testing.T) {
 	assert.Equal(t, "v3", recs[0].Kind)
 	assert.Equal(t, ae.SessionTokenRef.Name, recs[0].Name)
 }
+
+// TestAcquireLoginCredentialCapturesTheOwner asserts UserID is the derived
+// token's spec.userID on the derived path, the pre-ext login body's userId
+// on the legacy path, and empty when no response carried an owner.
+func TestAcquireLoginCredentialCapturesTheOwner(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
+	require.NoError(t, err)
+	assert.Equal(t, ProvenanceDerived, cred.Provenance)
+	assert.Equal(t, "user-alice", cred.UserID)
+
+	legacy := testrancher.New(testrancher.Options{Legacy: true, LegacyLoginBodyUserID: true, Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
+	lsrv := httptest.NewServer(legacy)
+	t.Cleanup(lsrv.Close)
+	cred, err = AcquireLoginCredential(t.Context(), lsrv.Client(), LoginRequest{Server: lsrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
+	require.NoError(t, err)
+	assert.Equal(t, ProvenanceLegacySession, cred.Provenance)
+	assert.Equal(t, "user-alice", cred.UserID)
+
+	silent := testrancher.New(testrancher.Options{Legacy: true, Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
+	ssrv := httptest.NewServer(silent)
+	t.Cleanup(ssrv.Close)
+	cred, err = AcquireLoginCredential(t.Context(), ssrv.Client(), LoginRequest{Server: ssrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
+	require.NoError(t, err)
+	assert.Empty(t, cred.UserID, "the 2.14+ login body carries no owner; nothing is inferred")
+}

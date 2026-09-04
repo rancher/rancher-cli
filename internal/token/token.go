@@ -1066,11 +1066,16 @@ const ExtTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 // resource is missing.
 var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
 
-// errDerivedCreateDenied wraps a 401/403 from the derived token create call: the bearer credential
-// itself is invalid or insufficient, as opposed to a network/TLS failure or
-// a server error — the two classes need different handling by the caller
-// (fall back to interactive vs. surface the real failure).
-var errDerivedCreateDenied = errors.New("token create rejected: invalid or insufficient credential")
+// errCredentialUnauthorized and errCredentialForbidden wrap the two
+// rejections a request made with a stored credential can receive, as
+// opposed to a network/TLS failure or a server error. They are separate
+// because they need different handling: a 401 says the credential itself is
+// no longer valid, a 403 says the credential is valid but the permission is
+// missing, which no re-authentication fixes.
+var (
+	errCredentialUnauthorized = errors.New("credential rejected: 401 Unauthorized")
+	errCredentialForbidden    = errors.New("credential lacks permission to create tokens: 403 Forbidden")
+)
 
 // CreateDerivedToken asks the ext Token store to create a purpose-made derived
 // token (bearer bearerToken), scoped to clusterID when set (spec.clusterName,
@@ -1079,9 +1084,10 @@ var errDerivedCreateDenied = errors.New("token create rejected: invalid or insuf
 // left behind — the resource name, bearer, and expiry when the response
 // identified them — on the error path too, so a caller that must clean up
 // knows what exists. ErrExtGroupAbsent signals the group-level 404 that means
-// an older Rancher; errDerivedCreateDenied signals a 401/403 (the bearer credential is
-// bad), distinct from any other error (network/TLS/5xx), which callers must
-// treat as a real failure, not a "try something else" signal. ttlMs <= 0 omits
+// an older Rancher; errCredentialUnauthorized and errCredentialForbidden
+// signal a 401 and a 403 (the bearer credential is bad, or lacks the
+// permission), distinct from any other error (network/TLS/5xx), which
+// callers must treat as a real failure, not a "try something else" signal. ttlMs <= 0 omits
 // spec.ttl entirely (server default). This is the SAME derived-token path
 // `auth login` uses (via resolveProviderLoginToken in package commands), so
 // get-token's stored-credential path creates exactly the same shape of token.
@@ -1118,8 +1124,10 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		return r, ErrExtGroupAbsent
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return r, fmt.Errorf("%w: %d %s", errDerivedCreateDenied, resp.StatusCode, http.StatusText(resp.StatusCode))
+	case http.StatusUnauthorized:
+		return r, fmt.Errorf("%w: %d %s", errCredentialUnauthorized, resp.StatusCode, http.StatusText(resp.StatusCode))
+	case http.StatusForbidden:
+		return r, fmt.Errorf("%w: %d %s", errCredentialForbidden, resp.StatusCode, http.StatusText(resp.StatusCode))
 	case http.StatusOK, http.StatusCreated:
 		if r.Bearer == "" {
 			return r, clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
@@ -1161,7 +1169,8 @@ func matchingServerNames(cfg *config.Config, server string) []string {
 // errNoStoredCredential is storedCredToken's sentinel for "try the
 // interactive provider flow instead" — no usable stored credential exists,
 // or the create was rejected as an invalid/insufficient credential
-// (errDerivedCreateDenied). Any other error storedCredToken returns is a real
+// (errCredentialUnauthorized or errCredentialForbidden). Any other error
+// storedCredToken returns is a real
 // failure (network/TLS/5xx, or a resolution error for --cluster) that the
 // caller must surface directly, never paper over with "interactive login
 // required".
@@ -1303,7 +1312,13 @@ func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, b
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized:
+		return "", fmt.Errorf("resolving --cluster: %w", errCredentialUnauthorized)
+	case http.StatusForbidden:
+		return "", fmt.Errorf("resolving --cluster: %w", errCredentialForbidden)
+	default:
 		return "", clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
@@ -1405,7 +1420,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
 			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
-		case errors.Is(err, errDerivedCreateDenied):
+		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
 			p.Notice(fmt.Sprintf("creating a token from the stored login credential for %q failed: %v; falling back to interactive login", name, err))
 			return Token{}, errNoStoredCredential
 		default:

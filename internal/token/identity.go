@@ -108,6 +108,12 @@ type CreateResult struct {
 	ExpiresAt string
 	Marked    bool
 	CreatedAt string
+	// UserID is the owner the create response reported (ext spec.userID, v3
+	// userId); empty when the response carried none.
+	UserID string
+	// ClusterName is the scope the response reported (ext spec.clusterName,
+	// v3 clusterId), for the fail-closed check.
+	ClusterName string
 }
 
 // deterministicNotCreated lists the statuses that prove the server did not
@@ -141,6 +147,7 @@ func classifyCreate(resp *http.Response, body []byte, err error, createdAt strin
 	}
 	name, bearer, expires := extractIdentity(kind, probe)
 	r.ExpiresAt = expires
+	r.UserID, r.ClusterName = extractOwnerAndScope(kind, probe)
 	switch {
 	case name != "":
 		r.Ref = &TokenRef{Kind: kind, Name: name}
@@ -187,6 +194,27 @@ func LoginResponseShape(body []byte) (kind TokenKind, recognized bool) {
 // missing field and a literal null both establish nothing.
 func jsonPresent(raw json.RawMessage) bool {
 	return len(raw) > 0 && string(raw) != "null"
+}
+
+// extractOwnerAndScope reads the owner and the cluster scope the two
+// response shapes carry: spec.userID and spec.clusterName on an ext Token,
+// userId and clusterId on a v3 body. Absent fields are empty; nothing is
+// inferred from the bearer or the id.
+func extractOwnerAndScope(kind TokenKind, probe map[string]json.RawMessage) (userID, cluster string) {
+	str := func(raw json.RawMessage) string {
+		var s string
+		_ = json.Unmarshal(raw, &s)
+		return s
+	}
+	if kind == TokenKindExt {
+		var spec struct {
+			UserID      string `json:"userID"`
+			ClusterName string `json:"clusterName"`
+		}
+		_ = json.Unmarshal(probe["spec"], &spec)
+		return spec.UserID, spec.ClusterName
+	}
+	return str(probe["userId"]), str(probe["clusterId"])
 }
 
 // extractIdentity reads the resource name, bearer, and expiry from the two

@@ -64,6 +64,10 @@ type LoginCredential struct {
 	// Marker is the operation marker embedded in every token this
 	// operation created; empty for a userSupplied credential.
 	Marker string
+	// UserID is the token's owner as the create response reported it; empty
+	// when no response carried one (a SAML legacy credential, or a 2.14+
+	// login body).
+	UserID string
 	// Ref identifies the transferred token for revocation; nil when the
 	// token is user-supplied or unidentified.
 	Ref *TokenRef
@@ -110,6 +114,32 @@ func (c LoginCredential) Revoke() RevokeOutcome {
 	ctx, cancel := cleanupContext(parent)
 	defer cancel()
 	return revokeToken(ctx, c.client, c.base, *c.Ref, c.Token)
+}
+
+// RevokeCreated deletes a token this credential created, with the
+// credential as bearer: the cluster token the plugin login proved itself
+// with, or a superseded token of the same owner. Like Revoke it detaches
+// from the caller's cancellation and runs under the cleanup bound. A
+// caller deadline that has NOT yet passed shortens the bound (the
+// retirement pass hands in what remains of its budget); a deadline that
+// has already passed is the very cancellation that triggered cleanup and
+// must not cancel the cleanup too, so it is ignored and the full cleanup
+// bound applies. The retirement pass checks its budget before each call;
+// a budget that expires between that check and this read costs one
+// cleanup bound, an accepted microsecond window.
+func (c LoginCredential) RevokeCreated(ctx context.Context, ref TokenRef) RevokeOutcome {
+	if c.Provenance == ProvenanceUserSupplied {
+		return RevokeOutcome{Ref: &ref, Result: ResultNotApplicable}
+	}
+	bound := cleanupTimeout
+	if dl, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(dl); remaining > 0 && remaining < bound {
+			bound = remaining
+		}
+	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bound)
+	defer cancel()
+	return revokeToken(rctx, c.client, c.base, ref, c.Token)
 }
 
 // SAMLHandoff is recorded immediately before the SAML browser URL is

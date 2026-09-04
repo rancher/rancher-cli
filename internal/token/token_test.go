@@ -405,7 +405,7 @@ func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 // hanging forever, and that the resulting error keeps CreateDerivedToken's
 // existing classification: a *clierr.Error with CodeGeneric, the same shape
 // any other transport failure at this call site already takes (a timeout is
-// not errDerivedCreateDenied, so it must NOT fall back to the interactive flow the
+// neither credential sentinel, so it must NOT fall back to the interactive flow the
 // way a rejected 401/403 create does).
 func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout.
@@ -449,7 +449,7 @@ func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is not errDerivedCreateDenied and must not trigger the interactive fallback")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "a timeout is neither credential sentinel and must not trigger the interactive fallback")
 	assert.Less(t, elapsed, 5*time.Second, "the derived token create request must be bounded by the client timeout, not hang on the blocked handler")
 }
 
@@ -2251,4 +2251,42 @@ func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 	assert.Equal(t, 8, ce.ExitCode())
 	assert.Contains(t, ce.Message, `failed to delete "acme/u/c"`)
 	assert.Contains(t, ce.Message, "already deleted")
+}
+
+// TestCreateDerivedTokenSplits401And403 asserts the two rejections are
+// distinct sentinels: 401 is the credential itself, 403 is permission.
+func TestCreateDerivedTokenSplits401And403(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		status int
+		want   error
+	}{{http.StatusUnauthorized, errCredentialUnauthorized}, {http.StatusForbidden, errCredentialForbidden}} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
+		_, err := CreateDerivedToken(t.Context(), srv.Client(), srv.URL, "b", "c-test", 0, "d")
+		require.ErrorIs(t, err, tc.want)
+		srv.Close()
+	}
+}
+
+// TestResolveClusterIDForCreateClassifiesRejections asserts the cluster
+// list request's 401 and 403 are the same sentinels the create uses, and
+// every other non-200 stays a generic error.
+func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		status int
+		want   error
+	}{{http.StatusUnauthorized, errCredentialUnauthorized}, {http.StatusForbidden, errCredentialForbidden}} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
+		_, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "b", "testcluster")
+		require.ErrorIs(t, err, tc.want)
+		srv.Close()
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	t.Cleanup(srv.Close)
+	_, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "b", "testcluster")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	require.NotErrorIs(t, err, errCredentialUnauthorized)
 }

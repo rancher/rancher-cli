@@ -158,7 +158,8 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 			st.sOwned = false
 			p.Notice(legacyFallbackNotice(s.ExpiresAt))
 			return LoginCredential{Token: s.Bearer, ExpiresAt: s.ExpiresAt, Provenance: ProvenanceLegacySession, Marker: marker,
-				Ref: s.Ref, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
+				UserID: s.UserID,
+				Ref:    s.Ref, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
 				SessionCreatedAt: s.CreatedAt,
 				parent:           ctx, client: client, base: st.base}, nil
 		}
@@ -184,7 +185,8 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 	sClean := revokeToken(c, client, st.base, *s.Ref, dr.Bearer)
 	cancel()
 	return LoginCredential{Token: dr.Bearer, ExpiresAt: dr.ExpiresAt, Provenance: ProvenanceDerived, Marker: marker,
-		Ref: dr.Ref, SessionTokenCleanup: sClean, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
+		UserID: dr.UserID,
+		Ref:    dr.Ref, SessionTokenCleanup: sClean, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
 		SessionCreatedAt: s.CreatedAt, DerivedCreatedAt: dr.CreatedAt,
 		parent: ctx, client: client, base: st.base}, nil
 }

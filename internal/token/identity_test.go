@@ -214,3 +214,25 @@ func TestClassifyCreateV3Login(t *testing.T) {
 		assert.Empty(t, r.Bearer, bad)
 	}
 }
+
+// TestClassifyCreateReadsOwnerAndScope asserts the ext create response's
+// spec.userID and spec.clusterName, and the v3 body's userId and
+// clusterId, land on CreateResult; absent fields read as empty.
+func TestClassifyCreateReadsOwnerAndScope(t *testing.T) {
+	t.Parallel()
+	ext := []byte(`{"metadata":{"name":"token-1"},"spec":{"clusterName":"c-test","userID":"user-a"},"status":{"bearerToken":"ext/token-1:s"}}`)
+	r := classifyCreate(&http.Response{StatusCode: 201}, ext, nil, "t", true, TokenKindExt)
+	assert.Equal(t, CreateKnown, r.Outcome)
+	assert.Equal(t, "user-a", r.UserID)
+	assert.Equal(t, "c-test", r.ClusterName)
+
+	v3 := []byte(`{"id":"kubeconfig-u-x","token":"kubeconfig-u-x:s","clusterId":"c-test","userId":"user-b","expiresAt":"2026-01-01T00:00:00Z"}`)
+	r = classifyCreate(&http.Response{StatusCode: 201}, v3, nil, "t", true, TokenKindV3)
+	assert.Equal(t, "user-b", r.UserID)
+	assert.Equal(t, "c-test", r.ClusterName)
+
+	bare := []byte(`{"metadata":{"name":"token-2"},"status":{"bearerToken":"ext/token-2:s"}}`)
+	r = classifyCreate(&http.Response{StatusCode: 201}, bare, nil, "t", true, TokenKindExt)
+	assert.Empty(t, r.UserID)
+	assert.Empty(t, r.ClusterName)
+}
