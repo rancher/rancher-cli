@@ -113,8 +113,11 @@ envelope:
 Read `data`; surface `warnings` to the user. Other formats: `table` (default,
 for users), `wide` (table family — adds extra columns to the same rows, never
 a filter), `yaml`, `name` (ids only), or `template=<go-template>` — a Go
-template over the JSON view of `data` (same shape as `-o json`). Anything
-else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
+template over the JSON view of `data` (same shape as `-o json`) — often
+shorter than piping JSON into another interpreter, e.g. names and creation
+times of every kubeconfig token object:
+`rancher get kubeconfigs -o 'template={{range .}}{{.metadata.name}} {{.metadata.creationTimestamp}}{{"\n"}}{{end}}'`.
+Anything else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
 output across all formats.
 
 A list's `data` is a bare array — never `.items` — regardless of kind. Real
@@ -279,6 +282,9 @@ Errors land on stderr as an envelope with the error object under `data`:
   "data": { "error": { "code": "NOT_FOUND", "message": "...", "hint": "...", "retryable": false } } }
 ```
 
+Check the exit code before reading `data`: on success a list's `data` is
+a bare array, on failure `data` is an object holding `error` — a pipe that
+assumes the array shape counts an error as one item and reads it as data.
 Read `data.error.code` / `data.error.hint` — want the envelope, pass
 `-o json` (or `-o yaml`), including for errors; every other format renders
 a short text block instead (`error (CODE): message`, an optional `hint:`
@@ -365,7 +371,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 - `rancher logs <target> [--cluster <c>] [--tail 200] [--since <dur>]
   [--previous] [--container <name>] [--timestamps] [--pod <name>]` — curated,
   verified-location logs for `server`, `agent`, `fleet-agent`,
-  `kube-api-auth`, or `webhook`. Multi-pod targets merge every matched
+  `kube-api-auth`, `webhook`, or `api-extension` (the imperative API
+  extension server that backs `ext.cattle.io` tokens and kubeconfigs — read
+  it when a token or kubeconfig operation misbehaves). Multi-pod targets
+  merge every matched
   pod/container into one `[pod/container]`-prefixed body; `--tail` defaults
   to 200 lines, `--since` takes a duration (`30m`, `2h`), `--previous` reads
   the last-terminated container instance, and `--container` narrows a
@@ -400,7 +409,9 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   applicable), or errored, and partial bundles are normal. Complements
   rancherlabs/support-tools' node-level collector, not a replacement for it.
 - `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` —
-  flip a Rancher feature flag (RFC 6902 patch, like every `patch <kind>`);
+  flip a Rancher feature flag (RFC 6902 patch, like every `patch <kind>`).
+  A `setting`'s `value` is a STRING field even when the setting is a
+  boolean or a number: patch it with `"value":"true"`, never a bare `true`;
   gated like any sensitive-kind patch (`--yes` required, since flipping a
   flag is destructive by policy).
 
