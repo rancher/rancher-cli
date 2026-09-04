@@ -117,11 +117,15 @@ func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, can
 // shim's cache slots (names are born at registration now — add-server and
 // login's delegated add both call this before any probe or write).
 func validateEntryName(name string) *clierr.Error {
-	if !config.IsLegacyCacheSlot(name) {
-		return nil
+	switch {
+	case config.IsLegacyCacheSlot(name):
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", config.LegacyCachePrefix))
+	case config.IsExecLoginEntryName(name):
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server names starting with %q are reserved for the exec plugin's own login entries; use a different name", config.ExecLoginPrefix))
 	}
-	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", config.LegacyCachePrefix))
+	return nil
 }
 
 // caPresence summarizes a stored CA selector's kind for a result envelope —

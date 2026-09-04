@@ -76,13 +76,6 @@ func NewLogin(dir string) runtime.Command {
 // self-read against a resolved (URL, CA, token) triple.
 type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, error)
 
-// trustCommitConfigWriteHookForTest replaces the guided-trust commit's
-// config.Write call when non-nil, so a test can force the config-write
-// half of the commit protocol to fail WITHOUT ever touching disk (the real
-// Write would otherwise already have succeeded by the time a test could
-// observe an injected failure). Nil in production.
-var trustCommitConfigWriteHookForTest func() error
-
 // tlsPreflightDefault performs the every-https-path TLS preflight: an
 // unauthenticated GET against the same /rancherversion endpoint the PS-8
 // version probe uses, built with caPEM as the trusted root (system roots
@@ -533,103 +526,64 @@ func (l loginCmd) authenticateAndStore(
 		}
 	}
 
-	var (
-		currentServer string
-		currentValid  bool
-		residual      = []clierr.TokenFate{}
-		persisted     bool
-	)
-	if err := config.WithLock(ctx, l.dir, func() error {
-		fail := func(primary error) error {
+	var pendingCA *config.PendingTrust
+	if pendingTrust != nil {
+		pendingCA = &config.PendingTrust{CA: pendingTrust.pem, Fingerprint: pendingTrust.fingerprint}
+	}
+	out, perr := config.PersistLoginCredential(ctx, l.dir, config.PersistLoginInput{
+		Name: name, CanonicalURL: serverURL,
+		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
+		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
+		OpenStore:    l.newStore,
+		PendingTrust: pendingCA,
+		PreCheck: func(cfg *config.Config) error {
+			if l.beforeCommitHook != nil {
+				l.beforeCommitHook()
+				// The hook stands in for a writer that lands inside the lock
+				// window, after the primitive read the config: the drift check
+				// below must see what it wrote, so re-read it.
+				fresh, err := config.Load(config.FilePath(l.dir))
+				if err != nil {
+					return err
+				}
+				cfg = fresh
+			}
+			if !snapshotMatchesCurrent(cfg, snap) {
+				return clierr.New(clierr.CodeConflict,
+					fmt.Sprintf("server entry %q changed during login", name)).
+					WithHint(fmt.Sprintf("rancher auth login %s", shquote(name)))
+			}
+			return nil
+		},
+	})
+	st.Warnings = append(st.Warnings, out.Warnings...)
+	st.Config, st.Commit, st.ConfigRecovery = out.ConfigState, out.Commit, out.ConfigRecovery
+	st.Compensate, st.CompensationError = "", out.CompensationError
+	if out.CredentialState == clierr.CredentialCompensated || out.CredentialState == clierr.CredentialCompensationFailed {
+		st.Compensate = out.CredentialState
+	}
+	residual := []clierr.TokenFate{}
+	persisted := perr == nil
+	if perr != nil {
+		if !errors.Is(perr, config.ErrTokenStoreUnsupported) {
 			// A cancelled operation is reported as cancellation: the local
 			// symptom (a lock timeout, a half-read config) describes the
 			// cancellation, not a fault of its own.
+			primary := perr
 			if cerr := ctx.Err(); cerr != nil {
 				primary = cerr
 			}
-			return token.FailLogin(primary, clierr.StageCommit, st, cred, name)
+			return runtime.Result{}, token.FailLogin(primary, clierr.StageCommit, st, cred, name)
 		}
-		if l.beforeCommitHook != nil {
-			l.beforeCommitHook()
+		residual = append(residual, token.FinishUnsupportedStore(cred, name, &st)...)
+		if out.ConfigState == clierr.ConfigRollbackFailed {
+			// A read-only store is warn-and-succeed only when the entry went
+			// back to what it was. One that still names the token this
+			// finalizer just revoked is a failure carrying its own recovery.
+			return runtime.Result{}, token.FailLogin(perr, clierr.StageCommit, st, cred, name)
 		}
-		cfg, err := config.Load(config.FilePath(l.dir))
-		if err != nil {
-			return fail(err)
-		}
-		if !snapshotMatchesCurrent(cfg, snap) {
-			return fail(clierr.New(clierr.CodeConflict,
-				fmt.Sprintf("server entry %q changed during login", name)).
-				WithHint(fmt.Sprintf("rancher auth login %s", shquote(name))))
-		}
-		rawStore, storeNotice, err := l.newStore(cfg.CredentialStore, l.dir)
-		if err != nil {
-			return fail(err)
-		}
-		if storeNotice != "" {
-			st.Warnings = append(st.Warnings, storeNotice)
-		}
-		// Login is the one place auto may re-probe and upgrade a stale "file"
-		// pin to the keychain; the returned store is the one to write into.
-		// Call-order coupling: l.newStore (OpenStoreWithNotice) MUST run
-		// before RepinForLogin — see RepinForLogin's else-branch comment.
-		store, pinNotice, err := config.RepinForLogin(l.dir, cfg.CredentialStore, rawStore)
-		if err != nil {
-			return fail(err)
-		}
-		if pinNotice != "" {
-			st.Warnings = append(st.Warnings, pinNotice)
-		}
-		ref := config.ServerRef{Name: name, URL: serverURL}
-		out, tokenErr := config.CommitToken(store, ref, bearer)
-		compensate := out.Compensate
-		tokenCommitted := tokenErr == nil
-		st.Commit = &out
-		if tokenErr == nil {
-			persisted = true
-			if out.Notice != "" {
-				st.Warnings = append(st.Warnings, out.Notice)
-			}
-		}
-		if tokenErr != nil {
-			if !errors.Is(tokenErr, config.ErrTokenStoreUnsupported) {
-				return fail(tokenErr)
-			}
-			residual = append(residual, token.FinishUnsupportedStore(cred, name, &st)...)
-		}
-		if pendingTrust != nil {
-			// The token write (or its declared ErrTokenStoreUnsupported
-			// exception) already ran; the CA/fingerprint write is the second
-			// half of the same commit. A failure here, after a real token
-			// commit, is compensated when the backend can — never a silent
-			// orphan.
-			cfg.Servers[name] = config.Server{URL: serverURL, CA: pendingTrust.pem, CAFingerprint: pendingTrust.fingerprint}
-			writeConfig := cfg.Write
-			if trustCommitConfigWriteHookForTest != nil {
-				writeConfig = trustCommitConfigWriteHookForTest
-			}
-			if werr := writeConfig(); werr != nil {
-				st.Config = clierr.ConfigWriteFailed
-				if tokenCommitted && compensate != nil {
-					if cerr := compensate(); cerr != nil {
-						st.Compensate, st.CompensationError = clierr.CredentialCompensationFailed, cerr.Error()
-					} else {
-						st.Compensate = clierr.CredentialCompensated
-					}
-				}
-				return fail(clierr.New(clierr.CodeGeneric,
-					fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())).
-					WithHint(config.LoginHintFor(name)))
-			}
-			st.Config = clierr.ConfigWritten
-		}
-		currentServer = cfg.CurrentServer
-		if currentServer != "" {
-			_, currentValid = cfg.Servers[currentServer]
-		}
-		return nil
-	}); err != nil {
-		return runtime.Result{}, err
 	}
+	currentServer, currentValid := out.CurrentServer, out.CurrentServerValid
 
 	// verified mirrors the headline choice below exactly: false only when
 	// the round-trip was explicitly skipped via --no-verify for a
@@ -651,7 +605,7 @@ func (l loginCmd) authenticateAndStore(
 
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
-		"residualTokens": residual,
+		"residualTokens": residual, "provenance": string(cred.Provenance), "tokenUserId": cred.UserID,
 	}}
 	res.Warnings = st.Warnings
 	var lines []string

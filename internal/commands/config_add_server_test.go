@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -86,6 +87,18 @@ func TestAddServerRejectsLegacyPrefixedName(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// TestAddServerRejectsExecLoginPrefixedName asserts the other reserved
+// namespace: the entries the exec plugin creates for its own logins.
+func TestAddServerRejectsExecLoginPrefixedName(t *testing.T) {
+	dir, _ := filePolicyDir(t)
+	c := newAddServerCmd(dir)
+	_, err := c.Execute(context.Background(), args{s: map[string]string{"url": "https://qa1.example.com"}, a: []string{config.ExecLoginPrefix + "qa1.example.com"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, `"exec-login-" are reserved`)
 }
 
 func TestAddServerRequiresURL(t *testing.T) {

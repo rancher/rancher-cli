@@ -15,7 +15,7 @@
           "retryable": false
         },
         "stage": "commit",
-        "configState": "writeFailed",
+        "configState": "notWritten",
         "credentialState": "compensationFailed",
         "credentialRecovery": {
           "backend": "file",

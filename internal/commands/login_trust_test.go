@@ -412,7 +412,7 @@ func TestLoginPlainUnknownAuthorityCompensationFailureIsReported(t *testing.T) {
 	ce, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Equal(t, clierr.StageCommit, d.Stage)
-	assert.Equal(t, clierr.ConfigWriteFailed, d.ConfigState)
+	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
 	assert.Equal(t, clierr.CredentialCompensationFailed, d.CredentialState)
 	require.NotNil(t, d.CredentialRecovery)
 	assert.Equal(t, clierr.BackendFile, d.CredentialRecovery.Backend)
@@ -543,9 +543,14 @@ func (s *controllableStore) DeleteToken(ref config.ServerRef) error {
 	return s.CredStore.DeleteToken(ref)
 }
 
-// setTrustCommitConfigWriteHookForTest sets the package-level test hook and
-// returns a restore func.
+// setTrustCommitConfigWriteHookForTest fails the persistence primitive's
+// guided-trust config write and returns a restore func; every other write
+// step of the same login proceeds normally.
 func setTrustCommitConfigWriteHookForTest(fn func() error) (restore func()) {
-	trustCommitConfigWriteHookForTest = fn
-	return func() { trustCommitConfigWriteHookForTest = nil }
+	return config.SetPersistWriteHookForTest(func(step string) error {
+		if step != "trust" {
+			return nil
+		}
+		return fn()
+	})
 }

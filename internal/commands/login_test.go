@@ -2220,7 +2220,7 @@ func TestLoginCombinedWorstCaseCarriesFourDistinctErrors(t *testing.T) {
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(b, &got)) // decoded field access, not a rendered-JSON string match
 	assert.Contains(t, got["primary"].(map[string]any)["message"], "disk full")
-	assert.Equal(t, "writeFailed", got["configState"])
+	assert.Equal(t, "notWritten", got["configState"])
 	assert.Equal(t, "compensationFailed", got["credentialState"])
 	assert.Equal(t, "keychain locked", got["credentialRecovery"].(map[string]any)["compensationError"])
 	assert.Contains(t, got["derivedToken"].(map[string]any)["cleanup"].(map[string]any)["error"], "500")
@@ -2391,7 +2391,7 @@ func TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery(t *testing
 	_, err = cmd.Execute(t.Context(), in, p)
 	_, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.StageCommit, d.Stage)
-	assert.Equal(t, clierr.ConfigWriteFailed, d.ConfigState)
+	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
 	assert.Equal(t, clierr.CredentialCommittedUncompensatable, d.CredentialState)
 	require.NotNil(t, d.CredentialRecovery)
 	assert.Equal(t, clierr.BackendKeyring, d.CredentialRecovery.Backend)
@@ -2579,7 +2579,7 @@ func TestLoginFailureEnvelopeGoldens(t *testing.T) {
 // the derived token created for the login is revoked exactly once, the
 // failure reports that revoke, and the read-only warning the first step
 // produced reaches the operator on the error. Not parallel: it mutates the
-// package-level trustCommitConfigWriteHookForTest.
+// persistence primitive's package-level write hook.
 func TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce(t *testing.T) {
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	f := testrancher.New(testrancher.Options{})
@@ -2591,14 +2591,21 @@ func TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce(t *testing.T) {
 		newStore:     func(string, string) (config.CredStore, string, error) { return unsupportedStore{}, "", nil },
 		tlsPreflight: tlsPreflightDefault,
 	}
-	restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+	// The read-only branch persists the accepted certificate in the write
+	// that restores the entry, so that is the step this failure targets.
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "rollback" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
 	defer restore()
 
 	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true)
 	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
 	_, err := cmd.Execute(t.Context(), in, p)
 	ce, d := decodeLoginFailure(t, err)
-	assert.Equal(t, clierr.ConfigWriteFailed, d.ConfigState)
+	assert.Equal(t, clierr.ConfigRollbackFailed, d.ConfigState)
 	assert.Equal(t, clierr.CredentialNotWritten, d.CredentialState)
 	require.NotNil(t, d.DerivedToken)
 	require.NotNil(t, d.DerivedToken.Cleanup)
@@ -2657,7 +2664,14 @@ func TestLoginReadOnlyHelperThenConfigWriteFailureLegacySession(t *testing.T) {
 		newStore:     func(string, string) (config.CredStore, string, error) { return unsupportedStore{}, "", nil },
 		tlsPreflight: tlsPreflightDefault,
 	}
-	restore := setTrustCommitConfigWriteHookForTest(func() error { return errors.New("disk full") })
+	// The read-only branch persists the accepted certificate in the write
+	// that restores the entry, so that is the step this failure targets.
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "rollback" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
 	defer restore()
 
 	p := ui.New(&bytes.Buffer{}, newLineReader("y", "e2e-user", "e2e-pass"), false, true)
@@ -2698,4 +2712,152 @@ func TestLoginEarlyFailureKeepsTheVersionWarning(t *testing.T) {
 	ce, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.CodeAuth, d.Primary.Code)
 	assert.Contains(t, ce.Warnings(), versionWarning)
+}
+
+// TestLoginRejectsExecLoginPrefix asserts the reserved namespace: an
+// explicit name, a derived name, and add-server all refuse it.
+func TestLoginRejectsExecLoginPrefix(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		args{s: map[string]string{"url": "https://r.ex"}, a: []string{"exec-login-r.ex"}}, ui.Discard())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, `"exec-login-" are reserved`)
+}
+
+// TestLoginPersistsProvenanceAndTokenRefMetadataFirst asserts a provider
+// login writes the entry's provenance, tokenRef, owner, and expiry in the
+// entry write that precedes the credential commit, returns them in the
+// result, and never changes CurrentServer.
+func TestLoginPersistsProvenanceAndTokenRefMetadataFirst(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
+	fake := httptest.NewServer(f)
+	t.Cleanup(fake.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	seedServer(t, dir, "other", "https://other.ex", "", true)
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
+	require.NoError(t, err)
+	assert.Equal(t, "derived", res.Data.(map[string]any)["provenance"])
+	assert.Equal(t, "user-alice", res.Data.(map[string]any)["tokenUserId"])
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	got := cfg.Servers["prod"]
+	assert.Equal(t, clierr.ProvenanceDerived, got.Provenance)
+	require.NotNil(t, got.TokenRef)
+	assert.Equal(t, clierr.TokenKindExt, got.TokenRef.Kind)
+	assert.Equal(t, "user-alice", got.TokenUserID)
+	assert.NotEmpty(t, got.CredentialExpiresAt)
+	assert.Equal(t, "other", cfg.CurrentServer)
+}
+
+// TestLoginRollsTheEntryBackOnACommitFailure asserts the metadata written
+// before the commit is gone after a failed commit, and the failure shape
+// reports configState notWritten with the credential revoked.
+func TestLoginRollsTheEntryBackOnACommitFailure(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	fake := httptest.NewServer(f)
+	t.Cleanup(fake.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
+		return setErrStore{CredStore: store, setErr: errors.New("keyring refused")}, "", nil
+	}}
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err := cmd.Execute(t.Context(), in, ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	d, ok := ce.Details.(clierr.LoginFailureDetails)
+	require.True(t, ok)
+	assert.Equal(t, clierr.StageCommit, d.Stage)
+	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
+	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Servers["prod"].Provenance, "rolled back to the pre-provenance snapshot")
+	assert.Nil(t, cfg.Servers["prod"].TokenRef)
+	assert.Equal(t, 0, f.TokenCount(), "every token this login created is gone")
+}
+
+// TestLoginReadOnlyHelperKeepsWarnAndSucceed asserts a read-only credential
+// helper at the login boundary: the command succeeds with the read-only
+// warning, nothing is stored, and the entry carries no tokenRef for a token
+// that was revoked.
+func TestLoginReadOnlyHelperKeepsWarnAndSucceed(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	fake := httptest.NewServer(f)
+	t.Cleanup(fake.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	cmd := &loginCmd{dir: dir, newStore: func(string, string) (config.CredStore, string, error) {
+		return setErrStore{CredStore: store, setErr: fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)}, "", nil
+	}}
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	res, err := cmd.Execute(t.Context(), in, ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "credential helper is read-only")
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Nil(t, cfg.Servers["prod"].TokenRef)
+	assert.Equal(t, 0, f.TokenCount())
+}
+
+// TestLoginUpdateRecordsThePriorDerivedToken asserts a re-login over a
+// derived entry appends the prior token with its owner to supersededTokens
+// (retirement is exercised separately).
+func TestLoginUpdateRecordsThePriorDerivedToken(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	fake := httptest.NewServer(f)
+	t.Cleanup(fake.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	s := cfg.Servers["prod"]
+	s.Provenance, s.TokenRef, s.TokenUserID = clierr.ProvenanceDerived, &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-prior"}, "user-someone-else"
+	cfg.Servers["prod"] = s
+	require.NoError(t, cfg.Write())
+	in := args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}}
+	_, err = newPlainLoginCmd(dir, store).Execute(t.Context(), in, ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+	require.NoError(t, err)
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	require.Len(t, cfg.Servers["prod"].SupersededTokens, 1)
+	assert.Equal(t, "token-prior", cfg.Servers["prod"].SupersededTokens[0].Ref.Name)
+	assert.Equal(t, "user-someone-else", cfg.Servers["prod"].SupersededTokens[0].UserID)
+}
+
+// TestLoginNamelessURLBesideAPluginEntryCreatesANormalEntry asserts login
+// never reuses a plugin login entry: with exec-login-<host> present at the
+// same URL, `auth login --url` derives <host> and creates it beside the
+// plugin entry, whose credential is untouched.
+func TestLoginNamelessURLBesideAPluginEntryCreatesANormalEntry(t *testing.T) {
+	t.Parallel()
+	dir, store := filePolicyDir(t)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.Servers["exec-login-r.ex"] = config.Server{URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin,
+		TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-plugin"}}
+	require.NoError(t, cfg.Write())
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "exec-login-r.ex", URL: "https://r.ex"}, "ext/token-plugin:s"))
+	cmd := newPlainLoginCmd(dir, store)
+	cmd.verify = func(context.Context, config.Effective) (string, error) { return "", nil }
+	in := args{s: map[string]string{"url": "https://r.ex"}, b: map[string]bool{"token-stdin": true}}
+	_, err = cmd.Execute(t.Context(), in, ui.New(&bytes.Buffer{}, newLineReader("id:secret"), false, false))
+	require.NoError(t, err)
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Servers, "r.ex")
+	assert.Equal(t, clierr.ProvenanceUserSupplied, cfg.Servers["r.ex"].Provenance)
+	assert.Equal(t, "token-plugin", cfg.Servers["exec-login-r.ex"].TokenRef.Name, "the plugin entry is untouched")
+	tok, err := store.GetToken(config.ServerRef{Name: "exec-login-r.ex", URL: "https://r.ex"})
+	require.NoError(t, err)
+	assert.Equal(t, "ext/token-plugin:s", tok)
 }
