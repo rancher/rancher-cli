@@ -3,8 +3,10 @@ package commands
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -31,14 +33,16 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"and the effective credential-store policy with its source: the " +
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
-			"Under auto, also reports the probed backend pin when present, or " +
-			"— before any pin exists — credentialStoreDefault, the OS-native " +
+			"Under auto, also reports the probed backend pin when present, or, " +
+			"before any pin exists, credentialStoreDefault, the OS-native " +
 			"keychain auto will try first on this platform (named from the " +
 			"platform alone, never probed). " +
 			"Also reports a nested completion section (network: live API " +
 			"completion on/off; timeout: effective per-TAB budget after " +
 			"clamping/default; timeoutRaw: only when the stored value was " +
-			"clamped or unparseable). The first place to check when " +
+			"clamped or unparseable). " +
+			"Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. " +
+			"The first place to check when " +
 			"tab-completion shows no candidates.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher config status"},
@@ -73,15 +77,6 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		defaultBackend = config.PlatformKeychainLabel()
 	}
 
-	// field is either a scalar (key: val) or a nested section
-	// (key: []field) rendered as an indented block. One declaration drives
-	// both the JSON data map and the plain-text output, so -o json and text
-	// cannot drift apart for any field — flat or nested.
-	type field struct {
-		key string
-		val any // scalar any, or []field for a nested section
-	}
-
 	fields := []field{
 		{"path", path},
 		{"exists", exists},
@@ -109,23 +104,37 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		completionFields = append(completionFields, field{"timeoutRaw", rawTimeout})
 	}
 	fields = append(fields, field{"completion", completionFields})
+	fields = append(fields, field{"tokenReuse", cfg.TokenReuse})
 
-	data := make(map[string]any, len(fields))
-	var text strings.Builder
-	for _, f := range fields {
-		if sub, ok := f.val.([]field); ok {
-			subData := make(map[string]any, len(sub))
-			fmt.Fprintf(&text, "%s:\n", f.key)
-			for _, s := range sub {
-				subData[s.key] = s.val
-				fmt.Fprintf(&text, "  %s: %v\n", s.key, s.val)
-			}
-			data[f.key] = subData
-		} else {
-			data[f.key] = f.val
-			fmt.Fprintf(&text, "%s: %v\n", f.key, f.val)
+	// Servers: every entry with CLI-owned tokens (current or records).
+	var serverSections []field
+	serverNames := make([]string, 0, len(cfg.Servers))
+	for n, s := range cfg.Servers {
+		if s.HoldsCLITokens() {
+			serverNames = append(serverNames, n)
 		}
 	}
+	slices.Sort(serverNames)
+	for _, n := range serverNames {
+		s := cfg.Servers[n]
+		serverSections = append(serverSections, field{n, entrySection(s)})
+	}
+	var text strings.Builder
+	data := renderFields(fields, "", &text)
+
+	// The entries render from their own projections: entryReport owns the
+	// JSON shape (list-shaped records, shared with set-token-reuse and
+	// delete-server), entrySection the text.
+	if len(serverSections) > 0 {
+		text.WriteString("servers:\n")
+		renderFields(serverSections, "  ", &text)
+		serverData := make(map[string]any, len(serverSections))
+		for _, n := range serverNames {
+			serverData[n] = entryReport(n, cfg.Servers[n])
+		}
+		data["servers"] = serverData
+	}
+
 	rendered := text.String()
 	return runtime.Result{
 		Kind:       "ConfigInfo",
@@ -135,14 +144,118 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}, nil
 }
 
+// field is one key with a scalar, a nested section ([]field), or a list of
+// strings ([]string). Sections nest to any depth; each level indents two
+// spaces; list items sit one level under their key.
+type field struct {
+	key string
+	val any
+}
+
+// renderFields writes fields as text at indent and returns their JSON
+// projection, so -o json and the text view cannot drift for any level.
+func renderFields(fields []field, indent string, text *strings.Builder) map[string]any {
+	data := make(map[string]any, len(fields))
+	for _, f := range fields {
+		switch v := f.val.(type) {
+		case []field:
+			fmt.Fprintf(text, "%s%s:\n", indent, f.key)
+			data[f.key] = renderFields(v, indent+"  ", text)
+		case []string:
+			fmt.Fprintf(text, "%s%s:\n", indent, f.key)
+			for _, item := range v {
+				fmt.Fprintf(text, "%s  %s\n", indent, item)
+			}
+			data[f.key] = v
+		default:
+			data[f.key] = v
+			fmt.Fprintf(text, "%s%s: %v\n", indent, f.key, v)
+		}
+	}
+	return data
+}
+
+// entrySection is the text form of entryReport: provenance, owner, expiry,
+// logged-out state, the current token, and one section per superseded
+// record keyed by the token, each with state, last attempt, and recovery.
+func entrySection(s config.Server) []field {
+	var out []field
+	if s.Provenance != "" {
+		out = append(out, field{"provenance", string(s.Provenance)})
+	}
+	if s.TokenUserID != "" {
+		out = append(out, field{"tokenUserId", s.TokenUserID})
+	}
+	if s.CredentialExpiresAt != "" {
+		out = append(out, field{"credentialExpiresAt", s.CredentialExpiresAt})
+	}
+	if s.LoggedOutAt != "" {
+		out = append(out, field{"loggedOutAt", s.LoggedOutAt}, field{"credential", "no stored credential"})
+	}
+	switch {
+	case s.CLIOwned():
+		out = append(out, field{"currentToken", tokenSection(s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
+	case s.CLICreated():
+		// The CLI created the token but never recorded its name: nothing
+		// can be revoked by name, and the surface says so rather than
+		// hiding the entry.
+		out = append(out, field{"currentToken", []field{{"note", "cannot revoke by name: no tokenRef recorded"}}})
+	}
+	if len(s.SupersededTokens) > 0 {
+		var recs []field
+		for _, r := range s.SupersededTokens {
+			// The record's section is keyed by the token, so its fields
+			// do not repeat the ref.
+			var sec []field
+			if r.UserID != "" {
+				sec = append(sec, field{"userId", r.UserID})
+			}
+			if r.ExpiresAt != "" {
+				sec = append(sec, field{"expiresAt", r.ExpiresAt})
+			}
+			sec = append(sec, field{"supersededAt", r.SupersededAt}, field{"state", string(config.RecordOwnerState(r, s.TokenUserID))})
+			if r.LastAttempt != nil {
+				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + r.LastAttempt.Error + ")"})
+			}
+			sec = append(sec, recoveryField(s.URL, r.UserID, r.Ref))
+			recs = append(recs, field{r.Ref.String(), sec})
+		}
+		out = append(out, field{"supersededTokens", recs})
+	}
+	return out
+}
+
+// tokenSection renders an entry's current token: ref, owner, expiry, then
+// the recovery sequence that revokes it.
+func tokenSection(serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
+	sec := []field{{"ref", ref.String()}}
+	if userID != "" {
+		sec = append(sec, field{"userId", userID})
+	}
+	if expiresAt != "" {
+		sec = append(sec, field{"expiresAt", expiresAt})
+	}
+	return append(sec, recoveryField(serverURL, userID, ref))
+}
+
+// recoveryField is a recovery sequence with the assumption its commands
+// depend on as a trailing line, the same sentence delete-server and
+// set-token-reuse print. Text only: the JSON side is entryReport, whose
+// recovery value stays the commands alone.
+func recoveryField(serverURL, userID string, ref clierr.TokenRef) field {
+	seq := clierr.RecoverySequence(serverURL, userID, ref)
+	return field{"recovery", append(seq, "("+clierr.RecoverySequenceAssumption+")")}
+}
+
 // configInfoSectionHeaders is the exact line config status always emits for
-// its one nested section — the completion block is unconditional (see
-// Execute's field list above), so "completion:" needs no presence check.
-var configInfoSectionHeaders = map[string]bool{"completion:": true}
+// its nested sections: the completion block is unconditional (see
+// Execute's field list above), so "completion:" needs no presence check;
+// "servers:" appears only when there are CLI-owned tokens.
+var configInfoSectionHeaders = map[string]bool{"completion:": true, "servers:": true}
 
 // styleConfigInfoText applies config status's bold span to text, the plain
-// rendering built above: the "completion:" section label, bold, whole line.
-// Every flat "key: value" line stays plain.
+// rendering built above: the "completion:" and "servers:" section labels,
+// bold, whole line. Every flat "key: value" line stays plain.
 func styleConfigInfoText(text string, s style.Style) string {
 	return runtime.BoldExactLines(text, configInfoSectionHeaders, s)
 }

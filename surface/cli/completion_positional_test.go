@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/commands"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -151,4 +152,16 @@ func TestCompletionShellPositionalParity(t *testing.T) {
 
 	got = dispatchSite(ctx, CompletionSite{Kind: SitePositional, Index: 1}, d, nil, nil, nil)
 	assert.Nil(t, got, "past the one declared arg: nothing")
+}
+
+// TestSetTokenReusePositionalCompletes asserts `config set-token-reuse <TAB>`
+// offers exactly on and off through the static positional layer.
+func TestSetTokenReusePositionalCompletes(t *testing.T) {
+	t.Parallel()
+	d := commands.NewSetTokenReuse("").Describe()
+	got, owned := positionalEnumCandidates(CompletionSite{Kind: SitePositional, Index: 0}, d)
+	assert.True(t, owned)
+	assert.Equal(t, []string{"off", "on"}, got)
+	got, _ = positionalEnumCandidates(CompletionSite{Kind: SitePositional, Index: 0, Partial: "o"}, d)
+	assert.Equal(t, []string{"off", "on"}, got)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -196,6 +197,7 @@ func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, target
 	deletedFrom := make(map[string][]string, len(targets))
 	var deletedCache, notices []string
 	done := make([]string, 0, len(targets))
+	var stamped bool
 	for _, s := range targets {
 		from, cache, ns, derr := config.DeleteTokenEverywhere(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		notices = append(notices, ns...)
@@ -205,8 +207,34 @@ func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, target
 		deletedFrom[s] = from
 		deletedCache = append(deletedCache, cache...)
 		done = append(done, s)
+		stamped = stampLoggedOut(cfg, s) || stamped
 	}
+	notices = writeLogoutStamps(cfg, stamped, notices)
 	return deletedFrom, deletedCache, notices, nil
+}
+
+// stampLoggedOut records the logout time on an entry that held a token,
+// reporting whether it changed anything.
+func stampLoggedOut(cfg *config.Config, name string) bool {
+	e := cfg.Servers[name]
+	if e.TokenRef == nil {
+		return false
+	}
+	e.LoggedOutAt = time.Now().UTC().Format(time.RFC3339)
+	cfg.Servers[name] = e
+	return true
+}
+
+// writeLogoutStamps writes the stamped entries once. A failed write is a
+// notice, never a failure: the tokens are already deleted.
+func writeLogoutStamps(cfg *config.Config, stamped bool, notices []string) []string {
+	if !stamped {
+		return notices
+	}
+	if err := config.WriteStep("logout", cfg); err != nil {
+		return append(notices, fmt.Sprintf("could not record the logout on the server entry (%v); config status will still show a stored credential", err))
+	}
+	return notices
 }
 
 // deleteAll is `logout --all`'s delete path: it deletes every target's login
@@ -220,6 +248,7 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 	deletedFrom := make(map[string][]string, len(targets))
 	var notices []string
 	done := make([]string, 0, len(targets))
+	var stamped bool
 	for _, s := range targets {
 		from, ns, derr := config.DeleteLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
 		notices = append(notices, ns...)
@@ -228,7 +257,9 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 		}
 		deletedFrom[s] = from
 		done = append(done, s)
+		stamped = stampLoggedOut(cfg, s) || stamped
 	}
+	notices = writeLogoutStamps(cfg, stamped, notices)
 	deletedCache, cacheNotices, err := config.DeleteAllExecCache(l.dir)
 	notices = append(notices, cacheNotices...)
 	if err != nil {

@@ -54,6 +54,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"config list-servers":            "local config, no kind row",
 	"config path":                    "local config, no kind row",
 	"config set-completion":          "local config, no kind row",
+	"config set-token-reuse":         "local config, no kind row",
 	"config status":                  "local config, no kind row",
 	"config use-server":              "local config, no kind row",
 	"skill install":                  "agent-skill install, no kind row",

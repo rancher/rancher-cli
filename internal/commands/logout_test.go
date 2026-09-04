@@ -2,10 +2,12 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -598,4 +600,37 @@ func TestStyleLogoutTextStripInvariant(t *testing.T) {
 	assert.NotContains(t, styled, "\x1b[1m  token removed from", "a detail line must not be styled")
 	assert.NotContains(t, styled, "\x1b[1m  no stored token found", "a detail line must not be styled")
 	assert.NotContains(t, styled, "\x1b[1mexec-credential cache entries removed", "the cache-count line must not be styled")
+}
+
+// TestLogoutStampsLoggedOutAtOnCLIOwnedEntries asserts logout records the
+// time on an entry whose token is CLI-owned, leaves a pre-provenance entry
+// untouched, and turns a failed stamp write into a warning.
+func TestLogoutStampsLoggedOutAtOnCLIOwnedEntries(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.EnvCredentialStore, "file")
+	cfg := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{
+		"prod":  {URL: "https://r.ex", Provenance: clierr.ProvenanceDerived, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}},
+		"plain": {URL: "https://p.ex"},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{b: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+	cfg, _ = config.Load(config.FilePath(dir))
+	assert.NotEmpty(t, cfg.Servers["prod"].LoggedOutAt)
+	_, perr := time.Parse(time.RFC3339, cfg.Servers["prod"].LoggedOutAt)
+	require.NoError(t, perr)
+	assert.Empty(t, cfg.Servers["plain"].LoggedOutAt)
+	assert.Equal(t, "prod", cfg.CurrentServer, "logout still never clears the pointer")
+
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "logout" {
+			return errors.New("read-only")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"prod"}}, ui.Discard())
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "could not record the logout")
 }

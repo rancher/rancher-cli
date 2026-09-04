@@ -689,7 +689,7 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 		&ver, &supported,
 		map[string]any{"userID": "u-abc"},
 		map[string]any{"name": "tok-1", "kind": "derived", "provider": "local", "expiresAt": "2030-01-01T00:00:00Z", "current": true},
-		"auto", "file",
+		"auto", "file", "",
 	)
 	assert.Contains(t, text, "ok: true")
 	assert.Contains(t, text, "server: my-server")
@@ -716,7 +716,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 		true, "s", "v1.31.0",
 		nil, nil,
 		nil, nil,
-		"keychain", "",
+		"keychain", "", "",
 	)
 	assert.Contains(t, text, "rancherVersion: -")
 	assert.Contains(t, text, "supported: -")
@@ -730,7 +730,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 // plain — plus the strip invariant and the inactive-style identity.
 func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 	t.Parallel()
-	text := renderAuthCheckText(true, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "")
+	text := renderAuthCheckText(true, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "", "")
 	enabled := style.Style{Enabled: true}
 
 	styled := styleAuthCheckText(text, true, enabled)
@@ -749,7 +749,7 @@ func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 // unhealthy "ok: false" row turns yellow, never "ok: true".
 func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 	t.Parallel()
-	text := renderAuthCheckText(false, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "")
+	text := renderAuthCheckText(false, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "", "")
 	enabled := style.Style{Enabled: true}
 
 	styled := styleAuthCheckText(text, false, enabled)
@@ -876,4 +876,52 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	// The hinted command must be complete and valid verbatim: a concrete,
 	// shell-quoted name, executable with no substitution.
 	assert.Equal(t, "rancher auth login 'default'", ce.Hint)
+}
+
+// TestAuthCheckReportsCredentialProvenance asserts auth status names the
+// effective entry's provenance, owner, token, and expiry when they are
+// persisted, and omits the block for a pre-provenance entry.
+func TestAuthCheckReportsCredentialProvenance(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "")
+	dir := seedAuthedDir(t)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	s := cfg.Servers["default"]
+	s.Provenance, s.TokenUserID, s.CredentialExpiresAt = clierr.ProvenanceExecLogin, "user-a", "2026-10-01T00:00:00Z"
+	s.TokenRef = &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}
+	cfg.Servers["default"] = s
+	require.NoError(t, cfg.Write())
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "default", URL: s.URL}, "ext/token-live:secretvalue"))
+	cmd := &authCheckCmd{dir: dir, store: store, preflight: alwaysOKPreflight, rancherVersion: alwaysOKVersion,
+		identity: func(context.Context, config.Effective) (string, error) { return "user-a", nil },
+		token: func(_ context.Context, _ config.Effective, name string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{Name: name, Kind: "", Provider: "local", ExpiresAt: "2026-10-01T00:00:00Z"}, nil
+		}}
+	res, err := cmd.Execute(t.Context(), args{}, ui.Discard())
+	require.NoError(t, err)
+	cred, ok := res.Data.(map[string]any)["credential"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "execLogin", cred["provenance"])
+	assert.Equal(t, "user-a", cred["userId"])
+	assert.Equal(t, "2026-10-01T00:00:00Z", cred["expiresAt"])
+	assert.Equal(t, "token-live", cred["tokenRef"].(map[string]any)["name"])
+	assert.Contains(t, res.Text, "credential: execLogin (user user-a, token ext/token-live, expires 2026-10-01T00:00:00Z)")
+
+	// An environment token is the effective credential: the block describes
+	// the stored one and is omitted.
+	t.Setenv("RANCHER_CLI_TOKEN", "ext/other:secret")
+	res, err = cmd.Execute(t.Context(), args{}, ui.Discard())
+	require.NoError(t, err)
+	_, has := res.Data.(map[string]any)["credential"]
+	assert.False(t, has)
+	t.Setenv("RANCHER_CLI_TOKEN", "")
+
+	plain := seedAuthedDir(t)
+	cmd.dir, cmd.store = plain, config.NewFileStore(plain)
+	require.NoError(t, cmd.store.SetToken(config.ServerRef{Name: "default", URL: "https://rancher.test.invalid"}, "id:secret"))
+	res, err = cmd.Execute(t.Context(), args{}, ui.Discard())
+	require.NoError(t, err)
+	_, has = res.Data.(map[string]any)["credential"]
+	assert.False(t, has, "a pre-provenance entry has no block")
 }

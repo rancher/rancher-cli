@@ -157,6 +157,8 @@ or point any other agent's instructions file at it.
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
 
+Kubeconfigs that authenticate through the exec plugin log in once per cluster by default; `rancher config set-token-reuse on` lets the plugin keep one login credential per server instead (see REFERENCE.md, Token reuse for kubectl).
+
 Composite reads (`inspect *`, `images`, `usage`) answer with what the caller
 can see: a collector they cannot read is named in the payload's `degraded`
 field with a paired warning, and the command still exits 0.

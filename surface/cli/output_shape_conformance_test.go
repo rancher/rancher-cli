@@ -37,6 +37,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"config list-servers":               runtime.ShapeTabular,
 	"config path":                       runtime.ShapeText,
 	"config set-completion":             runtime.ShapeText,
+	"config set-token-reuse":            runtime.ShapeText,
 	"config status":                     runtime.ShapeText,
 	"config update-server":              runtime.ShapeText,
 	"config use-server":                 runtime.ShapeText,

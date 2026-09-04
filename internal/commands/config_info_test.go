@@ -2,8 +2,10 @@ package commands
 
 import (
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -266,4 +268,92 @@ func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 		_, ok := data["pin"]
 		assert.False(t, ok, "absent pin must not appear as an empty field")
 	})
+}
+
+// TestConfigInfoReportsTokenReuseAndCLIOwnedEntries asserts the setting is
+// always reported and that every entry with a CLI-owned current token or
+// superseded records gets a section with owner, expiry, the records with
+// their derived state, last attempt, and recovery sequence; a logged-out
+// entry's own token is listed the same way; a user-supplied entry with
+// superseded records lists the records without a current-token note;
+// entries without CLI tokens have no section.
+func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.EnvCredentialStore, "")
+	cfg := &config.Config{TokenReuse: true, Servers: map[string]config.Server{
+		"plain":         {URL: "https://p.ex"},
+		"user-supplied": {URL: "https://u.ex", Provenance: clierr.ProvenanceUserSupplied},
+		"user-supplied-records": {URL: "https://us.ex", Provenance: clierr.ProvenanceUserSupplied,
+			SupersededTokens: []config.SupersededToken{
+				{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}, UserID: "user-c", SupersededAt: "2026-09-01T00:00:00Z"},
+			}},
+		"exec-login-r.ex": {URL: "https://r.ex:8443", Provenance: clierr.ProvenanceExecLogin,
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}, TokenUserID: "user-a", CredentialExpiresAt: "2026-10-01T00:00:00Z",
+			SupersededTokens: []config.SupersededToken{
+				{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-b"}, UserID: "user-b", ExpiresAt: "2026-09-20T00:00:00Z", SupersededAt: "2026-09-02T00:00:00Z"},
+				{Ref: clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "kubeconfig-u-x"}, UserID: "user-a", SupersededAt: "2026-09-03T00:00:00Z",
+					LastAttempt: &clierr.RevokeOutcome{Result: clierr.ResultFailed, Error: "503"}},
+				{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-nobody"}, SupersededAt: "2026-09-04T00:00:00Z"},
+			}},
+		"prod": {URL: "https://r.ex", Provenance: clierr.ProvenanceDerived, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-out"},
+			TokenUserID: "user-a", LoggedOutAt: "2026-09-04T12:00:00Z"},
+		"noref": {URL: "https://n.ex", Provenance: clierr.ProvenanceDerived},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	res := execConfigInfoResult(t, dir)
+	data := res.Data.(map[string]any)
+	assert.Equal(t, true, data["tokenReuse"])
+	servers := data["servers"].(map[string]any)
+	assert.Len(t, servers, 4)
+	noref := servers["noref"].(map[string]any)
+	assert.Equal(t, "cannot revoke by name: no tokenRef recorded", noref["currentToken"].(map[string]any)["note"])
+	_, hasPlain := servers["plain"]
+	assert.False(t, hasPlain)
+	_, hasUser := servers["user-supplied"]
+	assert.False(t, hasUser)
+
+	// A user-supplied token is never CLI-created: the entry is listed for
+	// its superseded records only, with no current-token section and no
+	// "cannot revoke by name" note.
+	us := servers["user-supplied-records"].(map[string]any)
+	_, hasCurrent := us["currentToken"]
+	assert.False(t, hasCurrent)
+	usRecs := us["supersededTokens"].([]map[string]any)
+	require.Len(t, usRecs, 1)
+	assert.Equal(t, "token-old", usRecs[0]["ref"].(map[string]any)["name"])
+	assert.Equal(t, 1, strings.Count(res.Text, "cannot revoke by name"), "only the noref entry carries the note")
+
+	e := servers["exec-login-r.ex"].(map[string]any)
+	assert.Equal(t, "execLogin", e["provenance"])
+	assert.Equal(t, "user-a", e["tokenUserId"])
+	assert.Equal(t, "2026-10-01T00:00:00Z", e["credentialExpiresAt"])
+	recs := e["supersededTokens"].([]map[string]any)
+	require.Len(t, recs, 3)
+	assert.Equal(t, "differentOwner", recs[0]["state"])
+	assert.Equal(t, "sameOwner", recs[1]["state"])
+	assert.Equal(t, "failed", recs[1]["lastAttempt"].(map[string]any)["result"])
+	assert.Equal(t, "unknownOwner", recs[2]["state"])
+	seq := recs[1]["recovery"].([]string)
+	assert.Equal(t, "rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-a'", seq[0])
+	assert.Equal(t, "rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated", seq[2])
+
+	p := servers["prod"].(map[string]any)
+	assert.Equal(t, "2026-09-04T12:00:00Z", p["loggedOutAt"])
+	assert.Equal(t, "no stored credential", p["credential"])
+	cur := p["currentToken"].(map[string]any)
+	assert.Equal(t, "token-out", cur["ref"].(map[string]any)["name"])
+	assert.NotEmpty(t, cur["recovery"], "a logged-out entry's own token is listed like a superseded record")
+
+	// Text: two spaces per level. servers → entry → supersededTokens →
+	// one section per record keyed by the token → its fields; recovery
+	// commands are list items one level under "recovery:".
+	assert.Contains(t, res.Text, "tokenReuse: true\n")
+	assert.Contains(t, res.Text, "servers:\n  exec-login-r.ex:\n    provenance: execLogin\n")
+	assert.Contains(t, res.Text, "    supersededTokens:\n      ext/token-b:\n        userId: user-b\n")
+	assert.Contains(t, res.Text, "        state: differentOwner\n")
+	assert.Contains(t, res.Text, "        recovery:\n          rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'\n          rancher config use-server 'recover-r.ex-8443'\n")
+	assert.Contains(t, res.Text, "  prod:\n")
+	assert.Contains(t, res.Text, "    credential: no stored credential\n")
+	assert.Contains(t, res.Text, "  noref:\n    provenance: derived\n    currentToken:\n      note: cannot revoke by name: no tokenRef recorded\n")
 }

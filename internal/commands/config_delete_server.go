@@ -57,6 +57,9 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		deletedFrom    []string
 		deletedCache   []string
 		notices        []string
+		recoveryData   map[string]any
+		recoveryLines  []string
+		hasRecovery    bool
 	)
 	if err := config.WithLock(cmdCtx, d.dir, func() error {
 		cfg, err := config.Load(config.FilePath(d.dir))
@@ -67,6 +70,12 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		srv, ok = cfg.Servers[name]
 		if !ok {
 			return serverNotFoundWithCandidates(cfg, name)
+		}
+		if srv.HoldsCLITokens() {
+			// An entry whose provenance says the CLI created the token but
+			// that names none has nothing to revoke: no recovery key.
+			recoveryData, recoveryLines = recoveryReport(srv)
+			hasRecovery = len(recoveryData) > 0
 		}
 		policy := config.EffectivePolicy(cfg.CredentialStore)
 		deletedFrom, deletedCache, notices, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
@@ -89,13 +98,17 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 
 	sort.Strings(deletedFrom)
 	sort.Strings(deletedCache)
-	res := runtime.Result{Kind: "DeletedServer", Data: map[string]any{
+	data := map[string]any{
 		"server":               name,
 		"url":                  srv.URL,
 		"deletedFrom":          map[string][]string{"backend": deletedFrom},
 		"deletedCache":         deletedCache,
 		"currentServerCleared": currentCleared,
-	}, Warnings: notices}
+	}
+	if hasRecovery {
+		data["recovery"] = recoveryData
+	}
+	res := runtime.Result{Kind: "DeletedServer", Data: data, Warnings: notices}
 	const pointerClearedLine = "was current — pointer cleared"
 	var lines []string
 	if currentCleared {
@@ -107,6 +120,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 	if len(deletedCache) > 0 {
 		lines = append(lines, cachedCredsRemovedLine(len(deletedCache)))
 	}
+	lines = append(lines, recoveryLines...)
 	tr := runtime.TextLines("server "+name+" deleted", lines...)
 	if currentCleared {
 		tr = runtime.AccentLine(tr, pointerClearedLine)
@@ -119,4 +133,30 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 // completes server names from the already-loaded config snapshot (AC-19).
 func (configDeleteServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	return view.ServerNames()
+}
+
+// recoveryReport is delete-server's account of the tokens an entry names
+// on the server, returned in the same invocation that removes the entry,
+// so the operator keeps a way to revoke them.
+func recoveryReport(s config.Server) (map[string]any, []string) {
+	rep := map[string]any{}
+	var lines []string
+	if s.CLIOwned() {
+		rep["current"] = tokenReport(s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)
+		owner := s.TokenUserID
+		if owner == "" {
+			owner = "unknown owner"
+		}
+		lines = append(lines, fmt.Sprintf("its login credential's token %s (%s) stays live on the server", s.TokenRef.String(), owner))
+		lines = append(lines, sequenceLines("  ", clierr.RecoverySequence(s.URL, s.TokenUserID, *s.TokenRef))...)
+	}
+	if len(s.SupersededTokens) > 0 {
+		recs := make([]map[string]any, 0, len(s.SupersededTokens))
+		for _, r := range s.SupersededTokens {
+			recs = append(recs, recordReport(s.URL, s, r))
+		}
+		rep["superseded"] = recs
+		lines = append(lines, recordLines(s, "")...)
+	}
+	return rep, lines
 }

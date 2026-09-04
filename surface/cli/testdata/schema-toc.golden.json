@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 185,
+  "commandCount": 186,
   "effectSchema": {
     "actions": [
       "create",
@@ -151,6 +151,10 @@
         {
           "name": "config set-completion",
           "usage": "Configure live shell completion (network on/off, timeout)"
+        },
+        {
+          "name": "config set-token-reuse",
+          "usage": "Let the kubectl exec plugin reuse one login credential per server (on|off)"
         }
       ],
       "desc": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",

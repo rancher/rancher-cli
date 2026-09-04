@@ -68,6 +68,7 @@ func buildEntries() []entry {
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigInfo(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigEdit(d.dir) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetCompletion(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetTokenReuse(d.dir) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillInstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillUninstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillStatus(d.version) }},

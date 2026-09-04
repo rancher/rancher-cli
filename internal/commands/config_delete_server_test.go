@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	goruntime "runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -290,4 +292,93 @@ func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
 	}
 	require.NoError(t, yaml.Unmarshal(yamlBuf.Bytes(), &yamlEnv))
 	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, yamlEnv.Warnings)
+}
+
+// TestConfigDeleteServerReturnsRecoveryForCLIOwnedTokensThenRemoves asserts
+// the result names the recovery sequence for the current token and every
+// record, in the same invocation that removes the entry; an entry without
+// CLI-owned tokens carries no recovery key; a failed credential delete
+// still leaves the entry (today's rule).
+func TestConfigDeleteServerReturnsRecoveryForCLIOwnedTokensThenRemoves(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{Servers: map[string]config.Server{
+		"exec-login-r.ex": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin,
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}, TokenUserID: "user-a",
+			SupersededTokens: []config.SupersededToken{{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}, UserID: "user-b", SupersededAt: "2026-09-01T00:00:00Z"}}},
+		"plain": {URL: "https://p.ex"},
+		"noref": {URL: "https://n.ex", Provenance: clierr.ProvenanceDerived},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
+		return []string{"file"}, nil, nil, nil
+	}}
+	res, err := cmd.Execute(t.Context(), args{a: []string{"exec-login-r.ex"}}, ui.Discard())
+	require.NoError(t, err)
+	rec := res.Data.(map[string]any)["recovery"].(map[string]any)
+	cur := rec["current"].(map[string]any)
+	assert.Equal(t, "token-live", cur["ref"].(map[string]any)["name"])
+	assert.Equal(t, "user-a", cur["userId"])
+	assert.Equal(t, "rancher delete token token-live --apply --yes", cur["recovery"].([]string)[2])
+	sup := rec["superseded"].([]map[string]any)
+	require.Len(t, sup, 1)
+	assert.Equal(t, "token-old", sup[0]["ref"].(map[string]any)["name"])
+	assert.Contains(t, res.Text, "rancher auth login 'recover-r.ex' --url 'https://r.ex'   # log in as user 'user-b'")
+	assert.Contains(t, res.Text, clierr.RecoverySequenceAssumption)
+	cfg, _ = config.Load(config.FilePath(dir))
+	_, present := cfg.Servers["exec-login-r.ex"]
+	assert.False(t, present, "the entry is removed in the same invocation")
+
+	res, err = cmd.Execute(t.Context(), args{a: []string{"plain"}}, ui.Discard())
+	require.NoError(t, err)
+	_, has := res.Data.(map[string]any)["recovery"]
+	assert.False(t, has)
+
+	res, err = cmd.Execute(t.Context(), args{a: []string{"noref"}}, ui.Discard())
+	require.NoError(t, err)
+	_, has = res.Data.(map[string]any)["recovery"]
+	assert.False(t, has, "an entry that names no token has nothing to recover")
+}
+
+// TestConfigDeleteServerRunsFromConfigRecoveryCommandAndNamesAnUnwritableDir
+// asserts the recovery a failed rollback hands the operator: the emitted
+// command removes the entry the rollback left behind, and against an
+// unwritable config directory it fails naming a path in that directory.
+func TestConfigDeleteServerRunsFromConfigRecoveryCommandAndNamesAnUnwritableDir(t *testing.T) {
+	if goruntime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions do not deny writes here")
+	}
+	dir, store := filePolicyDir(t)
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "rollback" {
+			return errors.New("read-only")
+		}
+		return nil
+	})
+	out, err := config.PersistLoginCredential(t.Context(), dir, config.PersistLoginInput{
+		Name: "exec-login-r.ex", CollisionSuffix: true, CanonicalURL: "https://r.ex",
+		Provenance: clierr.ProvenanceExecLogin, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"},
+		Bearer: "ext/t:s", OwnsEntry: true, ReadOnlyStoreIsFailure: true,
+		OpenStore: func(string, string) (config.CredStore, string, error) {
+			return setErrStore{CredStore: store, setErr: errors.New("refused")}, "", nil
+		},
+	})
+	restore()
+	require.Error(t, err)
+	require.NotNil(t, out.ConfigRecovery)
+	name := strings.Trim(strings.TrimPrefix(out.ConfigRecovery.Command, "rancher config delete-server "), "'")
+	cmd := NewConfigDeleteServer(dir).(runtime.ReadCommand)
+	_, err = cmd.Execute(t.Context(), args{a: []string{name}}, ui.Discard())
+	require.NoError(t, err)
+	cfg, _ := config.Load(config.FilePath(dir))
+	_, present := cfg.Servers[name]
+	assert.False(t, present, "the emitted command removes the entry")
+
+	cfg.Servers["exec-login-r.ex"] = config.Server{URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin}
+	require.NoError(t, cfg.Write())
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	_, err = cmd.Execute(t.Context(), args{a: []string{"exec-login-r.ex"}}, ui.Discard())
+	require.ErrorContains(t, err, dir, "the failure names the directory it could not write")
 }

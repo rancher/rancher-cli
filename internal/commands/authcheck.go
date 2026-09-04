@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -87,6 +88,16 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 		return runtime.Result{}, err
 	}
 
+	// credential describes the stored credential when it is the effective one
+	// (no RANCHER_CLI_TOKEN override) and has provenance (CLI-created).
+	var credential any
+	var credentialLine string
+	if os.Getenv(config.EnvToken) == "" {
+		if s, ok := cfg.Servers[eff.ServerName]; ok && s.Provenance != "" {
+			credential, credentialLine = credentialReport(s)
+		}
+	}
+
 	// The three probes below are independent network calls (version, identity,
 	// token) with nothing but eff in common; run them concurrently via
 	// errgroup (already a repo dependency — internal/engine/inspect/images.go
@@ -130,18 +141,22 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	tokenWarn := tokenWarning(tokenErr, supported)
 
 	credentialPolicy := config.EffectivePolicy(cfg.CredentialStore)
-	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned)
-	res := runtime.Result{
-		Kind: "AuthCheck",
-		Data: map[string]any{
-			"ok": true, "server": eff.ServerName, "serverVersion": ver,
-			"rancherVersion": rancherVersion, "supported": supported,
-			"identity": identity, "token": token,
-			"credentialStore": map[string]any{
-				"policy": credentialPolicy,
-				"pinned": pinned,
-			},
+	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned, credentialLine)
+	data := map[string]any{
+		"ok": true, "server": eff.ServerName, "serverVersion": ver,
+		"rancherVersion": rancherVersion, "supported": supported,
+		"identity": identity, "token": token,
+		"credentialStore": map[string]any{
+			"policy": credentialPolicy,
+			"pinned": pinned,
 		},
+	}
+	if credential != nil {
+		data["credential"] = credential
+	}
+	res := runtime.Result{
+		Kind:       "AuthCheck",
+		Data:       data,
 		Text:       text,
 		StyledText: func(s style.Style) string { return styleAuthCheckText(text, true, s) },
 	}
@@ -171,6 +186,7 @@ func renderAuthCheckText(
 	supported *bool,
 	identity, token any,
 	credentialPolicy, pinned string,
+	credentialLine string,
 ) string {
 	ptrStr := func(p *string) string {
 		if p == nil {
@@ -226,6 +242,9 @@ func renderAuthCheckText(
 		fmt.Fprintf(&b, "  current: %v\n", current)
 	} else {
 		fmt.Fprintf(&b, "  token: unavailable\n")
+	}
+	if credentialLine != "" {
+		fmt.Fprintf(&b, "  %s\n", credentialLine)
 	}
 
 	fmt.Fprintf(&b, "\nCREDENTIAL STORE\n")

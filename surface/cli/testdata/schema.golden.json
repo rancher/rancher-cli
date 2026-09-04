@@ -586,9 +586,36 @@
       "usage": "Configure live shell completion (network on/off, timeout)"
     },
     {
+      "args": [
+        {
+          "desc": "on or off",
+          "enum": [
+            "on",
+            "off"
+          ],
+          "name": "state",
+          "required": true,
+          "type": "string"
+        }
+      ],
       "auth": false,
       "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present, or — before any pin exists — credentialStoreDefault, the OS-native keychain auto will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). The first place to check when tab-completion shows no candidates.",
+      "desc": "Stores the token-reuse setting in config.yaml (default off). With it on, the first auth get-token cache miss for a server runs one interactive login, stores the resulting unscoped login credential under a server entry named exec-login-<host> with provenance execLogin, and creates cluster-scoped tokens from it silently for every cluster of that server. Off restores the per-cluster interactive login without deleting the stored credential; the output then lists every dormant plugin-created login and the commands that remove it (rancher auth logout <entry>, then rancher config delete-server <entry>) together with any superseded tokens it still names. auth login credentials are never affected.",
+      "examples": [
+        "rancher config set-token-reuse on",
+        "rancher config set-token-reuse off"
+      ],
+      "group": "config",
+      "name": "config set-token-reuse",
+      "network": false,
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Let the kubectl exec plugin reuse one login credential per server (on|off)"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present, or, before any pin exists, credentialStoreDefault, the OS-native keychain auto will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. The first place to check when tab-completion shows no candidates.",
       "examples": [
         "rancher config status"
       ],
@@ -9895,7 +9922,8 @@
         "config path",
         "config status",
         "config edit",
-        "config set-completion"
+        "config set-completion",
+        "config set-token-reuse"
       ],
       "desc": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
       "name": "config"
