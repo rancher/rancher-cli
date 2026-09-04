@@ -620,14 +620,20 @@ A provider sign-in creates tokens on the server before anything is stored
 locally. If the login then fails, the CLI revokes what it created and
 reports the outcome in the error's `details`:
 
-- `stage`: `authentication` (before the credential was ready) or `commit`.
-- `sessionToken` / `derivedToken`: each token's `outcome` (`known`,
-  `unknown` when the server may hold a token the CLI never saw,
+- `stage`: `authentication` (before the credential was ready), `commit`, or
+  `clusterToken` (the kubectl plugin's own step, creating the first
+  cluster-scoped token from a login credential it just created).
+- `sessionToken` / `derivedToken` / `clusterToken`: each token's `outcome`
+  (`known`, `unknown` when the server may hold a token the CLI never saw,
   `unidentified`, `notCreated`), its resource name, and its `cleanup`
-  result.
+  result. `clusterToken` is the plugin-created login's cluster token, revoked
+  with the login credential as bearer.
 - `credentialRecovery`: what the local credential store may still hold and
   the command that clears it (`rancher auth logout <name>`, which removes
   the credential from every backend).
+- `configRecovery`: an entry this login wrote could not be restored;
+  `command` removes it and `prior` is its complete earlier state (absent
+  when the login created the entry).
 - `operationMarker`: the tokens a password or device-code sign-in creates
   carry `[op:<marker>]` in their description, so a leftover can be found
   by listing the collection its `kind` names and revoked with the
@@ -672,6 +678,51 @@ tries to create a token from the stored `auth login` credential for the matching
 server; when that credential lives in the OS keychain, this can trigger a
 keychain-unlock prompt — CI and other non-interactive runs should use
 `RANCHER_CLI_CREDENTIAL_STORE=file` or a warm `--name` cache.
+
+## Token reuse for kubectl (opt-in)
+
+By default every kubeconfig cluster logs in on its own: a cache miss for a
+cluster the CLI has no stored `auth login` credential for runs an
+interactive login, and the token that login creates is scoped to that
+cluster. `rancher config set-token-reuse on` (config key `tokenReuse`,
+default off) changes the miss path: the first miss for a server runs one
+interactive login, stores the resulting unscoped login credential under a
+server entry named `exec-login-<host>` (with the port appended when the URL
+names one) whose `provenance` is `execLogin`, and creates a cluster-scoped
+token from that credential for every other cluster of the same server
+without prompting. Credentials you created with `rancher auth login` are
+never touched, read differently, or removed by the setting.
+
+The credential this stores is unscoped: it reaches the whole management
+plane, not one cluster, and it lives as long as the server allows: the
+login sends no TTL, so the server applies `auth-token-default-ttl-minutes`
+clamped by `auth-token-max-ttl-minutes`. When the credential store is the
+plaintext file, the CLI says so before the login runs, naming the file the
+credential will be written to. This setting is a client-side convenience,
+not an enforcement boundary: it decides what this CLI does on a cache miss,
+and nothing about what the stored token can do on the server.
+
+`rancher config set-token-reuse off` restores the per-cluster login and
+deletes nothing. Its output lists every plugin-created login left dormant
+and the two commands that remove each: `rancher auth logout <entry>`, then
+`rancher config delete-server <entry>`.
+
+`rancher config status` lists, under `servers`, every entry whose CLI-created
+tokens are still live on a server: its provenance, the token's owner and
+expiry, and, for the entry's current token and for each superseded record
+it still names, a four-command recovery sequence that logs in as a
+throwaway entry, selects it, revokes the token by name, and logs out again.
+Every text rendering of the sequence ends with what it assumes:
+`RANCHER_CLI_URL` and `RANCHER_CLI_TOKEN` are unset, and either would
+override the current server the sequence selects. `rancher config delete-server`
+returns the same account under `recovery` in the invocation that removes the
+entry, so the last reference to a live token is not lost with it.
+
+Two `rancher` processes cannot log in to one server at once: the plugin
+login holds a per-server lock across the whole interactive wait. A
+concurrent kubectl blocked behind it waits up to 60 seconds and then fails
+with `LOCK_TIMEOUT` (exit 8), which is retryable: the message names the
+server being logged in to; retry once that login completes.
 
 ## TLS & proxy
 

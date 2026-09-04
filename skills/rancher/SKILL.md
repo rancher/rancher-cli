@@ -51,10 +51,19 @@ token), not an error condition; don't treat it as one. If it fails with
   (`--auth-provider`, `--auth-flow devicecode|authcode`) — the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
   not a stored login session.
+- Kubeconfigs that use the exec plugin log in once per cluster by default.
+  `rancher config set-token-reuse on` lets the plugin keep one login
+  credential per server (entry `exec-login-<host>`, provenance `execLogin`)
+  and create cluster tokens from it silently; `off` restores the default
+  without deleting it. `rancher config status` lists every entry whose
+  CLI-created tokens are still live, each with a four-command recovery
+  sequence; run the sequence, never assume a replaced token is gone.
 - If a login fails with `details.stage` and token outcomes, follow
   `details.recovery` before retrying; an outcome of `unknown` or
   `unidentified` means the server may hold a token this login created —
-  never assume it is clean.
+  never assume it is clean. The fates a login reports are `sessionToken`,
+  `derivedToken`, and `clusterToken` (the plugin-created login's cluster
+  token).
 - Added ≠ logged in: a server can be added without a stored credential
   (`NOT_LOGGED_IN` until you log in). `auth login` never switches the current
   server — `rancher config use-server <name>` is the only switch verb.

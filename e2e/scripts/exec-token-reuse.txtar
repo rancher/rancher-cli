@@ -1,0 +1,82 @@
+# Cross-cluster token reuse for the exec plugin, end to end: one login for
+# two clusters, the setting turned off restoring the per-cluster login,
+# and the recovery sequence config delete-server emits executed against
+# the facade with a different current server in place. Prompts need a real
+# pty; see auth-login-local.txtar.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+
+# Default posture: setting off, plugin-only use is scoped-only. The login
+# request carries the cluster suffix and nothing is stored under a server
+# entry.
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name cold --auth-provider localProvider
+! exists $RANCHER_CLI_CONFIG_DIR/credentials.yaml
+exec rancher config status -o json
+jsonquery stdout data.tokenReuse false
+! stdout exec-login
+
+# Opt in. The first miss runs one login; the second cluster is silent.
+exec rancher config set-token-reuse on -o json
+jsonquery stdout data.tokenReuse true
+
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name reuse --auth-provider localProvider
+cp stdout first.json
+jsonquery first.json kind ExecCredential
+exists $RANCHER_CLI_CONFIG_DIR/credentials.yaml
+
+# No pty for the second cluster: a prompt would fail here.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cluster local --name reuse
+cp stdout second.json
+jsonquery second.json kind ExecCredential
+
+# The entry, its provenance, and its owner are visible without any store
+# access. The entry name carries dots (a loopback host), so gjson's
+# @values modifier selects it instead of a dotted path.
+exec rancher config status -o json
+jsonget stdout 'data.servers|@keys|0' entry.txt
+setenvfrom ENTRY entry.txt
+jsonquery stdout 'data.servers|@values|0.provenance' execLogin
+jsonquery stdout 'data.servers|@values|0.tokenUserId' user-e2e
+
+# Setting off: the plugin entry is dormant, not deleted, and the next miss
+# for a third cache slot prompts again.
+exec rancher config set-token-reuse off -o json
+jsonquery stdout data.tokenReuse false
+jsonquery stdout data.dormantLogins.0.server $ENTRY
+exists $RANCHER_CLI_CONFIG_DIR/credentials.yaml
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name again --auth-provider localProvider
+
+# Recovery sequence: with a different, valid current server in place (an
+# address nothing listens on), config delete-server emits the four commands
+# for the entry's token; executing them deletes exactly that token on the
+# recorded server. Any request to the current server would fail loudly.
+exec rancher config add-server other --url https://127.0.0.1:1
+exec rancher config use-server other
+exec rancher config delete-server $ENTRY -o json
+jsonget stdout data.recovery.current.ref.name leftover.txt
+setenvfrom LEFTOVER leftover.txt
+jsonget stdout data.recovery.current.recovery.1 useserver.txt
+grep 'rancher config use-server ''recover-127\.0\.0\.1-' useserver.txt
+ttyin -stdin creds.txt
+exec rancher auth login recover-e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
+exec rancher config use-server recover-e2e
+exec rancher delete token $LEFTOVER --apply --yes -o json
+jsonquery stdout data.deleted $LEFTOVER
+exec rancher auth logout recover-e2e
+exec rancher config status -o json
+jsonquery stdout data.servers.recover-e2e.credential 'no stored credential'
+
+# The stated assumption: an environment override wins over the current
+# server, so the delete addresses the override and fails there.
+env RANCHER_CLI_URL=https://127.0.0.1:1
+env RANCHER_CLI_TOKEN=x:y
+! exec rancher delete token $LEFTOVER --apply --yes
+env RANCHER_CLI_URL=
+env RANCHER_CLI_TOKEN=
+
+-- creds.txt --
+e2e-user
+e2e-pass

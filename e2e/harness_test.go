@@ -67,7 +67,8 @@ var scriptOptions = map[string]func(*testrancher.Options){
 // scriptChecks run after their script, with the façade it ran against, for
 // the assertions a script cannot make about what the server recorded.
 var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
-	"login-recovery": checkLoginRecovery,
+	"login-recovery":   checkLoginRecovery,
+	"exec-token-reuse": checkExecTokenReuse,
 }
 
 // scriptSkipped reports whether the script ended in a skip (a `[!unix]
@@ -119,6 +120,47 @@ func checkLoginRecovery(t testscript.T, f *testrancher.Facade) {
 	}
 	if n := len(f.TokensWithDescriptionContaining("ext", "[op:")); n != 1 {
 		t.Fatal(fmt.Sprintf("expected exactly the second login's derived token to remain, found %d marked ext tokens", n))
+	}
+}
+
+// checkExecTokenReuse asserts what exec-token-reuse.txtar cannot see: the
+// plugin login made exactly one marked derived create and one marked
+// cluster create with that derived token as bearer, the silent second
+// cluster's create was unmarked and used the same bearer, and the recovery
+// sequence's delete carried a dry run and an execution with one
+// resourceVersion. The scoped interactive logins the script runs with the
+// setting off go through /v1-public/login, recorded with the session role,
+// so they are outside both create lists.
+func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
+	var derived, marked, unmarked []testrancher.CreateRecord
+	for _, c := range f.CreateRequests() {
+		switch {
+		case c.Role == "derived":
+			derived = append(derived, c)
+		case c.Role == "cluster" && strings.Contains(c.Description, "[op:"):
+			marked = append(marked, c)
+		case c.Role == "cluster":
+			unmarked = append(unmarked, c)
+		}
+	}
+	// Two derived creates: the plugin login's D and the recovery login's D.
+	if len(derived) != 2 {
+		t.Fatal(fmt.Sprintf("expected two derived creates, got %d: %+v", len(derived), derived))
+	}
+	if len(marked) != 1 || marked[0].Bearer == "" {
+		t.Fatal(fmt.Sprintf("expected one marked cluster create with the plugin login as bearer, got %+v", marked))
+	}
+	if len(unmarked) != 1 || unmarked[0].Bearer != marked[0].Bearer {
+		t.Fatal(fmt.Sprintf("expected one unmarked silent cluster create with the same bearer, got %+v", unmarked))
+	}
+	var attempts []testrancher.DeleteRecord
+	for _, r := range f.DeleteRequests() {
+		if r.Kind == "ext" && (r.DryRun || r.Precondition != "") {
+			attempts = append(attempts, r)
+		}
+	}
+	if len(attempts) != 2 || !attempts[0].DryRun || attempts[1].DryRun || attempts[0].Precondition == "" || attempts[0].Precondition != attempts[1].Precondition {
+		t.Fatal(fmt.Sprintf("expected the delete verb's dry run and execution with one precondition, got %+v", attempts))
 	}
 }
 
