@@ -28,11 +28,25 @@ jsonquery -yaml cm.out.yaml data.metadata.managedFields ''
 exec rancher get cm basics-cm --cluster testcluster --namespace default -o json
 jsonquery stdout data.metadata.managedFields ''
 
+# --selector is applied by the server: the labeled configmap is in the
+# filtered list, a non-matching selector lists nothing, a malformed selector
+# and a selector with a name are refused before any request.
+exec rancher get configmaps --cluster testcluster --namespace default --selector app=basics -o json
+jsonquery stdout 'data.#(metadata.name=="basics-cm").metadata.name' basics-cm
+exec rancher get configmaps --cluster testcluster --namespace default -l app=nomatch -o json
+jsonquery stdout 'data.#' 0
+! exec rancher get configmaps --cluster testcluster --namespace default --selector 'app in (web' -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher get cm basics-cm --cluster testcluster --namespace default --selector app=basics -o json
+jsonquery stderr data.error.code VALIDATION
+
 -- cm.yaml --
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: basics-cm
   namespace: default
+  labels:
+    app: basics
 data:
   foo: bar

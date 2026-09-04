@@ -2913,6 +2913,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2953,6 +2961,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -2999,6 +3015,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3039,6 +3063,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3083,6 +3115,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3142,6 +3182,14 @@
       "contract": "internal",
       "flags": [
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3182,6 +3230,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3229,6 +3285,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3270,6 +3334,14 @@
         {
           "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3323,6 +3395,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3370,6 +3450,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3424,6 +3512,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3475,6 +3571,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3516,6 +3620,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3569,6 +3681,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3607,6 +3727,14 @@
       "commandType": "readOnly",
       "contract": "internal",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -3649,6 +3777,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3695,6 +3831,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3733,6 +3877,14 @@
       "contract": "public",
       "flags": [
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3770,6 +3922,14 @@
       "commandType": "readOnly",
       "contract": "public",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -3811,6 +3971,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3864,6 +4032,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3911,6 +4087,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -3965,6 +4149,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4003,6 +4195,14 @@
       "commandType": "readOnly",
       "contract": "public",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -4060,6 +4260,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4100,6 +4308,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4146,6 +4362,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4186,6 +4410,14 @@
       "commandType": "readOnly",
       "contract": "internal",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -4229,6 +4461,14 @@
           "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4277,6 +4517,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4315,6 +4563,14 @@
       "contract": "internal",
       "flags": [
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4352,6 +4608,14 @@
       "commandType": "readOnly",
       "contract": "internal",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -4397,6 +4661,14 @@
           "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4447,6 +4719,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4501,6 +4781,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4542,6 +4830,14 @@
         {
           "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
           "name": "cluster",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4589,6 +4885,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4630,6 +4934,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4683,6 +4995,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4721,6 +5041,14 @@
       "commandType": "readOnly",
       "contract": "public",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -4768,6 +5096,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {
@@ -4822,6 +5158,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4873,6 +5217,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -4911,6 +5263,14 @@
       "commandType": "readOnly",
       "contract": "internal",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -4962,6 +5322,14 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -5001,6 +5369,14 @@
       "contract": "public",
       "flags": [
         {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -5039,6 +5415,14 @@
       "contract": "public",
       "desc": "users hide system accounts by default; pass --include-system to show them. Naming a user always returns it, hidden or not.",
       "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
         {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
@@ -5085,6 +5469,14 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
           "type": "string"
         },
         {

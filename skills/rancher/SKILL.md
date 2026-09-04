@@ -118,7 +118,10 @@ shorter than piping JSON into another interpreter, e.g. names and creation
 times of every kubeconfig token object:
 `rancher get kubeconfigs -o 'template={{range .}}{{.metadata.name}} {{.metadata.creationTimestamp}}{{"\n"}}{{end}}'`.
 Anything else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
-output across all formats.
+output across all formats. To narrow a list by label, use `--selector`
+(`-l`) with a Kubernetes label selector (`-l app=web,tier!=cache`): the
+server filters, so reach for it before `-o template`. It does not combine
+with a name.
 
 A list's `data` is a bare array — never `.items` — regardless of kind. Real
 `get clusters -o json` output, trimmed to one cluster and the fields that

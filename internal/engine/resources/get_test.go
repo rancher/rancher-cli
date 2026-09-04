@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -28,11 +29,12 @@ import (
 // is returned instead of the items-miss default, so tests can inject a
 // pre-curated NOT_FOUND (simulating what the real dynamic client now produces).
 type memClient struct {
-	items   []unstructured.Unstructured
-	getErr  error
-	listNS  []string
-	getNS   []string
-	getName []string
+	items        []unstructured.Unstructured
+	getErr       error
+	listNS       []string
+	listSelector []string
+	getNS        []string
+	getName      []string
 }
 
 func (m *memClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
@@ -46,8 +48,9 @@ func (m *memClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, na
 	}
 	return &m.items[0], nil
 }
-func (m *memClient) List(_ context.Context, _ schema.GroupVersionResource, ns, _ string) (*unstructured.UnstructuredList, error) {
+func (m *memClient) List(_ context.Context, _ schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
 	m.listNS = append(m.listNS, ns)
+	m.listSelector = append(m.listSelector, selector)
 	return &unstructured.UnstructuredList{Items: m.items}, nil
 }
 func (m *memClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -1162,4 +1165,111 @@ func TestGetUsersDescribeCarriesIncludeSystemFlag(t *testing.T) {
 	}
 	assert.True(t, found, "get user must carry --include-system")
 	assert.NotEmpty(t, d.Desc, "get user must synthesize a Desc documenting the SystemFilter behavior")
+}
+
+// TestGetSelectorReachesTheListRequest asserts --selector is passed to the
+// server as the list's label selector, unchanged.
+func TestGetSelectorReachesTheListRequest(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
+	cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{s: map[string]string{"selector": "app=web,tier in (a,b)"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"app=web,tier in (a,b)"}, client.listSelector)
+}
+
+// TestGetSelectorJoinsTheProjectScopeSelector asserts a list that already
+// carries the project scope's selector (the namespace kind under --project)
+// sends both requirements as one conjunction.
+func TestGetSelectorJoinsTheProjectScopeSelector(t *testing.T) {
+	t.Parallel()
+	client, fac := newRouteProjectFixture()
+	cmd := NewGet(mustKind(t, "namespace"), fac)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(),
+		input{s: map[string]string{"cluster": "prod", "project": "p-1", "selector": "app=web"}}, nil)
+	require.NoError(t, err)
+	var got []string
+	for _, call := range client.listCalls {
+		if call.resource == "namespaces" {
+			got = append(got, call.selector)
+		}
+	}
+	assert.Equal(t, []string{"field.cattle.io/projectId=p-1,app=web"}, got)
+}
+
+// TestGetSelectorInvalidIsValidationBeforeAnyRequest asserts a selector
+// the Kubernetes grammar rejects fails VALIDATION with the parser's reason
+// and never reaches the server.
+func TestGetSelectorInvalidIsValidationBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
+	client := &memClient{}
+	cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), input{s: map[string]string{"selector": "app in (web"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "--selector")
+	assert.Empty(t, client.listSelector, "no list request for an invalid selector")
+}
+
+// TestGetSelectorWithNameIsValidation asserts a name and a selector cannot
+// be combined: a named get returns the object, a selector filters a list.
+func TestGetSelectorWithNameIsValidation(t *testing.T) {
+	t.Parallel()
+	client := &memClient{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
+	cmd := NewGet(mustKind(t, "cluster"), &recFactory{client: client})
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(),
+		input{args: []string{"local"}, s: map[string]string{"cluster": "local", "selector": "app=web"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "--selector does not apply to a named cluster")
+	assert.Empty(t, client.getName, "no request is made")
+}
+
+// TestGetSelectorIsDeclaredOnGetOnly asserts the flag is on every get
+// descriptor with its kubectl short form, and on no delete or patch
+// descriptor (they share getFlags, which must not carry it).
+func TestGetSelectorIsDeclaredOnGetOnly(t *testing.T) {
+	t.Parallel()
+	for _, k := range kinds.All() {
+		var found *runtime.ArgSpec
+		for _, f := range NewGet(k, nil).Describe().Flags {
+			if f.Name == "selector" {
+				found = &f
+			}
+		}
+		require.NotNil(t, found, "get %s must declare --selector", k.Name)
+		assert.Equal(t, []string{"l"}, found.Aliases, "get %s", k.Name)
+		assert.Equal(t, "string", found.Type)
+		assert.False(t, found.Required)
+		if k.Deletable {
+			for _, f := range NewDelete(k, nil).Describe().Flags {
+				assert.NotEqual(t, "selector", f.Name, "delete %s must not carry --selector", k.Name)
+			}
+		}
+		for _, f := range NewPatch(k, nil, nil).Describe().Flags {
+			assert.NotEqual(t, "selector", f.Name, "patch %s must not carry --selector", k.Name)
+		}
+	}
+}
+
+// TestGetSelectorReachesTheListUnderProjectMemberFilter asserts the other
+// project-scoped shape: a downstream namespaced kind under --project without
+// --namespace carries a client-side member set and no scope selector, so the
+// list request carries --selector alone.
+func TestGetSelectorReachesTheListUnderProjectMemberFilter(t *testing.T) {
+	t.Parallel()
+	client, fac := newRouteProjectFixture()
+	cmd := NewGet(mustKind(t, "pod"), fac)
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(),
+		input{s: map[string]string{"cluster": "prod", "project": "p-1", "selector": "app=web"}}, nil)
+	require.NoError(t, err)
+	var got []string
+	for _, call := range client.listCalls {
+		if call.resource == "pods" {
+			got = append(got, call.selector)
+		}
+	}
+	assert.Equal(t, []string{"app=web"}, got)
 }

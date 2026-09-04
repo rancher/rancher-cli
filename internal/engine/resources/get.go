@@ -5,6 +5,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 // Flag names shared across the generic verbs. Flag generation (getFlags),
@@ -31,6 +33,11 @@ const (
 	// flagIncludeSystem is generated only on kinds with a SystemFilter (get
 	// path only; delete/patch reuse getFlags and must never see it).
 	flagIncludeSystem = "include-system"
+	// FlagSelector filters a list by a Kubernetes label selector, sent to the
+	// server as the list's labelSelector. Get path only, for the same reason
+	// as flagIncludeSystem: a delete or patch addresses one named object.
+	// Exported for the bespoke get overrides that mirror this descriptor.
+	FlagSelector = "selector"
 )
 
 const defaultWaitTimeout = 120 * time.Second
@@ -67,7 +74,11 @@ func (c getCmd) enrichWarnings(ctx context.Context, obj *unstructured.Unstructur
 }
 
 func (c getCmd) Describe() runtime.Descriptor {
+	// --selector sits with the routing flags, ahead of the named-only wait
+	// trio getFlags appends last, so help reads list flags then wait flags.
 	flags := getFlags(c.k)
+	flags = slices.Insert(flags, len(flags)-3, runtime.ArgSpec{Name: FlagSelector, Type: "string", Aliases: []string{"l"},
+		Desc: "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)"})
 	var desc string
 	if c.k.SystemFilter != nil {
 		flags = append(flags, runtime.ArgSpec{Name: flagIncludeSystem, Type: "bool",
@@ -153,6 +164,10 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"--include-system does not apply to a named "+c.k.Name+"; a named get always returns the object")
 	}
+	labelSelector := in.String(FlagSelector)
+	if _, err := ParseListSelector(c.k.Name, named, labelSelector); err != nil {
+		return runtime.Result{}, err
+	}
 	if !wait && (forExpr != "" || timeoutStr != "") {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait")
 	}
@@ -218,9 +233,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
 			Summary: waitSummary, Warnings: warnings}, nil
 	}
-	selector := ""
+	selector := labelSelector
 	if scope != nil {
-		selector = scope.Selector
+		selector = joinSelectors(scope.Selector, labelSelector)
 	}
 	list, lerr := client.List(ctx, c.k.GVR, ns, selector)
 	if lerr != nil {
@@ -572,4 +587,39 @@ func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k ki
 // already echoes k.K8sKind.
 func resultKind(k kinds.Kind) string {
 	return k.K8sKind
+}
+
+// ParseListSelector validates a --selector value for a get: it does not
+// apply to a named get (a named get returns the object, a selector filters
+// a list), and a malformed value is a VALIDATION error with the parser's
+// reason before any request, not a generic 400 from the server. An empty
+// value returns a nil selector. Shared by the generic get and the bespoke
+// get overrides that inherit its descriptor.
+func ParseListSelector(kindName string, named bool, raw string) (labels.Selector, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	if named {
+		return nil, clierr.New(clierr.CodeValidation,
+			"--selector does not apply to a named "+kindName+"; a named get returns the object, a selector filters a list")
+	}
+	sel, err := labels.Parse(raw)
+	if err != nil {
+		return nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--selector %q is not a valid label selector: %v", raw, err))
+	}
+	return sel, nil
+}
+
+// joinSelectors combines the project scope's selector with the caller's
+// --selector as one conjunction: a Kubernetes label selector is a
+// comma-separated list of requirements that must all hold.
+func joinSelectors(scope, flag string) string {
+	switch {
+	case scope == "":
+		return flag
+	case flag == "":
+		return scope
+	}
+	return scope + "," + flag
 }

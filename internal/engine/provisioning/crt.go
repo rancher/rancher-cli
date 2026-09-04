@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 // crtCollectionPath is the Steve /v1 collection route for
@@ -44,18 +45,19 @@ func placeholderError(path, field string) *clierr.Error {
 // carries, so -o json/-o yaml show the full command/manifest set even
 // though the table only renders NAME/CLUSTER/EXPIRES.
 type crtRow struct {
-	Namespace                  string `json:"namespace"`
-	Name                       string `json:"name"`
-	ClusterName                string `json:"clusterName"`
-	Command                    string `json:"command"`
-	InsecureCommand            string `json:"insecureCommand"`
-	NodeCommand                string `json:"nodeCommand"`
-	InsecureNodeCommand        string `json:"insecureNodeCommand"`
-	WindowsNodeCommand         string `json:"windowsNodeCommand"`
-	InsecureWindowsNodeCommand string `json:"insecureWindowsNodeCommand"`
-	ManifestURL                string `json:"manifestUrl"`
-	Token                      string `json:"token"`
-	ExpiresAt                  string `json:"expiresAt"`
+	Namespace                  string            `json:"namespace"`
+	Name                       string            `json:"name"`
+	ClusterName                string            `json:"clusterName"`
+	Labels                     map[string]string `json:"labels,omitempty"`
+	Command                    string            `json:"command"`
+	InsecureCommand            string            `json:"insecureCommand"`
+	NodeCommand                string            `json:"nodeCommand"`
+	InsecureNodeCommand        string            `json:"insecureNodeCommand"`
+	WindowsNodeCommand         string            `json:"windowsNodeCommand"`
+	InsecureWindowsNodeCommand string            `json:"insecureWindowsNodeCommand"`
+	ManifestURL                string            `json:"manifestUrl"`
+	Token                      string            `json:"token"`
+	ExpiresAt                  string            `json:"expiresAt"`
 }
 
 // crtRowFrom is a direct struct conversion: crtRow carries exactly
@@ -109,12 +111,18 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if in.Bool("wait") {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait is not supported for "+c.k.Name)
 	}
+	ns := in.String(resources.FlagNamespace)
+	named := len(in.Args()) > 0 && in.Args()[0] != ""
+	// The descriptor is the generic get's, so --selector arrives here too;
+	// it is applied to the decoded list below, never as a Steve query.
+	selector, err := resources.ParseListSelector(c.k.Name, named, in.String(resources.FlagSelector))
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	root, err := c.roots.Root()
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	ns := in.String(resources.FlagNamespace)
-	named := len(in.Args()) > 0 && in.Args()[0] != ""
 
 	if named {
 		if ns == "" {
@@ -154,6 +162,9 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	for i := range views {
 		v := &views[i]
 		if ns != "" && v.Namespace != ns {
+			continue
+		}
+		if selector != nil && !selector.Matches(labels.Set(v.Labels)) {
 			continue
 		}
 		// Finding 3: a bad row degrades in place — blank the offending

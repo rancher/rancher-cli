@@ -3,6 +3,7 @@ package provisioning
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,16 +21,20 @@ import (
 
 // crtInput is a minimal runtime.Input fake carrying exactly what
 // NewGetCRT/NewRefuseCRTPatch's Execute/Plan read: positional args, the
-// --namespace string flag, and the --wait bool flag.
+// --namespace and --selector string flags, and the --wait bool flag.
 type crtInput struct {
-	args []string
-	ns   string
-	wait bool
+	args     []string
+	ns       string
+	selector string
+	wait     bool
 }
 
 func (i crtInput) String(name string) string {
-	if name == "namespace" {
+	switch name {
+	case "namespace":
 		return i.ns
+	case "selector":
+		return i.selector
 	}
 	return ""
 }
@@ -429,4 +434,81 @@ func TestNewRefuseCRTPatchDescribeMirrorsGenericPatch(t *testing.T) {
 	override := NewRefuseCRTPatch(k).Describe()
 	assert.Equal(t, generic, override)
 	assert.Equal(t, "patch clusterregistrationtoken", override.Name)
+}
+
+// TestNewGetCRTSelectorFiltersTheDecodedList asserts the override honors
+// the --selector it inherits from the generic get descriptor: the list is
+// fetched whole (this override never assumes Steve's query grammar) and
+// filtered by labels locally, composing with --namespace.
+func TestNewGetCRTSelectorFiltersTheDecodedList(t *testing.T) {
+	t.Parallel()
+	prod := crtObject("c-aaa", "default-token", splicedStatus("tok-aaa"))
+	prod["metadata"].(map[string]any)["labels"] = map[string]any{"env": "prod", "team": "a"}
+	// dev carries an unspliced command so the test can show that a row the
+	// selector excludes never emits a placeholder warning, while a kept bad
+	// row still degrades in place.
+	devStatus := splicedStatus("tok-bbb")
+	devStatus["command"] = placeholderToken
+	dev := crtObject("c-bbb", "default-token", devStatus)
+	dev["metadata"].(map[string]any)["labels"] = map[string]any{"env": "dev"}
+	bare := crtObject("c-ccc", "default-token", splicedStatus("tok-ccc"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSONFixture(t, w, map[string]any{"data": []map[string]any{prod, dev, bare}})
+	}))
+	defer srv.Close()
+	rc := NewGetCRT(crtKind(t), rootsFor(srv)).(runtime.ReadCommand)
+
+	res, err := rc.Execute(t.Context(), crtInput{selector: "env=prod"}, nil)
+	require.NoError(t, err)
+	rows := res.Data.(crtRows)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "c-aaa", rows[0].Namespace)
+	assert.Empty(t, res.Warnings, "a row the selector excludes is never inspected for placeholders")
+
+	res, err = rc.Execute(t.Context(), crtInput{selector: "env=dev"}, nil)
+	require.NoError(t, err)
+	rows = res.Data.(crtRows)
+	require.Len(t, rows, 1)
+	assert.Empty(t, rows[0].Command, "a kept bad row still degrades in place")
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "c-bbb/default-token")
+
+	res, err = rc.Execute(t.Context(), crtInput{selector: "env"}, nil)
+	require.NoError(t, err)
+	assert.Len(t, res.Data.(crtRows), 2, "existence selector keeps every labeled row")
+
+	res, err = rc.Execute(t.Context(), crtInput{selector: "!env"}, nil)
+	require.NoError(t, err)
+	rows = res.Data.(crtRows)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "c-ccc", rows[0].Namespace)
+
+	res, err = rc.Execute(t.Context(), crtInput{ns: "c-bbb", selector: "env=prod"}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, res.Data.(crtRows), "--namespace and --selector both apply")
+}
+
+// TestNewGetCRTSelectorValidation asserts the override refuses a
+// malformed selector and a selector on a named get exactly as the generic
+// get does, before any request.
+func TestNewGetCRTSelectorValidation(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("no request must be made")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	rc := NewGetCRT(crtKind(t), rootsFor(srv)).(runtime.ReadCommand)
+
+	_, err := rc.Execute(t.Context(), crtInput{selector: "env in (prod"}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "--selector")
+
+	_, err = rc.Execute(t.Context(), crtInput{args: []string{"default-token"}, ns: "c-aaa", selector: "env=prod"}, nil)
+	ce, ok = errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "--selector does not apply to a named clusterregistrationtoken")
 }

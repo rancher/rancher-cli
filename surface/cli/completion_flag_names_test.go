@@ -440,3 +440,25 @@ func TestFlagNameCompletionIncludeSystem(t *testing.T) {
 	got = runNameLikeCompletion(t, []string{"delete", "user"}, "--")
 	assert.NotContains(t, extractTokens(got), "--include-system", "delete user --<TAB> must not offer --include-system")
 }
+
+// TestFlagNameCompletionSelector asserts --selector is offered on every
+// get, never on delete or patch (the shared getFlags core), and that its
+// value has no candidates: a label selector is free text.
+func TestFlagNameCompletionSelector(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"get", "pods"}, "--")
+	assert.Contains(t, extractTokens(got), "--selector", "get pods --<TAB> must offer --selector")
+
+	got = runNameLikeCompletion(t, []string{"delete", "pod"}, "--")
+	assert.NotContains(t, extractTokens(got), "--selector", "delete pod --<TAB> must not offer --selector")
+
+	got = runNameLikeCompletion(t, []string{"patch", "pod"}, "--")
+	assert.NotContains(t, extractTokens(got), "--selector", "patch pod --<TAB> must not offer --selector")
+
+	got = runNameLikeCompletion(t, []string{"get", "pods", "--selector"}, "")
+	assert.Empty(t, extractTokens(got), "a label selector is free text: no candidates")
+}

@@ -304,7 +304,14 @@ Every kind in the schema vocabulary gets its generated verbs by these rules:
 
 - `get` and `patch` exist for every kind in the schema kind vocabulary.
   One exception: `patch clusterregistrationtoken` is refused — the kind is
-  read-only.
+  read-only. A `get` list accepts `--selector` (`-l`), a Kubernetes label
+  selector the server applies (the same grammar as kubectl's `-l`:
+  `app=web`, `tier!=cache`, `env in (a,b)`, `!legacy`); it is validated
+  before the request and refused on a named get. Under `--project` both
+  apply: `get namespaces` sends the two selectors as one conjunction; for
+  every other kind the server filters by `--selector` and the CLI keeps
+  only the project's namespaces. `get clusterregistrationtoken` reads
+  through Steve and applies the selector to the decoded list itself.
 - `delete` exists only where removal is a sane operator action.
   Controller-owned objects (Fleet bundles, CAPI machines), server config
   (`setting`, `feature`), and role definitions (`roletemplate`, `globalrole`)

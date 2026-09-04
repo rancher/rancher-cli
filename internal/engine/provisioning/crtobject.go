@@ -27,6 +27,9 @@ type CRTObject struct {
 	Namespace   string
 	Name        string
 	ClusterName string
+	// Labels are metadata.labels, kept so a list can be filtered by
+	// --selector locally (this reader never assumes Steve's query grammar).
+	Labels map[string]string
 
 	Command                    string
 	InsecureCommand            string
@@ -106,8 +109,9 @@ func clearPlaceholderFields(o *CRTObject) []string {
 type crtView struct {
 	ID       string `json:"id"`
 	Metadata struct {
-		Namespace string `json:"namespace"`
-		Name      string `json:"name"`
+		Namespace string            `json:"namespace"`
+		Name      string            `json:"name"`
+		Labels    map[string]string `json:"labels"`
 	} `json:"metadata"`
 	Spec struct {
 		ClusterName string `json:"clusterName"`
@@ -153,6 +157,7 @@ func (v crtView) object() CRTObject {
 	return CRTObject{
 		Namespace:                  v.Metadata.Namespace,
 		Name:                       v.Metadata.Name,
+		Labels:                     v.Metadata.Labels,
 		ClusterName:                v.Spec.ClusterName,
 		Command:                    st.Command,
 		InsecureCommand:            st.InsecureCommand,
