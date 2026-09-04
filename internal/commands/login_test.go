@@ -1961,29 +1961,14 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 	}
 }
 
-// TestLoginFailureKeepsThePrimaryCauseChain asserts that composition never
-// breaks errors.Is/As: a cancelled commit still is context.Canceled, a
-// store sentinel is still reachable, and the classified primary is still
-// found by errors.As beneath the composed error.
-func TestLoginFailureKeepsThePrimaryCauseChain(t *testing.T) {
-	t.Parallel()
-	primary := clierr.New(clierr.CodeGeneric, "store failed").WithCause(fmt.Errorf("wrapped: %w", context.Canceled))
-	err := failLogin(primary, clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
-	require.ErrorIs(t, err, context.Canceled)
-	got, ok := errors.AsType[*clierr.Error](errors.Unwrap(err))
-	require.True(t, ok, "the classified primary is the cause")
-	assert.Same(t, primary, got)
-	sentinel := failLogin(fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported), clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
-	assert.ErrorIs(t, sentinel, config.ErrTokenStoreUnsupported)
-}
-
 // TestLoginTLSFailureKeepsCertificateFactsInText asserts the default-format
 // projection of a composed failure: the TLS classification's own detail
 // lines are rendered before the login stage and cleanup lines, once. The
 // classified primary is produced by a real x509 failure against a
-// self-signed server and handed to failLogin directly: in the login flow
-// an x509 failure happens before any create and never reaches the schema,
-// so the projection is a property of composition, tested at that level.
+// self-signed server and handed to token.FailLogin directly: in the login
+// flow an x509 failure happens before any create and never reaches the
+// schema, so the projection is a property of composition, tested at that
+// level.
 func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 	t.Parallel()
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
@@ -1999,7 +1984,7 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 	inner, ok := primary.Details.(clierr.TextDetails)
 	require.True(t, ok, "the TLS classification carries text details: %T", primary.Details)
 
-	composed := failLogin(primary, clierr.StageCommit, loginStates{}, token.UserSupplied("id:secret"), "prod")
+	composed := token.FailLogin(primary, clierr.StageCommit, token.LoginStates{}, token.UserSupplied("id:secret"), "prod")
 	_, d := decodeLoginFailure(t, composed)
 	lines := d.TextDetails()
 	for _, want := range inner.TextDetails() {
@@ -2655,40 +2640,6 @@ func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
 			"the deprecated gate follows the table for %s", k.Name)
 		assert.Contains(t, revokeWords, "tok-1")
 	}
-}
-
-// TestTokenFatesFrom asserts the projection of a credential onto its token
-// fates: on the derived path the session fate is acquisition's cleanup and
-// the derived fate takes the given outcome; on the legacy path the session
-// token is the credential and takes it; a user-supplied credential has none.
-func TestTokenFatesFrom(t *testing.T) {
-	t.Parallel()
-	sRef := &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "s"}
-	dRef := &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "d"}
-	sClean := clierr.RevokeOutcome{Ref: sRef, Result: clierr.ResultRevoked}
-	dClean := clierr.RevokeOutcome{Ref: dRef, Result: clierr.ResultFailed, Error: "500"}
-
-	session, derived := tokenFatesFrom(token.LoginCredential{Provenance: token.ProvenanceDerived, Ref: dRef, SessionTokenCleanup: sClean, SessionCreatedAt: "s-at", DerivedCreatedAt: "d-at"}, dClean)
-	require.NotNil(t, session)
-	require.NotNil(t, derived)
-	assert.Equal(t, sRef, session.Ref)
-	assert.Equal(t, &sClean, session.Cleanup)
-	assert.Equal(t, "s-at", session.CreatedAt)
-	assert.True(t, session.Marked)
-	assert.Equal(t, dRef, derived.Ref)
-	assert.Equal(t, &dClean, derived.Cleanup)
-	assert.Equal(t, "d-at", derived.CreatedAt)
-
-	session, derived = tokenFatesFrom(token.LoginCredential{Provenance: token.ProvenanceLegacySession, Ref: sRef, SessionTokenUnmarked: true, SessionCreatedAt: "s-at"}, sClean)
-	require.NotNil(t, session)
-	assert.Nil(t, derived)
-	assert.Equal(t, sRef, session.Ref)
-	assert.Equal(t, &sClean, session.Cleanup, "the legacy session token is the credential and takes the given outcome")
-	assert.False(t, session.Marked)
-
-	session, derived = tokenFatesFrom(token.UserSupplied("id:secret"), clierr.RevokeOutcome{Result: clierr.ResultNotApplicable})
-	assert.Nil(t, session)
-	assert.Nil(t, derived)
 }
 
 // TestLoginReadOnlyHelperThenConfigWriteFailureLegacySession asserts the
