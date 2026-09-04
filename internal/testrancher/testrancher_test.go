@@ -2,6 +2,7 @@ package testrancher_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -20,6 +21,7 @@ import (
 )
 
 const extTokensPath = token.ExtTokensPath
+const v3TokensPath = token.V3TokensPath
 
 // recordingHandler captures every request it receives, for asserting a
 // create-discrimination or unknown-name case actually fell through instead of
@@ -66,6 +68,34 @@ func doJSON(t *testing.T, client *http.Client, method, url string, body any, bea
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	return resp, respBody
+}
+
+func postJSON(t *testing.T, client *http.Client, url, bearer string, body any) map[string]any {
+	t.Helper()
+	resp, respBody := doJSON(t, client, http.MethodPost, url, body, bearer)
+	require.True(t, resp.StatusCode >= 200 && resp.StatusCode < 300, "expected 2xx, got %d", resp.StatusCode)
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(respBody, &result))
+	return result
+}
+
+func statusOf(t *testing.T, client *http.Client, method, url, bearer string) int {
+	t.Helper()
+	req, err := http.NewRequest(method, url, nil)
+	require.NoError(t, err)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+func statusOfBody(t *testing.T, client *http.Client, method, url, bearer string, body any) int {
+	t.Helper()
+	resp, _ := doJSON(t, client, method, url, body, bearer)
+	return resp.StatusCode
 }
 
 func TestAuthProvidersListsLocalAndOptionallyAzureAD(t *testing.T) {
@@ -903,4 +933,140 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	require.Len(t, recs, 2, "every attempt is recorded")
 	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", DryRun: true, Precondition: rv}, recs[0])
 	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", Precondition: "stale"}, recs[1])
+}
+
+// TestFacadeCreateEchoesOwnerAndScope asserts a scoped create answers with
+// spec.clusterName, spec.description, and spec.userID of the bearer's
+// owner, records the role cluster, and that OmitSpecOnCreate withholds spec.
+func TestFacadeCreateEchoesOwnerAndScope(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "alice", "password": "pw", "responseType": "json"})
+	bearer := login["token"].(string)
+	created := postJSON(t, srv.Client(), srv.URL+extTokensPath, bearer,
+		map[string]any{"spec": map[string]any{"clusterName": "c-test", "description": "d"}})
+	spec := created["spec"].(map[string]any)
+	assert.Equal(t, "c-test", spec["clusterName"])
+	assert.Equal(t, "user-alice", spec["userID"])
+	assert.Equal(t, "d", spec["description"])
+	name := created["metadata"].(map[string]any)["name"].(string)
+	owner, ok := f.TokenOwner(name)
+	require.True(t, ok)
+	assert.Equal(t, "user-alice", owner)
+	recs := f.CreateRequests()
+	require.Len(t, recs, 2, "the login and the scoped create")
+	assert.Equal(t, "session", recs[0].Role)
+	assert.Equal(t, login["id"], recs[0].Name, "the login record names the token it created")
+	assert.Empty(t, recs[0].Bearer, "a login carries no bearer")
+	assert.Equal(t, "user-alice", recs[0].OwnerUserID)
+	assert.Equal(t, "cluster", recs[1].Role)
+	assert.Equal(t, name, recs[1].Name)
+	assert.Equal(t, bearer, recs[1].Bearer)
+	assert.Equal(t, "c-test", recs[1].ClusterName)
+	assert.Equal(t, "user-alice", recs[1].OwnerUserID)
+
+	quiet := testrancher.New(testrancher.Options{OmitSpecOnCreate: true})
+	qsrv := httptest.NewServer(quiet)
+	t.Cleanup(qsrv.Close)
+	l := postJSON(t, qsrv.Client(), qsrv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	c := postJSON(t, qsrv.Client(), qsrv.URL+extTokensPath, l["token"].(string), map[string]any{"spec": map[string]any{"clusterName": "c-test"}})
+	_, hasSpec := c["spec"]
+	assert.False(t, hasSpec)
+}
+
+// TestFacadeDeleteByAnotherOwnerIsNotFound asserts the ext delete rule: a
+// bearer whose owner differs answers 404 and the token survives; the same
+// owner deletes it. On the v3 path a non-admin owner is refused with 403
+// when configured, an admin succeeds.
+func TestFacadeDeleteByAnotherOwnerIsNotFound(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "a", Password: "pw", UserID: "user-a"}, {Name: "b", Password: "pw", UserID: "user-b"}, {Name: "root", Password: "pw", UserID: "user-root"}},
+		AdminUserIDs: []string{"user-root"}, V3DeleteForbiddenForNonAdmin: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	loginAs := func(u string) string {
+		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": u, "password": "pw", "responseType": "json"})["token"].(string)
+	}
+	a, b, root := loginAs("a"), loginAs("b"), loginAs("root")
+	aDerived := postJSON(t, srv.Client(), srv.URL+extTokensPath, a, map[string]any{"spec": map[string]any{}})
+	aName := aDerived["metadata"].(map[string]any)["name"].(string)
+	assert.Equal(t, http.StatusNotFound, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/"+aName, b))
+	_, alive := f.TokenOwner(aName)
+	assert.True(t, alive, "another owner's delete never removes the token")
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/"+aName, a))
+
+	// The v3 login bodies are v3 records; their names are the ids.
+	aSess, _, _ := strings.Cut(a, ":")
+	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+aSess, a))
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+aSess, root))
+}
+
+// TestFacadeNormanV3TokenCreate asserts the legacy cluster-token create:
+// POST /v3/tokens with clusterId answers the Norman shape with clusterId
+// and userId echoed, records a v3 record of role cluster, honors a forced
+// status and a clusterId override, and is 404 unless enabled.
+func TestFacadeNormanV3TokenCreate(t *testing.T) {
+	t.Parallel()
+	off := testrancher.New(testrancher.Options{Legacy: true})
+	osrv := httptest.NewServer(off)
+	t.Cleanup(osrv.Close)
+	l := postJSON(t, osrv.Client(), osrv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	assert.Equal(t, http.StatusNotFound, statusOfBody(t, osrv.Client(), http.MethodPost, osrv.URL+"/v3/tokens", l["token"].(string),
+		map[string]any{"type": "token", "clusterId": "c-test"}))
+
+	f := testrancher.New(testrancher.Options{Legacy: true, V3TokenCreate: true, LegacyLoginBodyUserID: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	assert.Equal(t, "user-e2e", login["userId"], "a pre-ext login body carries the owner")
+	created := postJSON(t, srv.Client(), srv.URL+"/v3/tokens", login["token"].(string),
+		map[string]any{"type": "token", "description": "d", "clusterId": "c-test", "ttl": 60000})
+	assert.Equal(t, "c-test", created["clusterId"])
+	assert.Equal(t, "user-e2e", created["userId"])
+	assert.NotEmpty(t, created["token"])
+	assert.NotEmpty(t, created["id"])
+	recs := f.CreateRequests()
+	assert.Equal(t, "v3", recs[len(recs)-1].Kind)
+	assert.Equal(t, "cluster", recs[len(recs)-1].Role)
+
+	empty := ""
+	g := testrancher.New(testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateClusterID: &empty})
+	gsrv := httptest.NewServer(g)
+	t.Cleanup(gsrv.Close)
+	gl := postJSON(t, gsrv.Client(), gsrv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	unscoped := postJSON(t, gsrv.Client(), gsrv.URL+"/v3/tokens", gl["token"].(string), map[string]any{"type": "token", "clusterId": "c-test"})
+	_, has := unscoped["clusterId"]
+	assert.False(t, has, "the override withholds clusterId")
+}
+
+// TestFacadeSetDeleteModeHangsUntilTheRequestEnds asserts the hang mode
+// used by the retirement-budget tests: the delete of the named token blocks
+// until the client gives up, and the record survives.
+func TestFacadeSetDeleteModeHangsUntilTheRequestEnds(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	bearer := login["token"].(string)
+	created := postJSON(t, srv.Client(), srv.URL+extTokensPath, bearer, map[string]any{"spec": map[string]any{}})
+	name := created["metadata"].(map[string]any)["name"].(string)
+	f.SetDeleteMode(name, "hang")
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, srv.URL+extTokensPath+"/"+name, nil)
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	_, err := srv.Client().Do(req)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	_, alive := f.TokenOwner(name)
+	assert.True(t, alive)
 }

@@ -42,6 +42,9 @@ const (
 	// route that revokes it.
 	v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
 
+	// normanTokensPath is the Norman v3 token create route.
+	normanTokensPath = "/v3/tokens"
+
 	// authTokensPathPrefix is the authtokens collection: the CLI polls
 	// <prefix>/<requestID> for the encrypted bearer the browser sign-in
 	// deposited.
@@ -81,6 +84,13 @@ const (
 	PasswordChangeRequestsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/passwordchangerequests"
 )
 
+// User is a named user the facade authenticates.
+type User struct {
+	Name     string
+	Password string
+	UserID   string
+}
+
 // Options configures a Facade instance. Every façade instance is meant to be
 // per-script (FA-3): its counters and token store are not safe to share
 // across concurrent scripts.
@@ -115,6 +125,35 @@ type Options struct {
 	// a flow the façade does not itself serve (the SAML authtokens flow
 	// completes in the browser).
 	ExtraProviders []string
+	// Users are the named users the facade authenticates; defaults to one
+	// user with LoginUser/LoginPass and UserID user-e2e.
+	Users []User
+	// AdminUserIDs are owners allowed to delete any token on the v3 path.
+	AdminUserIDs []string
+	// LegacyLoginBodyUserID adds userId to the v3 login body, as pre-ext
+	// servers do.
+	LegacyLoginBodyUserID bool
+	// OmitSpecOnCreate withholds spec on ext token create responses.
+	OmitSpecOnCreate bool
+	// ScopedCreateStatus forces the status of a cluster-scoped ext create.
+	ScopedCreateStatus int
+	// ScopedCreateClusterName overrides the echoed spec.clusterName on a
+	// scoped create; an empty string omits it.
+	ScopedCreateClusterName *string
+	// V3TokenCreate serves POST /v3/tokens, the Norman cluster-token
+	// create.
+	V3TokenCreate bool
+	// V3CreateStatus forces a status on the Norman v3 token create.
+	V3CreateStatus int
+	// V3CreateClusterID overrides the echoed clusterId on a Norman v3
+	// create; an empty string omits it.
+	V3CreateClusterID *string
+	// V3DeleteForbiddenForNonAdmin makes DELETE on the v3 path by a
+	// non-admin owner answer 403.
+	V3DeleteForbiddenForNonAdmin bool
+	// RequestHook runs on every request the facade handles, before
+	// dispatch.
+	RequestHook func(r *http.Request)
 
 	// DropLoginResponse creates the token and then closes the connection
 	// without writing: the client never learns what the server did.
@@ -183,6 +222,7 @@ type record struct {
 	resourceVersion string
 	clusterName     string
 	description     string
+	userID          string
 	// kind is the resource the façade pretends to have created, "ext" or
 	// "v3". It is fixed when the record is created, whatever shape the
 	// client is later shown, because a server creates one definite kind.
@@ -221,17 +261,31 @@ type DeleteRecord struct {
 	Precondition string // the body's preconditions.resourceVersion, or ""
 }
 
+// CreateRecord is one token create request the facade answered.
+type CreateRecord struct {
+	Kind        string
+	Role        string
+	Name        string
+	Bearer      string
+	ClusterName string
+	Description string
+	OwnerUserID string
+}
+
 // Facade is a fake Rancher auth surface. It implements http.Handler.
 type Facade struct {
-	opts Options
-	idp  *idpStub
+	opts   Options
+	idp    *idpStub
+	admins map[string]bool
 
 	mu                sync.Mutex
 	counter           int
 	kubeconfigCounter int
 	tokens            map[string]*record
+	deleteModes       map[string]string
 	descriptions      []string
 	deletes           []DeleteRecord
+	creates           []CreateRecord
 	authTokensReqs    []AuthTokensRequest
 	authTokens        map[string]string // request id → encrypted base64 bearer
 	logins            int
@@ -282,6 +336,52 @@ func (f *Facade) TokenCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.tokens)
+}
+
+// CreateRequests returns every token create the facade answered, in order:
+// login POSTs (role session), derived creates, cluster-scoped creates, and
+// Norman v3 creates, with the bearer that made each one.
+func (f *Facade) CreateRequests() []CreateRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.creates)
+}
+
+// recordCreate appends one create record under the lock.
+func (f *Facade) recordCreate(c CreateRecord) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.creates = append(f.creates, c)
+}
+
+// TokenOwner reports the owner of a live facade token by name.
+func (f *Facade) TokenOwner(name string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rec, ok := f.tokens[name]
+	if !ok {
+		return "", false
+	}
+	return rec.userID, true
+}
+
+// BearerOwner resolves a bearer to its token's owner; the seed token is
+// owned by user-seed.
+func (f *Facade) BearerOwner(bearer string) (string, bool) {
+	if bearer == "" {
+		return "", false
+	}
+	if f.opts.SeedToken != "" && bearer == f.opts.SeedToken {
+		return "user-seed", true
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, rec := range f.tokens {
+		if rec.bearer() == bearer {
+			return rec.userID, true
+		}
+	}
+	return "", false
 }
 
 // TokensWithDescriptionContaining returns the resource names of the records
@@ -348,7 +448,15 @@ func New(opts Options) *Facade {
 	if opts.LoginPass == "" {
 		opts.LoginPass = "e2e-pass"
 	}
-	f := &Facade{opts: opts, tokens: map[string]*record{}, authTokens: map[string]string{}}
+	if len(opts.Users) == 0 {
+		opts.Users = []User{{Name: opts.LoginUser, Password: opts.LoginPass, UserID: "user-e2e"}}
+	}
+	admins := make(map[string]bool)
+	for _, id := range opts.AdminUserIDs {
+		admins[id] = true
+	}
+	admins["user-seed"] = true
+	f := &Facade{opts: opts, admins: admins, tokens: map[string]*record{}, authTokens: map[string]string{}}
 	if opts.EnableIdP {
 		f.idp = newIdPStub(opts.IdPPendingPolls)
 	}
@@ -375,7 +483,12 @@ func (f *Facade) ValidBearer(bearer string) bool {
 // ServeHTTP dispatches auth paths to the façade's own handlers; everything
 // else falls through to opts.Fallthrough (FA-0: layer, don't grow).
 func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if f.opts.RequestHook != nil {
+		f.opts.RequestHook(r)
+	}
 	switch {
+	case r.Method == http.MethodPost && r.URL.Path == normanTokensPath:
+		f.handleNormanTokensPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == authProvidersPath:
 		f.handleAuthProviders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == loginPath:
@@ -481,24 +594,38 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	var userID string
 	switch req.Type {
 	case "localProvider":
-		if req.User != f.opts.LoginUser || req.Pass != f.opts.LoginPass {
+		var found bool
+		for _, u := range f.opts.Users {
+			if u.Name == req.User && u.Password == req.Pass {
+				userID = u.UserID
+				found = true
+				break
+			}
+		}
+		if !found {
+			f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 	case "azureADProvider":
 		if f.idp == nil || !f.idp.validIDToken(req.IDToken) {
+			f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		userID = f.opts.Users[0].UserID
 	default:
+		f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	// A deterministic 4xx proves the server created nothing, so it is
 	// answered before any record exists.
 	if deterministic4xx(f.opts.LoginStatus) {
+		f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
 		w.WriteHeader(f.opts.LoginStatus)
 		return
 	}
@@ -508,9 +635,11 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
 	rec.role = "session"
 	rec.description = req.Description
+	rec.userID = userID
 	if req.Description != "" {
 		f.descriptions = append(f.descriptions, req.Description)
 	}
+	f.creates = append(f.creates, CreateRecord{Kind: rec.kind, Role: "session", Name: rec.name, Bearer: "", Description: req.Description, OwnerUserID: rec.userID})
 	f.mu.Unlock()
 
 	name, bearer := rec.name, rec.bearer()
@@ -540,9 +669,9 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	case f.opts.MalformedLoginResponse:
 		writeJSON(w, status, map[string]any{"broken": true})
 	case rec.kind == "v3":
-		writeV3Token(w, status, rec, name, bearer)
+		writeV3Token(w, status, rec, name, bearer, f.opts.LegacyLoginBodyUserID)
 	default:
-		writeExtTokenAs(w, status, rec, name, bearer)
+		writeExtTokenAs(w, status, rec, name, bearer, !f.opts.OmitSpecOnCreate)
 	}
 }
 
@@ -634,11 +763,6 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if deterministic4xx(f.opts.DerivedCreateStatus) {
-		w.WriteHeader(f.opts.DerivedCreateStatus)
-		return
-	}
-
 	var createReq struct {
 		Spec struct {
 			TTL         int64  `json:"ttl"`
@@ -647,19 +771,44 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		} `json:"spec"`
 	}
 	_ = json.Unmarshal(body, &createReq)
+
+	owner, _ := f.BearerOwner(bearerFromHeader(r))
+	role := "derived"
+	if createReq.Spec.ClusterName != "" {
+		role = "cluster"
+	}
+
+	forcedStatus := f.opts.DerivedCreateStatus
+	if role == "cluster" && f.opts.ScopedCreateStatus != 0 {
+		forcedStatus = f.opts.ScopedCreateStatus
+	}
+
+	if deterministic4xx(forcedStatus) {
+		f.recordCreate(CreateRecord{Kind: "ext", Role: role, Bearer: bearerFromHeader(r), ClusterName: createReq.Spec.ClusterName, Description: createReq.Spec.Description, OwnerUserID: owner})
+		w.WriteHeader(forcedStatus)
+		return
+	}
+
 	rec := f.newToken(createReq.Spec.ClusterName, createReq.Spec.TTL)
 	f.mu.Lock()
 	rec.kind = "ext"
-	rec.role = "derived"
+	rec.role = role
 	rec.description = createReq.Spec.Description
+	rec.userID = owner
 	if createReq.Spec.Description != "" {
 		f.descriptions = append(f.descriptions, createReq.Spec.Description)
 	}
+	f.creates = append(f.creates, CreateRecord{Kind: "ext", Role: role, Name: rec.name, Bearer: bearerFromHeader(r), ClusterName: createReq.Spec.ClusterName, Description: createReq.Spec.Description, OwnerUserID: owner})
 	f.mu.Unlock()
 
+	echoedClusterName := createReq.Spec.ClusterName
+	if f.opts.ScopedCreateClusterName != nil {
+		echoedClusterName = *f.opts.ScopedCreateClusterName
+	}
+
 	switch {
-	case f.opts.DerivedCreateStatus != 0:
-		w.WriteHeader(f.opts.DerivedCreateStatus)
+	case forcedStatus != 0:
+		w.WriteHeader(forcedStatus)
 	case f.opts.DropDerivedCreateResponse, f.opts.DropDerivedCreateResponseOnce && f.dropFirstCreate():
 		dropConnection(w)
 	case f.opts.MalformedDerivedCreateResponse:
@@ -669,7 +818,7 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		if f.opts.DerivedBearerOverride != "" {
 			bearer = f.opts.DerivedBearerOverride
 		}
-		writeExtTokenAs(w, http.StatusCreated, rec, rec.name, bearer)
+		writeExtTokenAsWithScope(w, http.StatusCreated, rec, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName)
 	}
 }
 
@@ -683,6 +832,81 @@ func (f *Facade) dropFirstCreate() bool {
 	}
 	f.dropped = true
 	return true
+}
+
+// handleNormanTokensPOST serves the Norman v3 token create: POST /v3/tokens
+// with clusterId answers the Norman shape with clusterId and userId echoed.
+func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) {
+	if !f.opts.V3TokenCreate {
+		http.NotFound(w, r)
+		return
+	}
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading body", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Type        string `json:"type"`
+		Description string `json:"description"`
+		ClusterID   string `json:"clusterId"`
+		TTL         int64  `json:"ttl"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	owner, _ := f.BearerOwner(bearerFromHeader(r))
+	role := "derived"
+	if req.ClusterID != "" {
+		role = "cluster"
+	}
+
+	if deterministic4xx(f.opts.V3CreateStatus) {
+		f.recordCreate(CreateRecord{Kind: "v3", Role: role, Bearer: bearerFromHeader(r), ClusterName: req.ClusterID, Description: req.Description, OwnerUserID: owner})
+		w.WriteHeader(f.opts.V3CreateStatus)
+		return
+	}
+
+	rec := f.newToken(req.ClusterID, req.TTL)
+	f.mu.Lock()
+	rec.kind = "v3"
+	rec.role = role
+	rec.description = req.Description
+	rec.userID = owner
+	f.creates = append(f.creates, CreateRecord{Kind: "v3", Role: role, Name: rec.name, Bearer: bearerFromHeader(r), ClusterName: req.ClusterID, Description: req.Description, OwnerUserID: owner})
+	f.mu.Unlock()
+
+	echoedClusterID := req.ClusterID
+	if f.opts.V3CreateClusterID != nil {
+		echoedClusterID = *f.opts.V3CreateClusterID
+	}
+
+	status := http.StatusCreated
+	if f.opts.V3CreateStatus != 0 {
+		status = f.opts.V3CreateStatus
+	}
+
+	if status < 200 || status > 299 {
+		w.WriteHeader(status)
+		return
+	}
+
+	body2 := map[string]any{
+		"id":        rec.name,
+		"token":     rec.bearer(),
+		"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339),
+		"userId":    rec.userID,
+		"type":      "token",
+		"baseType":  "token",
+	}
+	if echoedClusterID != "" {
+		body2["clusterId"] = echoedClusterID
+	}
+	writeJSON(w, status, body2)
 }
 
 // handleExtCollection lists every ext record as a TokenList. With a
@@ -837,12 +1061,25 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 		return
 	}
 
+	owner, _ := f.BearerOwner(bearerFromHeader(r))
+	if kind == "v3" && f.opts.V3DeleteForbiddenForNonAdmin && !f.admins[owner] {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if rec.userID != "" && owner != rec.userID && !f.admins[owner] {
+		http.NotFound(w, r)
+		return
+	}
+
 	switch f.deleteMode(rec) {
 	case "gone":
 		http.NotFound(w, r)
 		return
 	case "fail":
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	case "hang":
+		<-r.Context().Done()
 		return
 	}
 
@@ -861,9 +1098,29 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	writeJSON(w, http.StatusOK, tokenCRBody(rec))
 }
 
-// deleteMode is the fault mode configured for the located record's role,
-// so an ext-shaped session token fails where the derived token succeeds.
+// SetDeleteMode makes DELETE of one token answer a fault mode: "gone"
+// (404), "fail" (500), "hang" (until the request ends). The name is the
+// one the create answered, so a caller faults the very token it holds
+// instead of guessing what the facade numbered it.
+func (f *Facade) SetDeleteMode(name, mode string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deleteModes == nil {
+		f.deleteModes = map[string]string{}
+	}
+	f.deleteModes[name] = mode
+}
+
+// deleteMode is the fault mode configured for the located record by name,
+// else for its role, so an ext-shaped session token fails where the
+// derived token succeeds.
 func (f *Facade) deleteMode(rec *record) string {
+	f.mu.Lock()
+	mode, ok := f.deleteModes[rec.name]
+	f.mu.Unlock()
+	if ok {
+		return mode
+	}
 	switch rec.role {
 	case "session":
 		return f.opts.SessionDeleteMode
@@ -1260,7 +1517,13 @@ func tokenCRBody(rec *record) map[string]any {
 // resource's name in metadata and its bearer in status. Either may be
 // empty, which withholds that field, for a response the client cannot
 // fully identify.
-func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, bearer string) {
+func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool) {
+	writeExtTokenAsWithScope(w, status, rec, name, bearer, withSpec, rec.clusterName)
+}
+
+// writeExtTokenAsWithScope writes the ext Token object with the given
+// identity and an optionally overridden echoed clusterName.
+func writeExtTokenAsWithScope(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool, echoedClusterName string) {
 	statusBlock := map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)}
 	if bearer != "" {
 		statusBlock["bearerToken"] = bearer
@@ -1269,18 +1532,32 @@ func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, beare
 	if name != "" {
 		metadata["name"] = name
 	}
-	writeJSON(w, status, map[string]any{
+	body := map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
 		"kind":       "Token",
 		"metadata":   metadata,
 		"status":     statusBlock,
-	})
+	}
+	if withSpec {
+		spec := map[string]any{}
+		if echoedClusterName != "" {
+			spec["clusterName"] = echoedClusterName
+		}
+		if rec.description != "" {
+			spec["description"] = rec.description
+		}
+		if rec.userID != "" {
+			spec["userID"] = rec.userID
+		}
+		body["spec"] = spec
+	}
+	writeJSON(w, status, body)
 }
 
 // writeV3Token writes the Norman token shape a responseType json login
 // returns: the bearer under "token" and the resource name under "id".
 // Either may be empty, which withholds that field.
-func writeV3Token(w http.ResponseWriter, status int, rec *record, name, bearer string) {
+func writeV3Token(w http.ResponseWriter, status int, rec *record, name, bearer string, withUserID bool) {
 	body := map[string]any{
 		"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339),
 		"baseType":  "token",
@@ -1291,6 +1568,9 @@ func writeV3Token(w http.ResponseWriter, status int, rec *record, name, bearer s
 	}
 	if bearer != "" {
 		body["token"] = bearer
+	}
+	if withUserID && rec.userID != "" {
+		body["userId"] = rec.userID
 	}
 	writeJSON(w, status, body)
 }
