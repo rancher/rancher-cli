@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -104,16 +103,12 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 	if err != nil {
 		return LoginCredential{}, err
 	}
-	host, herr := os.Hostname()
-	if herr != nil {
-		host = "unknown"
-	}
 	responseType := req.ResponseType
 	if responseType == "" {
 		responseType = "json"
 	}
 	input := &loginInput{server: req.Server, clusterID: req.ClusterID, authProvider: req.AuthProvider, authFlow: req.AuthFlow,
-		idpClient: req.IdPClient, responseType: responseType, description: TokenDescription(host, marker)}
+		idpClient: req.IdPClient, responseType: responseType, description: TokenDescription(hostname(), marker)}
 	st := &acquireState{marker: marker, client: client, base: kube.BaseURL(req.Server), ctx: ctx,
 		derived: CreateResult{Outcome: CreateNotAttempted}, dClean: RevokeOutcome{Result: ResultNotAttempted}}
 

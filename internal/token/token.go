@@ -138,6 +138,10 @@ type typedProvider interface {
 type tokenCmd struct {
 	dir   string
 	store config.CredStore
+	// openStore resolves the store the plugin-created login persists
+	// through, from the policy read under the config lock; nil means
+	// config.OpenStoreWithNotice. Tests inject a failing store.
+	openStore func(policy, dir string) (config.CredStore, string, error)
 }
 
 func NewTokenCommand(dir string, store config.CredStore) runtime.Command {
@@ -281,9 +285,13 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, err
 	}
 
-	rancherToken, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
+	rancherToken, reuseOn, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	var loginWarnings []string
-	if errors.Is(err, errNoStoredCredential) && t.tokenReuseOn() {
+	// The plugin-created login exists to serve cluster-scoped tokens, so it
+	// runs only for an invocation that names a cluster. The legacy shim
+	// without --cluster keeps creating the unscoped kubeconfig token.
+	pluginLane := clusterID != "" && reuseOn
+	if errors.Is(err, errNoStoredCredential) && pluginLane {
 		// A clean miss with the setting on: the plugin-created login. It
 		// returns errNoStoredCredential itself when the setting was turned
 		// off while it waited for the flock, which the switch below then
@@ -291,10 +299,16 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		rancherToken, loginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, client, params), p)
 	}
 	if rej, ok := errors.AsType[*pluginCredentialRejected](err); ok {
-		// A rejected plugin-created login: one refresh under the flock.
-		in := t.pluginInput(server, serverID, caPEM, clusterID, client, params)
-		in.refreshEntry = rej.name
-		rancherToken, loginWarnings, err = t.pluginLogin(ctx, in, p)
+		if pluginLane {
+			// A rejected plugin-created login: one refresh under the flock.
+			in := t.pluginInput(server, serverID, caPEM, clusterID, client, params)
+			in.refreshEntry = rej.name
+			rancherToken, loginWarnings, err = t.pluginLogin(ctx, in, p)
+		} else {
+			// No cluster to scope a refreshed login to: this invocation
+			// takes the interactive login the rejection always falls back to.
+			err = errStoredCredentialRejected
+		}
 	}
 	switch {
 	case errors.Is(err, errNoStoredCredential), errors.Is(err, errStoredCredentialRejected):
@@ -345,40 +359,6 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Warnings: loginWarnings, Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
-}
-
-// pluginLoginInput is what the plugin-created login needs from the
-// invocation that missed its cache.
-type pluginLoginInput struct {
-	server, serverID, caPEM, clusterID string
-	client                             *http.Client
-	authProvider, authFlow             string
-	newIdPClient                       func() *http.Client
-	wantName                           string
-	ignoreCurrentContext               bool
-	// refreshEntry is the plugin entry a 401 named; "" on first use. The
-	// re-login replaces that entry's credential as an update.
-	refreshEntry string
-}
-
-func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client *http.Client, params runParams) pluginLoginInput {
-	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, client: client,
-		authProvider: params.AuthProvider, authFlow: params.AuthFlow,
-		newIdPClient: func() *http.Client { return httpx.NewExternal(httpx.DefaultTimeout) },
-		wantName:     params.Name, ignoreCurrentContext: params.legacyShim}
-}
-
-// pluginLogin runs the plugin-created login for an invocation that has no
-// usable credential. It currently runs today's scoped interactive login,
-// which persists nothing and warns about nothing.
-func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtime.Prompter) (Token, []string, error) {
-	input := &loginInput{server: in.server, clusterID: in.clusterID, authProvider: in.authProvider,
-		authFlow: in.authFlow, idpClient: in.newIdPClient()}
-	res, err := loginAndGenerateCred(ctx, in.client, input, p)
-	if err != nil {
-		return Token{}, nil, err
-	}
-	return Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}, nil, nil
 }
 
 // cachedResultQ returns an ExecCredential result for a warm cache entry and
@@ -1141,7 +1121,6 @@ var (
 // `auth login` uses (via resolveProviderLoginToken in package commands), so
 // get-token's stored-credential path creates exactly the same shape of token.
 func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
-	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindExt, Marked: description != ""}
 	spec := map[string]any{
 		"description": description,
 	}
@@ -1151,40 +1130,56 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 	if clusterID != "" {
 		spec["clusterName"] = clusterID
 	}
-	body, err := json.Marshal(map[string]any{"spec": spec})
+	r, resp, err := postTokenCreate(ctx, client, base+ExtTokensPath, bearerToken, map[string]any{"spec": spec}, TokenKindExt, description, "creating derived token")
 	if err != nil {
-		return notAttempted, fmt.Errorf("building the token create request: %w", err)
+		return r, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+ExtTokensPath, bytes.NewReader(body))
+	if resp.StatusCode == http.StatusNotFound {
+		return r, ErrExtGroupAbsent
+	}
+	if r.Bearer == "" {
+		return r, clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
+	}
+	return r, nil
+}
+
+// postTokenCreate POSTs one token create and classifies what it left
+// behind. verb names the operation in error text ("creating derived
+// token"). Every failure the two create routes answer the same way is
+// returned here: a transport failure (cause kept, so a cancelled operation
+// stays recognizable as cancellation after cleanup wraps it), a 401 or a
+// 403 on the bearer, and any status other than 200, 201, and 404. The
+// caller is left with 404 and success, which mean different things on each
+// route.
+func postTokenCreate(ctx context.Context, client *http.Client, url, bearer string, body map[string]any, kind TokenKind, description, verb string) (CreateResult, *http.Response, error) {
+	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: kind, Marked: description != ""}
+	raw, err := json.Marshal(body)
 	if err != nil {
-		return notAttempted, fmt.Errorf("building the token create request: %w", err)
+		return notAttempted, nil, fmt.Errorf("building the token create request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return notAttempted, nil, fmt.Errorf("building the token create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	req.Header.Set("Authorization", "Bearer "+bearer)
 
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
-	r := classifyCreate(resp, respBody, err, createdAt, description != "", TokenKindExt)
+	r := classifyCreate(resp, respBody, err, createdAt, description != "", kind)
 	if err != nil {
-		// The cause is kept: a cancelled operation must still be recognizable
-		// as cancellation after cleanup has wrapped the failure.
-		return r, clierr.New(clierr.CodeGeneric, "creating derived token: "+err.Error()).WithCause(err)
+		return r, nil, clierr.New(clierr.CodeGeneric, verb+": "+err.Error()).WithCause(err)
 	}
 	switch resp.StatusCode {
-	case http.StatusNotFound:
-		return r, ErrExtGroupAbsent
+	case http.StatusOK, http.StatusCreated, http.StatusNotFound:
+		return r, resp, nil
 	case http.StatusUnauthorized:
-		return r, fmt.Errorf("%w: %d %s", errCredentialUnauthorized, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return r, resp, fmt.Errorf("%w: %d %s", errCredentialUnauthorized, resp.StatusCode, http.StatusText(resp.StatusCode))
 	case http.StatusForbidden:
-		return r, fmt.Errorf("%w: %d %s", errCredentialForbidden, resp.StatusCode, http.StatusText(resp.StatusCode))
-	case http.StatusOK, http.StatusCreated:
-		if r.Bearer == "" {
-			return r, clierr.New(clierr.CodeGeneric, "token create response contained no bearer token")
-		}
-		return r, nil
+		return r, resp, fmt.Errorf("%w: %d %s", errCredentialForbidden, resp.StatusCode, http.StatusText(resp.StatusCode))
 	default:
-		return r, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("creating derived token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return r, resp, clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("%s: %d %s", verb, resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 }
 
@@ -1192,11 +1187,17 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 // login operation owns it: get-token's per-cluster creates, which no cleanup
 // path has to find again.
 func hostLoginDescription() string {
+	return "rancher-cli login @ " + hostname()
+}
+
+// hostname is this machine's name for a token description; a machine that
+// cannot name itself is "unknown".
+func hostname() string {
 	host, err := os.Hostname()
 	if err != nil {
-		host = "unknown"
+		return "unknown"
 	}
-	return "rancher-cli login @ " + host
+	return host
 }
 
 // matchingServerNames returns the names of the cfg.Servers entries whose URL
@@ -1231,18 +1232,11 @@ var errStoredCredentialRejected = errors.New("the stored login credential was re
 // pluginCredentialRejected is a 401 on a plugin-created login: the caller
 // takes the plugin-login flock and refreshes, at most one prompt.
 type pluginCredentialRejected struct {
-	name  string
-	entry config.Server
+	name string
 }
 
 func (e *pluginCredentialRejected) Error() string {
 	return "the plugin-created login " + e.name + " was rejected by the server"
-}
-
-// tokenReuseOn reads the setting; an unreadable config reads as off.
-func (t tokenCmd) tokenReuseOn() bool {
-	cfg, err := config.Load(config.FilePath(t.dir))
-	return err == nil && cfg.TokenReuse
 }
 
 // storedCredential is one stored login credential with the entry it came
@@ -1462,27 +1456,30 @@ const legacyTokenTTL = 15 * time.Minute
 // the caller must surface directly.
 // ignoreCurrentContext is forwarded to storedTokenForServer to gate rank-2
 // (current-server preference) — see runParams.legacyShim.
-func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, error) {
+// The second result is the token-reuse setting as this call read it, so the
+// caller decides the plugin lane without loading config.yaml again; a config
+// it could not read reads as off.
+func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v — skipping token creation from the stored credential", err))
-		return Token{}, errNoStoredCredential
+		return Token{}, false, errNoStoredCredential
 	}
 	sc, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
 		// papered over by falling through to interactive auth.
-		return Token{}, serr
+		return Token{}, cfg.TokenReuse, serr
 	}
 	if !ok {
-		return Token{}, errNoStoredCredential
+		return Token{}, cfg.TokenReuse, errNoStoredCredential
 	}
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
-		return Token{}, t.classifyRejection(rerr, sc, p)
+		return Token{}, cfg.TokenReuse, t.classifyRejection(rerr, sc, p)
 	}
 	isPlugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
 	var created CreateResult
@@ -1521,14 +1518,14 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			} else {
 				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
-			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, nil
+			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, cfg.TokenReuse, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
-			return Token{}, t.classifyRejection(err, sc, p)
+			return Token{}, cfg.TokenReuse, t.classifyRejection(err, sc, p)
 		default:
-			return Token{}, err
+			return Token{}, cfg.TokenReuse, err
 		}
 	}
-	return Token{Token: bearer, ExpiresAt: expiresAt}, nil
+	return Token{Token: bearer, ExpiresAt: expiresAt}, cfg.TokenReuse, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated
@@ -1541,7 +1538,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 		return clierr.New(clierr.CodeRBAC,
 			fmt.Sprintf("the stored login credential for %q cannot create tokens: %v", sc.name, err)).WithCause(err)
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
-		return &pluginCredentialRejected{name: sc.name, entry: sc.entry}
+		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
 		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login; refresh it with: rancher auth login %s", sc.name, err, clierr.ShellQuote(sc.name)))
 		return errStoredCredentialRejected

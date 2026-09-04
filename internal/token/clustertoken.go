@@ -1,15 +1,11 @@
 package token
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
-	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
@@ -33,36 +29,15 @@ var errServerTooOldForReuse = errors.New("this Rancher serves neither ext.cattle
 // create is (a deterministic 4xx proves absence, 5xx and transport failures
 // may follow a committed create).
 func createV3ClusterToken(ctx context.Context, client *http.Client, base, bearer, clusterID, description string) (CreateResult, error) {
-	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindV3, Marked: description != ""}
-	body, err := json.Marshal(map[string]any{"type": "token", "description": description, "clusterId": clusterID})
+	body := map[string]any{"type": "token", "description": description, "clusterId": clusterID}
+	r, resp, err := postTokenCreate(ctx, client, base+normanTokensPath, bearer, body, TokenKindV3, description, "creating cluster token")
 	if err != nil {
-		return notAttempted, fmt.Errorf("building the token create request: %w", err)
+		return r, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+normanTokensPath, bytes.NewReader(body))
-	if err != nil {
-		return notAttempted, fmt.Errorf("building the token create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+bearer)
-	createdAt := time.Now().UTC().Format(time.RFC3339)
-	resp, respBody, err := httpx.Do(client, req)
-	r := classifyCreate(resp, respBody, err, createdAt, description != "", TokenKindV3)
-	if err != nil {
-		return r, clierr.New(clierr.CodeGeneric, "creating cluster token: "+err.Error()).WithCause(err)
-	}
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated:
-		return validateScope(r, clusterID)
-	case http.StatusUnauthorized:
-		return r, fmt.Errorf("%w: %d %s", errCredentialUnauthorized, resp.StatusCode, http.StatusText(resp.StatusCode))
-	case http.StatusForbidden:
-		return r, fmt.Errorf("%w: %d %s", errCredentialForbidden, resp.StatusCode, http.StatusText(resp.StatusCode))
-	case http.StatusNotFound:
+	if resp.StatusCode == http.StatusNotFound {
 		return r, errServerTooOldForReuse
-	default:
-		return r, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("creating cluster token: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
+	return validateScope(r, clusterID)
 }
 
 // validateScope is the security check the plugin lane needs and the

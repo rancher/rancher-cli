@@ -269,15 +269,20 @@ func revalidate(dir string, cfg *Config, d StoreDecision) string {
 	if d.Policy == "" {
 		return ""
 	}
-	policy := EffectivePolicy(cfg.CredentialStore)
-	pin := ""
-	if policy == "auto" {
-		pin = ReadPin(dir)
-	}
-	if BackendOf(policy, pin) == "file" && d.DisclosedPlaintextPath != CredentialsFilePath(dir) {
+	if _, _, backend := ResolvedBackend(dir, cfg.CredentialStore); backend == "file" && d.DisclosedPlaintextPath != CredentialsFilePath(dir) {
 		return fmt.Sprintf("the credential store is now the plaintext file %s, which this login did not disclose before the interactive sign-in; run the command again", CredentialsFilePath(dir))
 	}
 	return ""
+}
+
+// ResolvedBackend resolves the credential-store policy, the pin an auto
+// policy consults, and the backend the two name.
+func ResolvedBackend(dir, cfgPolicy string) (policy, pin, backend string) {
+	policy = EffectivePolicy(cfgPolicy)
+	if policy == "auto" {
+		pin = ReadPin(dir)
+	}
+	return policy, pin, BackendOf(policy, pin)
 }
 
 // BackendOf names the physical backend a policy and pin resolve to without

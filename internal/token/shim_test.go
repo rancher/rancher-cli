@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -673,4 +674,40 @@ func TestLegacyTokenProbeWarnPrecedesStoreNotices(t *testing.T) {
 	require.Len(t, warnings, 2)
 	assert.Contains(t, warnings[0], "group/world-readable", "the probe's earlier finding delivers first")
 	assert.Equal(t, keychainUnavailableNotice, warnings[1])
+}
+
+// TestShimWithClusterUsesThePluginLoginUnderTheSetting asserts an ACE
+// kubeconfig invocation (--cluster set) that misses cache runs the
+// plugin login when the setting is on, with ignoreCurrentContext kept:
+// the entry is created and CurrentServer stays empty.
+func TestShimWithClusterUsesThePluginLoginUnderTheSetting(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	cmd := NewLegacyTokenCommand(x.dir, x.store).(runtime.ReadCommand)
+	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "user": "alice", "cluster": "c-test", "auth-provider": "localProvider"}}, localPrompter())
+	require.NoError(t, err)
+	assert.Equal(t, "ExecCredential", res.Kind)
+	assert.Equal(t, 1, x.f.LoginCount())
+	s, ok := x.entry(t)
+	require.True(t, ok)
+	assert.Equal(t, clierr.ProvenanceExecLogin, s.Provenance)
+	cfg, _ := config.Load(config.FilePath(x.dir))
+	assert.Empty(t, cfg.CurrentServer, "the plugin login never sets CurrentServer")
+}
+
+// TestShimNonACEUnscopedCreateUnchangedUnderTheSetting asserts parity: a
+// shim call without --cluster creates the unscoped kubeconfig token as
+// today with the setting on and off, and never a plugin login.
+func TestShimNonACEUnscopedCreateUnchangedUnderTheSetting(t *testing.T) {
+	for _, reuse := range []bool{false, true} {
+		x := newPluginFixture(t, reuse, testrancher.Options{})
+		cmd := NewLegacyTokenCommand(x.dir, x.store).(runtime.ReadCommand)
+		_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "user": "alice", "auth-provider": "localProvider"}}, localPrompter())
+		require.NoError(t, err)
+		_, present := x.entry(t)
+		assert.False(t, present)
+		creates := x.f.CreateRequests()
+		require.Len(t, creates, 1)
+		assert.Equal(t, "session", creates[0].Role)
+		assert.Empty(t, creates[0].ClusterName)
+	}
 }
