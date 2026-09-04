@@ -2861,3 +2861,46 @@ func TestLoginNamelessURLBesideAPluginEntryCreatesANormalEntry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ext/token-plugin:s", tok)
 }
+
+// TestLoginReLoginRetiresThePriorDerivedTokenAndWarnsOnCrossUser asserts
+// the login side: a same-user re-login deletes the prior token on the
+// facade with the new credential and drops its record; a re-login as
+// another user keeps the record, which still identifies the prior owner,
+// and the result carries the warning with the recovery sequence.
+func TestLoginReLoginRetiresThePriorDerivedTokenAndWarnsOnCrossUser(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "a", Password: "pw", UserID: "user-a"}, {Name: "b", Password: "pw", UserID: "user-b"}}})
+	fake := httptest.NewServer(f)
+	t.Cleanup(fake.Close)
+	dir, store := filePolicyDir(t)
+	seedServer(t, dir, "prod", fake.URL, "", false)
+	login := func(user string) runtime.Result {
+		res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+			args{s: map[string]string{"auth-provider": "localProvider"}, a: []string{"prod"}},
+			ui.New(&bytes.Buffer{}, newLineReader(user, "pw"), false, true))
+		require.NoError(t, err)
+		return res
+	}
+	login("a")
+	cfg, _ := config.Load(config.FilePath(dir))
+	first := cfg.Servers["prod"].TokenRef.Name
+
+	res := login("a")
+	cfg, _ = config.Load(config.FilePath(dir))
+	assert.Empty(t, cfg.Servers["prod"].SupersededTokens, "same owner: retired")
+	assert.Empty(t, res.Warnings)
+	_, alive := f.TokenOwner(first)
+	assert.False(t, alive)
+	second := cfg.Servers["prod"].TokenRef.Name
+
+	res = login("b")
+	cfg, _ = config.Load(config.FilePath(dir))
+	require.Len(t, cfg.Servers["prod"].SupersededTokens, 1)
+	assert.Equal(t, second, cfg.Servers["prod"].SupersededTokens[0].Ref.Name)
+	assert.Equal(t, "user-a", cfg.Servers["prod"].SupersededTokens[0].UserID, "the record identifies the prior owner after the bearer is overwritten")
+	assert.Equal(t, "user-b", cfg.Servers["prod"].TokenUserID)
+	_, alive = f.TokenOwner(second)
+	assert.True(t, alive, "another user's token is never deleted on a guess")
+	require.NotEmpty(t, res.Warnings)
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "rancher auth login 'recover-")
+}

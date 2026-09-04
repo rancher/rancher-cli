@@ -409,7 +409,7 @@ func (n noticeOrder) Notice(msg string) { n.record(msg); n.Prompter.Notice(msg) 
 // TestPluginLogin401RefreshesExactlyOnceAsAnUpdate asserts an expired
 // plugin-created login is replaced by one re-login under the same entry:
 // the new tokenRef, owner, and expiry are written, the prior token is
-// recorded (retirement is a later change), and a second 401 on the fresh
+// retired with the new credential, and a second 401 on the fresh
 // credential is a hard error with no second prompt.
 func TestPluginLogin401RefreshesExactlyOnceAsAnUpdate(t *testing.T) {
 	x := newPluginFixture(t, true, testrancher.Options{})
@@ -427,9 +427,17 @@ func TestPluginLogin401RefreshesExactlyOnceAsAnUpdate(t *testing.T) {
 	after, _ := x.entry(t)
 	assert.NotEqual(t, before.TokenRef.Name, after.TokenRef.Name)
 	assert.Equal(t, clierr.ProvenanceExecLogin, after.Provenance)
-	require.Len(t, after.SupersededTokens, 1)
-	assert.Equal(t, before.TokenRef.Name, after.SupersededTokens[0].Ref.Name)
-	assert.Equal(t, "user-e2e", after.SupersededTokens[0].UserID)
+	assert.Empty(t, after.SupersededTokens, "the prior token was retired")
+	fresh, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
+	require.NoError(t, err)
+	var retired bool
+	for _, d := range x.f.DeleteRequests() {
+		if d.Name == before.TokenRef.Name {
+			retired = true
+			assert.Equal(t, fresh, d.Bearer, "the prior token is revoked with the new credential")
+		}
+	}
+	assert.True(t, retired, "the prior token was deleted on the server")
 	assert.NotEmpty(t, res.Data.(*execCredential).Status.Token)
 
 	t.Run("a fresh credential rejected on the cluster create is a hard error", func(t *testing.T) {

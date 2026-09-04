@@ -603,9 +603,17 @@ func (l loginCmd) authenticateAndStore(
 		}
 	}
 
+	var retired []clierr.TokenRef
+	if len(out.SupersededTokens) > 0 {
+		rep := token.RetireSuperseded(ctx, l.dir, name, serverURL, cred, out.SupersededTokens)
+		retired = rep.Retired
+		st.Warnings = append(st.Warnings, rep.Warnings...)
+	}
+
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
 		"residualTokens": residual, "provenance": string(cred.Provenance), "tokenUserId": cred.UserID,
+		"retiredTokens": retired,
 	}}
 	res.Warnings = st.Warnings
 	var lines []string

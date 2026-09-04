@@ -47,12 +47,16 @@ func (t tokenCmd) storeOpener() func(policy, dir string) (config.CredStore, stri
 // credential can create, then persistence through the shared primitive.
 // Nothing durable exists until the credential commit succeeded; every
 // failure after acquisition revokes the cluster token with the credential
-// as bearer, then the credential itself.
+// as bearer, then the credential itself. The flock is released before the
+// retirement pass, which runs outside both locks.
 func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtime.Prompter) (Token, []string, error) {
 	var (
 		result   Token
 		warnings []string
 		entry    string
+		cred     LoginCredential
+		records  []config.SupersededToken
+		acquired bool
 	)
 	err := config.WithPluginLoginLock(ctx, t.dir, in.serverID, func() error {
 		cfg, err := config.Load(config.FilePath(t.dir))
@@ -97,7 +101,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if entry == "" {
 			entry = config.ExecLoginEntryName(in.serverID)
 		}
-		cred, err := AcquireLoginCredential(ctx, in.client, LoginRequest{Server: in.server, AuthProvider: in.authProvider,
+		cred, err = AcquireLoginCredential(ctx, in.client, LoginRequest{Server: in.server, AuthProvider: in.authProvider,
 			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}, 0, p)
 		if err != nil {
 			if ae, ok := errors.AsType[*AcquireError](err); ok {
@@ -105,6 +109,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 			return err
 		}
+		acquired = true
 		base := kube.BaseURL(in.server)
 		st := LoginStates{Config: clierr.ConfigNotWritten}
 		resolved, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
@@ -145,13 +150,17 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 			return FailLogin(primary, clierr.StageCommit, st, cred, name)
 		}
-		entry = out.Name
+		entry, records = out.Name, out.SupersededTokens
 		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt}
 		warnings = append(warnings, st.Warnings...)
 		return nil
 	})
 	if err != nil {
 		return Token{}, nil, err
+	}
+	if acquired && len(records) > 0 {
+		rep := RetireSuperseded(ctx, t.dir, entry, in.serverID, cred, records)
+		warnings = append(warnings, rep.Warnings...)
 	}
 	return result, warnings, nil
 }

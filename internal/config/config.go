@@ -207,19 +207,21 @@ func (s Server) Clone() Server {
 	return c
 }
 
-// Owner states a superseded record derives at display time against the
-// entry's current owner. Never persisted.
+// OwnerState is how a superseded record's owner compares with the entry's
+// current owner. Derived at display time, never persisted.
+type OwnerState string
+
 const (
-	OwnerSame      = "sameOwner"
-	OwnerDifferent = "differentOwner"
-	OwnerUnknown   = "unknownOwner"
+	OwnerSame      OwnerState = "sameOwner"
+	OwnerDifferent OwnerState = "differentOwner"
+	OwnerUnknown   OwnerState = "unknownOwner"
 )
 
 // RecordOwnerState compares a record's owner with the current credential's:
 // same only when both are known and equal; an empty owner on either side is
 // unknown, because a delete with the wrong bearer answers NotFound for a
 // live token and must never be attempted on a guess.
-func RecordOwnerState(rec SupersededToken, currentUserID string) string {
+func RecordOwnerState(rec SupersededToken, currentUserID string) OwnerState {
 	switch {
 	case rec.UserID == "" || currentUserID == "":
 		return OwnerUnknown
