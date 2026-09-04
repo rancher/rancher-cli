@@ -49,7 +49,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 			"scope: no workload or usage read is issued and nothing degrades.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:       []runtime.ArgSpec{{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"}},
+		Flags:       []runtime.ArgSpec{resources.ClusterFlag(true)},
 		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,

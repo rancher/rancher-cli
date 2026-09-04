@@ -51,7 +51,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"to zero namespaces is verified empty: no pod or metrics read is issued.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"},
+			resources.ClusterFlag(true),
 			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
 				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},

@@ -34,7 +34,7 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: resources.FlagCluster, Type: "string", Required: true, Desc: "target cluster `id|name`"},
+			resources.ClusterFlag(true),
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 		},
 		Network: true,

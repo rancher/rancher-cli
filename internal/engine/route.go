@@ -13,6 +13,17 @@ import (
 // constant instead of drifting copies.
 const FlagCluster = "cluster"
 
+// ClusterRequiredMessage and ClusterRequiredHint are the one refusal for an
+// absent --cluster, whether the pipeline rejects it as a missing required
+// flag or a resolver reaches the empty value. Routing is never implied, not
+// even for Rancher's own namespaces (cattle-system, cattle-tokens,
+// cattle-fleet-system), which live on the local cluster: the message says
+// so and names the value, the hint lists the clusters to choose from.
+const (
+	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
+	ClusterRequiredHint    = "rancher get cluster"
+)
+
 // ResolveDownstreamCluster resolves --cluster for a command that always
 // targets a downstream cluster: an explicit flag is resolved via
 // ResolveCluster; an empty flag is a VALIDATION error — routing is never
@@ -24,7 +35,7 @@ const FlagCluster = "cluster"
 func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
-		return "", clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", clierr.New(clierr.CodeValidation, ClusterRequiredMessage).WithHint(ClusterRequiredHint)
 	}
 	return clients.ResolveCluster(ctx, target)
 }

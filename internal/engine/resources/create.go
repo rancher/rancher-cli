@@ -77,7 +77,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 // can supply the cluster (see overrideInput), so the flag is not
 // schema-required — routing rejects only when neither source names one.
 func createClusterFlag() runtime.ArgSpec {
-	f := clusterFlag(false)
+	f := ClusterFlag(false)
 	f.Desc = "target cluster `id|name` (the manifest may supply it)"
 	return f
 }

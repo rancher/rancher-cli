@@ -1453,6 +1453,28 @@ func TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat(t *testing.T) {
 	}
 }
 
+// TestValidateInputMissingRequiredFlagUsesDeclaredMessage asserts that a
+// required flag which declares MissingMessage and MissingHint is refused
+// with exactly those, hint included, while a flag without them keeps the
+// generic "--<name> is required" refusal and no hint.
+func TestValidateInputMissingRequiredFlagUsesDeclaredMessage(t *testing.T) {
+	t.Parallel()
+	d := Descriptor{Name: "x", Flags: []ArgSpec{
+		{Name: "cluster", Type: "string", Required: true, MissingMessage: "--cluster is required; pass --cluster local", MissingHint: "rancher get cluster"},
+	}}
+	ce := validateInput(d, mapInput{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "--cluster is required; pass --cluster local", ce.Message)
+	assert.Equal(t, "rancher get cluster", ce.Hint)
+
+	plain := Descriptor{Name: "x", Flags: []ArgSpec{{Name: "mode", Type: "string", Required: true}}}
+	ce = validateInput(plain, mapInput{})
+	require.NotNil(t, ce)
+	assert.Equal(t, "--mode is required", ce.Message)
+	assert.Empty(t, ce.Hint)
+}
+
 // TestValidateInputStringSlicePerEntry asserts MC-6a's validateInput
 // semantics: Required means at least one occurrence; Enum membership is
 // checked on every entry.

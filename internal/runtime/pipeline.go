@@ -341,8 +341,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		if f.Type == "stringSlice" {
 			entries := in.Strings(f.Name)
 			if f.Required && len(entries) == 0 {
-				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--%s is required", f.Name))
+				return missingFlagError(f)
 			}
 			if len(f.Enum) > 0 {
 				for _, v := range entries {
@@ -360,8 +359,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		}
 		v := in.String(f.Name)
 		if f.Required && v == "" {
-			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--%s is required", f.Name))
+			return missingFlagError(f)
 		}
 		if len(f.Enum) > 0 && v != "" {
 			ok := slices.Contains(f.Enum, v)
@@ -372,6 +370,20 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		}
 	}
 	return nil
+}
+
+// missingFlagError is the refusal for a required flag that was not passed:
+// the flag's own MissingMessage and MissingHint when its descriptor set
+// them, the generic form otherwise.
+func missingFlagError(f ArgSpec) *clierr.Error {
+	if f.MissingMessage == "" {
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("--%s is required", f.Name))
+	}
+	ce := clierr.New(clierr.CodeValidation, f.MissingMessage)
+	if f.MissingHint != "" {
+		ce = ce.WithHint(f.MissingHint)
+	}
+	return ce
 }
 
 // checkCapability runs the capability stage for a command whose resolved

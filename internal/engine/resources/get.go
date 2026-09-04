@@ -107,8 +107,9 @@ func (c getCmd) Describe() runtime.Descriptor {
 // invocation Route would reject. NSCluster kinds and create resource pass
 // false and override Desc: the former lists across clusters when the flag is
 // omitted, the latter can take the cluster from the manifest.
-func clusterFlag(required bool) runtime.ArgSpec {
-	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`"}
+func ClusterFlag(required bool) runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`",
+		MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint}
 }
 
 func namespaceFlag() runtime.ArgSpec {
@@ -119,20 +120,20 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	var flags []runtime.ArgSpec
 	switch k.Policy {
 	case kinds.NSCluster:
-		f := clusterFlag(false)
+		f := ClusterFlag(false)
 		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by name, omit to list across clusters"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{namespaceFlag()}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{clusterFlag(true), namespaceFlag()}
+			flags = []runtime.ArgSpec{ClusterFlag(true), namespaceFlag()}
 		} else {
 			flags = []runtime.ArgSpec{namespaceFlag()}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{clusterFlag(true)}
+			flags = []runtime.ArgSpec{ClusterFlag(true)}
 		}
 	}
 	return append(flags,

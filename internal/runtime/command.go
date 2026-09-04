@@ -81,6 +81,12 @@ type ArgSpec struct {
 	Aliases  []string `json:"aliases,omitempty"` // short flag forms (e.g. "f" for --filename)
 	Desc     string   `json:"desc,omitempty"`    // schema-manifest documentation; optional
 	Env      []string `json:"env,omitempty"`     // env vars that back this flag, if any
+	// MissingMessage and MissingHint replace the generic "--<name> is
+	// required" refusal when a required flag is absent: the message says
+	// what the value is and where to find it, the hint is one paste-valid
+	// command. Go-only; the manifest carries neither.
+	MissingMessage string `json:"-"`
+	MissingHint    string `json:"-"`
 }
 
 // OutputShape is a command's declared success-result shape: the closed-world
