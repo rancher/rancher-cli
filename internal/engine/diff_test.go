@@ -3,6 +3,7 @@ package engine
 import (
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,31 @@ func TestDiffObjectsSkipsManaged(t *testing.T) {
 	diffs := DiffObjects(a, b)
 	require.Len(t, diffs, 1)
 	assert.Equal(t, "/spec/replicas", diffs[0].Path)
+}
+
+func TestDiffObjectsEscapesSlashAndTildeKeys(t *testing.T) {
+	t.Parallel()
+	a := map[string]any{
+		"metadata": map[string]any{
+			"annotations": map[string]any{
+				"app.kubernetes.io/name": "old",
+				"a~b":                    "old",
+			},
+		},
+	}
+	b := map[string]any{
+		"metadata": map[string]any{
+			"annotations": map[string]any{
+				"app.kubernetes.io/name": "new",
+				"a~b":                    "new",
+			},
+		},
+	}
+	diffs := DiffObjects(a, b)
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/metadata/annotations/app.kubernetes.io~1name", From: "old", To: "new"},
+		{Path: "/metadata/annotations/a~0b", From: "old", To: "new"},
+	}, diffs)
 }
 
 // TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields is the latent bug

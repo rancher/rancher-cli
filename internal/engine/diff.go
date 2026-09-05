@@ -32,7 +32,7 @@ var ServerOwnedPaths = [][]string{
 var skippedPointers = func() []string {
 	out := make([]string, len(ServerOwnedPaths))
 	for i, p := range ServerOwnedPaths {
-		out[i] = "/" + strings.Join(p, "/")
+		out[i] = PointerFor(p)
 	}
 	return out
 }()
@@ -85,7 +85,7 @@ func diffObjects(prefix string, a, b any) []safety.DiffEntry {
 		}
 		var out []safety.DiffEntry
 		for _, k := range unionKeys(av, bv) {
-			out = append(out, diffObjects(prefix+"/"+k, av[k], bv[k])...)
+			out = append(out, diffObjects(prefix+"/"+escapePointerToken(k), av[k], bv[k])...)
 		}
 		return out
 	case []any:

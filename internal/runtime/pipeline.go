@@ -772,6 +772,8 @@ func dryRunText(eff safety.Effect) string {
 		lines = append(lines, "cluster: "+eff.Cluster)
 	}
 	for _, d := range eff.Diff {
+		// d.Path is an RFC 6901 JSON Pointer ("~1" for "/", "~0" for "~"),
+		// printed verbatim: it is valid as-is for a JSON Patch op's "path".
 		lines = append(lines, fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To))
 	}
 	gate := "dry run — re-run with --apply"
