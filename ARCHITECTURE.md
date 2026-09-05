@@ -263,6 +263,7 @@ graph TD
     access --> engine
     access --> kinds
     access --> rbac
+    access --> projects
     access --> clierr
 
     provisioning --> selfuser
