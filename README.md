@@ -319,11 +319,19 @@ Requires Go 1.26+ to build from source:
     make validate     # gofmt + vet + lint + race tests (the commit gate)
     make e2e          # end-to-end suite against an envtest-backed fake Rancher
     make e2e-real     # verify recorded fidelity goldens against a real Rancher in Docker
+    make e2e-real-downstream  # verify downstream-cluster fidelity goldens against your own Rancher
     make              # the full ci pipeline (build + validate)
 
 `make e2e-real` boots the pinned `rancher/rancher` image (~5-7 min) and
 checks that the fake Rancher the e2e suite runs against still behaves
 like the real one; `make e2e-real-update` re-records those goldens.
+`make e2e-real-downstream` covers the facts that need a downstream cluster
+(the pinned oracle has the `local` cluster only): point it at a Rancher you
+already run, with a downstream cluster already registered, via
+`E2E_REAL_URL`, `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or the
+literal `system` to trust your OS root store), and `E2E_REAL_DOWNSTREAM`
+(the cluster id); `make e2e-real-downstream-update` re-records those
+goldens.
 
 One-time setup: `git config core.hooksPath .githooks` enables the
 pre-commit `make validate` gate.

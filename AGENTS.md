@@ -20,6 +20,8 @@ Go 1.26+. Automation is `make`, dispatching to `scripts/`:
 | `make e2e` | envtest provider suite + testscript scenarios |
 | `make e2e-real` | verify recorded fidelity goldens against a real Rancher in Docker (~5-7 min boot; never on PRs - CI runs it on demand or weekly) |
 | `make e2e-real-update` | re-record the fidelity oracle goldens (review the diff like the schema golden) |
+| `make e2e-real-downstream` | verify downstream-cluster fidelity goldens against a Rancher you run yourself (never on PRs) |
+| `make e2e-real-downstream-update` | re-record the downstream fidelity goldens |
 | `make dev` | run the binary hermetically (temp config dir, file credential store) |
 
 `make` with no target runs `ci` (the full pipeline).
@@ -36,6 +38,15 @@ Two gotchas:
   (`workflow_dispatch` on e2e-real.yaml) or on its weekly schedule. The image
   pin lives in `scripts/e2e-real`; bumping it is a reviewed
   golden-regeneration change.
+- **The downstream fidelity axis needs an external target, never Docker.**
+  The pinned oracle has the `local` cluster only, so probes marked
+  `Downstream: true` (family `access-downstream`) run against a Rancher you
+  already have, with a downstream cluster already registered:
+  `E2E_REAL_URL`, `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or the
+  literal `system` to trust the OS root store for a publicly trusted
+  certificate), and `E2E_REAL_DOWNSTREAM` (the cluster id). Unset, every
+  downstream probe is skipped everywhere and nothing else changes. Never on
+  PRs.
 
 ## Invariants - do not break these
 

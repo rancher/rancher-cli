@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Verifies the downstream fidelity goldens (internal/testrancher/fidelity,
+# family access-downstream) against a Rancher the caller already runs and
+# that already has a downstream cluster. Unlike scripts/e2e-real, this never
+# boots Docker or bootstraps a server: the pinned oracle has the local
+# cluster only, so these facts are recorded against an external target
+# instead. Never on PRs.
+
+missing=()
+for var in E2E_REAL_URL E2E_REAL_ADMIN_TOKEN E2E_REAL_CACERT E2E_REAL_DOWNSTREAM; do
+  [ -n "${!var:-}" ] || missing+=("${var}")
+done
+if [ "${#missing[@]}" -ne 0 ]; then
+  echo "error: missing required environment: ${missing[*]}" >&2
+  exit 1
+fi
+
+# E2E_REAL_DOWNSTREAM_UPDATE_FLAG is a fixed internal value ("" or
+# "-update"), set only by scripts/e2e-real-downstream-update, never
+# user-supplied, so the intentional word-splitting here is safe.
+# shellcheck disable=SC2086
+go test -tags e2e_real -count=1 -run TestDownstream ./e2e/real/ ${E2E_REAL_DOWNSTREAM_UPDATE_FLAG:-}
