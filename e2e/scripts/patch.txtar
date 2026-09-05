@@ -16,6 +16,17 @@ exec rancher patch configmap patch-cm --cluster testcluster --namespace default 
 exec rancher get configmap patch-cm --cluster testcluster --namespace default -o json
 jsonquery stdout data.data.key new
 
+env LABEL_PATCH='[{"op":"add","path":"/metadata/labels/app.kubernetes.io~1name","value":"web"}]'
+
+# a domain-prefixed label escapes as one RFC 6901 segment; text and JSON agree
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $LABEL_PATCH --dry-run -o json
+cp stdout label-eff.json
+jsonquery label-eff.json data.diff.0.path /metadata/labels/app.kubernetes.io~1name
+jsonquery label-eff.json data.diff.0.to web
+
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $LABEL_PATCH --dry-run
+stdout '  /metadata/labels/app\.kubernetes\.io~1name: <nil> -> web'
+
 # exactly one of --patch/-f
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH -f cm.yaml
 stderr 'error \(VALIDATION\):'
@@ -49,6 +60,8 @@ kind: ConfigMap
 metadata:
   name: patch-cm
   namespace: default
+  labels:
+    team: platform
 data:
   key: old
 -- secret.yaml --
