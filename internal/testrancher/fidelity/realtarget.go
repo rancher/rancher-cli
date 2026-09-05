@@ -57,17 +57,26 @@ func (l *LazyBearer) Get(provision func() (string, error)) (string, error) {
 // E2E_REAL_* environment scripts/e2e-real exports. Standard and revoked
 // bearers are provisioned lazily against the live server and memoized.
 type RealTarget struct {
-	baseURL string
-	client  *http.Client
-	admin   string
+	baseURL    string
+	client     *http.Client
+	admin      string
+	downstream string
 
 	standard LazyBearer
 	revoked  LazyBearer
 }
 
+// systemCACert is the literal E2E_REAL_CACERT value that means "trust the
+// operating system's root store" instead of an inline PEM - the shape an
+// external target with a publicly trusted certificate needs, since it has
+// no CA of its own to pin.
+const systemCACert = "system"
+
 // NewRealTargetFromEnv builds the oracle client from E2E_REAL_URL,
-// E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT (inline PEM). The CA is
-// mandatory: this harness never skips TLS verification.
+// E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT (inline PEM, or the literal
+// "system" to trust the OS root store). The CA is mandatory: this harness
+// never skips TLS verification. E2E_REAL_DOWNSTREAM, if set, names a
+// downstream cluster the target can reach through the proxy.
 func NewRealTargetFromEnv() (*RealTarget, error) {
 	base := os.Getenv("E2E_REAL_URL")
 	admin := os.Getenv("E2E_REAL_ADMIN_TOKEN")
@@ -75,19 +84,28 @@ func NewRealTargetFromEnv() (*RealTarget, error) {
 	if base == "" || admin == "" || ca == "" {
 		return nil, fmt.Errorf("E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
 	}
-	client, err := httpx.New(httpx.Options{CACert: ca})
+	opts := httpx.Options{CACert: ca}
+	if ca == systemCACert {
+		opts = httpx.Options{}
+	}
+	client, err := httpx.New(opts)
 	if err != nil {
 		return nil, fmt.Errorf("E2E_REAL_CACERT: %w", err)
 	}
 	return &RealTarget{
-		baseURL: strings.TrimSuffix(base, "/"),
-		admin:   admin,
-		client:  client,
+		baseURL:    strings.TrimSuffix(base, "/"),
+		admin:      admin,
+		client:     client,
+		downstream: os.Getenv("E2E_REAL_DOWNSTREAM"),
 	}, nil
 }
 
 // BaseURL is the oracle server root without a trailing slash.
 func (t *RealTarget) BaseURL() string { return t.baseURL }
+
+// Downstream is the id of the downstream cluster named by
+// E2E_REAL_DOWNSTREAM, or empty when it is unset.
+func (t *RealTarget) Downstream() string { return t.downstream }
 
 // Client is an HTTP client that trusts the oracle's CA (TLS verification is
 // never skipped), refuses cross-origin redirects, and honours the proxy

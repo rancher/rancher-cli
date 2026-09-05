@@ -181,6 +181,31 @@ func TestNewRealTargetFromEnv(t *testing.T) {
 		bearer, err := tgt.Bearer(t.Context(), IdentityAdmin)
 		require.NoError(t, err)
 		assert.Equal(t, "admin-tok", bearer)
+		assert.Empty(t, tgt.Downstream(), "E2E_REAL_DOWNSTREAM is unset")
+	})
+
+	t.Run("E2E_REAL_DOWNSTREAM names the downstream cluster", func(t *testing.T) {
+		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
+		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_REAL_CACERT", caPEM)
+		t.Setenv("E2E_REAL_DOWNSTREAM", "c-abc123")
+		tgt, err := NewRealTargetFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, "c-abc123", tgt.Downstream())
+	})
+
+	t.Run("E2E_REAL_CACERT=system trusts the OS root store, not a self-signed test cert", func(t *testing.T) {
+		t.Setenv("E2E_REAL_URL", srv.URL)
+		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_REAL_CACERT", "system")
+		tgt, err := NewRealTargetFromEnv()
+		require.NoError(t, err, "the literal \"system\" must never be parsed as PEM")
+		assert.Equal(t, srv.URL, tgt.BaseURL())
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+		require.NoError(t, err)
+		_, err = tgt.Client().Do(req)
+		require.Error(t, err, "the test server's self-signed cert must be rejected: system roots, not the pinned CA, are trusted")
 	})
 }
 
