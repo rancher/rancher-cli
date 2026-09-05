@@ -261,6 +261,8 @@ graph TD
     rbac --> clierr
 
     access --> engine
+    access --> kinds
+    access --> rbac
     access --> clierr
 
     provisioning --> selfuser

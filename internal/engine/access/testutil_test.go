@@ -62,7 +62,7 @@ func (f *fakeClient) ServerResources(context.Context) ([]engine.APIResource, err
 	return f.Resources, nil
 }
 
-func (f *fakeClient) Get(ctx context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+func (f *fakeClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	if f.Before != nil {
 		if err := f.Before(ctx); err != nil {
 			return nil, err
@@ -74,6 +74,11 @@ func (f *fakeClient) Get(ctx context.Context, _ schema.GroupVersionResource, ns,
 	key := name
 	if ns != "" {
 		key = ns + "/" + name
+	}
+	// A UserAttribute is named by the user id, so it needs its own key
+	// space to sit beside the User of the same name.
+	if gvr.Resource == "userattributes" {
+		key = name + "-attr"
 	}
 	if o, ok := f.Objects[key]; ok {
 		return o, nil
