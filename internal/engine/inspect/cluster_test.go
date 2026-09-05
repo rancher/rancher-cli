@@ -522,16 +522,20 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 		crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterroletemplatebindings"
 	)
+	neverAnswer := make(chan struct{})
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case mgmtGetPath:
 			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"},"status":{"state":"active"}}`))
 		case provListPath:
-			// Outlast the provider's (shrunk) child deadline; the client
-			// aborts the request at the deadline, which unblocks the handler
-			// via the server-side request context.
-			<-r.Context().Done()
+			// Never answer: the provider's (shrunk) child deadline must be
+			// the only way this request ends. Returning on the request
+			// context alone let a slow runner see an empty 200 when the
+			// handler unblocked before the client had processed its own
+			// cancellation; the channel is released only when the test is
+			// over.
+			<-neverAnswer
 		case crtbListPath:
 			// Return an empty crtb list so members lookup succeeds silently
 			// and does not add a second warning to the timeout-degrade case.
@@ -540,7 +544,13 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 			http.NotFound(w, r)
 		}
 	}))
+	// Deferred calls run last-in first-out: the channel closes first, which
+	// releases the blocked handler, and only then does srv.Close run; in
+	// the other order Close would wait forever on the handler it still
+	// counts as in flight. By then the assertions have run and the client
+	// gave up at its deadline long ago.
 	defer srv.Close()
+	defer close(neverAnswer)
 
 	restore := provider.SetRequestTimeoutForTest(200 * time.Millisecond)
 	defer restore()
