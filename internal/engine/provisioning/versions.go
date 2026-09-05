@@ -474,13 +474,15 @@ func FetchVersions(ctx context.Context, roots engine.RootClientFactory, clients 
 }
 
 // versionsResult is `get kubernetes-versions`' payload: the merged rows
-// plus the raw supported-range setting, echoed at the top level for
-// transparency (spec D-7) alongside the per-row Supported boolean. It
-// implements output.Tabular so -o table shows
+// under "versions" plus the raw supported-range setting, echoed beside
+// them for transparency (spec D-7) alongside the per-row Supported
+// boolean. It implements output.Tabular so -o table shows
 // DISTRO/VERSION/DEFAULT/SUPPORTED while -o json/-o yaml also carry the raw
-// range string under "supportedRange".
+// range string under "supportedRange". The rows key is "versions", never
+// "data": the envelope already has a data key, and a nested data.data was
+// the one list shape that read differently from every other list.
 type versionsResult struct {
-	Versions       []Version `json:"data"`
+	Versions       []Version `json:"versions"`
 	SupportedRange string    `json:"supportedRange,omitempty"`
 }
 

@@ -8,13 +8,13 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # supportedRange at the top level - a warning names each missing setting,
 # never an error.
 exec rancher get kubernetes-versions -o json
-jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").distro' rke2
-jsonquery stdout 'data.data.#(version=="v1.30.6+rke2r1").newest' true
-jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").newest' ''
-jsonquery stdout 'data.data.#(version=="v1.30.6+rke2r1").default' false
-jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").supported' ''
-jsonquery stdout 'data.data.#(version=="v1.30.5+k3s1").distro' k3s
-jsonquery stdout 'data.data.#(version=="v1.30.6+k3s1").newest' true
+jsonquery stdout 'data.versions.#(version=="v1.30.5+rke2r1").distro' rke2
+jsonquery stdout 'data.versions.#(version=="v1.30.6+rke2r1").newest' true
+jsonquery stdout 'data.versions.#(version=="v1.30.5+rke2r1").newest' ''
+jsonquery stdout 'data.versions.#(version=="v1.30.6+rke2r1").default' false
+jsonquery stdout 'data.versions.#(version=="v1.30.5+rke2r1").supported' ''
+jsonquery stdout 'data.versions.#(version=="v1.30.5+k3s1").distro' k3s
+jsonquery stdout 'data.versions.#(version=="v1.30.6+k3s1").newest' true
 jsonquery stdout data.supportedRange ''
 jsonquery stdout 'warnings.0' 'no rke2-default-version setting on the server; no default marked'
 jsonquery stdout 'warnings.1' 'no k3s-default-version setting on the server; no default marked'
