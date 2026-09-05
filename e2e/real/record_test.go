@@ -28,6 +28,9 @@ func TestOracle(t *testing.T) {
 	dir := filepath.Join("..", "..", "internal", "testrancher", "fidelity", "testdata", "oracle")
 	for _, p := range fidelity.All() {
 		t.Run(p.Name, func(t *testing.T) {
+			if p.Downstream {
+				t.Skipf("downstream probe: recorded by TestDownstream, not TestOracle")
+			}
 			results, err := fidelity.RunProbe(t.Context(), tgt, p)
 			require.NoError(t, err)
 			got := fidelity.Golden{OracleImage: oracleImage, Observations: results}

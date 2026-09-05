@@ -68,6 +68,9 @@ func TestOracleOnlyProbesHaveNoFacadeGolden(t *testing.T) {
 func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
 	t.Parallel()
 	for _, p := range All() {
+		if p.Downstream {
+			continue
+		}
 		oraclePath := GoldenPath(filepath.Join("testdata", "oracle"), p.Name)
 		_, err := os.Stat(oraclePath)
 		require.NoError(t, err, "probe %s must have an oracle golden at %s", p.Name, oraclePath)
@@ -78,6 +81,18 @@ func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
 		_, err = os.Stat(facadePath)
 		assert.NoError(t, err,
 			"divergence-pinned probe %s must have a facade golden at %s", p.Name, facadePath)
+	}
+}
+
+func TestEveryDownstreamProbeHasItsRecordedGolden(t *testing.T) {
+	t.Parallel()
+	for _, p := range All() {
+		if !p.Downstream {
+			continue
+		}
+		path := GoldenPath(filepath.Join("testdata", "downstream"), p.Name)
+		_, err := os.Stat(path)
+		require.NoError(t, err, "downstream probe %s must have a recorded golden at %s", p.Name, path)
 	}
 }
 

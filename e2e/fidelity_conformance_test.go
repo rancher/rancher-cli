@@ -58,6 +58,9 @@ func newCompositeTarget(t *testing.T) *compositeTarget {
 func (c *compositeTarget) BaseURL() string      { return c.srv.URL }
 func (c *compositeTarget) Client() *http.Client { return c.srv.Client() }
 
+// Downstream is always empty: the facade has no downstream cluster.
+func (c *compositeTarget) Downstream() string { return "" }
+
 func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (string, error) {
 	switch id {
 	case fidelity.IdentityAdmin:
@@ -138,6 +141,9 @@ func TestFidelityConformance(t *testing.T) {
 		t.Run(p.Name, func(t *testing.T) {
 			if p.OracleOnly {
 				t.Skipf("oracle-only probe: recorded against the real server, no conformance claim")
+			}
+			if p.Downstream {
+				t.Skipf("downstream probe: the facade has no downstream cluster, no conformance claim")
 			}
 			oracle, err := fidelity.LoadGolden(fidelity.GoldenPath(filepath.Join(fidelityDir, "oracle"), p.Name))
 			if errors.Is(err, os.ErrNotExist) {
