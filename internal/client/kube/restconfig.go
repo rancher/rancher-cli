@@ -79,6 +79,21 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	return rc, nil
 }
 
+// RESTConfigImpersonating is RESTConfig with an Impersonate-User header on
+// every request. Only the user is set: Rancher attaches the subject's
+// groups itself and refuses client-supplied group headers downstream.
+func RESTConfigImpersonating(eff config.Effective, cluster, user string) (*rest.Config, error) {
+	if user == "" {
+		return nil, clierr.New(clierr.CodeValidation, "impersonated user must not be empty")
+	}
+	rc, err := RESTConfig(eff, cluster)
+	if err != nil {
+		return nil, err
+	}
+	rc.Impersonate = rest.ImpersonationConfig{UserName: user}
+	return rc, nil
+}
+
 // HTTPClient builds the http.Client every client-go client in this repo
 // rides on: rest.HTTPClientFor plus the same-origin redirect policy shared
 // with httpx. The User-Agent is defaulted first: client-go installs its

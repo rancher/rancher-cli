@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -153,4 +154,12 @@ func TestPoolRequiresPositiveMin(t *testing.T) {
 func TestAutoscalingPaused(t *testing.T) {
 	assert.False(t, autoscalingPaused(familyClusterObj("c", "1", nil, false)))
 	assert.True(t, autoscalingPaused(familyClusterObj("c", "1", nil, true)))
+}
+
+func (*familyClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*familyClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

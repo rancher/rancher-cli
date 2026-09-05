@@ -1273,3 +1273,15 @@ func TestGetSelectorReachesTheListUnderProjectMemberFilter(t *testing.T) {
 	}
 	assert.Equal(t, []string{"app=web"}, got)
 }
+
+func (*memClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*memClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f *recFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
+}

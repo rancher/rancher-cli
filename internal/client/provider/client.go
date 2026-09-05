@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +77,11 @@ type dynamicClient struct {
 	disc discovery.DiscoveryInterface
 	cs   kubernetes.Interface
 
+	// hc and host serve the raw review POSTs: an authorization review has no
+	// dynamic-client shape that keeps the answer's HTTP status and raw body.
+	hc   *http.Client // authenticated transport
+	host string       // rest.Config.Host: https://<rancher>/k8s/clusters/<id>
+
 	// clusterID is the --cluster value this client's proxy targets, carried
 	// only so a curated NOT_FOUND hint for a Downstream-scoped kind can name
 	// a complete list command - it plays no role in request routing itself.
@@ -102,7 +109,14 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 	if err != nil {
 		return nil, err
 	}
-	return &dynamicClient{dyn: dyn, disc: disc, cs: cs, clusterID: clusterID, versions: map[string]string{}}, nil
+	hc, err := kube.HTTPClient(rc)
+	if err != nil {
+		return nil, err
+	}
+	return &dynamicClient{
+		dyn: dyn, disc: disc, cs: cs, hc: hc, host: strings.TrimRight(rc.Host, "/"),
+		clusterID: clusterID, versions: map[string]string{},
+	}, nil
 }
 
 func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {

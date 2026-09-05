@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -182,4 +183,12 @@ func TestDeleteProvisioningClusterDescribeMirrorsGeneric(t *testing.T) {
 	override := NewDeleteProvisioningCluster(k, nil).Describe()
 	assert.Equal(t, generic, override)
 	assert.Equal(t, "delete provisioning-cluster", override.Name)
+}
+
+func (*delRecClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*delRecClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

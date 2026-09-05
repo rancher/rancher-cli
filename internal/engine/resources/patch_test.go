@@ -676,3 +676,11 @@ func TestPatchMoveIntoMetadataCannotForgeManagedFields(t *testing.T) {
 	want, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
 	assert.Equal(t, want, sent, "the forged value never reaches the server")
 }
+
+func (*patchClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*patchClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}

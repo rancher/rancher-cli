@@ -368,3 +368,23 @@ func (c *trackingClient) Delete(_ context.Context, _ schema.GroupVersionResource
 }
 
 var _ engine.ClusterClient = (*trackingClient)(nil)
+
+func (*stubClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*stubClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (*trackingClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*trackingClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f *stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
+}

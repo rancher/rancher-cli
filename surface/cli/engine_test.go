@@ -387,3 +387,11 @@ func TestActiveTokenIDIDSecret(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "mytoken", id)
 }
+
+func (*listCountClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*listCountClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}

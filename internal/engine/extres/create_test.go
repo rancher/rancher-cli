@@ -2,6 +2,7 @@ package extres
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -244,4 +245,16 @@ func TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess(t *testing.T) 
 	assert.Equal(t, "Token", details.ResourceKind)
 	assert.Equal(t, "token-empty", details.ResourceName)
 	assert.Contains(t, details.Recovery, "delete token token-empty")
+}
+
+func (*fakeClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*fakeClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
 }

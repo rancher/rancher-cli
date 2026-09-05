@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -479,4 +480,16 @@ func TestResolveSubjectNoNearMatchFallsBackToPool(t *testing.T) {
 	assert.Contains(t, ids, "u-alice")
 	assert.Contains(t, ids, "u-bob")
 	assert.Contains(t, ids, "u-carol")
+}
+
+func (*fakeClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*fakeClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f fakeFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -522,4 +523,16 @@ func TestCommittedPartialSuccessPreservesRetryable(t *testing.T) {
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)
 	assert.True(t, details.Committed)
+}
+
+func (*fakeOIDCClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*fakeOIDCClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f stubOIDCFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
 }

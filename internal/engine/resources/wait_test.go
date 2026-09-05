@@ -716,3 +716,11 @@ func TestFreshSuccessWarning(t *testing.T) {
 		assert.Empty(t, freshSuccessWarning(noTimestamp, "gitrepo", "repo-1", "team-a"))
 	})
 }
+
+func (*seqClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*seqClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}

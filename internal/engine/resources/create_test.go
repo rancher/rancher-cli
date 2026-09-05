@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -329,4 +330,12 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Message, "create token")
 	assert.Empty(t, ce.Hint)
+}
+
+func (*createClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*createClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

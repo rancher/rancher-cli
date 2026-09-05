@@ -861,3 +861,11 @@ func stampWarningCount(warnings []string) int {
 	}
 	return n
 }
+
+func (*ccRecClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*ccRecClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}

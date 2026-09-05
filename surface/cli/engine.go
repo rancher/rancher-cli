@@ -122,6 +122,39 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	return c, nil
 }
 
+// ImpersonatedCluster is Cluster acting as another user; the memo key
+// carries the identity so two subjects never share a client.
+func (f *clientFactory) ImpersonatedCluster(_ context.Context, clusterID string, as engine.Impersonation) (engine.ClusterClient, error) {
+	if clusterID == "" {
+		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty")
+	}
+	if as.User == "" {
+		return nil, clierr.New(clierr.CodeValidation, "impersonated user must not be empty")
+	}
+	eff, err := f.resolve()
+	if err != nil {
+		return nil, err
+	}
+	// A cluster id cannot contain a NUL byte, so an impersonated key never
+	// collides with a plain one.
+	key := clusterID + "\x00as\x00" + as.User
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.cache[key]; ok {
+		return c, nil
+	}
+	rc, err := kube.RESTConfigImpersonating(eff, clusterID, as.User)
+	if err != nil {
+		return nil, err
+	}
+	c, err := provider.NewClusterClient(rc, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	f.cache[key] = c
+	return c, nil
+}
+
 // Root resolves the memoized engine.RootClient for this invocation, building
 // the underlying httpx client at most once (RF-1: one server, one token, one
 // TLS config per invocation).

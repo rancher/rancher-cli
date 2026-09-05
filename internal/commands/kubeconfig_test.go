@@ -236,3 +236,7 @@ func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
 	assert.Empty(t, cluster.CertificateAuthorityData)
 	assert.False(t, cluster.InsecureSkipTLSVerify)
 }
+
+func (f stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
+}

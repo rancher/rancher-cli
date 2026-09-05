@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -201,4 +202,20 @@ func TestPlanCreateDestructiveParameter(t *testing.T) {
 	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", true)
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive)
+}
+
+func (*stubClient) PostReview(context.Context, ReviewRequest) (ReviewResponse, error) {
+	return ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*stubClient) ServerResources(context.Context) ([]APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (*obsClient) PostReview(context.Context, ReviewRequest) (ReviewResponse, error) {
+	return ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*obsClient) ServerResources(context.Context) ([]APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

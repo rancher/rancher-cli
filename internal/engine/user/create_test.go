@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -274,4 +275,16 @@ func TestCreateExplicitEmptyDisplayNameIsKept(t *testing.T) {
 	userInfo, ok := res.Data.(map[string]any)["user"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "", userInfo["displayName"], "an explicitly empty display name must not be replaced with the username")
+}
+
+func (*fakeUserClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*fakeUserClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+func (f stubUserFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
 }

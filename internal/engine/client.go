@@ -34,6 +34,15 @@ type ClusterClient interface {
 	Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error
 	// Logs fetches a container's log per opts.
 	Logs(ctx context.Context, ns, pod string, opts LogOptions) (string, error)
+	// PostReview posts one authorization or authentication review and
+	// returns the server's answer with its HTTP status and raw body kept.
+	// error is non-nil only when no HTTP response was obtained (transport,
+	// timeout, cancellation) or a 2xx body failed to decode or lacks the
+	// fields the kind requires; every HTTP status, 2xx or not, returns a
+	// nil error and a populated ReviewResponse. The kind set is closed.
+	PostReview(ctx context.Context, req ReviewRequest) (ReviewResponse, error)
+	// ServerResources lists the server's preferred-version resources.
+	ServerResources(ctx context.Context) ([]APIResource, error)
 }
 
 // LogOptions parameterizes a Logs call. SinceSeconds and TailLines are both
@@ -60,6 +69,10 @@ type LogOptions struct {
 // (io.ServerIdentity) rather than through the engine-facing interface (ISP).
 type ClusterClientFactory interface {
 	Cluster(ctx context.Context, clusterID string) (ClusterClient, error)
+	// ImpersonatedCluster is Cluster with an Impersonate-User header on
+	// every request. The identity is part of the memo key: two subjects
+	// never share a client.
+	ImpersonatedCluster(ctx context.Context, clusterID string, as Impersonation) (ClusterClient, error)
 	// ResolveCluster maps a cluster display name or id to its cluster id
 	// (rancher-ai-mcp GetClusterID semantics); "" and LocalCluster
 	// short-circuit to LocalCluster. Memoized per invocation.

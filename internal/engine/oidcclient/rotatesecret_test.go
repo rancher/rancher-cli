@@ -473,3 +473,7 @@ func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
 		"recover: " + recovery,
 	}, details.TextDetails())
 }
+
+func (f stubClusterClientFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
+	return f.Cluster(ctx, id)
+}

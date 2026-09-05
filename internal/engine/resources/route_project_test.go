@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -192,3 +193,11 @@ func TestGetNamespacesWithProjectListsUsingLabelSelector(t *testing.T) {
 }
 
 var _ engine.ClusterClient = (*routeProjectClient)(nil)
+
+func (*routeProjectClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*routeProjectClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
+}

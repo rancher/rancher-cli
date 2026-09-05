@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -427,4 +428,12 @@ func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "the get's own code survives")
 	assert.True(t, cerr.Retryable, "retryability survives - callers branch on it")
+}
+
+func (*listClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*listClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

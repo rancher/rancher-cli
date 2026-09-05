@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -240,4 +241,12 @@ func TestLoadMembershipTargetNotFoundCurated(t *testing.T) {
 	var ce2 *clierr.Error
 	require.ErrorAs(t, err2, &ce2)
 	assert.Equal(t, "try another group", ce2.Hint, "hint-bearing error must pass through unchanged")
+}
+
+func (*membershipClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*membershipClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }

@@ -58,7 +58,7 @@ func mapErr(err error) error {
 		return clierr.New(clierr.CodeConflict, err.Error())
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())
-	case apierrors.IsServiceUnavailable(err):
+	case apierrors.IsServiceUnavailable(err), isGatewayError(err):
 		return clierr.Retryable(clierr.CodeGeneric,
 			err.Error()+" - its agent may not be registered yet; retry once the cluster is active")
 	case errors.Is(err, context.DeadlineExceeded):
@@ -95,6 +95,16 @@ func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 	}
 	ce.Message = deniedFallbackMessage(status)
 	return ce.WithHint("rancher auth status")
+}
+
+// isGatewayError reports a 502 or 504 StatusError; both are retryable
+// like 503, while a plain 500 stays non-retryable.
+func isGatewayError(err error) bool {
+	se, ok := errors.AsType[*apierrors.StatusError](err)
+	if !ok {
+		return false
+	}
+	return se.ErrStatus.Code == http.StatusBadGateway || se.ErrStatus.Code == http.StatusGatewayTimeout
 }
 
 // isUnexpectedServerError reports client-go's wrapping of a non-Status

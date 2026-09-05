@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -397,4 +398,12 @@ func TestDeleteDescribeInheritsCapability(t *testing.T) {
 	k := kinds.Kind{Name: "widget", Aliases: []string{"widgets"}, Deletable: true, Capability: req}
 	d := NewDelete(k, nil).Describe()
 	assert.Equal(t, req, d.Capability)
+}
+
+func (*delClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (*delClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("ServerResources not scripted in this fake")
 }
