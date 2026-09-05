@@ -1,0 +1,30 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# No rke2-default-version/k3s-default-version/ui-k8s-supported-versions-range
+# Settings exist in this harness (envtest serves the settings CRD, but no
+# object is seeded): the merged list still reports every channel-server
+# version, with no version marked default, Supported unknown, and no
+# supportedRange at the top level — a warning names each missing setting,
+# never an error.
+exec rancher get kubernetes-versions -o json
+jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").distro' rke2
+jsonquery stdout 'data.data.#(version=="v1.30.6+rke2r1").newest' true
+jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").newest' ''
+jsonquery stdout 'data.data.#(version=="v1.30.6+rke2r1").default' false
+jsonquery stdout 'data.data.#(version=="v1.30.5+rke2r1").supported' ''
+jsonquery stdout 'data.data.#(version=="v1.30.5+k3s1").distro' k3s
+jsonquery stdout 'data.data.#(version=="v1.30.6+k3s1").newest' true
+jsonquery stdout data.supportedRange ''
+jsonquery stdout 'warnings.0' 'no rke2-default-version setting on the server; no default marked'
+jsonquery stdout 'warnings.1' 'no k3s-default-version setting on the server; no default marked'
+
+# Default (table) rendering shows both distros' rows, and mirrors the same
+# warnings to stderr — json/yaml are the only formats that embed them in
+# the envelope instead.
+exec rancher get kubernetes-versions
+stdout rke2
+stdout k3s
+stdout 'v1\.30\.6\+rke2r1'
+stderr 'no rke2-default-version setting on the server; no default marked'
+stderr 'no k3s-default-version setting on the server; no default marked'
