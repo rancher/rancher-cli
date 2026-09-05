@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -192,6 +193,34 @@ func TestPatchSecretDiffIsRedacted(t *testing.T) {
 		assert.NotEqual(t, "bmV3", d.To, "raw secret value must never reach the Effect")
 	}
 	assert.True(t, found, "diff must contain the password path, got %+v", eff.Diff)
+}
+
+// TestMatchesRedactPathEscapesSlashKey asserts a RedactPaths key containing
+// "/" matches only the pointer segment it produced, not a path through a
+// nested key of the same name split on "/".
+func TestMatchesRedactPathEscapesSlashKey(t *testing.T) {
+	t.Parallel()
+	keys := []string{"a/b"}
+	assert.True(t, matchesRedactPath("/a~1b", keys))
+	assert.True(t, matchesRedactPath("/a~1b/nested", keys))
+	assert.False(t, matchesRedactPath("/a/b", keys), "must not match the two-segment path a -> b")
+}
+
+// TestValueCarriesEscapesSlashKey asserts valueCarries and matchesRedactPath
+// build the same pointer for a key containing "/": a replace value carrying
+// the literal key "a/b" carries the field, a value nesting "b" under "a"
+// (a distinct pointer) does not.
+func TestValueCarriesEscapesSlashKey(t *testing.T) {
+	t.Parallel()
+	keys := []string{"a/b"}
+
+	carrying, err := jsonpatch.DecodePatch([]byte(`[{"op":"replace","path":"","value":{"a/b":"x"}}]`))
+	require.NoError(t, err)
+	assert.True(t, valueCarries(carrying[0], "", keys))
+
+	nested, err := jsonpatch.DecodePatch([]byte(`[{"op":"replace","path":"","value":{"a":{"b":"x"}}}]`))
+	require.NoError(t, err)
+	assert.False(t, valueCarries(nested[0], "", keys), "must not match the two-segment field a -> b")
 }
 
 // TestPatchRedactsUserPasswordFromResult asserts the patch-response redaction

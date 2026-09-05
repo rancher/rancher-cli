@@ -209,7 +209,7 @@ func refuseServerOwnedOps(patch jsonpatch.Patch) error {
 		for _, keys := range engine.ServerOwnedPaths {
 			if matchesRedactPath(path, keys) || (fromErr == nil && matchesRedactPath(from, keys)) || valueCarries(op, path, keys) {
 				return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-					"patch op %d targets /%s; the server sets this field and a patch cannot change it", i, strings.Join(keys, "/")))
+					"patch op %d targets %s; the server sets this field and a patch cannot change it", i, engine.PointerFor(keys)))
 			}
 		}
 	}
@@ -221,7 +221,7 @@ func refuseServerOwnedOps(patch jsonpatch.Patch) error {
 // field, which would smuggle it past a path check. Ops without a value
 // (remove, move, copy, test) never match.
 func valueCarries(op jsonpatch.Operation, path string, keys []string) bool {
-	pointer := "/" + strings.Join(keys, "/")
+	pointer := engine.PointerFor(keys)
 	if path != "" && !strings.HasPrefix(pointer, path+"/") {
 		return false
 	}
@@ -254,6 +254,11 @@ func redactSensitiveDiff(diff []safety.DiffEntry) {
 	}
 }
 
+// isSecretDataPath compares against the RFC 6901 pointer as written, with
+// no unescaping: a Secret data key matches [-._a-zA-Z0-9]+ (the apiserver
+// rejects anything else), so it never contains "/" or "~", and the escaped
+// and unescaped spellings of every segment below /data or /stringData are
+// identical.
 func isSecretDataPath(path string) bool {
 	return path == "/data" || strings.HasPrefix(path, "/data/") ||
 		path == "/stringData" || strings.HasPrefix(path, "/stringData/")
@@ -279,11 +284,13 @@ func redactKindPaths(diff []safety.DiffEntry, paths [][]string) {
 // matchesRedactPath reports whether the JSON Pointer entryPath equals or is
 // nested under the path specified by keys. For keys ["token"], it matches
 // "/token" and "/token/anything"; for keys ["metadata","name"], it matches
-// "/metadata/name" and "/metadata/name/anything".
+// "/metadata/name" and "/metadata/name/anything". Each key is escaped before
+// joining, so a key containing "/" or "~" matches the single pointer segment
+// it produced, not a path through it.
 func matchesRedactPath(entryPath string, keys []string) bool {
 	if len(keys) == 0 {
 		return false
 	}
-	pointer := "/" + strings.Join(keys, "/")
+	pointer := engine.PointerFor(keys)
 	return entryPath == pointer || strings.HasPrefix(entryPath, pointer+"/")
 }

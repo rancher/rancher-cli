@@ -208,7 +208,7 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 	sort.Strings(paths)
 	out := make([]safety.DiffEntry, 0, len(paths))
 	for _, k := range paths {
-		out = append(out, safety.DiffEntry{Path: "/" + k, From: nil, To: fields[k]})
+		out = append(out, safety.DiffEntry{Path: engine.PointerFor([]string{k}), From: nil, To: fields[k]})
 	}
 	return out
 }
