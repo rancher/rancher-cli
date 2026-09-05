@@ -543,19 +543,28 @@ func matchesSubstring(c SchemaCommand, q string) bool {
 	return false
 }
 
-// matchesAlias reports whether want names c via a kind alias. Aliases on
+// CommandAliasNames returns every full alias name c answers to: aliases on
 // generated commands are BARE kind aliases (get.go:48 copies k.Aliases, e.g.
-// "pods", "po" — the existing schema.txtar canary asserts `aliases.0 == pods`),
-// so the alias full name is "<verb> <alias>" with the verb taken from c.Name.
+// "pods", "po" — the existing schema.txtar canary asserts `aliases.0 ==
+// pods`), so a full alias name is "<verb> <alias>" with the verb taken from
+// c.Name. nil for an unverbed c.Name (a bare fixed command carries no
+// resolvable alias form) or a command with no aliases. Exported so a second
+// consumer of this exact resolution rule (surface/cli's e2e coverage
+// conformance test) never re-derives it inline, where the two could drift
+// apart silently.
+func CommandAliasNames(c SchemaCommand) []string {
+	verb, _, verbed := strings.Cut(c.Name, " ")
+	if !verbed || len(c.Aliases) == 0 {
+		return nil
+	}
+	names := make([]string, len(c.Aliases))
+	for i, a := range c.Aliases {
+		names[i] = verb + " " + a
+	}
+	return names
+}
+
+// matchesAlias reports whether want names c via a kind alias.
 func matchesAlias(c SchemaCommand, want string) bool {
-	verb, _, ok := strings.Cut(c.Name, " ")
-	if !ok {
-		return false
-	}
-	for _, a := range c.Aliases {
-		if verb+" "+a == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(CommandAliasNames(c), want)
 }

@@ -544,10 +544,11 @@ func seedManagementCluster() {
 // support-bundle target tables both hardcode it, and per-script creation
 // races across scripts sharing this one apiserver. "cattle-global-data" is
 // Task 7's cloud-credential namespace (seedCloudCredential's Secret lives
-// there) — seeded here for the same reason.
+// there) — seeded here for the same reason. "cattle-local-user-passwords" is
+// where `create user` writes the backing password Secret.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system", "cattle-global-data"} {
+	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",

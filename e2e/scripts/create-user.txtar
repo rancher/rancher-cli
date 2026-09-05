@@ -1,0 +1,46 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# user is a Sensitive kind: bare --apply is refused before anything commits.
+stdin password.txt
+! exec rancher create user e2e-new-user --password-stdin --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+
+# dry-run preview also names the backing password Secret create in a
+# warning.
+stdin password.txt
+exec rancher create user e2e-new-user --password-stdin --dry-run -o json
+jsonquery stdout data.action create
+jsonquery stdout 'warnings.0' 'also creates a v1/Secret in cattle-local-user-passwords to hold the password'
+
+# apply: creates the User, then the password Secret.
+stdin password.txt
+exec rancher create user e2e-new-user --password-stdin --display-name 'E2E New User' --apply --yes -o json
+jsonquery stdout data.user.username e2e-new-user
+jsonquery stdout data.user.displayName 'E2E New User'
+jsonquery stdout data.user.enabled true
+cp stdout create-user.json
+jsonget create-user.json data.user.name user-id.txt
+setenvfrom USERID user-id.txt
+
+exec rancher get user $USERID -o json
+jsonquery stdout data.username e2e-new-user
+
+# the backing Secret exists — never assert its password value (hygiene).
+rawget core/v1/secrets cattle-local-user-passwords $USERID secret.raw.json
+jsonquery secret.raw.json metadata.name $USERID
+
+# create password-change-request for that user: dry-run (proves the
+# workflow is present, no server-side effect), then apply.
+stdin new-password.txt
+exec rancher create password-change-request $USERID --password-stdin --dry-run
+stdout 'dry run'
+
+stdin new-password.txt
+exec rancher create password-change-request $USERID --password-stdin --apply --yes -o json
+jsonquery stdout data.userID $USERID
+
+-- password.txt --
+Sup3rSecretPassw0rd!
+-- new-password.txt --
+AnotherSecretPassw0rd!

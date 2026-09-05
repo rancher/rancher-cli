@@ -3,7 +3,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # token is a Sensitive kind: bare --apply is refused before anything commits
 # (Plan's own dry-run POST still runs against the façade — fac-token-1 is
-# minted and discarded, never surfaced to the caller).
+# created and discarded, never surfaced to the caller).
 ! exec rancher create token --apply
 stderr 'error \(CONFIRMATION_REQUIRED\):'
 stderr 're-run with --yes'
