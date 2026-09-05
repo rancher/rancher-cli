@@ -5,7 +5,9 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,13 +85,19 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	t.Parallel()
 	var order []string
 	mux := http.NewServeMux()
+	deleted := false
 	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
 		order = append(order, "lookup")
 		w.Header().Set("Content-Type", "application/json")
+		if deleted { // the second lookup confirms the stale user is gone
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"id": "u-stale"}}})
 	})
 	mux.HandleFunc("DELETE /v3/users/u-stale", func(w http.ResponseWriter, r *http.Request) {
 		order = append(order, "delete")
+		deleted = true
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{}`))
 	})
@@ -128,13 +136,13 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	bearer, err := tgt.Bearer(t.Context(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/std-1:sec-1", bearer)
-	assert.Equal(t, []string{"lookup", "delete", "create", "grb", "login"}, order,
-		"the stale user is removed, the new user is created and bound to the baseline role, then logs in")
+	assert.Equal(t, []string{"lookup", "delete", "lookup", "create", "grb", "login"}, order,
+		"the stale user is removed and confirmed gone, the new user is created and bound to the baseline role, then logs in")
 
 	again, err := tgt.Bearer(t.Context(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, bearer, again, "the standard bearer is memoized")
-	assert.Len(t, order, 5, "memoization must not re-provision")
+	assert.Len(t, order, 6, "memoization must not re-provision")
 }
 
 func TestNewRealTargetFromEnv(t *testing.T) {
@@ -289,4 +297,49 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "no token in response")
 	})
+}
+
+// TestDeleteStandardUserWaitsForAsynchronousDeletion asserts the delete
+// waits for the username lookup to stop returning the user: the server
+// answers the lookup with the user once more after DELETE 200, then empty,
+// and the call returns nil only after that second lookup.
+func TestDeleteStandardUserWaitsForAsynchronousDeletion(t *testing.T) {
+	var lookups, deletes atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
+		n := lookups.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if n <= 2 { // before the delete, and once more right after it
+			_, _ = w.Write([]byte(`{"data":[{"id":"u-stale","username":"e2e-fid-standard"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/u-stale", func(w http.ResponseWriter, _ *http.Request) {
+		deletes.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	require.NoError(t, newTestRealTarget(srv).deleteStandardUser(t.Context()))
+	assert.Equal(t, int32(1), deletes.Load())
+	assert.Equal(t, int32(3), lookups.Load(), "one lookup before the delete, two until the user is gone")
+}
+
+// TestDeleteStandardUserGivesUpWhenTheUserNeverLeaves asserts the wait is
+// bounded and names the bound.
+func TestDeleteStandardUserGivesUpWhenTheUserNeverLeaves(t *testing.T) {
+	old := standardUserGoneTimeout
+	standardUserGoneTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { standardUserGoneTimeout = old })
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"u-stale","username":"e2e-fid-standard"}]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/u-stale", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	require.ErrorContains(t, err, "still listed 300ms after delete")
 }

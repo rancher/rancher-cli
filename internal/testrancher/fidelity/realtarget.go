@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/token"
@@ -189,21 +190,25 @@ func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
 	})
 }
 
+// standardUserGoneTimeout bounds the wait for a deleted standard user to
+// leave the username lookup. Rancher deletes users asynchronously: on the
+// pinned 2.15.1 the lookup still returned the deleted user about 250 ms
+// after DELETE answered 200, and a create in that window can be refused
+// as a duplicate username.
+var standardUserGoneTimeout = 10 * time.Second
+
 // deleteStandardUser removes any prior e2e-fid-standard user by username
-// lookup. An absent user (empty data array) is clean; every HTTP failure,
-// malformed 200 shape, or rejected delete is surfaced - a silently-kept
-// stale user would break kept-run recovery at the subsequent create.
+// lookup and waits until the lookup no longer returns it. An absent user
+// (empty data array) is clean; every HTTP failure, malformed 200 shape, or
+// rejected delete is surfaced - a silently-kept stale user would break
+// kept-run recovery at the subsequent create.
 func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
-	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+standardUsername, nil, 0)
+	data, err := t.lookupStandardUsers(ctx)
 	if err != nil {
-		return fmt.Errorf("looking up standard user: %w", err)
+		return err
 	}
-	if status != http.StatusOK {
-		return fmt.Errorf("looking up standard user: status %d", status)
-	}
-	data, ok := body["data"].([]any)
-	if !ok {
-		return fmt.Errorf("looking up standard user: 200 response has no data array")
+	if len(data) == 0 {
+		return nil
 	}
 	for _, el := range data {
 		m, _ := el.(map[string]any)
@@ -221,7 +226,43 @@ func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
 			return fmt.Errorf("deleting stale standard user %s: status %d", id, dstatus)
 		}
 	}
-	return nil
+	// The deletion is asynchronous on the server: wait for the lookup to
+	// empty so the create that follows never races the finalizer.
+	deadline := time.Now().Add(standardUserGoneTimeout)
+	for {
+		remaining, err := t.lookupStandardUsers(ctx)
+		if err != nil {
+			return err
+		}
+		if len(remaining) == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("stale standard user still listed %s after delete", standardUserGoneTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// lookupStandardUsers returns the collection entries the username lookup
+// reports for the standard user; a malformed answer is an error.
+func (t *RealTarget) lookupStandardUsers(ctx context.Context) ([]any, error) {
+	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+standardUsername, nil, 0)
+	if err != nil {
+		return nil, fmt.Errorf("looking up standard user: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("looking up standard user: status %d", status)
+	}
+	data, ok := body["data"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("looking up standard user: 200 response has no data array")
+	}
+	return data, nil
 }
 
 // login posts local-provider credentials and returns the bearer, accepting
