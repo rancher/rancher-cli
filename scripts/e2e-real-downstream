@@ -3,10 +3,11 @@ set -euo pipefail
 
 # Verifies the downstream fidelity goldens (internal/testrancher/fidelity,
 # family access-downstream) against a Rancher the caller already runs and
-# that already has a downstream cluster. Unlike scripts/e2e-real, this never
-# boots Docker or bootstraps a server: the pinned oracle has the local
-# cluster only, so these facts are recorded against an external target
-# instead. Never on PRs.
+# that already has a downstream cluster - a hand-run comparison of an
+# external server (a dev instance, a release candidate) with the goldens
+# scripts/e2e-real records against the pinned oracle and its imported
+# downstream. Unlike scripts/e2e-real, this never boots Docker or
+# bootstraps a server. Never on PRs.
 
 missing=()
 for var in E2E_REAL_URL E2E_REAL_ADMIN_TOKEN E2E_REAL_CACERT E2E_REAL_DOWNSTREAM; do

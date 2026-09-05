@@ -322,16 +322,17 @@ Requires Go 1.26+ to build from source:
     make e2e-real-downstream  # verify downstream-cluster fidelity goldens against your own Rancher
     make              # the full ci pipeline (build + validate)
 
-`make e2e-real` boots the pinned `rancher/rancher` image (~5-7 min) and
+`make e2e-real` boots the pinned `rancher/rancher` image, imports a pinned
+`rancher/k3s` container as a downstream cluster (~7-9 min in all), and
 checks that the fake Rancher the e2e suite runs against still behaves
-like the real one; `make e2e-real-update` re-records those goldens.
-`make e2e-real-downstream` covers the facts that need a downstream cluster
-(the pinned oracle has the `local` cluster only): point it at a Rancher you
-already run, with a downstream cluster already registered, via
-`E2E_REAL_URL`, `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or the
-literal `system` to trust your OS root store), and `E2E_REAL_DOWNSTREAM`
-(the cluster id); `make e2e-real-downstream-update` re-records those
-goldens.
+like the real one, downstream proxy behavior included; `make
+e2e-real-update` re-records those goldens. `make e2e-real-downstream`
+compares a Rancher you already run, with a downstream cluster already
+registered, against the same downstream goldens: point it at the server
+via `E2E_REAL_URL`, `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or
+the literal `system` to trust your OS root store), and
+`E2E_REAL_DOWNSTREAM` (the cluster id); `make e2e-real-downstream-update`
+re-records the downstream goldens from that server instead.
 
 One-time setup: `git config core.hooksPath .githooks` enables the
 pre-commit `make validate` gate.

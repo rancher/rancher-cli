@@ -42,17 +42,16 @@ func TestOracleImagePinsMatchGoldens(t *testing.T) {
 	assert.NotEqual(t, oracleImage, primeImage, "PRIME_ORACLE_IMAGE must differ from ORACLE_IMAGE")
 	assert.True(t, strings.HasPrefix(primeImage, "registry.rancher.com/"),
 		"PRIME_ORACLE_IMAGE %q must come from registry.rancher.com - no goldens exist yet to pin it against, so this is the whole check", primeImage)
+	// The downstream the oracle imports is a second reviewed pin: the
+	// access-downstream goldens hold for this k3s image only.
+	k3sImage := parseScriptImagePin(t, script, "K3S_IMAGE")
+	assert.True(t, strings.HasPrefix(k3sImage, "rancher/k3s:"), "K3S_IMAGE %q must be a rancher/k3s tag", k3sImage)
+	assert.Contains(t, k3sImage, "@sha256:", "K3S_IMAGE %q must be digest-pinned like ORACLE_IMAGE", k3sImage)
 
 	checked := 0
 	err = filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
 		require.NoError(t, err)
 		if d.IsDir() {
-			if d.Name() == "downstream" {
-				// Downstream goldens are recorded against an externally
-				// supplied Rancher, never the pinned Docker oracle; their
-				// oracleImage carries "external:<version>", not this pin.
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		if !strings.HasSuffix(path, ".json") {
